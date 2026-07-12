@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Admin</title>
+    <style>
+        :root {
+            --primary: #25D366; 
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-main: #111b21;
+            --text-muted: #667781;
+            --border: #d1d7db;
+            --sidebar-width: 250px;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; }
+        
+        /* Auth UI */
+        #authContainer { display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .auth-card { background: var(--card-bg); padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .auth-card input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; }
+        .auth-card button { width: 100%; padding: 12px; background-color: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        .auth-card .toggle-link { color: var(--primary); cursor: pointer; font-size: 14px; text-decoration: underline; }
+        .error-msg { color: red; font-size: 14px; margin-bottom: 10px; }
+
+        /* Main App */
+        #appContainer { display: none; }
+        .topbar { background: var(--card-bg); padding: 15px 20px; display: flex; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .menu-btn { background: none; border: none; font-size: 24px; cursor: pointer; margin-right: 20px; }
+        
+        /* Sidebar */
+        .sidebar { position: fixed; top: 0; left: -250px; width: var(--sidebar-width); height: 100%; background: var(--card-bg); box-shadow: 2px 0 5px rgba(0,0,0,0.1); transition: 0.3s; z-index: 1000; padding-top: 60px; }
+        .sidebar.open { left: 0; }
+        .sidebar-close { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; background: none; border: none; }
+        .menu-item { display: block; padding: 15px 20px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .menu-item:hover { background: var(--bg-color); }
+        
+        /* Content Layout */
+        .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 30px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .form-group { margin-bottom: 25px; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; }
+        textarea { width: 100%; padding: 15px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 15px; resize: vertical; min-height: 100px; box-sizing: border-box; }
+        .btn-save { background-color: var(--primary); color: white; border: none; padding: 15px 30px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; width: 100%; }
+        
+        .contact-item { display: flex; justify-content: space-between; padding: 15px; border-bottom: 1px solid var(--border); }
+        .contact-date { color: var(--text-muted); font-size: 14px; text-align: right; }
+        
+        /* Chat UI */
+        .chat-container { display: flex; height: 600px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .chat-sidebar { width: 30%; background: #fff; border-right: 1px solid var(--border); overflow-y: auto; }
+        .chat-main { width: 70%; display: flex; flex-direction: column; background: #efeae2; }
+        .chat-header { padding: 15px; background: #f0f2f5; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg-bubble { max-width: 70%; padding: 10px 15px; border-radius: 12px; font-size: 14px; }
+        .msg-user { background: #fff; align-self: flex-start; border-bottom-left-radius: 0; }
+        .msg-bot { background: #d9fdd3; align-self: flex-end; border-bottom-right-radius: 0; }
+        .chat-input { display: flex; padding: 15px; background: #f0f2f5; }
+        .chat-input input { flex: 1; padding: 12px; border-radius: 20px; border: none; outline: none; font-size: 15px; }
+        .chat-input button { background: var(--primary); color: white; border: none; border-radius: 20px; padding: 0 20px; margin-left: 10px; cursor: pointer; font-weight: bold; }
+        .chat-contact { padding: 15px; border-bottom: 1px solid #f0f2f5; cursor: pointer; font-weight: bold; }
+        .chat-contact:hover { background: #f5f6f6; }
+        .chat-contact.active { background: #ebebeb; }
+        
+        /* Sections */
+        .app-section { display: none; }
+        .app-section.active { display: block; }
+
+        .notification { position: fixed; bottom: 30px; right: 30px; background-color: #111b21; color: white; padding: 15px 25px; border-radius: 8px; transform: translateY(100px); opacity: 0; transition: 0.3s; }
+        .notification.show { transform: translateY(0); opacity: 1; }
+    </style>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
+            authDomain: "whatanagent-a1e59.firebaseapp.com",
+            projectId: "whatanagent-a1e59",
+            storageBucket: "whatanagent-a1e59.firebasestorage.app",
+            messagingSenderId: "410197132578",
+            appId: "1:410197132578:web:97cfc3ae33f39ed3df917b"
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Global objects
+        window.firebaseAuth = auth;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut;
+
+        // Auth State Listener
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('authContainer').style.display = 'none';
+                document.getElementById('appContainer').style.display = 'block';
+                document.getElementById('profileEmail').innerText = user.email;
+                document.getElementById('profileUid').innerText = user.uid;
+                loadKnowledge();
+                loadContacts();
+                loadEnv();
+            } else {
+                document.getElementById('authContainer').style.display = 'flex';
+                document.getElementById('appContainer').style.display = 'none';
+            }
+        });
+    </script>
+</head>
+<body>
+
+    <!-- AUTHENTICATION CONTAINER -->
+    <div id="authContainer">
+        <div class="auth-card" id="loginCard">
+            <h2>Admin Login</h2>
+            <div id="loginError" class="error-msg"></div>
+            <input type="email" id="loginEmail" placeholder="Email Address">
+            <input type="password" id="loginPassword" placeholder="Password">
+            <button onclick="handleLogin()">Log In</button>
+            <div class="toggle-link" onclick="toggleAuth('signup')">Don't have an account? Sign Up</div>
+        </div>
+        
+        <div class="auth-card" id="signupCard" style="display: none;">
+            <h2>Create Account</h2>
+            <div id="signupError" class="error-msg"></div>
+            <input type="email" id="signupEmail" placeholder="Email Address">
+            <input type="password" id="signupPassword" placeholder="Password (min 6 chars)">
+            <button onclick="handleSignup()">Sign Up</button>
+            <div class="toggle-link" onclick="toggleAuth('login')">Already have an account? Log In</div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="appContainer">
+        
+        <!-- Topbar -->
+        <div class="topbar">
+            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+            <h2 style="margin: 0;">AI Admin Dashboard</h2>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+            <div class="menu-item" onclick="showSection('dashboard')">🏠 Knowledge Base</div>
+            <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
+            <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
+            <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
+            <div class="menu-item" onclick="handleLogout()" style="color: red;">🚪 Logout</div>
+        </div>
+
+        <div class="container">
+            
+            <!-- Dashboard Section -->
+            <div id="dashboardSection" class="app-section active">
+                <div class="card">
+                    <form id="knowledgeForm">
+                        <div class="form-group">
+                            <label>Company Profile & Description</label>
+                            <textarea id="companyProfile"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Timings & Operating Hours</label>
+                            <textarea id="timings"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Location & Branches</label>
+                            <textarea id="locationAndBranches"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Products, Services & Pricing</label>
+                            <textarea id="products"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Logistics & Delivery</label>
+                            <textarea id="logistics"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Custom AI Rules</label>
+                            <textarea id="customRules"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Website Scraped Data (AI Memory)</label>
+                            <textarea id="scrapedData" placeholder="You can manually paste your website content or documents here..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-save" id="saveBtn">Save & Sync AI</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h2>Import Data From Website</h2>
+                    <p class="subtitle" style="margin-bottom: 20px;">Paste a website link. The AI will read the page and save it into its memory above.</p>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="scrapeUrl" placeholder="https://example.com/about" style="flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <button onclick="scrapeWebsite()" style="padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Fetch & Save</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Numbers Chatted</h2>
+                    <div id="contactsList" style="margin-top: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Profile Section -->
+            <div id="profileSection" class="app-section">
+                <div class="card">
+                    <h2>User Profile</h2>
+                    <p><strong>Email:</strong> <span id="profileEmail"></span></p>
+                    <p><strong>Account ID:</strong> <span id="profileUid"></span></p>
+                </div>
+            </div>
+
+            <!-- Env Settings Section -->
+            <div id="envSection" class="app-section">
+                <div class="card">
+                    <h2>Environment Variables</h2>
+                    <p class="subtitle" style="margin-bottom: 20px;">Edit your secure API keys and tokens. <strong style="color:red;">Important:</strong> After saving, you must restart your Node.js terminal (`Ctrl + C` then `npm run dev`) for changes to apply.</p>
+                    <form id="envForm">
+                        <div class="form-group">
+                            <label>Active AI Provider</label>
+                            <select id="envProvider" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                                <option value="deepseek">DeepSeek (OpenAI Compatible)</option>
+                                <option value="gemini">Google Gemini</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>DeepSeek API Key</label>
+                            <input type="text" id="envDeepseek" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>Google Gemini API Key</label>
+                            <input type="text" id="envGemini" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>WhatsApp System User Token</label>
+                            <input type="text" id="envWhatsappToken" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>WhatsApp Phone Number ID</label>
+                            <input type="text" id="envPhoneId" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>Webhook Verify Token</label>
+                            <input type="text" id="envVerifyToken" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>Owner's Personal Phone Number (For Proxy Control)</label>
+                            <input type="text" id="envOwnerPhone" placeholder="e.g. 971554779331" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <button type="submit" class="btn-save">Save & Overwrite .env File</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Live Chat Section -->
+            <div id="chatSection" class="app-section">
+                <div class="card" style="padding: 0;">
+                    <div class="chat-container">
+                        <div class="chat-sidebar" id="chatSidebarList">
+                            <!-- Contact list injects here -->
+                        </div>
+                        <div class="chat-main">
+                            <div class="chat-header">
+                                <h3 id="chatActiveUser" style="margin:0;">Select a Contact</h3>
+                                <div id="aiToggleContainer" style="display:none; align-items:center;">
+                                    <span style="margin-right:10px; font-size:14px; font-weight:bold;">AI Status:</span>
+                                    <button id="aiToggleBtn" onclick="toggleAI()" style="padding: 5px 10px; border:none; border-radius:5px; cursor:pointer;">ON</button>
+                                </div>
+                            </div>
+                            <div class="chat-messages" id="chatMessageList">
+                                <div style="text-align:center; color:#667781; margin-top:50px;">Select a contact to view chat history.</div>
+                            </div>
+                            <div class="chat-input" id="chatInputBar" style="display:none;">
+                                <input type="text" id="chatMsgInput" placeholder="Type a manual reply...">
+                                <button onclick="sendManualReply()">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div class="notification" id="notification">✅ Data Saved!</div>
+
+    <script>
+        // Auth UI Toggles
+        function toggleAuth(mode) {
+            document.getElementById('loginCard').style.display = mode === 'login' ? 'block' : 'none';
+            document.getElementById('signupCard').style.display = mode === 'signup' ? 'block' : 'none';
+            document.getElementById('loginError').innerText = '';
+            document.getElementById('signupError').innerText = '';
+        }
+
+        // Firebase Auth Wrappers
+        async function handleLogin() {
+            try {
+                const e = document.getElementById('loginEmail').value;
+                const p = document.getElementById('loginPassword').value;
+                await window.signInWithEmailAndPassword(window.firebaseAuth, e, p);
+            } catch(error) {
+                document.getElementById('loginError').innerText = error.message;
+            }
+        }
+        
+        async function handleSignup() {
+            try {
+                const e = document.getElementById('signupEmail').value;
+                const p = document.getElementById('signupPassword').value;
+                await window.createUserWithEmailAndPassword(window.firebaseAuth, e, p);
+            } catch(error) {
+                document.getElementById('signupError').innerText = error.message;
+            }
+        }
+
+        async function handleLogout() {
+            await window.signOut(window.firebaseAuth);
+            toggleSidebar();
+        }
+
+        // Sidebar logic
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        function showSection(id) {
+            document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(id + 'Section').classList.add('active');
+            toggleSidebar();
+        }
+
+        // Data Fetching logic
+        async function loadKnowledge() {
+            const res = await fetch('api/knowledge');
+            const data = await res.json();
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData'].forEach(key => {
+                if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
+            });
+        }
+
+        async function loadContacts() {
+            const res = await fetch('api/contacts');
+            const contacts = await res.json();
+            const listDiv = document.getElementById('contactsList');
+            listDiv.innerHTML = '';
+            
+            const numbers = Object.keys(contacts);
+            if(numbers.length === 0) return listDiv.innerHTML = '<i>No contacts yet.</i>';
+            
+            numbers.forEach(num => {
+                const info = contacts[num];
+                const d = new Date(info.firstContacted).toLocaleString();
+                const leadName = info.leadName ? `<br><b style="color:var(--primary);">👤 ${info.leadName}</b>` : '';
+                const leadEmail = info.leadEmail ? `<br>📧 ${info.leadEmail}` : '';
+                listDiv.innerHTML += `
+                    <div class="contact-item">
+                        <span>📞 +${num} ${leadName} ${leadEmail}</span>
+                        <span class="contact-date">First: ${d} <br> Last Greeted: ${info.lastGreetingDate}</span>
+                    </div>`;
+            });
+        }
+
+        async function loadEnv() {
+            const res = await fetch('api/env');
+            const data = await res.json();
+            document.getElementById('envProvider').value = data.ACTIVE_AI_PROVIDER || 'deepseek';
+            document.getElementById('envDeepseek').value = data.DEEPSEEK_API_KEY || '';
+            document.getElementById('envGemini').value = data.GEMINI_API_KEY || '';
+            document.getElementById('envWhatsappToken').value = data.WHATSAPP_TOKEN || '';
+            document.getElementById('envPhoneId').value = data.PHONE_NUMBER_ID || '';
+            document.getElementById('envVerifyToken').value = data.VERIFY_TOKEN || '';
+            document.getElementById('envOwnerPhone').value = data.OWNER_PHONE_NUMBER || '';
+        }
+
+        document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {};
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData'].forEach(key => {
+                payload[key] = document.getElementById(key).value;
+            });
+            await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            
+            const n = document.getElementById('notification');
+            n.innerText = '✅ Knowledge Base Saved!';
+            n.classList.add('show');
+            setTimeout(() => n.classList.remove('show'), 3000);
+        });
+
+        async function scrapeWebsite() {
+            const url = document.getElementById('scrapeUrl').value.trim();
+            if(!url) return alert("Please enter a valid URL.");
+            
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Fetching website data...';
+            n.classList.add('show');
+            
+            try {
+                const res = await fetch('api/scrape', { 
+                    method: 'POST', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body: JSON.stringify({ url }) 
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    await loadKnowledge(); // refresh UI
+                    n.innerText = '✅ Website Scraped & Saved!';
+                } else {
+                    n.innerText = '❌ Failed to scrape website.';
+                }
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch (err) {
+                n.innerText = '❌ Error fetching website.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            }
+        }
+
+        document.getElementById('envForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                ACTIVE_AI_PROVIDER: document.getElementById('envProvider').value,
+                DEEPSEEK_API_KEY: document.getElementById('envDeepseek').value,
+                GEMINI_API_KEY: document.getElementById('envGemini').value,
+                WHATSAPP_TOKEN: document.getElementById('envWhatsappToken').value,
+                PHONE_NUMBER_ID: document.getElementById('envPhoneId').value,
+                VERIFY_TOKEN: document.getElementById('envVerifyToken').value,
+                OWNER_PHONE_NUMBER: document.getElementById('envOwnerPhone').value
+            };
+            await fetch('api/env', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            
+            const n = document.getElementById('notification');
+            n.innerText = '✅ .env File Saved! Please restart terminal.';
+            n.classList.add('show');
+            setTimeout(() => n.classList.remove('show'), 4000);
+        });
+
+        // Live Chat Logic
+        let activeContact = null;
+        let activeAiPaused = false;
+
+        async function openChat(number) {
+            activeContact = number;
+            document.getElementById('chatActiveUser').innerText = `+${number}`;
+            document.getElementById('chatInputBar').style.display = 'flex';
+            document.getElementById('aiToggleContainer').style.display = 'flex';
+            
+            // fetch messages
+            const res = await fetch(`api/chats/${number}/messages`);
+            const msgs = await res.json();
+            
+            const msgList = document.getElementById('chatMessageList');
+            msgList.innerHTML = '';
+            msgs.forEach(m => {
+                const bubble = document.createElement('div');
+                bubble.className = `msg-bubble msg-${m.sender}`;
+                bubble.innerText = m.text;
+                msgList.appendChild(bubble);
+            });
+            msgList.scrollTop = msgList.scrollHeight;
+
+            // Fetch AI status from contacts
+            const cres = await fetch('api/contacts');
+            const cdata = await cres.json();
+            activeAiPaused = cdata[number] ? cdata[number].aiPaused : false;
+            updateAiBtn();
+        }
+
+        function updateAiBtn() {
+            const btn = document.getElementById('aiToggleBtn');
+            if (activeAiPaused) {
+                btn.innerText = "OFF (Paused)";
+                btn.style.backgroundColor = "red";
+                btn.style.color = "white";
+            } else {
+                btn.innerText = "ON (Active)";
+                btn.style.backgroundColor = "var(--primary)";
+                btn.style.color = "white";
+            }
+        }
+
+        async function toggleAI() {
+            if (!activeContact) return;
+            activeAiPaused = !activeAiPaused;
+            updateAiBtn();
+            await fetch('api/chats/toggleAI', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ number: activeContact, aiPaused: activeAiPaused })
+            });
+        }
+
+        async function sendManualReply() {
+            if (!activeContact) return;
+            const input = document.getElementById('chatMsgInput');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            input.value = '';
+            
+            // Append instantly to UI
+            const msgList = document.getElementById('chatMessageList');
+            const bubble = document.createElement('div');
+            bubble.className = 'msg-bubble msg-bot';
+            bubble.innerText = text;
+            msgList.appendChild(bubble);
+            msgList.scrollTop = msgList.scrollHeight;
+
+            // Sends to API (which auto-pauses AI)
+            await fetch('api/chats/reply', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ number: activeContact, text })
+            });
+            
+            activeAiPaused = true;
+            updateAiBtn();
+        }
+
+        // Auto-refresh contact list in chat sidebar
+        setInterval(async () => {
+            const listDiv = document.getElementById('chatSidebarList');
+            if(document.getElementById('chatSection').classList.contains('active')) {
+                const res = await fetch('api/contacts');
+                const contacts = await res.json();
+                listDiv.innerHTML = '';
+                Object.keys(contacts).forEach(num => {
+                    const info = contacts[num];
+                    const nameLabel = info.leadName ? ` (${info.leadName})` : '';
+                    const d = document.createElement('div');
+                    d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
+                    d.innerText = `+${num}${nameLabel}`;
+                    d.onclick = () => openChat(num);
+                    listDiv.appendChild(d);
+                });
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

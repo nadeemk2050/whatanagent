@@ -1,0 +1,23 @@
+{
+  "functions": {
+    "source": ".",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "function": "api"
+      }
+    ]
+  }
+}
