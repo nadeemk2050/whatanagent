@@ -103,6 +103,7 @@
                 loadKnowledge();
                 loadContacts();
                 loadEnv();
+                loadFAQs();
             } else {
                 document.getElementById('authContainer').style.display = 'flex';
                 document.getElementById('appContainer').style.display = 'none';
@@ -198,6 +199,20 @@
                         <button onclick="scrapeWebsite()" style="padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Fetch & Save</button>
                     </div>
                 </div>
+
+                <div class="card">
+                    <h2>Q&A / FAQ Knowledge Manager</h2>
+                    <p class="subtitle" style="margin-bottom: 20px;">Feed structured Q&As directly to the AI's brain.</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="text" id="faqQuestion" placeholder="Enter Question (e.g. Do you ship to Oman?)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <textarea id="faqAnswer" placeholder="Enter Answer (e.g. Yes, shipping to Oman takes 3 days.)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px; height: 80px; resize: vertical;"></textarea>
+                        <button onclick="addFAQ()" style="padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">Add Q&A Pair</button>
+                    </div>
+                    <div id="faqList" style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+                        <!-- FAQs will load here -->
+                    </div>
+                </div>
+
                 <div class="card">
                     <h2>Numbers Chatted</h2>
                     <div id="contactsList" style="margin-top: 20px;"></div>
@@ -249,6 +264,17 @@
                         <div class="form-group">
                             <label>Owner's Personal Phone Number (For Proxy Control)</label>
                             <input type="text" id="envOwnerPhone" placeholder="e.g. 971554779331" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                            <label style="font-weight: bold; color: var(--primary);">AI Response Guardrails</label>
+                            <div style="margin-top: 10px;">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 10px; font-weight: normal;">
+                                    <input type="checkbox" id="guardRestrictPricing" style="width: auto;"> Restrict AI from giving Rates / Pricing (forces handover)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="guardBlockCompetitors" style="width: auto;"> Block AI from discussing Competitors
+                                </label>
+                            </div>
                         </div>
                         <button type="submit" class="btn-save">Save & Overwrite .env File</button>
                     </form>
@@ -374,6 +400,8 @@
             document.getElementById('envPhoneId').value = data.PHONE_NUMBER_ID || '';
             document.getElementById('envVerifyToken').value = data.VERIFY_TOKEN || '';
             document.getElementById('envOwnerPhone').value = data.OWNER_PHONE_NUMBER || '';
+            document.getElementById('guardRestrictPricing').checked = data.RESTRICT_PRICING === true;
+            document.getElementById('guardBlockCompetitors').checked = data.BLOCK_COMPETITORS === true;
         }
 
         document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
@@ -428,15 +456,74 @@
                 WHATSAPP_TOKEN: document.getElementById('envWhatsappToken').value,
                 PHONE_NUMBER_ID: document.getElementById('envPhoneId').value,
                 VERIFY_TOKEN: document.getElementById('envVerifyToken').value,
-                OWNER_PHONE_NUMBER: document.getElementById('envOwnerPhone').value
+                OWNER_PHONE_NUMBER: document.getElementById('envOwnerPhone').value,
+                RESTRICT_PRICING: document.getElementById('guardRestrictPricing').checked,
+                BLOCK_COMPETITORS: document.getElementById('guardBlockCompetitors').checked
             };
             await fetch('api/env', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
             
             const n = document.getElementById('notification');
-            n.innerText = '✅ .env File Saved! Please restart terminal.';
+            n.innerText = '✅ Settings Saved & Sync Complete!';
             n.classList.add('show');
             setTimeout(() => n.classList.remove('show'), 4000);
         });
+
+        async function loadFAQs() {
+            const res = await fetch('api/faqs');
+            const faqs = await res.json();
+            const faqListDiv = document.getElementById('faqList');
+            faqListDiv.innerHTML = '';
+            
+            if(!faqs || faqs.length === 0) {
+                faqListDiv.innerHTML = '<i style="color:#667781;">No custom Q&As added yet.</i>';
+                return;
+            }
+            
+            faqs.forEach((faq, idx) => {
+                faqListDiv.innerHTML += `
+                    <div style="border: 1px solid var(--border); padding: 12px; border-radius: 8px; background: #fafafa; position: relative;">
+                        <div style="font-weight: bold; color: var(--primary); margin-bottom: 5px; padding-right: 50px;">Q: ${faq.question}</div>
+                        <div style="color: #333; padding-right: 50px;">A: ${faq.answer}</div>
+                        <button onclick="deleteFAQ(${idx})" style="position: absolute; right: 10px; top: 10px; border: none; background: none; color: red; font-weight: bold; cursor: pointer;">✕ Delete</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function addFAQ() {
+            const q = document.getElementById('faqQuestion').value.trim();
+            const a = document.getElementById('faqAnswer').value.trim();
+            if(!q || !a) return alert("Please enter both a question and an answer.");
+            
+            const res = await fetch('api/faqs');
+            let faqs = await res.json();
+            if(!Array.isArray(faqs)) faqs = [];
+            faqs.push({ question: q, answer: a });
+            
+            await fetch('api/faqs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ faqs })
+            });
+            
+            document.getElementById('faqQuestion').value = '';
+            document.getElementById('faqAnswer').value = '';
+            await loadFAQs();
+        }
+
+        async function deleteFAQ(index) {
+            const res = await fetch('api/faqs');
+            let faqs = await res.json();
+            if(!Array.isArray(faqs)) return;
+            faqs.splice(index, 1);
+            
+            await fetch('api/faqs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ faqs })
+            });
+            await loadFAQs();
+        }
 
         // Live Chat Logic
         let activeContact = null;

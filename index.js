@@ -159,7 +159,26 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
 
     systemInstruction += "LEAD GENERATION RULE: Your secondary goal is to naturally collect the user's Name and Email address during the conversation. Once the user provides BOTH their name and email, you MUST output a hidden tag at the very end of your response exactly like this: [LEAD: TheirName | TheirEmail]. Do not mention this tag to the user.\n\n";
 
+    if (settings.RESTRICT_PRICING) {
+      systemInstruction += "PRICING/RATE LIMIT RULE: You are STRICTLY FORBIDDEN from quoting rates, pricing, fees, or charges. If the user asks about prices or rates, you MUST politely say: 'I will have a representative message you with our current official pricing.'\n\n";
+    }
+    if (settings.BLOCK_COMPETITORS) {
+      systemInstruction += "COMPETITOR LIMIT RULE: You are STRICTLY FORBIDDEN from discussing competitor companies or competitor rates. If the user mentions or asks about a competitor, you MUST politely state: 'I can only provide information about our own services.'\n\n";
+    }
+
+    // Fetch Custom Q&As
+    let faqText = "";
+    try {
+      const faqSnap = await getDoc(doc(db, "appData", "faq"));
+      if (faqSnap.exists() && faqSnap.data().faqs) {
+        faqText = faqSnap.data().faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n");
+      }
+    } catch(err) {}
+
     systemInstruction += "### KNOWLEDGE BASE ###\n" + knowledgeBase;
+    if (faqText) {
+      systemInstruction += "\n\n### FREQUENTLY ASKED QUESTIONS (FAQ) ###\n" + faqText;
+    }
 
     // Fetch Full Chat History
     const q = query(collection(db, "chats", senderNumber, "messages"), orderBy("timestamp", "asc"));
@@ -248,7 +267,9 @@ app.get('/api/env', async (req, res) => {
     WHATSAPP_TOKEN: settings.WHATSAPP_TOKEN || '',
     PHONE_NUMBER_ID: settings.PHONE_NUMBER_ID || '',
     VERIFY_TOKEN: settings.VERIFY_TOKEN || '',
-    OWNER_PHONE_NUMBER: settings.OWNER_PHONE_NUMBER || ''
+    OWNER_PHONE_NUMBER: settings.OWNER_PHONE_NUMBER || '',
+    RESTRICT_PRICING: settings.RESTRICT_PRICING === true,
+    BLOCK_COMPETITORS: settings.BLOCK_COMPETITORS === true
   });
 });
 
@@ -262,7 +283,9 @@ app.post('/api/env', async (req, res) => {
       WHATSAPP_TOKEN: data.WHATSAPP_TOKEN || '',
       PHONE_NUMBER_ID: data.PHONE_NUMBER_ID || '',
       VERIFY_TOKEN: data.VERIFY_TOKEN || '',
-      OWNER_PHONE_NUMBER: data.OWNER_PHONE_NUMBER || ''
+      OWNER_PHONE_NUMBER: data.OWNER_PHONE_NUMBER || '',
+      RESTRICT_PRICING: data.RESTRICT_PRICING === true,
+      BLOCK_COMPETITORS: data.BLOCK_COMPETITORS === true
     }, { merge: true });
     res.json({ success: true, message: 'Settings saved to Database successfully.' });
   } catch (error) {
@@ -284,6 +307,20 @@ app.post('/api/knowledge', async (req, res) => {
     await setDoc(doc(db, "appData", "knowledge"), req.body);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Failed to save knowledge.' }); }
+});
+
+app.get('/api/faqs', async (req, res) => {
+  try {
+    const docSnap = await getDoc(doc(db, "appData", "faq"));
+    res.json(docSnap.exists() ? docSnap.data().faqs || [] : []);
+  } catch (error) { res.json([]); }
+});
+
+app.post('/api/faqs', async (req, res) => {
+  try {
+    await setDoc(doc(db, "appData", "faq"), { faqs: req.body.faqs || [] });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Failed to save FAQs.' }); }
 });
 
 app.get('/api/contacts', async (req, res) => {
