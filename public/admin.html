@@ -157,6 +157,21 @@
             
             <!-- Dashboard Section -->
             <div id="dashboardSection" class="app-section active">
+                <div class="card" style="display: flex; gap: 20px; justify-content: space-around; flex-wrap: wrap; margin-bottom: 20px;">
+                    <div style="text-align: center; flex: 1; min-width: 120px;">
+                        <h3 style="margin: 0; color: var(--primary); font-size: 28px;" id="statTotalContacts">0</h3>
+                        <span style="font-size: 14px; color: #667781; font-weight: bold;">Total Contacts</span>
+                    </div>
+                    <div style="text-align: center; flex: 1; border-left: 1px solid var(--border); border-right: 1px solid var(--border); min-width: 120px; padding: 0 10px;">
+                        <h3 style="margin: 0; color: #2e7d32; font-size: 28px;" id="statCapturedLeads">0</h3>
+                        <span style="font-size: 14px; color: #667781; font-weight: bold;">Captured Leads</span>
+                    </div>
+                    <div style="text-align: center; flex: 1; min-width: 120px;">
+                        <h3 style="margin: 0; color: #ef6c00; font-size: 28px;" id="statActiveAI">0 / 0</h3>
+                        <span style="font-size: 14px; color: #667781; font-weight: bold;">AI Active / Paused</span>
+                    </div>
+                </div>
+
                 <div class="card">
                     <form id="knowledgeForm">
                         <div class="form-group">
@@ -186,6 +201,27 @@
                         <div class="form-group">
                             <label>Welcome & Onboarding Template (Instructions for first-time contacts)</label>
                             <textarea id="onboardingPrompt" style="height: 120px;" placeholder="Write instructions for how the AI welcomes new inquiries, e.g. thank them warmly and naturally ask for Name, Company, Products, Email, and Website over 2-3 messages without irritating them."></textarea>
+                        </div>
+                        <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; margin-bottom: 20px;">
+                            <label style="font-weight: bold; color: var(--primary);">AI Persona & Fallback Logic</label>
+                            <div style="display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Brand Voice / Tone</label>
+                                    <select id="brandVoice" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                        <option value="friendly">Friendly & Supportive (Uses Emojis)</option>
+                                        <option value="professional">Professional & Formal (Concise)</option>
+                                        <option value="sales">Sales-Focused & Persuasive</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">When AI Doesn't Know Answer (Fallback)</label>
+                                    <select id="fallbackAction" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                        <option value="say_dont_know">Politely say I don't know</option>
+                                        <option value="suggest_handover">Suggest human handover & pause AI</option>
+                                        <option value="ask_email">Ask for email/number for follow-up</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label>Website Scraped Data (AI Memory)</label>
@@ -367,7 +403,7 @@
         async function loadKnowledge() {
             const res = await fetch('api/knowledge');
             const data = await res.json();
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
         }
@@ -379,10 +415,18 @@
             listDiv.innerHTML = '';
             
             const numbers = Object.keys(contacts);
-            if(numbers.length === 0) return listDiv.innerHTML = '<i>No contacts yet.</i>';
+            
+            // Calculate Analytics stats
+            let total = numbers.length;
+            let leads = 0;
+            let activeAI = 0;
+            let pausedAI = 0;
             
             numbers.forEach(num => {
                 const info = contacts[num];
+                if (info.leadName || info.leadEmail) leads++;
+                if (info.aiPaused) pausedAI++; else activeAI++;
+                
                 const d = new Date(info.firstContacted).toLocaleString();
                 const leadName = info.leadName ? `<br><b style="color:var(--primary);">👤 Name: ${info.leadName}</b>` : '';
                 const leadCompany = info.leadCompany ? `<br>🏢 Company: ${info.leadCompany}` : '';
@@ -395,6 +439,10 @@
                         <span class="contact-date">First: ${d} <br> Last Greeted: ${info.lastGreetingDate}</span>
                     </div>`;
             });
+            
+            document.getElementById('statTotalContacts').innerText = total;
+            document.getElementById('statCapturedLeads').innerText = leads;
+            document.getElementById('statActiveAI').innerText = `${activeAI} / ${pausedAI}`;
         }
 
         async function loadEnv() {
@@ -414,7 +462,7 @@
         document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {};
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });

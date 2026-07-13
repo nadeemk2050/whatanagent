@@ -111,10 +111,11 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
   try {
     // Dynamically load knowledge
     let knowledgeBase = "";
+    let kb = {};
     try {
       const docSnap = await getDoc(doc(db, "appData", "knowledge"));
       if (docSnap.exists()) {
-        const kb = docSnap.data();
+        kb = docSnap.data();
         knowledgeBase = `
           Company Profile: ${kb.companyProfile}
           Timings: ${kb.timings}
@@ -155,7 +156,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     let systemInstruction = 
       "You are a strict, efficient AI customer assistant for a company. " +
       "CRITICAL RULE: You MUST ONLY answer questions using the exact information provided in the Knowledge Base below. " +
-      "If the user asks something that is NOT in the Knowledge Base, you MUST politely refuse to answer and state that you do not have that information. " +
+      "If the user asks something that is NOT in the Knowledge Base, you MUST handle it according to the FALLBACK RULE below. " +
       "Do NOT hallucinate, invent, or assume any information outside of this Knowledge Base. " +
       "You are fully capable of speaking Arabic, Roman Urdu, and English fluently based on the user's choice. " +
       "Keep responses helpful, professional, and concise.\n\n";
@@ -169,6 +170,26 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     }
 
     systemInstruction += "LEAD GENERATION RULE: Your secondary goal is to naturally collect the user's Name, Company Name, Major Products, Email address, and Website. Once the user provides any of these details, you MUST output a hidden tag at the very end of your response exactly like this: [LEAD: TheirName | TheirCompany | TheirProducts | TheirEmail | TheirWebsite]. Use 'N/A' for any details that have not been provided yet. Do not mention this tag to the user.\n\n";
+
+    // Inject Brand Voice Rule
+    const voice = kb.brandVoice || 'friendly';
+    if (voice === 'friendly') {
+      systemInstruction += "TONE & STYLE RULE: Be warm, friendly, supportive, and use business-friendly emojis (😊, 👍, 🌟, etc.) to keep the conversation engaging.\n\n";
+    } else if (voice === 'professional') {
+      systemInstruction += "TONE & STYLE RULE: Be formal, professional, highly direct, and concise. Avoid all emojis. Keep responses strictly factual and business-formal.\n\n";
+    } else if (voice === 'sales') {
+      systemInstruction += "TONE & STYLE RULE: Be highly persuasive, sales-driven, engaging, and proactive. Emphasize value and steer the conversation towards gathering their requirements and contact info.\n\n";
+    }
+
+    // Inject Fallback Rule
+    const fallback = kb.fallbackAction || 'say_dont_know';
+    if (fallback === 'say_dont_know') {
+      systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, you MUST politely refuse to answer and state that you do not have that information.\n\n";
+    } else if (fallback === 'suggest_handover') {
+      systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, you MUST politely say: 'I will connect you to a representative who can look into that for you right now.' and you MUST append the hidden tag [HANDOVER] to the very end of your reply. Do not let the user see the [HANDOVER] tag.\n\n";
+    } else if (fallback === 'ask_email') {
+      systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, you MUST politely say you don't have that information but ask if they can share their email address so a representative can look into it and email them directly.\n\n";
+    }
 
     if (settings.RESTRICT_PRICING) {
       systemInstruction += "PRICING/RATE LIMIT RULE: You are STRICTLY FORBIDDEN from quoting rates, pricing, fees, or charges. If the user asks about prices or rates, you MUST politely say: 'I will have a representative message you with our current official pricing.'\n\n";
@@ -264,6 +285,18 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
         
         await setDoc(contactsRef, cData);
       } catch(e) { console.error("Error saving lead info:", e); }
+    }
+
+    // Parse Handover Tag
+    if (finalReply.includes('[HANDOVER]')) {
+      finalReply = finalReply.replace('[HANDOVER]', '').trim();
+      try {
+        const cSnap = await getDoc(contactsRef);
+        let cData = cSnap.exists() ? cSnap.data() : {};
+        if (!cData[senderNumber]) cData[senderNumber] = {};
+        cData[senderNumber].aiPaused = true;
+        await setDoc(contactsRef, cData);
+      } catch(e) { console.error("Error pausing AI on Handover:", e); }
     }
 
     return finalReply;
