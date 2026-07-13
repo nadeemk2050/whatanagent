@@ -184,6 +184,10 @@
                             <textarea id="customRules"></textarea>
                         </div>
                         <div class="form-group">
+                            <label>Welcome & Onboarding Template (Instructions for first-time contacts)</label>
+                            <textarea id="onboardingPrompt" style="height: 120px;" placeholder="Write instructions for how the AI welcomes new inquiries, e.g. thank them warmly and naturally ask for Name, Company, Products, Email, and Website over 2-3 messages without irritating them."></textarea>
+                        </div>
+                        <div class="form-group">
                             <label>Website Scraped Data (AI Memory)</label>
                             <textarea id="scrapedData" placeholder="You can manually paste your website content or documents here..."></textarea>
                         </div>
@@ -363,7 +367,7 @@
         async function loadKnowledge() {
             const res = await fetch('api/knowledge');
             const data = await res.json();
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
         }
@@ -380,11 +384,14 @@
             numbers.forEach(num => {
                 const info = contacts[num];
                 const d = new Date(info.firstContacted).toLocaleString();
-                const leadName = info.leadName ? `<br><b style="color:var(--primary);">👤 ${info.leadName}</b>` : '';
-                const leadEmail = info.leadEmail ? `<br>📧 ${info.leadEmail}` : '';
+                const leadName = info.leadName ? `<br><b style="color:var(--primary);">👤 Name: ${info.leadName}</b>` : '';
+                const leadCompany = info.leadCompany ? `<br>🏢 Company: ${info.leadCompany}` : '';
+                const leadProducts = info.leadProducts ? `<br>📦 Products: ${info.leadProducts}` : '';
+                const leadEmail = info.leadEmail ? `<br>📧 Email: ${info.leadEmail}` : '';
+                const leadWebsite = info.leadWebsite ? `<br>🌐 Website: ${info.leadWebsite}` : '';
                 listDiv.innerHTML += `
                     <div class="contact-item">
-                        <span>📞 +${num} ${leadName} ${leadEmail}</span>
+                        <span>📞 +${num} ${leadName} ${leadCompany} ${leadProducts} ${leadEmail} ${leadWebsite}</span>
                         <span class="contact-date">First: ${d} <br> Last Greeted: ${info.lastGreetingDate}</span>
                     </div>`;
             });
@@ -407,7 +414,7 @@
         document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {};
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });

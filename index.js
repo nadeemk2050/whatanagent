@@ -129,19 +129,26 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
 
     // Contact tracking
     let needsGreeting = false;
+    let needsOnboarding = true;
+    const contactsRef = doc(db, "appData", "contacts");
     try {
-      const contactsRef = doc(db, "appData", "contacts");
       const contactsSnap = await getDoc(contactsRef);
       const contacts = contactsSnap.exists() ? contactsSnap.data() : {};
       const today = new Date().toDateString();
+      const cInfo = contacts[senderNumber] || {};
       
       if (!contacts[senderNumber] || contacts[senderNumber].lastGreetingDate !== today) {
         needsGreeting = true;
         contacts[senderNumber] = {
+          ...cInfo,
           lastGreetingDate: today,
-          firstContacted: contacts[senderNumber]?.firstContacted || new Date().toISOString()
+          firstContacted: cInfo.firstContacted || new Date().toISOString()
         };
         await setDoc(contactsRef, contacts);
+      }
+      
+      if (cInfo.leadName && cInfo.leadCompany && cInfo.leadProducts && cInfo.leadEmail && cInfo.leadWebsite) {
+        needsOnboarding = false;
       }
     } catch (err) { needsGreeting = true; }
 
@@ -157,7 +164,11 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       systemInstruction += "LANGUAGE RULE: Because this is the first interaction today, you MUST include this exact message at the end of your response: '(We can talk in Arabic / Roman Urdu and English easily. If you want, you can select other language, otherwise continue in English)'.\n\n";
     }
 
-    systemInstruction += "LEAD GENERATION RULE: Your secondary goal is to naturally collect the user's Name and Email address during the conversation. Once the user provides BOTH their name and email, you MUST output a hidden tag at the very end of your response exactly like this: [LEAD: TheirName | TheirEmail]. Do not mention this tag to the user.\n\n";
+    if (needsOnboarding && kb.onboardingPrompt) {
+      systemInstruction += `WELCOME & ONBOARDING RULE:\n${kb.onboardingPrompt}\n\n`;
+    }
+
+    systemInstruction += "LEAD GENERATION RULE: Your secondary goal is to naturally collect the user's Name, Company Name, Major Products, Email address, and Website. Once the user provides any of these details, you MUST output a hidden tag at the very end of your response exactly like this: [LEAD: TheirName | TheirCompany | TheirProducts | TheirEmail | TheirWebsite]. Use 'N/A' for any details that have not been provided yet. Do not mention this tag to the user.\n\n";
 
     if (settings.RESTRICT_PRICING) {
       systemInstruction += "PRICING/RATE LIMIT RULE: You are STRICTLY FORBIDDEN from quoting rates, pricing, fees, or charges. If the user asks about prices or rates, you MUST politely say: 'I will have a representative message you with our current official pricing.'\n\n";
@@ -230,18 +241,27 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     }
 
     // Parse Lead Tag
-    const leadMatch = finalReply.match(/\[LEAD:\s*(.+?)\s*\|\s*(.+?)\s*\]/i);
+    const leadMatch = finalReply.match(/\[LEAD:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]/i);
     if (leadMatch) {
       const leadName = leadMatch[1].trim();
-      const leadEmail = leadMatch[2].trim();
+      const leadCompany = leadMatch[2].trim();
+      const leadProducts = leadMatch[3].trim();
+      const leadEmail = leadMatch[4].trim();
+      const leadWebsite = leadMatch[5].trim();
+      
       finalReply = finalReply.replace(leadMatch[0], '').trim();
       
       try {
         const cSnap = await getDoc(contactsRef);
         let cData = cSnap.exists() ? cSnap.data() : {};
         if (!cData[senderNumber]) cData[senderNumber] = {};
-        cData[senderNumber].leadName = leadName;
-        cData[senderNumber].leadEmail = leadEmail;
+        
+        if (leadName !== 'N/A' && leadName !== '') cData[senderNumber].leadName = leadName;
+        if (leadCompany !== 'N/A' && leadCompany !== '') cData[senderNumber].leadCompany = leadCompany;
+        if (leadProducts !== 'N/A' && leadProducts !== '') cData[senderNumber].leadProducts = leadProducts;
+        if (leadEmail !== 'N/A' && leadEmail !== '') cData[senderNumber].leadEmail = leadEmail;
+        if (leadWebsite !== 'N/A' && leadWebsite !== '') cData[senderNumber].leadWebsite = leadWebsite;
+        
         await setDoc(contactsRef, cData);
       } catch(e) { console.error("Error saving lead info:", e); }
     }
