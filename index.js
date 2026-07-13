@@ -530,7 +530,20 @@ app.post('/api/ai/suggest', async (req, res) => {
     }
     
     if (field === 'faq') {
-      res.json({ success: true, faqs: JSON.parse(resultText) });
+      let parsed = JSON.parse(resultText);
+      let faqsArray = [];
+      if (Array.isArray(parsed)) {
+        faqsArray = parsed;
+      } else if (parsed && Array.isArray(parsed.faqs)) {
+        faqsArray = parsed.faqs;
+      } else if (parsed && Array.isArray(parsed.faq)) {
+        faqsArray = parsed.faq;
+      } else if (parsed && Array.isArray(parsed.questions)) {
+        faqsArray = parsed.questions;
+      } else {
+        throw new Error("AI did not return a valid array of FAQs.");
+      }
+      res.json({ success: true, faqs: faqsArray });
     } else if (field === 'product') {
       res.json({ success: true, text: resultText });
     } else {
