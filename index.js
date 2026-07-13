@@ -495,6 +495,21 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
+// Helper to retry Gemini API calls with exponential backoff on failure (e.g. 503 Service Unavailable)
+async function generateContentWithRetry(model, params, maxRetries = 3) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await model.generateContent(params);
+    } catch (err) {
+      attempt++;
+      console.warn(`[GEMINI RETRY] Attempt ${attempt} failed: ${err.message}`);
+      if (attempt >= maxRetries) throw err;
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
+  }
+}
+
 app.post('/api/ai/suggest', async (req, res) => {
   try {
     const { field, prompt } = req.body;
@@ -516,7 +531,7 @@ app.post('/api/ai/suggest', async (req, res) => {
       systemInstruction = `You are an expert copywriter and AI systems architect. Based on the user's input, write a highly optimized, clean, and professional template or text for the dashboard field "${field}". Be concise and focus on maximum effectiveness.`;
     }
 
-    const response = await model.generateContent({
+    const response = await generateContentWithRetry(model, {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: (field === 'faq' || field === 'product') ? { responseMimeType: "application/json" } : {}
     });
@@ -556,11 +571,22 @@ app.post('/api/ai/suggest', async (req, res) => {
         throw new Error(`AI did not return a valid list of FAQs. Raw response: ${resultText.substring(0, 120)}`);
       }
       
-      // Clean elements to ensure they have question/answer keys
+      // Clean elements to ensure they have question/answer keys dynamically
       const cleanFaqs = faqsArray.map(item => {
         if (!item || typeof item !== 'object') return null;
-        const question = item.question || item.q || item.title || item.Question || "";
-        const answer = item.answer || item.a || item.body || item.text || item.Answer || "";
+        
+        let question = "";
+        let answer = "";
+        
+        const keys = Object.keys(item);
+        if (keys.length > 0) {
+          const qKey = keys.find(k => k.toLowerCase().includes("que") || k.toLowerCase() === "q") || keys[0];
+          const aKey = keys.find(k => k.toLowerCase().includes("ans") || k.toLowerCase().includes("rep") || k.toLowerCase() === "a") || keys[1];
+          
+          if (qKey) question = String(item[qKey]).trim();
+          if (aKey) answer = String(item[aKey]).trim();
+        }
+        
         return { question, answer };
       }).filter(item => item && item.question && item.answer);
       
