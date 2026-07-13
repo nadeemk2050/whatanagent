@@ -557,11 +557,20 @@ app.post('/api/ai/suggest', async (req, res) => {
       if (Array.isArray(parsed)) {
         faqsArray = parsed;
       } else if (parsed && typeof parsed === 'object') {
-        // Scan all keys to find any array of objects
-        for (const key of Object.keys(parsed)) {
-          if (Array.isArray(parsed[key])) {
-            faqsArray = parsed[key];
+        const bestKeys = ['faqs', 'faq', 'questions', 'qnas', 'qna', 'qa', 'qas', 'items'];
+        for (const k of bestKeys) {
+          if (Array.isArray(parsed[k])) {
+            faqsArray = parsed[k];
             break;
+          }
+        }
+        
+        if (!faqsArray) {
+          for (const key of Object.keys(parsed)) {
+            if (Array.isArray(parsed[key]) && parsed[key].length > 0 && typeof parsed[key][0] === 'object') {
+              faqsArray = parsed[key];
+              break;
+            }
           }
         }
       }
@@ -591,6 +600,7 @@ app.post('/api/ai/suggest', async (req, res) => {
       }).filter(item => item && item.question && item.answer);
       
       if (cleanFaqs.length === 0) {
+        console.error("No valid Q&A pairs found in raw response:", resultText);
         throw new Error("AI generated empty or unreadable Q&A pairs.");
       }
       
