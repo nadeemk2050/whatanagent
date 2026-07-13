@@ -530,20 +530,44 @@ app.post('/api/ai/suggest', async (req, res) => {
     }
     
     if (field === 'faq') {
-      let parsed = JSON.parse(resultText);
-      let faqsArray = [];
+      let parsed;
+      try {
+        parsed = JSON.parse(resultText);
+      } catch(e) {
+        throw new Error(`AI returned invalid JSON. Raw response: ${resultText.substring(0, 100)}`);
+      }
+      
+      let faqsArray = null;
       if (Array.isArray(parsed)) {
         faqsArray = parsed;
-      } else if (parsed && Array.isArray(parsed.faqs)) {
-        faqsArray = parsed.faqs;
-      } else if (parsed && Array.isArray(parsed.faq)) {
-        faqsArray = parsed.faq;
-      } else if (parsed && Array.isArray(parsed.questions)) {
-        faqsArray = parsed.questions;
-      } else {
-        throw new Error("AI did not return a valid array of FAQs.");
+      } else if (parsed && typeof parsed === 'object') {
+        // Scan all keys to find any array of objects
+        for (const key of Object.keys(parsed)) {
+          if (Array.isArray(parsed[key])) {
+            faqsArray = parsed[key];
+            break;
+          }
+        }
       }
-      res.json({ success: true, faqs: faqsArray });
+      
+      if (!faqsArray || !Array.isArray(faqsArray)) {
+        console.error("FAQ parsing failed. Raw response was:", resultText);
+        throw new Error(`AI did not return a valid list of FAQs. Raw response: ${resultText.substring(0, 120)}`);
+      }
+      
+      // Clean elements to ensure they have question/answer keys
+      const cleanFaqs = faqsArray.map(item => {
+        if (!item || typeof item !== 'object') return null;
+        const question = item.question || item.q || item.title || item.Question || "";
+        const answer = item.answer || item.a || item.body || item.text || item.Answer || "";
+        return { question, answer };
+      }).filter(item => item && item.question && item.answer);
+      
+      if (cleanFaqs.length === 0) {
+        throw new Error("AI generated empty or unreadable Q&A pairs.");
+      }
+      
+      res.json({ success: true, faqs: cleanFaqs });
     } else if (field === 'product') {
       res.json({ success: true, text: resultText });
     } else {
