@@ -202,7 +202,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       systemInstruction += `LOCATION RULE: If the user asks for the company location, address, map, directions, coordinates, or how to visit, you MUST output this exact Google Maps link: ${kb.googleMapsLink}. Do not alter, omit, or shorten the link. Provide it exactly as written.\n\n`;
     }
 
-    systemInstruction += "VOICE NOTES RULE: You will receive some messages starting with '[Voice Message]:'. This represents voice note messages that have ALREADY been transcribed to text by the system. Do NOT say 'I cannot hear audio' or 'I am a text bot'. Reply to the transcription text exactly as if the user typed it. Respond in the same language/script they used (e.g. if the transcription is in Roman Urdu or Hindi/Urdu, reply in Roman Urdu or Urdu script. If Arabic, reply in Arabic. If English, reply in English).\n\n";
+    systemInstruction += "VOICE NOTES RULE: You will receive some messages starting with '[Voice Message]:'. This represents voice note messages that have ALREADY been transcribed to text by the system. Do NOT say 'I cannot hear audio', 'I am a text bot', or reference any inability to listen to voice notes. You MUST treat this transcription exactly as if the user typed it as text, and reply directly to their question. If you previously stated in the chat history that you cannot hear audio, IGNORE that past mistake and answer the question directly now.\n\n";
 
     // Fetch Custom Q&As
     let faqText = "";
@@ -820,9 +820,26 @@ app.post('/webhook', async (req, res) => {
       // Generate AI Reply
       const contactsRef = doc(db, "appData", "contacts");
       const contactsSnap = await getDoc(contactsRef);
-      const contacts = contactsSnap.exists() ? contactsSnap.data() : {};
+      let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
+      if (!contacts[senderNumber]) contacts[senderNumber] = {};
       
-      if (!contacts[senderNumber] || !contacts[senderNumber].aiPaused) {
+      // Increment and save chat count
+      const currentCount = (contacts[senderNumber].chatCount || 0) + 1;
+      contacts[senderNumber].chatCount = currentCount;
+      await setDoc(contactsRef, contacts);
+
+      // Trigger 4-chatting alert to owner
+      if (currentCount === 4 && settings.OWNER_PHONE_NUMBER && senderNumber !== settings.OWNER_PHONE_NUMBER) {
+        const alertMsg = `⚠️ Alert: Customer +${senderNumber} is chatting regularly (4 messages exchanged). You can click to join the chat directly here: https://wa.me/${senderNumber}`;
+        console.log(`[ALERT] Sending regular-chatter alert to owner: ${settings.OWNER_PHONE_NUMBER}`);
+        try {
+          await sendWhatsAppMessage(settings.OWNER_PHONE_NUMBER, alertMsg, settings);
+        } catch (alertErr) {
+          console.error("Failed to send owner alert:", alertErr.message);
+        }
+      }
+      
+      if (!contacts[senderNumber].aiPaused) {
         const replyText = await generateAIResponse(userText, senderNumber, settings);
         await sendWhatsAppMessage(senderNumber, replyText, settings);
       }
