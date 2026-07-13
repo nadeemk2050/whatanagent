@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#25d366">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <style>
         :root {
             --primary: #25D366; 
@@ -48,10 +51,11 @@
         .contact-date { color: var(--text-muted); font-size: 14px; text-align: right; }
         
         /* Chat UI */
-        .chat-container { display: flex; height: 600px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-        .chat-sidebar { width: 30%; background: #fff; border-right: 1px solid var(--border); overflow-y: auto; }
-        .chat-main { width: 70%; display: flex; flex-direction: column; background: #efeae2; }
+        .chat-container { display: flex; height: 600px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative; }
+        .chat-sidebar { width: 30%; background: #fff; border-right: 1px solid var(--border); overflow-y: auto; transition: 0.3s; }
+        .chat-main { width: 70%; display: flex; flex-direction: column; background: #efeae2; transition: 0.3s; }
         .chat-header { padding: 15px; background: #f0f2f5; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .chat-back-btn { display: none; background: none; border: none; font-size: 20px; cursor: pointer; margin-right: 10px; font-weight: bold; }
         .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg-bubble { max-width: 70%; padding: 10px 15px; border-radius: 12px; font-size: 14px; }
         .msg-user { background: #fff; align-self: flex-start; border-bottom-left-radius: 0; }
@@ -69,12 +73,38 @@
 
         .notification { position: fixed; bottom: 30px; right: 30px; background-color: #111b21; color: white; padding: 15px 25px; border-radius: 8px; transform: translateY(100px); opacity: 0; transition: 0.3s; }
         .notification.show { transform: translateY(0); opacity: 1; }
+
+        /* PWA Install Button style */
+        .btn-pwa-install { display: none; background-color: #25d366; color: white; border: none; border-radius: 8px; padding: 10px 15px; font-weight: bold; cursor: pointer; margin-right: 15px; }
+
+        /* Mobile Adaptive View (Media Queries) */
+        @media (max-width: 768px) {
+            .container { margin: 10px auto; padding: 0 10px; }
+            .card { padding: 15px; }
+            .topbar { justify-content: space-between; }
+            .btn-pwa-install { display: none; }
+            
+            /* Sidebar takes whole screen */
+            .sidebar { width: 100% !important; left: -100% !important; }
+            .sidebar.open { left: 0 !important; }
+            
+            /* Chat responsive layout: overlay sliding drawer */
+            .chat-container { height: calc(100vh - 120px); border: none; border-radius: 0; }
+            .chat-sidebar { width: 100%; position: absolute; left: 0; top: 0; height: 100%; z-index: 10; }
+            .chat-main { width: 100%; position: absolute; left: 100%; top: 0; height: 100%; z-index: 20; }
+            
+            .chat-container.chat-open .chat-sidebar { left: -100%; }
+            .chat-container.chat-open .chat-main { left: 0; }
+            
+            .chat-back-btn { display: block; }
+        }
     </style>
     
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getFirestore, doc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
@@ -86,6 +116,15 @@
         };
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Global objects
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+        window.collection = collection;
+        window.orderBy = orderBy;
 
         // Global objects
         window.firebaseAuth = auth;
@@ -139,9 +178,12 @@
     <div id="appContainer">
         
         <!-- Topbar -->
-        <div class="topbar">
-            <button class="menu-btn" onclick="toggleSidebar()">☰</button>
-            <h2 style="margin: 0;">AI Admin Dashboard</h2>
+        <div class="topbar" style="display: flex; justify-content: space-between; width: 100%; box-sizing: border-box;">
+            <div style="display: flex; align-items: center;">
+                <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+                <h2 style="margin: 0; font-size: 1.2rem;">AI Admin Dashboard</h2>
+            </div>
+            <button class="btn-pwa-install" onclick="installPWA()">📲 Install App</button>
         </div>
 
         <!-- Sidebar -->
@@ -151,6 +193,7 @@
             <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
+            <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366; display: none;">📲 Install App</div>
             <div class="menu-item" onclick="handleLogout()" style="color: red;">🚪 Logout</div>
         </div>
 
@@ -367,14 +410,17 @@
 
             <!-- Live Chat Section -->
             <div id="chatSection" class="app-section">
-                <div class="card" style="padding: 0;">
-                    <div class="chat-container">
+                <div class="card" style="padding: 0; border: none; box-shadow: none;">
+                    <div class="chat-container" id="chatContainerEl">
                         <div class="chat-sidebar" id="chatSidebarList">
                             <!-- Contact list injects here -->
                         </div>
                         <div class="chat-main">
                             <div class="chat-header">
-                                <h3 id="chatActiveUser" style="margin:0;">Select a Contact</h3>
+                                <div style="display: flex; align-items: center;">
+                                    <button class="chat-back-btn" onclick="closeChatView()">←</button>
+                                    <h3 id="chatActiveUser" style="margin:0;">Select a Contact</h3>
+                                </div>
                                 <div id="aiToggleContainer" style="display:none; align-items:center;">
                                     <span style="margin-right:10px; font-size:14px; font-weight:bold;">AI Status:</span>
                                     <button id="aiToggleBtn" onclick="toggleAI()" style="padding: 5px 10px; border:none; border-radius:5px; cursor:pointer;">ON</button>
@@ -628,6 +674,7 @@
         // Live Chat Logic
         let activeContact = null;
         let activeAiPaused = false;
+        let activeMessageListener = null;
 
         async function openChat(number) {
             activeContact = number;
@@ -635,25 +682,53 @@
             document.getElementById('chatInputBar').style.display = 'flex';
             document.getElementById('aiToggleContainer').style.display = 'flex';
             
-            // fetch messages
-            const res = await fetch(`api/chats/${number}/messages`);
-            const msgs = await res.json();
+            document.getElementById('chatContainerEl').classList.add('chat-open');
+
+            if (activeMessageListener) {
+                activeMessageListener();
+                activeMessageListener = null;
+            }
             
             const msgList = document.getElementById('chatMessageList');
-            msgList.innerHTML = '';
-            msgs.forEach(m => {
-                const bubble = document.createElement('div');
-                bubble.className = `msg-bubble msg-${m.sender}`;
-                bubble.innerText = m.text;
-                msgList.appendChild(bubble);
+            msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">⏳ Loading real-time messages...</div>';
+            
+            const q = window.query(
+                window.collection(window.firebaseDb, "chats", number, "messages"),
+                window.orderBy("timestamp", "asc")
+            );
+
+            activeMessageListener = window.onSnapshot(q, (snapshot) => {
+                msgList.innerHTML = '';
+                if (snapshot.empty) {
+                    msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">No messages yet.</div>';
+                    return;
+                }
+                snapshot.forEach(docSnap => {
+                    const m = docSnap.data();
+                    const bubble = document.createElement('div');
+                    bubble.className = `msg-bubble msg-${m.sender}`;
+                    bubble.innerText = m.text;
+                    msgList.appendChild(bubble);
+                });
+                msgList.scrollTop = msgList.scrollHeight;
+            }, (error) => {
+                console.error("Firestore real-time subscription error:", error);
             });
-            msgList.scrollTop = msgList.scrollHeight;
 
             // Fetch AI status from contacts
             const cres = await fetch('api/contacts');
             const cdata = await cres.json();
             activeAiPaused = cdata[number] ? cdata[number].aiPaused : false;
             updateAiBtn();
+        }
+
+        function closeChatView() {
+            document.getElementById('chatContainerEl').classList.remove('chat-open');
+            activeContact = null;
+            if (activeMessageListener) {
+                activeMessageListener();
+                activeMessageListener = null;
+            }
         }
 
         function updateAiBtn() {
@@ -1006,6 +1081,33 @@
                 n.innerText = '❌ Suggestion failed.';
                 setTimeout(() => n.classList.remove('show'), 4000);
             }
+        }
+
+        // PWA Installation & Service Worker Integration
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtns = document.querySelectorAll('.btn-pwa-install');
+            installBtns.forEach(btn => btn.style.display = 'block');
+        });
+
+        async function installPWA() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`User response to install prompt: ${outcome}`);
+            deferredPrompt = null;
+            const installBtns = document.querySelectorAll('.btn-pwa-install');
+            installBtns.forEach(btn => btn.style.display = 'none');
+        }
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('Service Worker registered:', reg.scope))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            });
         }
     </script>
 </body>

@@ -202,7 +202,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       systemInstruction += `LOCATION RULE: If the user asks for the company location, address, map, directions, coordinates, or how to visit, you MUST output this exact Google Maps link: ${kb.googleMapsLink}. Do not alter, omit, or shorten the link. Provide it exactly as written.\n\n`;
     }
 
-    systemInstruction += "VOICE NOTES RULE: You will receive some messages starting with '[Voice Message]:'. This represents voice note messages that have ALREADY been transcribed to text by the system. Do NOT say 'I cannot hear audio', 'I am a text bot', or reference any inability to listen to voice notes. You MUST treat this transcription exactly as if the user typed it as text, and reply directly to their question. If you previously stated in the chat history that you cannot hear audio, IGNORE that past mistake and answer the question directly now.\n\n";
+    systemInstruction += "MEDIA ANALYSIS RULE: You will receive some messages starting with '[Voice Message]:' or '[Image]:'. These represent voice notes or images/GIFs sent by the user that have ALREADY been transcribed or analyzed to text by the system. Do NOT say 'I cannot hear audio', 'I cannot see images/GIFs', or 'I am a text bot'. Reply to the transcription/description text exactly as if the user typed it as text. If you previously stated in the chat history that you cannot hear/see media, IGNORE that past mistake and answer the question directly now.\n\n";
 
     // Fetch Custom Q&As
     let faqText = "";
@@ -746,6 +746,29 @@ async function transcribeAudio(audioBuffer, mimeType, settings) {
   });
   return response.response.text().trim();
 }
+// Analyze Image using Gemini Multimodal native input
+async function analyzeImage(imageBuffer, mimeType, settings) {
+  const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  
+  const response = await generateContentWithRetry(model, {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            inlineData: {
+              data: Buffer.from(imageBuffer).toString("base64"),
+              mimeType: mimeType
+            }
+          },
+          { text: "Describe what is in this image or GIF. If it is a greeting message (like Good Morning, Good Night, Hello, Welcome, Jumma Mubarak, Eid Mubarak, Thank You, etc.), tell me the greeting type and what the image shows. Respond in one short sentence, e.g. 'A Good Morning greeting image' or 'A photo of copper scrap'." }
+        ]
+      }
+    ]
+  });
+  return response.response.text().trim();
+}
 
 app.post('/webhook', async (req, res) => {
   res.status(200).send('EVENT_RECEIVED'); // Quick ack
@@ -778,6 +801,23 @@ app.post('/webhook', async (req, res) => {
         } catch(err) {
           console.error("Audio download/transcription failed:", err.message);
           await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble understanding your voice note.", settings);
+          return;
+        }
+      } else if (message.type === 'image') {
+        try {
+          const imageId = message.image?.id;
+          if (imageId) {
+            console.log(`[IMAGE] Fetching and analyzing image ${imageId} from ${senderNumber}`);
+            const media = await downloadWhatsAppMedia(imageId, settings);
+            const description = await analyzeImage(media.data, media.mimeType, settings);
+            console.log(`[IMAGE] Description: "${description}"`);
+            userText = `[Image]: ${description}`;
+          } else {
+            return;
+          }
+        } catch(err) {
+          console.error("Image download/analysis failed:", err.message);
+          await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble processing your image.", settings);
           return;
         }
       } else {
