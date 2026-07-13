@@ -498,6 +498,7 @@ app.post('/api/scrape', async (req, res) => {
 app.post('/api/ai/suggest', async (req, res) => {
   try {
     const { field, prompt } = req.body;
+    console.log(`[SUGGEST] Incoming suggest request: field="${field}", prompt="${prompt}"`);
     if (!field || !prompt) return res.status(400).json({ error: 'Field and prompt are required' });
 
     const settings = await getSettings();
