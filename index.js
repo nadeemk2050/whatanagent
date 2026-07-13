@@ -202,6 +202,8 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       systemInstruction += `LOCATION RULE: If the user asks for the company location, address, map, directions, coordinates, or how to visit, you MUST output this exact Google Maps link: ${kb.googleMapsLink}. Do not alter, omit, or shorten the link. Provide it exactly as written.\n\n`;
     }
 
+    systemInstruction += "VOICE NOTES RULE: You will receive some messages starting with '[Voice Message]:'. This represents voice note messages that have ALREADY been transcribed to text by the system. Do NOT say 'I cannot hear audio' or 'I am a text bot'. Reply to the transcription text exactly as if the user typed it. Respond in the same language/script they used (e.g. if the transcription is in Roman Urdu or Hindi/Urdu, reply in Roman Urdu or Urdu script. If Arabic, reply in Arabic. If English, reply in English).\n\n";
+
     // Fetch Custom Q&As
     let faqText = "";
     try {
@@ -737,7 +739,7 @@ async function transcribeAudio(audioBuffer, mimeType, settings) {
               mimeType: mimeType
             }
           },
-          { text: "Transcribe the audio accurately. Respond ONLY with the transcription text, or say '[Unintelligible]' if it's not clear or has no voice. Do not add any introduction or explanations." }
+          { text: "Transcribe the audio accurately. If the language spoken is Hindi or Urdu, transcribe it into clean Roman Urdu (Urdu written in English alphabets, e.g. 'Mujhe ye poochna tha...') or clean Urdu script. If it is Arabic, transcribe in Arabic script. If it is English, transcribe in English. Respond ONLY with the final transcription text, without any additional explanations or intro." }
         ]
       }
     ]
