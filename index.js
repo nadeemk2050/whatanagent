@@ -207,7 +207,26 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       }
     } catch(err) {}
 
+    // Fetch Product Catalog
+    let productCatalogText = "";
+    try {
+      const prodSnap = await getDoc(doc(db, "appData", "products"));
+      if (prodSnap.exists() && prodSnap.data().products) {
+        productCatalogText = prodSnap.data().products.map(p => 
+          `- Product: ${p.name}\n` +
+          `  Available Qty: ${p.qty || 'N/A'}\n` +
+          `  Approx Rate: ${p.rate || 'N/A'}\n` +
+          `  Buying Capacity: ${p.buyCap || 'N/A'}\n` +
+          `  Selling Capacity: ${p.sellCap || 'N/A'}\n` +
+          `  Notes/Comments: ${p.comment || 'None'}`
+        ).join("\n\n");
+      }
+    } catch(err) {}
+
     systemInstruction += "### KNOWLEDGE BASE ###\n" + knowledgeBase;
+    if (productCatalogText) {
+      systemInstruction += "\n\n### ACTIVE PRODUCT CATALOG (INVENTORY & CAPACITY) ###\n" + productCatalogText;
+    }
     if (faqText) {
       systemInstruction += "\n\n### FREQUENTLY ASKED QUESTIONS (FAQ) ###\n" + faqText;
     }
@@ -376,6 +395,20 @@ app.post('/api/faqs', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Failed to save FAQs.' }); }
 });
 
+app.get('/api/products', async (req, res) => {
+  try {
+    const docSnap = await getDoc(doc(db, "appData", "products"));
+    res.json(docSnap.exists() ? docSnap.data().products || [] : []);
+  } catch (error) { res.json([]); }
+});
+
+app.post('/api/products', async (req, res) => {
+  try {
+    await setDoc(doc(db, "appData", "products"), { products: req.body.products || [] });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Failed to save products.' }); }
+});
+
 app.get('/api/contacts', async (req, res) => {
   try {
     const docSnap = await getDoc(doc(db, "appData", "contacts"));
@@ -472,23 +505,30 @@ app.post('/api/ai/suggest', async (req, res) => {
     let systemInstruction = "";
     if (field === 'faq') {
       systemInstruction = "You are a helpful business assistant. Based on the user's input, generate 5 relevant and common Q&A pairs (FAQ) that customers might ask. You MUST return ONLY a raw JSON array of objects, containing 'question' and 'answer' keys. Do not wrap in markdown or backticks.";
+    } else if (field === 'product') {
+      systemInstruction = "You are an expert inventory manager. Based on the product name provided by the user, draft typical specs for the catalog. You MUST return ONLY a raw JSON object containing the keys: 'qty' (e.g. 5,000 kg), 'rate' (e.g. 1.25 USD/kg), 'buyCap' (e.g. 10 Tons/month), 'sellCap' (e.g. 5 Tons/month), and 'comment' (a helpful descriptive comment for clients). Do not wrap in markdown or backticks.";
     } else {
       systemInstruction = `You are an expert copywriter and AI systems architect. Based on the user's input, write a highly optimized, clean, and professional template or text for the dashboard field "${field}". Be concise and focus on maximum effectiveness.`;
     }
 
     const response = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: field === 'faq' ? { responseMimeType: "application/json" } : {}
+      generationConfig: (field === 'faq' || field === 'product') ? { responseMimeType: "application/json" } : {}
     });
 
     let resultText = response.response.text().trim();
-    if (field === 'faq') {
+    if (field === 'faq' || field === 'product') {
       if (resultText.startsWith("```json")) {
         resultText = resultText.substring(7, resultText.length - 3).trim();
       } else if (resultText.startsWith("```")) {
         resultText = resultText.substring(3, resultText.length - 3).trim();
       }
+    }
+    
+    if (field === 'faq') {
       res.json({ success: true, faqs: JSON.parse(resultText) });
+    } else if (field === 'product') {
+      res.json({ success: true, text: resultText });
     } else {
       res.json({ success: true, text: resultText });
     }

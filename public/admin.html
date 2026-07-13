@@ -104,6 +104,7 @@
                 loadContacts();
                 loadEnv();
                 loadFAQs();
+                loadProducts();
             } else {
                 document.getElementById('authContainer').style.display = 'flex';
                 document.getElementById('appContainer').style.display = 'none';
@@ -187,13 +188,6 @@
                             <textarea id="locationAndBranches"></textarea>
                         </div>
                          <div class="form-group">
-                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                 <label>Products, Services & Pricing</label>
-                                 <a href="#" onclick="askAiSuggestion('products')" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest with AI</a>
-                             </div>
-                             <textarea id="products"></textarea>
-                         </div>
-                         <div class="form-group">
                              <label>Logistics & Delivery</label>
                              <textarea id="logistics"></textarea>
                          </div>
@@ -267,6 +261,27 @@
                     </div>
                     <div id="faqList" style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
                         <!-- FAQs will load here -->
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Product & Inventory Catalog</h2>
+                        <button onclick="autoSuggestProduct()" style="padding: 6px 12px; background: none; border: 1px solid var(--primary); color: var(--primary); border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 13px;">💡 Auto-Suggest Product Details</button>
+                    </div>
+                    <p class="subtitle" style="margin-bottom: 20px;">Add specific products, rates, quantities, and buying/selling capacities to feed the AI.</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                        <input type="text" id="prodName" placeholder="Product Name (e.g. Copper Wire Scrap)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <input type="text" id="prodQty" placeholder="Available Qty (e.g. 5,000 kg)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <input type="text" id="prodRate" placeholder="Approx Rate (e.g. 7.2 USD/kg)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <input type="text" id="prodBuyCap" placeholder="Buying Capacity (e.g. 20 Tons/mo)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                        <input type="text" id="prodSellCap" placeholder="Selling Capacity (e.g. 10 Tons/mo)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
+                    </div>
+                    <textarea id="prodComment" placeholder="Product Comments/Special Info to tell customers (e.g. Clean material, 99.9% purity, photos available)..." style="padding: 12px; border: 1px solid var(--border); border-radius: 8px; height: 80px; width: 100%; box-sizing: border-box; margin-bottom: 10px; resize: vertical;"></textarea>
+                    <button onclick="addProduct()" style="padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%;">Add Product to Catalog</button>
+                    
+                    <div id="productsListGrid" style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+                        <!-- Products will load here -->
                     </div>
                 </div>
 
@@ -421,7 +436,7 @@
         async function loadKnowledge() {
             const res = await fetch('api/knowledge');
             const data = await res.json();
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
         }
@@ -480,7 +495,7 @@
         document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {};
-            ['companyProfile','timings','locationAndBranches','products','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
@@ -818,6 +833,105 @@
                 setTimeout(() => n.classList.remove('show'), 4000);
             } finally {
                 btn.disabled = false;
+            }
+        }
+
+        async function loadProducts() {
+            const res = await fetch('api/products');
+            const products = await res.json();
+            const grid = document.getElementById('productsListGrid');
+            grid.innerHTML = '';
+            
+            if(!products || products.length === 0) {
+                grid.innerHTML = '<i style="color:#667781; grid-column: 1/-1;">No products added to catalog yet.</i>';
+                return;
+            }
+            
+            products.forEach((prod, idx) => {
+                grid.innerHTML += `
+                    <div style="border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: #fafafa; position: relative;">
+                        <h3 style="margin: 0 0 10px 0; color: var(--primary); padding-right: 50px;">📦 ${prod.name}</h3>
+                        <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Qty:</b> ${prod.qty || 'N/A'} | <b>Rate:</b> ${prod.rate || 'N/A'}</div>
+                        <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Buy Cap:</b> ${prod.buyCap || 'N/A'} | <b>Sell Cap:</b> ${prod.sellCap || 'N/A'}</div>
+                        <div style="font-size: 12px; color: #666; font-style: italic; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px;">"${prod.comment || 'No comments'}"</div>
+                        <button onclick="deleteProduct(${idx})" style="position: absolute; right: 10px; top: 10px; border: none; background: none; color: red; font-weight: bold; cursor: pointer;">✕ Delete</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function addProduct() {
+            const name = document.getElementById('prodName').value.trim();
+            const qty = document.getElementById('prodQty').value.trim();
+            const rate = document.getElementById('prodRate').value.trim();
+            const buyCap = document.getElementById('prodBuyCap').value.trim();
+            const sellCap = document.getElementById('prodSellCap').value.trim();
+            const comment = document.getElementById('prodComment').value.trim();
+            
+            if(!name) return alert("Please enter at least a Product Name.");
+            
+            const res = await fetch('api/products');
+            let products = await res.json();
+            if(!Array.isArray(products)) products = [];
+            products.push({ name, qty, rate, buyCap, sellCap, comment });
+            
+            await fetch('api/products', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ products })
+            });
+            
+            // clear inputs
+            ['prodName','prodQty','prodRate','prodBuyCap','prodSellCap','prodComment'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            
+            await loadProducts();
+        }
+
+        async function deleteProduct(index) {
+            const res = await fetch('api/products');
+            let products = await res.json();
+            if(!Array.isArray(products)) return;
+            products.splice(index, 1);
+            
+            await fetch('api/products', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ products })
+            });
+            await loadProducts();
+        }
+
+        async function autoSuggestProduct() {
+            const prod = prompt("Enter the Product Name you want to generate details for (e.g. Copper Wire Millberry Scrap):");
+            if (!prod) return;
+            
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ AI is suggesting product specs...';
+            n.classList.add('show');
+            
+            try {
+                const res = await fetch('api/ai/suggest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ field: 'product', prompt: `Draft realistic catalog specs for: ${prod}. Return ONLY a raw JSON object with keys "qty", "rate", "buyCap", "sellCap", "comment".` })
+                });
+                const data = await res.json();
+                const suggestion = JSON.parse(data.text);
+                
+                document.getElementById('prodName').value = prod;
+                document.getElementById('prodQty').value = suggestion.qty || '';
+                document.getElementById('prodRate').value = suggestion.rate || '';
+                document.getElementById('prodBuyCap').value = suggestion.buyCap || '';
+                document.getElementById('prodSellCap').value = suggestion.sellCap || '';
+                document.getElementById('prodComment').value = suggestion.comment || '';
+                
+                n.innerText = '✅ Suggested specs ready! Verify and click Add Product.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch(e) {
+                n.innerText = '❌ Suggestion failed.';
+                setTimeout(() => n.classList.remove('show'), 4000);
             }
         }
     </script>
