@@ -458,6 +458,117 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
+app.post('/api/ai/suggest', async (req, res) => {
+  try {
+    const { field, prompt } = req.body;
+    if (!field || !prompt) return res.status(400).json({ error: 'Field and prompt are required' });
+
+    const settings = await getSettings();
+    if (!settings.GEMINI_API_KEY) return res.status(400).json({ error: 'Gemini API key is not configured.' });
+
+    const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+    let systemInstruction = "";
+    if (field === 'faq') {
+      systemInstruction = "You are a helpful business assistant. Based on the user's input, generate 5 relevant and common Q&A pairs (FAQ) that customers might ask. You MUST return ONLY a raw JSON array of objects, containing 'question' and 'answer' keys. Do not wrap in markdown or backticks.";
+    } else {
+      systemInstruction = `You are an expert copywriter and AI systems architect. Based on the user's input, write a highly optimized, clean, and professional template or text for the dashboard field "${field}". Be concise and focus on maximum effectiveness.`;
+    }
+
+    const response = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: field === 'faq' ? { responseMimeType: "application/json" } : {}
+    });
+
+    let resultText = response.response.text().trim();
+    if (field === 'faq') {
+      if (resultText.startsWith("```json")) {
+        resultText = resultText.substring(7, resultText.length - 3).trim();
+      } else if (resultText.startsWith("```")) {
+        resultText = resultText.substring(3, resultText.length - 3).trim();
+      }
+      res.json({ success: true, faqs: JSON.parse(resultText) });
+    } else {
+      res.json({ success: true, text: resultText });
+    }
+  } catch (err) {
+    console.error('Suggest error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/suggest-chat-reply', async (req, res) => {
+  try {
+    const { number } = req.body;
+    if (!number) return res.status(400).json({ error: 'Number is required' });
+
+    const settings = await getSettings();
+    if (!settings.GEMINI_API_KEY) return res.status(400).json({ error: 'Gemini API key is not configured.' });
+
+    let knowledgeBase = "";
+    try {
+      const docSnap = await getDoc(doc(db, "appData", "knowledge"));
+      if (docSnap.exists()) {
+        const kb = docSnap.data();
+        knowledgeBase = `
+          Company Profile: ${kb.companyProfile}
+          Timings: ${kb.timings}
+          Location & Branches: ${kb.locationAndBranches}
+          Products: ${kb.products}
+          Logistics: ${kb.logistics}
+          Custom Rules: ${kb.customRules}
+          Website Scraped Data: ${kb.scrapedData || 'None'}
+        `;
+      }
+    } catch (err) {}
+
+    let faqText = "";
+    try {
+      const faqSnap = await getDoc(doc(db, "appData", "faq"));
+      if (faqSnap.exists() && faqSnap.data().faqs) {
+        faqText = faqSnap.data().faqs.map(f => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n");
+      }
+    } catch(err) {}
+
+    const q = query(collection(db, "chats", number, "messages"), orderBy("timestamp", "asc"));
+    const snapshot = await getDocs(q);
+    const messages = snapshot.docs.map(d => d.data());
+
+    const geminiContents = [];
+    let lastRole = "";
+    messages.forEach(m => {
+      const role = m.sender === "user" ? "user" : "model";
+      if (role === lastRole) {
+        geminiContents[geminiContents.length - 1].parts[0].text += "\n" + m.text;
+      } else {
+        geminiContents.push({ role: role, parts: [{text: m.text}] });
+        lastRole = role;
+      }
+    });
+
+    const systemInstruction = 
+      "You are a helpful co-pilot for a human operator handling a WhatsApp chat for a company.\n" +
+      "Analyze the conversation history and the Knowledge Base below.\n" +
+      "Draft a helpful, highly accurate, and friendly response to the customer's last message based strictly on the facts.\n" +
+      "Respond ONLY with the drafted response. Do not include any meta comments, explanation, or tags.\n\n" +
+      "### KNOWLEDGE BASE ###\n" + knowledgeBase + "\n\n" +
+      (faqText ? "### FAQ ###\n" + faqText : "");
+
+    const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction: systemInstruction
+    });
+
+    const result = await model.generateContent({ contents: geminiContents });
+    res.json({ success: true, suggestion: result.response.text().trim() });
+  } catch (err) {
+    console.error('Suggest chat reply error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Webhooks ---
 app.get('/webhook', async (req, res) => {
   const mode = req.query['hub.mode'];

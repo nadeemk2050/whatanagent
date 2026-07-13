@@ -186,24 +186,36 @@
                             <label>Location & Branches</label>
                             <textarea id="locationAndBranches"></textarea>
                         </div>
-                        <div class="form-group">
-                            <label>Products, Services & Pricing</label>
-                            <textarea id="products"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Logistics & Delivery</label>
-                            <textarea id="logistics"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Custom AI Rules</label>
-                            <textarea id="customRules"></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Welcome & Onboarding Template (Instructions for first-time contacts)</label>
-                            <textarea id="onboardingPrompt" style="height: 120px;" placeholder="Write instructions for how the AI welcomes new inquiries, e.g. thank them warmly and naturally ask for Name, Company, Products, Email, and Website over 2-3 messages without irritating them."></textarea>
-                        </div>
+                         <div class="form-group">
+                             <div style="display: flex; justify-content: space-between; align-items: center;">
+                                 <label>Products, Services & Pricing</label>
+                                 <a href="#" onclick="askAiSuggestion('products')" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest with AI</a>
+                             </div>
+                             <textarea id="products"></textarea>
+                         </div>
+                         <div class="form-group">
+                             <label>Logistics & Delivery</label>
+                             <textarea id="logistics"></textarea>
+                         </div>
+                         <div class="form-group">
+                             <div style="display: flex; justify-content: space-between; align-items: center;">
+                                 <label>Custom AI Rules</label>
+                                 <a href="#" onclick="askAiSuggestion('customRules')" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest with AI</a>
+                             </div>
+                             <textarea id="customRules"></textarea>
+                         </div>
+                         <div class="form-group">
+                             <div style="display: flex; justify-content: space-between; align-items: center;">
+                                 <label>Welcome & Onboarding Template (Instructions for first-time contacts)</label>
+                                 <a href="#" onclick="askAiSuggestion('onboardingPrompt')" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest with AI</a>
+                             </div>
+                             <textarea id="onboardingPrompt" style="height: 120px;" placeholder="Write instructions for how the AI welcomes new inquiries, e.g. thank them warmly and naturally ask for Name, Company, Products, Email, and Website over 2-3 messages without irritating them."></textarea>
+                         </div>
                         <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px; margin-bottom: 20px;">
-                            <label style="font-weight: bold; color: var(--primary);">AI Persona & Fallback Logic</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <label style="font-weight: bold; color: var(--primary);">AI Persona & Fallback Logic</label>
+                                <a href="#" onclick="suggestSettings()" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest Settings with AI</a>
+                            </div>
                             <div style="display: flex; gap: 15px; margin-top: 10px; flex-wrap: wrap;">
                                 <div style="flex: 1; min-width: 200px;">
                                     <label style="font-size: 13px; font-weight: normal;">Brand Voice / Tone</label>
@@ -224,7 +236,10 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Website Scraped Data (AI Memory)</label>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <label>Website Scraped Data (AI Memory)</label>
+                                <a href="#" onclick="askAiSuggestion('scrapedData')" style="font-size: 12px; color: var(--primary); text-decoration: none; font-weight: bold;">💡 Suggest with AI</a>
+                            </div>
                             <textarea id="scrapedData" placeholder="You can manually paste your website content or documents here..."></textarea>
                         </div>
                         <button type="submit" class="btn-save" id="saveBtn">Save & Sync AI</button>
@@ -241,8 +256,10 @@
                 </div>
 
                 <div class="card">
-                    <h2>Q&A / FAQ Knowledge Manager</h2>
-                    <p class="subtitle" style="margin-bottom: 20px;">Feed structured Q&As directly to the AI's brain.</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Q&A / FAQ Knowledge Manager</h2>
+                        <button onclick="autoGenerateFAQs()" style="padding: 6px 12px; background: none; border: 1px solid var(--primary); color: var(--primary); border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 13px;">💡 Auto-Generate 5 FAQs</button>
+                    </div>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
                         <input type="text" id="faqQuestion" placeholder="Enter Question (e.g. Do you ship to Oman?)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px;">
                         <textarea id="faqAnswer" placeholder="Enter Answer (e.g. Yes, shipping to Oman takes 3 days.)" style="padding: 12px; border: 1px solid var(--border); border-radius: 8px; height: 80px; resize: vertical;"></textarea>
@@ -341,6 +358,7 @@
                             </div>
                             <div class="chat-input" id="chatInputBar" style="display:none;">
                                 <input type="text" id="chatMsgInput" placeholder="Type a manual reply...">
+                                <button onclick="suggestChatReply()" style="background: #ef6c00; margin-right: 5px; padding: 12px 20px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer;" id="suggestReplyBtn">💡 Suggest Reply</button>
                                 <button onclick="sendManualReply()">Send</button>
                             </div>
                         </div>
@@ -680,6 +698,128 @@
                 });
             }
         }, 3000);
+
+        async function askAiSuggestion(field) {
+            const promptInput = prompt("What specific topics or parameters should the AI include in this suggestion?");
+            if (!promptInput) return;
+
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ AI is drafting suggestion...';
+            n.classList.add('show');
+
+            try {
+                const res = await fetch('api/ai/suggest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ field, prompt: promptInput })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById(field).value = data.text;
+                    n.innerText = '✅ AI Suggestion populated!';
+                } else {
+                    n.innerText = '❌ Suggestion failed: ' + data.error;
+                }
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch(e) {
+                n.innerText = '❌ Error fetching suggestion.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            }
+        }
+
+        async function autoGenerateFAQs() {
+            const topic = prompt("Enter a topic or business description to generate FAQs for (e.g. Copper Scrap recycling pricing and location):");
+            if (!topic) return;
+
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ AI is generating FAQs...';
+            n.classList.add('show');
+
+            try {
+                const res = await fetch('api/ai/suggest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ field: 'faq', prompt: topic })
+                });
+                const data = await res.json();
+                if (data.success && Array.isArray(data.faqs)) {
+                    const faqRes = await fetch('api/faqs');
+                    let currentFaqs = await faqRes.json();
+                    if(!Array.isArray(currentFaqs)) currentFaqs = [];
+                    currentFaqs.push(...data.faqs);
+                    
+                    await fetch('api/faqs', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ faqs: currentFaqs })
+                    });
+                    
+                    await loadFAQs();
+                    n.innerText = '✅ 5 FAQs Auto-Generated & Appended!';
+                } else {
+                    n.innerText = '❌ Generation failed: ' + data.error;
+                }
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch(e) {
+                n.innerText = '❌ Error generating FAQs.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            }
+        }
+
+        async function suggestSettings() {
+            const desc = prompt("What is your business type or industry? (e.g. Luxury Car Rental, Heavy Machinery Scrap, Medical Clinic)");
+            if (!desc) return;
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Analyzing best tone and fallback settings...';
+            n.classList.add('show');
+            try {
+                const res = await fetch('api/ai/suggest', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ field: 'brandVoice', prompt: `Select the best Brand Voice/Tone and Fallback Action for: ${desc}. Respond ONLY in this JSON format: {"brandVoice": "friendly/professional/sales", "fallbackAction": "say_dont_know/suggest_handover/ask_email"}.` })
+                });
+                const data = await res.json();
+                const suggestion = JSON.parse(data.text);
+                document.getElementById('brandVoice').value = suggestion.brandVoice;
+                document.getElementById('fallbackAction').value = suggestion.fallbackAction;
+                n.innerText = '✅ Persona & Fallback Suggested! Click Save below.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch(e) {
+                n.innerText = '❌ Suggestion failed.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            }
+        }
+
+        async function suggestChatReply() {
+            if (!activeContact) return;
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ AI is drafting response...';
+            n.classList.add('show');
+
+            const btn = document.getElementById('suggestReplyBtn');
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('api/ai/suggest-chat-reply', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ number: activeContact })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('chatMsgInput').value = data.suggestion;
+                    n.innerText = '✅ Suggested reply ready!';
+                } else {
+                    n.innerText = '❌ Failed to draft reply.';
+                }
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } catch(e) {
+                n.innerText = '❌ Error getting suggestion.';
+                setTimeout(() => n.classList.remove('show'), 4000);
+            } finally {
+                btn.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
