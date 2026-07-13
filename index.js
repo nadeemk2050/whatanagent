@@ -704,6 +704,47 @@ app.get('/webhook', async (req, res) => {
   return res.status(400).send('Missing hub.mode or hub.verify_token');
 });
 
+// Download WhatsApp Media (Audio/Voice Note)
+async function downloadWhatsAppMedia(mediaId, settings) {
+  const url = `https://graph.facebook.com/v20.0/${mediaId}`;
+  const res = await axios.get(url, {
+    headers: { 'Authorization': `Bearer ${settings.WHATSAPP_TOKEN}` }
+  });
+  const mediaUrl = res.data.url;
+  const mediaRes = await axios.get(mediaUrl, {
+    headers: { 'Authorization': `Bearer ${settings.WHATSAPP_TOKEN}` },
+    responseType: 'arraybuffer'
+  });
+  return {
+    data: mediaRes.data,
+    mimeType: res.data.mime_type
+  };
+}
+
+// Transcribe Audio using Gemini Multimodal native input
+async function transcribeAudio(audioBuffer, mimeType, settings) {
+  const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  
+  const response = await generateContentWithRetry(model, {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            inlineData: {
+              data: Buffer.from(audioBuffer).toString("base64"),
+              mimeType: mimeType
+            }
+          },
+          { text: "Transcribe the audio accurately. Respond ONLY with the transcription text, or say '[Unintelligible]' if it's not clear or has no voice. Do not add any introduction or explanations." }
+        ]
+      }
+    ]
+  });
+  return response.response.text().trim();
+}
+
 app.post('/webhook', async (req, res) => {
   res.status(200).send('EVENT_RECEIVED'); // Quick ack
   
@@ -712,11 +753,34 @@ app.post('/webhook', async (req, res) => {
     if (body.object === 'whatsapp_business_account') {
       const entry = body.entry?.[0];
       const message = entry?.changes?.[0]?.value?.messages?.[0];
-      if (!message || message.type !== 'text') return;
+      if (!message) return;
 
       const senderNumber = message.from;
-      const userText = message.text.body;
+      let userText = "";
       const settings = await getSettings();
+
+      if (message.type === 'text') {
+        userText = message.text.body;
+      } else if (message.type === 'audio') {
+        try {
+          const audioId = message.audio?.id;
+          if (audioId) {
+            console.log(`[AUDIO] Fetching and transcribing audio ${audioId} from ${senderNumber}`);
+            const media = await downloadWhatsAppMedia(audioId, settings);
+            const transcription = await transcribeAudio(media.data, media.mimeType, settings);
+            console.log(`[AUDIO] Transcribed: "${transcription}"`);
+            userText = `[Voice Message]: ${transcription}`;
+          } else {
+            return;
+          }
+        } catch(err) {
+          console.error("Audio download/transcription failed:", err.message);
+          await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble understanding your voice note.", settings);
+          return;
+        }
+      } else {
+        return;
+      }
 
       // Log to Firestore
       try {
