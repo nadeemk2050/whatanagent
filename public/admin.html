@@ -445,6 +445,10 @@
     <div class="notification" id="notification">✅ Data Saved!</div>
 
     <script>
+        // Global edit mode indices
+        let editingFaqIndex = null;
+        let editingProductIndex = null;
+
         // Auth UI Toggles
         function toggleAuth(mode) {
             document.getElementById('loginCard').style.display = mode === 'login' ? 'block' : 'none';
@@ -626,14 +630,61 @@
             }
             
             faqs.forEach((faq, idx) => {
-                faqListDiv.innerHTML += `
-                    <div style="border: 1px solid var(--border); padding: 12px; border-radius: 8px; background: #fafafa; position: relative;">
-                        <div style="font-weight: bold; color: var(--primary); margin-bottom: 5px; padding-right: 50px;">Q: ${faq.question}</div>
-                        <div style="color: #333; padding-right: 50px;">A: ${faq.answer}</div>
-                        <button onclick="deleteFAQ(${idx})" style="position: absolute; right: 10px; top: 10px; border: none; background: none; color: red; font-weight: bold; cursor: pointer;">✕ Delete</button>
-                    </div>
-                `;
+                if (editingFaqIndex === idx) {
+                    faqListDiv.innerHTML += `
+                        <div style="border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: #fff; display: flex; flex-direction: column; gap: 8px;">
+                            <input type="text" value="${faq.question}" id="edit-faq-q-${idx}" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-weight: bold; box-sizing: border-box;">
+                            <textarea id="edit-faq-a-${idx}" style="width: 100%; padding: 8px; height: 80px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; resize: vertical;">${faq.answer}</textarea>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="saveFAQ(${idx})" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px;">Save</button>
+                                <button onclick="cancelEditFAQ()" style="padding: 6px 12px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px;">Cancel</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    faqListDiv.innerHTML += `
+                        <div style="border: 1px solid var(--border); padding: 12px; border-radius: 8px; background: #fafafa; position: relative;">
+                            <div style="font-weight: bold; color: var(--primary); margin-bottom: 5px; padding-right: 120px;">Q: ${faq.question}</div>
+                            <div style="color: #333; padding-right: 120px;">A: ${faq.answer}</div>
+                            <div style="position: absolute; right: 10px; top: 10px; display: flex; gap: 8px;">
+                                <button onclick="editFAQ(${idx})" style="border: none; background: none; color: blue; font-weight: bold; cursor: pointer; font-size: 13px;">✏️ Edit</button>
+                                <button onclick="deleteFAQ(${idx})" style="border: none; background: none; color: red; font-weight: bold; cursor: pointer; font-size: 13px;">✕ Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }
             });
+        }
+
+        async function editFAQ(idx) {
+            editingFaqIndex = idx;
+            await loadFAQs();
+        }
+
+        async function cancelEditFAQ() {
+            editingFaqIndex = null;
+            await loadFAQs();
+        }
+
+        async function saveFAQ(idx) {
+            const q = document.getElementById(`edit-faq-q-${idx}`).value.trim();
+            const a = document.getElementById(`edit-faq-a-${idx}`).value.trim();
+            if (!q || !a) return alert("Please enter both question and answer.");
+
+            const res = await fetch('api/faqs');
+            let faqs = await res.json();
+            if (!Array.isArray(faqs)) return;
+
+            faqs[idx] = { question: q, answer: a };
+
+            await fetch('api/faqs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ faqs })
+            });
+
+            editingFaqIndex = null;
+            await loadFAQs();
         }
 
         async function addFAQ() {
@@ -996,16 +1047,75 @@
             }
             
             products.forEach((prod, idx) => {
-                grid.innerHTML += `
-                    <div style="border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: #fafafa; position: relative;">
-                        <h3 style="margin: 0 0 10px 0; color: var(--primary); padding-right: 50px;">📦 ${prod.name}</h3>
-                        <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Qty:</b> ${prod.qty || 'N/A'} | <b>Rate:</b> ${prod.rate || 'N/A'}</div>
-                        <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Buy Cap:</b> ${prod.buyCap || 'N/A'} | <b>Sell Cap:</b> ${prod.sellCap || 'N/A'}</div>
-                        <div style="font-size: 12px; color: #666; font-style: italic; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px;">"${prod.comment || 'No comments'}"</div>
-                        <button onclick="deleteProduct(${idx})" style="position: absolute; right: 10px; top: 10px; border: none; background: none; color: red; font-weight: bold; cursor: pointer;">✕ Delete</button>
-                    </div>
-                `;
+                if (editingProductIndex === idx) {
+                    grid.innerHTML += `
+                        <div style="border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: #fff; display: flex; flex-direction: column; gap: 8px; grid-column: 1/-1;">
+                            <div style="font-weight: bold; margin-bottom: 5px; color: #555;">Edit Product Specifications</div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+                                <input type="text" value="${prod.name}" id="edit-prod-name-${idx}" placeholder="Product Name" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                                <input type="text" value="${prod.qty || ''}" id="edit-prod-qty-${idx}" placeholder="Qty" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                                <input type="text" value="${prod.rate || ''}" id="edit-prod-rate-${idx}" placeholder="Rate" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                                <input type="text" value="${prod.buyCap || ''}" id="edit-prod-buycap-${idx}" placeholder="Buy Cap" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                                <input type="text" value="${prod.sellCap || ''}" id="edit-prod-sellcap-${idx}" placeholder="Sell Cap" style="padding: 8px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;">
+                            </div>
+                            <textarea id="edit-prod-comment-${idx}" placeholder="Comments" style="width: 100%; padding: 8px; height: 60px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; resize: vertical;">${prod.comment || ''}</textarea>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="saveProduct(${idx})" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px;">Save</button>
+                                <button onclick="cancelEditProduct()" style="padding: 6px 12px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px;">Cancel</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    grid.innerHTML += `
+                        <div style="border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: #fafafa; position: relative;">
+                            <h3 style="margin: 0 0 10px 0; color: var(--primary); padding-right: 120px;">📦 ${prod.name}</h3>
+                            <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Qty:</b> ${prod.qty || 'N/A'} | <b>Rate:</b> ${prod.rate || 'N/A'}</div>
+                            <div style="font-size: 13px; color: #555; margin-bottom: 5px;"><b>Buy Cap:</b> ${prod.buyCap || 'N/A'} | <b>Sell Cap:</b> ${prod.sellCap || 'N/A'}</div>
+                            <div style="font-size: 12px; color: #666; font-style: italic; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; padding-right: 120px;">"${prod.comment || 'No comments'}"</div>
+                            <div style="position: absolute; right: 10px; top: 10px; display: flex; gap: 8px;">
+                                <button onclick="editProduct(${idx})" style="border: none; background: none; color: blue; font-weight: bold; cursor: pointer; font-size: 13px;">✏️ Edit</button>
+                                <button onclick="deleteProduct(${idx})" style="border: none; background: none; color: red; font-weight: bold; cursor: pointer; font-size: 13px;">✕ Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }
             });
+        }
+
+        async function editProduct(idx) {
+            editingProductIndex = idx;
+            await loadProducts();
+        }
+
+        async function cancelEditProduct() {
+            editingProductIndex = null;
+            await loadProducts();
+        }
+
+        async function saveProduct(idx) {
+            const name = document.getElementById(`edit-prod-name-${idx}`).value.trim();
+            const qty = document.getElementById(`edit-prod-qty-${idx}`).value.trim();
+            const rate = document.getElementById(`edit-prod-rate-${idx}`).value.trim();
+            const buyCap = document.getElementById(`edit-prod-buycap-${idx}`).value.trim();
+            const sellCap = document.getElementById(`edit-prod-sellcap-${idx}`).value.trim();
+            const comment = document.getElementById(`edit-prod-comment-${idx}`).value.trim();
+
+            if (!name) return alert("Please enter at least a Product Name.");
+
+            const res = await fetch('api/products');
+            let products = await res.json();
+            if (!Array.isArray(products)) return;
+
+            products[idx] = { name, qty, rate, buyCap, sellCap, comment };
+
+            await fetch('api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ products })
+            });
+
+            editingProductIndex = null;
+            await loadProducts();
         }
 
         async function addProduct() {
