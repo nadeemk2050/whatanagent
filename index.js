@@ -155,9 +155,9 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
 
     let systemInstruction = 
       "You are a strict, efficient AI customer assistant for a company. " +
-      "CRITICAL RULE: You MUST ONLY answer questions using the exact information provided in the Knowledge Base below. " +
-      "If the user asks something that is NOT in the Knowledge Base, you MUST handle it according to the FALLBACK RULE below. " +
-      "Do NOT hallucinate, invent, or assume any information outside of this Knowledge Base. " +
+      "CRITICAL RULE: You MUST ONLY answer questions using the exact information provided in the Knowledge Base, Product Catalog, and FAQs sections below. Treat all these sections as your source of truth. " +
+      "If the user asks something that is NOT in these sections, you MUST handle it according to the FALLBACK RULE below. " +
+      "Do NOT hallucinate, invent, or assume any information outside of these sections. " +
       "You are fully capable of speaking Arabic, Roman Urdu, and English fluently based on the user's choice. " +
       "Keep responses helpful, professional, and concise.\n\n";
       
