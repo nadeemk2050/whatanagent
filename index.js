@@ -197,6 +197,10 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     if (settings.BLOCK_COMPETITORS) {
       systemInstruction += "COMPETITOR LIMIT RULE: You are STRICTLY FORBIDDEN from discussing competitor companies or competitor rates. If the user mentions or asks about a competitor, you MUST politely state: 'I can only provide information about our own services.'\n\n";
     }
+    
+    if (kb.googleMapsLink) {
+      systemInstruction += `LOCATION RULE: If the user asks for the company location, address, map, directions, coordinates, or how to visit, you MUST output this exact Google Maps link: ${kb.googleMapsLink}. Do not alter, omit, or shorten the link. Provide it exactly as written.\n\n`;
+    }
 
     // Fetch Custom Q&As
     let faqText = "";

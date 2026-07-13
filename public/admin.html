@@ -187,6 +187,10 @@
                             <label>Location & Branches</label>
                             <textarea id="locationAndBranches"></textarea>
                         </div>
+                        <div class="form-group">
+                            <label>Google Maps Location Link (Verification Link)</label>
+                            <input type="text" id="googleMapsLink" placeholder="e.g. https://maps.google.com/?q=..." style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
                          <div class="form-group">
                              <label>Logistics & Delivery</label>
                              <textarea id="logistics"></textarea>
@@ -436,7 +440,7 @@
         async function loadKnowledge() {
             const res = await fetch('api/knowledge');
             const data = await res.json();
-            ['companyProfile','timings','locationAndBranches','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
         }
@@ -495,7 +499,7 @@
         document.getElementById('knowledgeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {};
-            ['companyProfile','timings','locationAndBranches','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
+            ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
