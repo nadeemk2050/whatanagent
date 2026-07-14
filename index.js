@@ -436,12 +436,13 @@ app.post('/api/chats/reply', async (req, res) => {
     const settings = await getSettings();
     await sendWhatsAppMessage(number, text, settings);
     
-    // Pause AI
+    // Pause AI & Update interaction timestamp
     const contactsRef = doc(db, "appData", "contacts");
     const contactsSnap = await getDoc(contactsRef);
     let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
     if (!contacts[number]) contacts[number] = {};
     contacts[number].aiPaused = true;
+    contacts[number].lastInteraction = Date.now();
     await setDoc(contactsRef, contacts);
     
     res.json({ success: true });
@@ -843,12 +844,13 @@ app.post('/webhook', async (req, res) => {
           if (targetNumber && msgBody) {
             await sendWhatsAppMessage(targetNumber, msgBody, settings);
             
-            // Pause AI
+            // Pause AI & Update interaction timestamp
             const contactsRef = doc(db, "appData", "contacts");
             const contactsSnap = await getDoc(contactsRef);
             let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
             if (!contacts[targetNumber]) contacts[targetNumber] = {};
             contacts[targetNumber].aiPaused = true;
+            contacts[targetNumber].lastInteraction = Date.now();
             await setDoc(contactsRef, contacts);
 
             await sendWhatsAppMessage(senderNumber, `✅ Sent & AI Paused for ${targetNumber}.`, settings);
@@ -863,9 +865,10 @@ app.post('/webhook', async (req, res) => {
       let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
       if (!contacts[senderNumber]) contacts[senderNumber] = {};
       
-      // Increment and save chat count
+      // Increment, set last interaction timestamp, and save chat count
       const currentCount = (contacts[senderNumber].chatCount || 0) + 1;
       contacts[senderNumber].chatCount = currentCount;
+      contacts[senderNumber].lastInteraction = Date.now();
       await setDoc(contactsRef, contacts);
 
       // Trigger 4-chatting alert to owner

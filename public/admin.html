@@ -509,7 +509,11 @@
             const listDiv = document.getElementById('contactsList');
             listDiv.innerHTML = '';
             
-            const numbers = Object.keys(contacts);
+            const numbers = Object.keys(contacts).sort((a, b) => {
+                const timeA = contacts[a].lastInteraction || 0;
+                const timeB = contacts[b].lastInteraction || 0;
+                return timeB - timeA;
+            });
             
             // Calculate Analytics stats
             let total = numbers.length;
@@ -758,7 +762,19 @@
                     const m = docSnap.data();
                     const bubble = document.createElement('div');
                     bubble.className = `msg-bubble msg-${m.sender}`;
-                    bubble.innerText = m.text;
+                    
+                    let timeStr = "";
+                    if (m.timestamp) {
+                        const date = new Date(m.timestamp);
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                        timeStr = `${hours}:${minutes}`;
+                    }
+
+                    bubble.innerHTML = `
+                        <div style="white-space: pre-wrap; word-break: break-word;">${m.text}</div>
+                        <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal;">${timeStr}</div>
+                    `;
                     msgList.appendChild(bubble);
                 });
                 msgList.scrollTop = msgList.scrollHeight;
@@ -840,7 +856,14 @@
                 const res = await fetch('api/contacts');
                 const contacts = await res.json();
                 listDiv.innerHTML = '';
-                Object.keys(contacts).forEach(num => {
+                
+                const sortedKeys = Object.keys(contacts).sort((a, b) => {
+                    const timeA = contacts[a].lastInteraction || 0;
+                    const timeB = contacts[b].lastInteraction || 0;
+                    return timeB - timeA;
+                });
+
+                sortedKeys.forEach(num => {
                     const info = contacts[num];
                     const nameLabel = info.leadName ? ` (${info.leadName})` : '';
                     const d = document.createElement('div');
