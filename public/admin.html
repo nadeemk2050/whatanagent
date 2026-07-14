@@ -51,7 +51,7 @@
         .contact-date { color: var(--text-muted); font-size: 14px; text-align: right; }
         
         /* Chat UI */
-        .chat-container { display: flex; height: 600px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative; }
+        .chat-container { display: flex; height: calc(100vh - 130px); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; position: relative; }
         .chat-sidebar { width: 30%; background: #fff; border-right: 1px solid var(--border); overflow-y: auto; transition: 0.3s; }
         .chat-main { width: 70%; display: flex; flex-direction: column; background: #efeae2; transition: 0.3s; }
         .chat-header { padding: 15px; background: #f0f2f5; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
@@ -104,7 +104,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-        import { getFirestore, doc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
@@ -125,9 +125,10 @@
         window.query = query;
         window.collection = collection;
         window.orderBy = orderBy;
+        window.getDoc = getDoc;
+        window.setDoc = setDoc;
+        window.doc = doc;
 
-        // Global objects
-        window.firebaseAuth = auth;
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
         window.signOut = signOut;
@@ -444,6 +445,54 @@
 
     <div class="notification" id="notification">✅ Data Saved!</div>
 
+    <!-- Manual Details Modal -->
+    <div id="manualDetailsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div class="card" style="width:100%; max-width:450px; padding:25px; box-sizing:border-box;">
+            <h3 style="margin-top:0;">📝 Edit Contact Details</h3>
+            <div id="manualDetailsContactNum" style="font-weight:bold; color:var(--primary); margin-bottom:15px;"></div>
+            
+            <div class="form-group">
+                <label>Name (by us)</label>
+                <input type="text" id="manNameInput" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div class="form-group">
+                <label>Country Name</label>
+                <input type="text" id="manCountryInput" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div class="form-group">
+                <label>Activity</label>
+                <input type="text" id="manActivityInput" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div class="form-group">
+                <label>Remarks</label>
+                <textarea id="manRemarksInput" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; height:80px; resize:vertical;"></textarea>
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="saveManualDetails()" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Save</button>
+                <button onclick="closeManualDetailsModal()" style="flex:1; padding:12px; background:#e0e0e0; color:#333; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Fetched Data Modal -->
+    <div id="aiFetchedModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div class="card" style="width:100%; max-width:450px; padding:25px; box-sizing:border-box;">
+            <h3 style="margin-top:0;">🤖 AI Fetched Leads Info</h3>
+            <div id="aiFetchedContactNum" style="font-weight:bold; color:#ef6c00; margin-bottom:15px;"></div>
+            
+            <div style="background:#f9f9f9; padding:15px; border-radius:8px; border:1px solid var(--border); display:flex; flex-direction:column; gap:10px; font-size:14px;">
+                <div><b>👤 Name (Customer):</b> <span id="aiLeadName">N/A</span></div>
+                <div><b>🏢 Company:</b> <span id="aiLeadCompany">N/A</span></div>
+                <div><b>📧 Email:</b> <span id="aiLeadEmail">N/A</span></div>
+                <div><b>📦 Products:</b> <span id="aiLeadProducts">N/A</span></div>
+                <div><b>🌐 Website:</b> <span id="aiLeadWebsite">N/A</span></div>
+            </div>
+            
+            <button onclick="closeAiFetchedModal()" style="width:100%; padding:12px; background:#e0e0e0; color:#333; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-top:20px;">Close</button>
+        </div>
+    </div>
+
     <script>
         // Global edit mode indices
         let editingFaqIndex = null;
@@ -532,9 +581,15 @@
                 const leadProducts = info.leadProducts ? `<br>📦 Products: ${info.leadProducts}` : '';
                 const leadEmail = info.leadEmail ? `<br>📧 Email: ${info.leadEmail}` : '';
                 const leadWebsite = info.leadWebsite ? `<br>🌐 Website: ${info.leadWebsite}` : '';
+                
+                const manName = info.manualName ? `<br><b style="color:#2196f3;">📝 Manual Name: ${info.manualName}</b>` : '';
+                const manCountry = info.manualCountry ? `<br>🌍 Country: ${info.manualCountry}` : '';
+                const manActivity = info.manualActivity ? `<br>⚡ Activity: ${info.manualActivity}` : '';
+                const manRemarks = info.manualRemarks ? `<br>💬 Remarks: ${info.manualRemarks}` : '';
+                
                 listDiv.innerHTML += `
                     <div class="contact-item">
-                        <span>📞 +${num} ${leadName} ${leadCompany} ${leadProducts} ${leadEmail} ${leadWebsite}</span>
+                        <span>📞 +${num} ${leadName} ${leadCompany} ${leadProducts} ${leadEmail} ${leadWebsite} ${manName} ${manCountry} ${manActivity} ${manRemarks}</span>
                         <span class="contact-date">First: ${d} <br> Last Greeted: ${info.lastGreetingDate}</span>
                     </div>`;
             });
@@ -766,9 +821,12 @@
                     let timeStr = "";
                     if (m.timestamp) {
                         const date = new Date(m.timestamp);
+                        const day = date.getDate();
+                        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                        const month = months[date.getMonth()];
                         const hours = String(date.getHours()).padStart(2, '0');
                         const minutes = String(date.getMinutes()).padStart(2, '0');
-                        timeStr = `${hours}:${minutes}`;
+                        timeStr = `${day} ${month}, ${hours}:${minutes}`;
                     }
 
                     bubble.innerHTML = `
@@ -868,8 +926,19 @@
                     const nameLabel = info.leadName ? ` (${info.leadName})` : '';
                     const d = document.createElement('div');
                     d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
-                    d.innerText = `+${num}${nameLabel}`;
-                    d.onclick = () => openChat(num);
+                    d.style.display = 'flex';
+                    d.style.justifyContent = 'space-between';
+                    d.style.alignItems = 'center';
+                    
+                    d.innerHTML = `
+                        <div style="flex:1; cursor:pointer;" onclick="openChat('${num}')">
+                            +${num}${nameLabel}
+                        </div>
+                        <div style="display:flex; gap:5px; margin-left:10px; align-items:center;">
+                            <button onclick="openManualDetailsModal('${num}')" title="Add details by us" style="border:none; background:none; font-size:16px; cursor:pointer; padding:2px;">📝</button>
+                            <button onclick="openAiFetchedModal('${num}')" title="AI fetched details" style="border:none; background:none; font-size:16px; cursor:pointer; padding:2px;">🤖</button>
+                        </div>
+                    `;
                     listDiv.appendChild(d);
                 });
             }
@@ -1214,6 +1283,93 @@
                 n.innerText = '❌ Suggestion failed.';
                 setTimeout(() => n.classList.remove('show'), 4000);
             }
+        }
+
+        let selectedDetailsNum = null;
+
+        async function openManualDetailsModal(num) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            selectedDetailsNum = num;
+            document.getElementById('manualDetailsContactNum').innerText = `+${num}`;
+            
+            const res = await fetch('api/contacts');
+            const contacts = await res.json();
+            const info = contacts[num] || {};
+            
+            document.getElementById('manNameInput').value = info.manualName || '';
+            document.getElementById('manCountryInput').value = info.manualCountry || '';
+            document.getElementById('manActivityInput').value = info.manualActivity || '';
+            document.getElementById('manRemarksInput').value = info.manualRemarks || '';
+            
+            document.getElementById('manualDetailsModal').style.display = 'flex';
+        }
+
+        function closeManualDetailsModal() {
+            document.getElementById('manualDetailsModal').style.display = 'none';
+            selectedDetailsNum = null;
+        }
+
+        async function saveManualDetails() {
+            if (!selectedDetailsNum) return;
+            const num = selectedDetailsNum;
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Saving contact details...';
+            n.classList.add('show');
+            
+            try {
+                const manName = document.getElementById('manNameInput').value.trim();
+                const manCountry = document.getElementById('manCountryInput').value.trim();
+                const manActivity = document.getElementById('manActivityInput').value.trim();
+                const manRemarks = document.getElementById('manRemarksInput').value.trim();
+                
+                const contactsRef = window.doc(window.firebaseDb, "appData", "contacts");
+                const contactsSnap = await window.getDoc(contactsRef);
+                let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
+                
+                if (!contacts[num]) contacts[num] = {};
+                contacts[num].manualName = manName;
+                contacts[num].manualCountry = manCountry;
+                contacts[num].manualActivity = manActivity;
+                contacts[num].manualRemarks = manRemarks;
+                
+                await window.setDoc(contactsRef, contacts);
+                
+                n.innerText = '✅ Contact details saved!';
+                setTimeout(() => n.classList.remove('show'), 2000);
+                closeManualDetailsModal();
+                loadContacts();
+            } catch(e) {
+                console.error("Save manual details failed:", e);
+                n.innerText = '❌ Failed to save details.';
+                setTimeout(() => n.classList.remove('show'), 3000);
+            }
+        }
+
+        async function openAiFetchedModal(num) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            document.getElementById('aiFetchedContactNum').innerText = `+${num}`;
+            
+            const res = await fetch('api/contacts');
+            const contacts = await res.json();
+            const info = contacts[num] || {};
+            
+            document.getElementById('aiLeadName').innerText = info.leadName || 'N/A';
+            document.getElementById('aiLeadCompany').innerText = info.leadCompany || 'N/A';
+            document.getElementById('aiLeadEmail').innerText = info.leadEmail || 'N/A';
+            document.getElementById('aiLeadProducts').innerText = info.leadProducts || 'N/A';
+            document.getElementById('aiLeadWebsite').innerText = info.leadWebsite || 'N/A';
+            
+            document.getElementById('aiFetchedModal').style.display = 'flex';
+        }
+
+        function closeAiFetchedModal() {
+            document.getElementById('aiFetchedModal').style.display = 'none';
         }
 
         // PWA Installation & Service Worker Integration
