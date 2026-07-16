@@ -72,8 +72,53 @@
         .app-section { display: none; }
         .app-section.active { display: block; }
 
-        .notification { position: fixed; bottom: 30px; right: 30px; background-color: #111b21; color: white; padding: 15px 25px; border-radius: 8px; transform: translateY(100px); opacity: 0; transition: 0.3s; }
+        .notification { position: fixed; bottom: 30px; right: 30px; background-color: #111b21; color: white; padding: 15px 25px; border-radius: 8px; transform: translateY(100px); opacity: 0; transition: 0.3s; z-index: 3000; }
         .notification.show { transform: translateY(0); opacity: 1; }
+
+        /* Follow Up Section Styles */
+        .followup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .followup-header h2 { margin: 0; }
+        .followup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+        .followup-card { background: var(--card-bg); border-radius: 12px; padding: 18px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); position: relative; transition: 0.2s; }
+        .followup-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .followup-card .fu-type { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
+        .fu-type-sales { background: #2196f3; }
+        .fu-type-purchase { background: #ff9800; }
+        .fu-type-wusooli { background: #9c27b0; }
+        .fu-type-special { background: #e91e63; }
+        .fu-status-pending { border-left-color: #ff9800; }
+        .fu-status-completed { border-left-color: #4caf50; opacity: 0.7; }
+        .fu-status-inprogress { border-left-color: #2196f3; }
+        .followup-card .fu-actions { position: absolute; top: 12px; right: 12px; display: flex; gap: 5px; }
+        .followup-card .fu-actions button { border: none; background: none; cursor: pointer; font-size: 16px; padding: 2px; opacity: 0.6; }
+        .followup-card .fu-actions button:hover { opacity: 1; }
+        .followup-card .fu-info { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+        .followup-card .fu-info span { display: flex; align-items: center; gap: 6px; }
+        .followup-card .fu-info .fu-label { color: var(--text-muted); font-size: 12px; min-width: 60px; }
+        .followup-card .fu-start-words { background: #f5f5f5; padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-style: italic; font-size: 13px; color: #555; border-left: 3px solid var(--primary); }
+        .followup-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .followup-empty h3 { margin: 0 0 10px 0; font-size: 24px; }
+        .followup-stats { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+        .followup-stats .stat-box { flex: 1; min-width: 100px; background: var(--card-bg); border-radius: 10px; padding: 15px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .followup-stats .stat-box h3 { margin: 0; font-size: 24px; }
+        .followup-stats .stat-box span { font-size: 12px; color: var(--text-muted); font-weight: bold; }
+
+        /* Follow Up Modal */
+        .fu-modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; }
+        .fu-modal { background: var(--card-bg); border-radius: 16px; padding: 30px; width:100%; max-width:500px; max-height:90vh; overflow-y:auto; box-sizing:border-box; margin: 20px; }
+        .fu-modal h3 { margin-top:0; display:flex; align-items:center; gap:10px; }
+        .fu-modal .form-group { margin-bottom: 18px; }
+        .fu-modal label { font-weight:600; font-size:14px; display:block; margin-bottom:5px; }
+        .fu-modal input, .fu-modal select, .fu-modal textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+        .fu-modal textarea { resize:vertical; min-height:60px; }
+        .fu-modal .btn-row { display:flex; gap:10px; margin-top:20px; }
+        .fu-modal .btn-row button { flex:1; padding:12px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; }
+
+        /* Double Tick / Status in Chat */
+        .msg-status { font-size: 14px; margin-left: 5px; vertical-align: middle; }
+        .msg-status.sent { color: #53bdeb; }
+        .msg-status.delivered { color: #4fc3f7; }
+        .msg-status.read { color: #4fc3f7; }
 
         /* PWA Install Button style */
         .btn-pwa-install { display: none; background-color: #25d366; color: white; border: none; border-radius: 8px; padding: 10px 15px; font-weight: bold; cursor: pointer; margin-right: 15px; }
@@ -193,6 +238,7 @@
             <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
             <div class="menu-item" onclick="showSection('dashboard')">🏠 Knowledge Base</div>
             <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
+            <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366; display: none;">📲 Install App</div>
@@ -410,6 +456,42 @@
                 </div>
             </div>
 
+            <!-- Follow Up Section -->
+            <div id="followupSection" class="app-section">
+                <div class="followup-header">
+                    <h2>📅 Follow Up Management</h2>
+                    <button onclick="openFollowUpModal()" style="background:var(--primary); color:white; border:none; padding:12px 20px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:8px;">➕ New Follow Up</button>
+                </div>
+                
+                <div class="followup-stats" id="followupStats">
+                    <div class="stat-box"><h3 id="fuStatTotal">0</h3><span>Total</span></div>
+                    <div class="stat-box"><h3 id="fuStatPending">0</h3><span>Pending</span></div>
+                    <div class="stat-box"><h3 id="fuStatInProgress">0</h3><span>In Progress</span></div>
+                    <div class="stat-box"><h3 id="fuStatCompleted">0</h3><span>Completed</span></div>
+                </div>
+                
+                <div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <input type="text" id="fuSearchInput" placeholder="🔍 Search by name, phone, or ask..." oninput="renderFollowUps()" style="flex:1; min-width:200px; padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;">
+                    <select id="fuFilterType" onchange="renderFollowUps()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="all">All Types</option>
+                        <option value="sales">Sales</option>
+                        <option value="purchase">Purchase Material Enquiry</option>
+                        <option value="wusooli">Wusooli Loan Receive Back</option>
+                        <option value="special">Special Reminder</option>
+                    </select>
+                    <select id="fuFilterStatus" onchange="renderFollowUps()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="inprogress">In Progress</option>
+                        <option value="completed">Completed</option>
+                    </select>
+                </div>
+                
+                <div class="followup-grid" id="followupGrid">
+                    <div class="followup-empty"><h3>📋 No Follow Ups Yet</h3><p>Click "New Follow Up" to add your first task!</p></div>
+                </div>
+            </div>
+
             <!-- Live Chat Section -->
             <div id="chatSection" class="app-section">
                 <div class="card" style="padding: 0; border: none; box-shadow: none;">
@@ -477,6 +559,51 @@
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="saveManualDetails()" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Save</button>
                 <button onclick="closeManualDetailsModal()" style="flex:1; padding:12px; background:#e0e0e0; color:#333; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Follow Up Modal -->
+    <div class="fu-modal-overlay" id="fuModalOverlay">
+        <div class="fu-modal">
+            <h3>📋 <span id="fuModalTitle">New Follow Up</span></h3>
+            <input type="hidden" id="fuEditId" value="">
+            <div class="form-group">
+                <label>📞 Telephone Number *</label>
+                <input type="text" id="fuPhone" placeholder="e.g. 971501234567">
+            </div>
+            <div class="form-group">
+                <label>👤 Customer Name *</label>
+                <input type="text" id="fuName" placeholder="e.g. Ahmed Khan">
+            </div>
+            <div class="form-group">
+                <label>❓ Ask About</label>
+                <textarea id="fuAskAbout" placeholder="What is this follow-up about? e.g. Quotation for copper scrap"></textarea>
+            </div>
+            <div class="form-group">
+                <label>💬 Start Communication With</label>
+                <textarea id="fuStartWords" placeholder="Opening message / words to begin with... e.g. Assalam-o-Alaikum! Following up on your inquiry about..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>📂 Type of Follow Up</label>
+                <select id="fuType">
+                    <option value="sales">💰 Sales</option>
+                    <option value="purchase">📦 Purchase Material Enquiry</option>
+                    <option value="wusooli">💳 Wusooli Loan Receive Back</option>
+                    <option value="special">🔔 Special Reminder</option>
+                </select>
+            </div>
+            <div class="form-group" id="fuStatusGroup" style="display:none;">
+                <label>Status</label>
+                <select id="fuStatus">
+                    <option value="pending">⏳ Pending</option>
+                    <option value="inprogress">🔄 In Progress</option>
+                    <option value="completed">✅ Completed</option>
+                </select>
+            </div>
+            <div class="btn-row">
+                <button onclick="saveFollowUp()" style="background:var(--primary); color:white;">💾 Save</button>
+                <button onclick="closeFollowUpModal()" style="background:#e0e0e0; color:#333;">Cancel</button>
             </div>
         </div>
     </div>
@@ -843,9 +970,19 @@
                         timeStr = `${day} ${month}, ${hours}:${minutes}`;
                     }
 
+                    // Status indicator (double tick for sent bot messages)
+                    let statusHtml = '';
+                    if (m.sender === 'bot') {
+                        if (m.status === 'sent') {
+                            statusHtml = `<span class="msg-status sent" title="Sent">✓✓</span>`;
+                        } else {
+                            statusHtml = `<span class="msg-status" title="Pending">✓</span>`;
+                        }
+                    }
+
                     bubble.innerHTML = `
                         <div style="white-space: pre-wrap; word-break: break-word;">${m.text}</div>
-                        <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal;">${timeStr}</div>
+                        <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal; display: flex; justify-content: flex-end; align-items: center; gap: 3px;">${timeStr}${statusHtml}</div>
                     `;
                     msgList.appendChild(bubble);
                 });
@@ -1404,6 +1541,231 @@
         function closeAiFetchedModal() {
             document.getElementById('aiFetchedModal').style.display = 'none';
         }
+
+        // ===== FOLLOW UP FUNCTIONS =====
+        let followUpsData = [];
+
+        async function loadFollowUps() {
+            try {
+                const res = await fetch('api/followups');
+                followUpsData = await res.json();
+                if (!Array.isArray(followUpsData)) followUpsData = [];
+                renderFollowUps();
+            } catch(e) {
+                console.error("Failed to load follow-ups:", e);
+                followUpsData = [];
+            }
+        }
+
+        function renderFollowUps() {
+            const grid = document.getElementById('followupGrid');
+            const query = (document.getElementById('fuSearchInput')?.value || '').toLowerCase().trim();
+            const typeFilter = document.getElementById('fuFilterType')?.value || 'all';
+            const statusFilter = document.getElementById('fuFilterStatus')?.value || 'all';
+
+            let filtered = followUpsData.filter(f => {
+                if (typeFilter !== 'all' && f.type !== typeFilter) return false;
+                if (statusFilter !== 'all' && f.status !== statusFilter) return false;
+                if (query) {
+                    const q = query;
+                    return (f.customerName || '').toLowerCase().includes(q) ||
+                           (f.phoneNumber || '').includes(q) ||
+                           (f.askAbout || '').toLowerCase().includes(q) ||
+                           (f.startWords || '').toLowerCase().includes(q);
+                }
+                return true;
+            });
+
+            // Stats
+            const total = followUpsData.length;
+            const pending = followUpsData.filter(f => f.status === 'pending').length;
+            const inProgress = followUpsData.filter(f => f.status === 'inprogress').length;
+            const completed = followUpsData.filter(f => f.status === 'completed').length;
+            document.getElementById('fuStatTotal').innerText = total;
+            document.getElementById('fuStatPending').innerText = pending;
+            document.getElementById('fuStatInProgress').innerText = inProgress;
+            document.getElementById('fuStatCompleted').innerText = completed;
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="followup-empty"><h3>📋 No Follow Ups Found</h3><p>' +
+                    (followUpsData.length === 0 ? 'Click "New Follow Up" to add your first task!' : 'No results match your filters.') +
+                    '</p></div>';
+                return;
+            }
+
+            grid.innerHTML = '';
+            filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            filtered.forEach(f => {
+                const typeLabels = { sales: '💰 Sales', purchase: '📦 Purchase', wusooli: '💳 Wusooli', special: '🔔 Special' };
+                const typeClasses = { sales: 'fu-type-sales', purchase: 'fu-type-purchase', wusooli: 'fu-type-wusooli', special: 'fu-type-special' };
+                const statusLabels = { pending: '⏳ Pending', inprogress: '🔄 In Progress', completed: '✅ Completed' };
+                const statusClass = f.status === 'completed' ? 'fu-status-completed' : f.status === 'inprogress' ? 'fu-status-inprogress' : 'fu-status-pending';
+
+                const createdDate = f.createdAt ? new Date(f.createdAt).toLocaleDateString() : 'N/A';
+
+                const card = document.createElement('div');
+                card.className = `followup-card ${statusClass}`;
+                
+                // Type badge + Actions
+                let statusActionsHtml = '';
+                if (f.status === 'pending') {
+                    statusActionsHtml = `<button onclick="updateFollowUpStatus('${f.id}','inprogress')" title="Start">▶️</button>`;
+                } else if (f.status === 'inprogress') {
+                    statusActionsHtml = `<button onclick="updateFollowUpStatus('${f.id}','completed')" title="Complete">✅</button>`;
+                }
+
+                card.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-right:80px;">
+                        <span class="fu-type ${typeClasses[f.type] || 'fu-type-sales'}">${typeLabels[f.type] || f.type}</span>
+                        <span style="font-size:11px; color:var(--text-muted);">${createdDate}</span>
+                    </div>
+                    <div style="font-weight:bold; font-size:16px; color:var(--text-main); padding-right:80px;">${f.customerName || 'Unknown'}</div>
+                    <div style="font-size:13px; color:var(--text-muted); margin-bottom:5px;">📞 ${f.phoneNumber || 'N/A'}</div>
+                    <div class="fu-info">
+                        ${f.askAbout ? `<span><span class="fu-label">❓ Ask:</span> ${f.askAbout}</span>` : ''}
+                    </div>
+                    ${f.startWords ? `<div class="fu-start-words">💬 "${f.startWords}"</div>` : ''}
+                    <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+                        <span>${statusLabels[f.status] || f.status}</span>
+                    </div>
+                    <div class="fu-actions">
+                        ${statusActionsHtml}
+                        <button onclick="editFollowUp('${f.id}')" title="Edit">✏️</button>
+                        <button onclick="deleteFollowUp('${f.id}')" title="Delete">🗑️</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function openFollowUpModal() {
+            document.getElementById('fuModalTitle').innerText = 'New Follow Up';
+            document.getElementById('fuEditId').value = '';
+            document.getElementById('fuPhone').value = '';
+            document.getElementById('fuName').value = '';
+            document.getElementById('fuAskAbout').value = '';
+            document.getElementById('fuStartWords').value = '';
+            document.getElementById('fuType').value = 'sales';
+            document.getElementById('fuStatusGroup').style.display = 'none';
+            document.getElementById('fuModalOverlay').style.display = 'flex';
+        }
+
+        function closeFollowUpModal() {
+            document.getElementById('fuModalOverlay').style.display = 'none';
+        }
+
+        async function saveFollowUp() {
+            const phone = document.getElementById('fuPhone').value.trim();
+            const name = document.getElementById('fuName').value.trim();
+            const askAbout = document.getElementById('fuAskAbout').value.trim();
+            const startWords = document.getElementById('fuStartWords').value.trim();
+            const type = document.getElementById('fuType').value;
+            const editId = document.getElementById('fuEditId').value;
+            const status = document.getElementById('fuStatus').value;
+
+            if (!phone && !name) {
+                alert("Please enter at least a phone number or customer name.");
+                return;
+            }
+
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Saving follow-up...';
+            n.classList.add('show');
+
+            try {
+                const payload = { phoneNumber: phone, customerName: name, askAbout, startWords, type };
+                
+                if (editId) {
+                    payload.status = status;
+                    await fetch(`api/followups/${editId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    n.innerText = '✅ Follow-up updated!';
+                } else {
+                    await fetch('api/followups', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    n.innerText = '✅ Follow-up saved!';
+                }
+                
+                setTimeout(() => n.classList.remove('show'), 2000);
+                closeFollowUpModal();
+                await loadFollowUps();
+            } catch(e) {
+                n.innerText = '❌ Failed to save follow-up.';
+                setTimeout(() => n.classList.remove('show'), 3000);
+            }
+        }
+
+        async function editFollowUp(id) {
+            const f = followUpsData.find(item => item.id === id);
+            if (!f) return;
+
+            document.getElementById('fuModalTitle').innerText = 'Edit Follow Up';
+            document.getElementById('fuEditId').value = id;
+            document.getElementById('fuPhone').value = f.phoneNumber || '';
+            document.getElementById('fuName').value = f.customerName || '';
+            document.getElementById('fuAskAbout').value = f.askAbout || '';
+            document.getElementById('fuStartWords').value = f.startWords || '';
+            document.getElementById('fuType').value = f.type || 'sales';
+            document.getElementById('fuStatus').value = f.status || 'pending';
+            document.getElementById('fuStatusGroup').style.display = 'block';
+            document.getElementById('fuModalOverlay').style.display = 'flex';
+        }
+
+        async function updateFollowUpStatus(id, newStatus) {
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Updating...';
+            n.classList.add('show');
+            try {
+                await fetch(`api/followups/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const statusLabels = { pending: '⏳ Pending', inprogress: '🔄 In Progress', completed: '✅ Completed' };
+                n.innerText = `✅ Status: ${statusLabels[newStatus]}`;
+                setTimeout(() => n.classList.remove('show'), 2000);
+                await loadFollowUps();
+            } catch(e) {
+                n.innerText = '❌ Failed to update.';
+                setTimeout(() => n.classList.remove('show'), 3000);
+            }
+        }
+
+        async function deleteFollowUp(id) {
+            if (!confirm("Delete this follow-up task?")) return;
+            const n = document.getElementById('notification');
+            n.innerText = '⏳ Deleting...';
+            n.classList.add('show');
+            try {
+                await fetch(`api/followups/${id}`, { method: 'DELETE' });
+                n.innerText = '🗑️ Follow-up deleted!';
+                setTimeout(() => n.classList.remove('show'), 2000);
+                await loadFollowUps();
+            } catch(e) {
+                n.innerText = '❌ Failed to delete.';
+                setTimeout(() => n.classList.remove('show'), 3000);
+            }
+        }
+
+        // Close modal on overlay click
+        document.addEventListener('click', function(e) {
+            const overlay = document.getElementById('fuModalOverlay');
+            if (e.target === overlay) closeFollowUpModal();
+        });
+
+        // Load follow-ups on section show
+        const origShowSection = showSection;
+        showSection = function(id) {
+            origShowSection(id);
+            if (id === 'followup') loadFollowUps();
+        };
 
         // PWA Installation & Service Worker Integration
         let deferredPrompt;

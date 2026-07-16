@@ -85,10 +85,11 @@ async function sendWhatsAppMessage(to, text, settings) {
       }
     });
 
-    // Log to Firestore
+    // Log to Firestore with status
     await addDoc(collection(db, "chats", to, "messages"), {
       sender: "bot",
       text: text,
+      status: "sent",
       timestamp: Date.now()
     });
   } catch (err) { 
@@ -685,6 +686,72 @@ app.post('/api/ai/suggest-chat-reply', async (req, res) => {
   } catch (err) {
     console.error('Suggest chat reply error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Follow-Ups API ---
+app.get('/api/followups', async (req, res) => {
+  try {
+    const docSnap = await getDoc(doc(db, "appData", "followups"));
+    res.json(docSnap.exists() ? docSnap.data().followups || [] : []);
+  } catch (error) { res.json([]); }
+});
+
+app.post('/api/followups', async (req, res) => {
+  try {
+    const data = req.body;
+    const docSnap = await getDoc(doc(db, "appData", "followups"));
+    let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
+    
+    const newFollowup = {
+      id: Date.now().toString(),
+      phoneNumber: data.phoneNumber || '',
+      customerName: data.customerName || '',
+      askAbout: data.askAbout || '',
+      startWords: data.startWords || '',
+      type: data.type || 'sales',
+      status: data.status || 'pending',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    
+    followups.push(newFollowup);
+    await setDoc(doc(db, "appData", "followups"), { followups });
+    res.json({ success: true, followup: newFollowup });
+  } catch (error) { 
+    res.status(500).json({ error: 'Failed to save follow-up.' }); 
+  }
+});
+
+app.put('/api/followups/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+    const docSnap = await getDoc(doc(db, "appData", "followups"));
+    let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
+    
+    const idx = followups.findIndex(f => f.id === id);
+    if (idx === -1) return res.status(404).json({ error: 'Follow-up not found.' });
+    
+    followups[idx] = { ...followups[idx], ...data, id, updatedAt: Date.now() };
+    await setDoc(doc(db, "appData", "followups"), { followups });
+    res.json({ success: true });
+  } catch (error) { 
+    res.status(500).json({ error: 'Failed to update follow-up.' }); 
+  }
+});
+
+app.delete('/api/followups/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docSnap = await getDoc(doc(db, "appData", "followups"));
+    let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
+    
+    followups = followups.filter(f => f.id !== id);
+    await setDoc(doc(db, "appData", "followups"), { followups });
+    res.json({ success: true });
+  } catch (error) { 
+    res.status(500).json({ error: 'Failed to delete follow-up.' }); 
   }
 });
 
