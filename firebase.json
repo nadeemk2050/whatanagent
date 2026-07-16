@@ -1,8 +1,4 @@
 {
-  "functions": {
-    "source": ".",
-    "runtime": "nodejs20"
-  },
   "firestore": {
     "rules": "firestore.rules"
   },
@@ -12,12 +8,6 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "function": "api"
-      }
     ]
   }
 }

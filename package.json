@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "build": "echo 'No build step required - plain JavaScript project'"
   },
   "dependencies": {
     "@google/generative-ai": "^0.11.0",
@@ -18,7 +19,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "firebase": "^12.16.0",
-    "firebase-functions": "^7.2.5",
     "openai": "^6.46.0"
   },
   "devDependencies": {

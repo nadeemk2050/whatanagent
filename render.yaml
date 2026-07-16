@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: whatanagent-api
+    runtime: node
+    repo: https://github.com/nadeemk2050/whatanagent
+    branch: master
+    plan: free
+    envVars:
+      - key: PORT
+        value: "3000"
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /
+    autoDeploy: true

@@ -8,8 +8,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, orderBy, getDocs } from "firebase/firestore";
-import { onRequest } from "firebase-functions/v2/https";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -892,23 +890,8 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// --- Server Startup ---
-// Local development only (prevents crashing during Firebase deployment analysis)
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`WhatsApp AI Agent (Local) running on port ${PORT}`);
-  });
-}
-
-// Export for Firebase Cloud Functions
-// minInstances: 1 keeps the server ALWAYS WARM - eliminates cold start delays!
-export const api = onRequest(
-  {
-    minInstances: 1,        // Always keep 1 server hot - no cold starts!
-    memory: "512MiB",      // Enough RAM for Gemini + chat history processing
-    timeoutSeconds: 60,    // Allow up to 60 seconds for AI to respond
-    region: "us-central1"
-  },
-  app
-);
+// --- Server Startup (Render) ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`WhatsApp AI Agent running on port ${PORT}`);
+});
