@@ -40,7 +40,8 @@
         .menu-item:hover { background: var(--bg-color); }
         
         /* Content Layout */
-        .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
+        .container { max-width: 800px; margin: 40px auto; padding: 0 20px; transition: max-width 0.3s ease; }
+        .container.chat-mode { max-width: 100%; margin: 10px auto; padding: 0 10px; }
         .card { background: var(--card-bg); border-radius: 12px; padding: 30px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .form-group { margin-bottom: 25px; }
         label { display: block; font-weight: 600; margin-bottom: 8px; }
@@ -413,8 +414,13 @@
             <div id="chatSection" class="app-section">
                 <div class="card" style="padding: 0; border: none; box-shadow: none;">
                     <div class="chat-container" id="chatContainerEl">
-                        <div class="chat-sidebar" id="chatSidebarList">
-                            <!-- Contact list injects here -->
+                        <div class="chat-sidebar" style="display: flex; flex-direction: column;">
+                            <div style="padding: 10px; border-bottom: 1px solid var(--border);">
+                                <input type="text" id="chatSearchInput" placeholder="🔍 Search name, number, details..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 20px; box-sizing: border-box; font-size: 14px; outline: none;">
+                            </div>
+                            <div id="chatSidebarList" style="flex: 1; overflow-y: auto;">
+                                <!-- Contact list injects here -->
+                            </div>
                         </div>
                         <div class="chat-main">
                             <div class="chat-header">
@@ -540,6 +546,14 @@
         function showSection(id) {
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
             document.getElementById(id + 'Section').classList.add('active');
+            
+            const container = document.querySelector('.container');
+            if (id === 'chat') {
+                container.classList.add('chat-mode');
+            } else {
+                container.classList.remove('chat-mode');
+            }
+            
             toggleSidebar();
         }
 
@@ -921,8 +935,27 @@
                     return timeB - timeA;
                 });
 
+                const query = (document.getElementById('chatSearchInput')?.value || '').toLowerCase().trim();
+
                 sortedKeys.forEach(num => {
-                    const info = contacts[num];
+                    const info = contacts[num] || {};
+                    
+                    const matchesNum = num.toLowerCase().includes(query);
+                    const matchesLeadName = (info.leadName || '').toLowerCase().includes(query);
+                    const matchesLeadCompany = (info.leadCompany || '').toLowerCase().includes(query);
+                    const matchesLeadProducts = (info.leadProducts || '').toLowerCase().includes(query);
+                    const matchesLeadEmail = (info.leadEmail || '').toLowerCase().includes(query);
+                    const matchesLeadWebsite = (info.leadWebsite || '').toLowerCase().includes(query);
+                    
+                    const matchesManName = (info.manualName || '').toLowerCase().includes(query);
+                    const matchesManCountry = (info.manualCountry || '').toLowerCase().includes(query);
+                    const matchesManActivity = (info.manualActivity || '').toLowerCase().includes(query);
+                    const matchesManRemarks = (info.manualRemarks || '').toLowerCase().includes(query);
+
+                    if (query && !matchesNum && !matchesLeadName && !matchesLeadCompany && !matchesLeadProducts && !matchesLeadEmail && !matchesLeadWebsite && !matchesManName && !matchesManCountry && !matchesManActivity && !matchesManRemarks) {
+                        return;
+                    }
+
                     const nameLabel = info.leadName ? ` (${info.leadName})` : '';
                     const d = document.createElement('div');
                     d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
