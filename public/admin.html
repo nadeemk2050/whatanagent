@@ -1799,6 +1799,18 @@
                 return;
             }
 
+            // Convert local time to UTC for the scheduler
+            let scheduleUtcTime = scheduleTime;
+            if (scheduleDate && scheduleTime) {
+                const offsetMin = new Date().getTimezoneOffset(); // e.g. -300 for UTC+5
+                const [hh, mm] = scheduleTime.split(':').map(Number);
+                let localTotalMin = hh * 60 + mm;
+                let utcTotalMin = ((localTotalMin + offsetMin) % 1440 + 1440) % 1440;
+                const utcHH = String(Math.floor(utcTotalMin / 60)).padStart(2, '0');
+                const utcMM = String(utcTotalMin % 60).padStart(2, '0');
+                scheduleUtcTime = `${utcHH}:${utcMM}`;
+            }
+
             const n = document.getElementById('notification');
             n.innerText = '⏳ Saving follow-up...';
             n.classList.add('show');
@@ -1811,7 +1823,8 @@
                     startWords, 
                     type,
                     scheduleDate,
-                    scheduleTime,
+                    scheduleTime,      // original local time (for display)
+                    scheduleUtcTime,   // UTC converted (for scheduler)
                     repeatType,
                     repeatDays,
                     repeatInterval,

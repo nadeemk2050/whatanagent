@@ -703,11 +703,11 @@ app.post('/api/followups', async (req, res) => {
     const docSnap = await getDoc(doc(db, "appData", "followups"));
     let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
     
-    // Calculate next send date if schedule is provided (using UTC to avoid timezone mismatch)
+    // Calculate next send date - time already converted to UTC by frontend
     let nextSendDate = null;
-    if (data.scheduleDate && data.scheduleTime) {
+    if (data.scheduleDate && data.scheduleUtcTime) {
       const [y, m, d] = data.scheduleDate.split('-').map(Number);
-      const [hh, mm] = data.scheduleTime.split(':').map(Number);
+      const [hh, mm] = data.scheduleUtcTime.split(':').map(Number);
       nextSendDate = Date.UTC(y, m - 1, d, hh, mm, 0);
     }
 
@@ -720,7 +720,8 @@ app.post('/api/followups', async (req, res) => {
       type: data.type || 'sales',
       status: data.status || 'pending',
       scheduleDate: data.scheduleDate || '',
-      scheduleTime: data.scheduleTime || '',
+      scheduleTime: data.scheduleTime || '',      // original local time (for display)
+      scheduleUtcTime: data.scheduleUtcTime || '', // UTC converted time (for scheduler)
       repeatType: data.repeatType || 'none',
       repeatDays: data.repeatDays || [],
       repeatInterval: data.repeatInterval || 1,
@@ -750,11 +751,11 @@ app.put('/api/followups/:id', async (req, res) => {
     const idx = followups.findIndex(f => f.id === id);
     if (idx === -1) return res.status(404).json({ error: 'Follow-up not found.' });
     
-    // Recalculate nextSendDate if schedule changed (using UTC)
+    // Recalculate nextSendDate if schedule changed
     let updatedData = { ...data, id, updatedAt: Date.now() };
-    if (data.scheduleDate && data.scheduleTime) {
+    if (data.scheduleDate && data.scheduleUtcTime) {
       const [y, m, d] = data.scheduleDate.split('-').map(Number);
-      const [hh, mm] = data.scheduleTime.split(':').map(Number);
+      const [hh, mm] = data.scheduleUtcTime.split(':').map(Number);
       updatedData.nextSendDate = Date.UTC(y, m - 1, d, hh, mm, 0);
     }
     // Don't overwrite repeatSent counter on edit unless explicitly provided
@@ -990,7 +991,8 @@ function calculateNextSendDate(followup) {
   if (!followup.nextSendDate) return null;
   if (followup.repeatType === 'none') return null; // one-time only
   
-  const scheduleTimeParts = (followup.scheduleTime || '09:00').split(':');
+  // Use scheduleUtcTime for accurate UTC time preservation
+  const scheduleTimeParts = (followup.scheduleUtcTime || followup.scheduleTime || '09:00').split(':');
   const hours = parseInt(scheduleTimeParts[0]) || 9;
   const mins = parseInt(scheduleTimeParts[1]) || 0;
   
