@@ -703,6 +703,12 @@ app.post('/api/followups', async (req, res) => {
     const docSnap = await getDoc(doc(db, "appData", "followups"));
     let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
     
+    // Calculate next send date if schedule is provided
+    let nextSendDate = null;
+    if (data.scheduleDate && data.scheduleTime) {
+      nextSendDate = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).getTime();
+    }
+
     const newFollowup = {
       id: Date.now().toString(),
       phoneNumber: data.phoneNumber || '',
@@ -711,6 +717,15 @@ app.post('/api/followups', async (req, res) => {
       startWords: data.startWords || '',
       type: data.type || 'sales',
       status: data.status || 'pending',
+      scheduleDate: data.scheduleDate || '',
+      scheduleTime: data.scheduleTime || '',
+      repeatType: data.repeatType || 'none',
+      repeatDays: data.repeatDays || [],
+      repeatInterval: data.repeatInterval || 1,
+      repeatCount: data.repeatCount || 0,
+      repeatSent: 0,
+      lastSentDate: null,
+      nextSendDate: nextSendDate,
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -733,7 +748,15 @@ app.put('/api/followups/:id', async (req, res) => {
     const idx = followups.findIndex(f => f.id === id);
     if (idx === -1) return res.status(404).json({ error: 'Follow-up not found.' });
     
-    followups[idx] = { ...followups[idx], ...data, id, updatedAt: Date.now() };
+    // Recalculate nextSendDate if schedule changed
+    let updatedData = { ...data, id, updatedAt: Date.now() };
+    if (data.scheduleDate && data.scheduleTime) {
+      updatedData.nextSendDate = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).getTime();
+    }
+    // Don't overwrite repeatSent counter on edit unless explicitly provided
+    if (data.repeatSent === undefined) delete updatedData.repeatSent;
+    
+    followups[idx] = { ...followups[idx], ...updatedData };
     await setDoc(doc(db, "appData", "followups"), { followups });
     res.json({ success: true });
   } catch (error) { 
@@ -957,8 +980,127 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
+// ===== FOLLOW-UP AUTO-SEND SCHEDULER =====
+// Calculates the next send date based on repeat settings
+function calculateNextSendDate(followup) {
+  if (!followup.nextSendDate) return null;
+  if (followup.repeatType === 'none') return null; // one-time only
+  
+  const baseDate = new Date(followup.nextSendDate);
+  const scheduleTimeParts = (followup.scheduleTime || '09:00').split(':');
+  const hours = parseInt(scheduleTimeParts[0]) || 9;
+  const mins = parseInt(scheduleTimeParts[1]) || 0;
+  
+  let nextDate = new Date(baseDate);
+  
+  switch (followup.repeatType) {
+    case 'daily':
+      nextDate.setDate(nextDate.getDate() + 1);
+      break;
+    case 'weekly':
+      nextDate.setDate(nextDate.getDate() + 7);
+      break;
+    case 'weekdays': {
+      // Find next selected day
+      const repeatDays = followup.repeatDays || [];
+      if (repeatDays.length === 0) return null;
+      let found = false;
+      for (let i = 1; i <= 7; i++) {
+        const checkDate = new Date(baseDate);
+        checkDate.setDate(checkDate.getDate() + i);
+        if (repeatDays.includes(checkDate.getDay())) {
+          nextDate = checkDate;
+          found = true;
+          break;
+        }
+      }
+      if (!found) return null;
+      break;
+    }
+    case 'days_interval':
+      nextDate.setDate(nextDate.getDate() + (followup.repeatInterval || 1));
+      break;
+    case 'monthly':
+      nextDate.setMonth(nextDate.getMonth() + 1);
+      break;
+    case 'annually':
+      nextDate.setFullYear(nextDate.getFullYear() + 1);
+      break;
+    default:
+      return null;
+  }
+  
+  nextDate.setHours(hours, mins, 0, 0);
+  return nextDate.getTime();
+}
+
+async function processFollowUpScheduler() {
+  try {
+    const docSnap = await getDoc(doc(db, "appData", "followups"));
+    const allFollowups = docSnap.exists() ? docSnap.data().followups || [] : [];
+    const settings = await getSettings();
+    
+    const now = Date.now();
+    let changed = false;
+    
+    for (const f of allFollowups) {
+      // Skip if no phone number, already completed, or no valid next send date
+      if (!f.phoneNumber || f.status === 'completed' || !f.nextSendDate) continue;
+      
+      // Check if it's time to send
+      if (f.nextSendDate <= now) {
+        console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
+        
+        // Send WhatsApp message
+        if (f.startWords) {
+          await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
+        }
+        
+        // Update counters
+        f.repeatSent = (f.repeatSent || 0) + 1;
+        f.lastSentDate = now;
+        f.updatedAt = now;
+        
+        // Check if repeat count reached
+        if (f.repeatCount > 0 && f.repeatSent >= f.repeatCount) {
+          f.status = 'completed';
+          f.nextSendDate = null;
+          console.log(`[SCHEDULER] Completed follow-up for ${f.phoneNumber} (reached ${f.repeatCount} repeats)`);
+        } else {
+          // Calculate next send date
+          const nextDate = calculateNextSendDate(f);
+          if (nextDate) {
+            f.nextSendDate = nextDate;
+            console.log(`[SCHEDULER] Next send for ${f.phoneNumber}: ${new Date(nextDate).toISOString()}`);
+          } else {
+            f.status = 'completed';
+            f.nextSendDate = null;
+          }
+        }
+        changed = true;
+      }
+    }
+    
+    if (changed) {
+      await setDoc(doc(db, "appData", "followups"), { followups: allFollowups });
+      console.log('[SCHEDULER] Follow-up data saved to Firestore');
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Error:', err.message);
+  }
+}
+
+// Start the scheduler (runs every 60 seconds)
+function startFollowUpScheduler() {
+  console.log('[SCHEDULER] Started - checking every 60 seconds');
+  // Run immediately on start, then every 60s
+  processFollowUpScheduler();
+  setInterval(processFollowUpScheduler, 60 * 1000);
+}
+
 // --- Server Startup (Render) ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`WhatsApp AI Agent running on port ${PORT}`);
+  startFollowUpScheduler();
 });

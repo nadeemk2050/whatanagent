@@ -581,8 +581,8 @@
                 <textarea id="fuAskAbout" placeholder="What is this follow-up about? e.g. Quotation for copper scrap"></textarea>
             </div>
             <div class="form-group">
-                <label>💬 Start Communication With</label>
-                <textarea id="fuStartWords" placeholder="Opening message / words to begin with... e.g. Assalam-o-Alaikum! Following up on your inquiry about..."></textarea>
+                <label>💬 Start Communication With (WhatsApp Message)</label>
+                <textarea id="fuStartWords" placeholder="This message will be auto-sent on schedule via WhatsApp"></textarea>
             </div>
             <div class="form-group">
                 <label>📂 Type of Follow Up</label>
@@ -593,6 +593,75 @@
                     <option value="special">🔔 Special Reminder</option>
                 </select>
             </div>
+
+            <!-- SCHEDULING SECTION -->
+            <div style="border-top:2px solid var(--primary); padding-top:18px; margin-top:10px;">
+                <h4 style="margin:0 0 15px 0; color:var(--text-main); display:flex; align-items:center; gap:8px;">⏰ Schedule Auto-Send</h4>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label>📅 Start Date</label>
+                        <input type="date" id="fuScheduleDate">
+                    </div>
+                    <div class="form-group">
+                        <label>⏱️ Time</label>
+                        <input type="time" id="fuScheduleTime" value="09:00">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>🔄 Repeat</label>
+                    <select id="fuRepeatType" onchange="toggleRepeatOptions()" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="none">Don't Repeat (Send Once)</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Every Week</option>
+                        <option value="weekdays">Custom Days of Week</option>
+                        <option value="days_interval">Every X Days</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="annually">Annually</option>
+                    </select>
+                </div>
+
+                <!-- Weekday picker (shown when repeatType = weekdays) -->
+                <div id="fuWeekdayGroup" style="display:none; margin-bottom:15px;">
+                    <label style="font-weight:600; font-size:14px; display:block; margin-bottom:8px;">Select Days</label>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="0"> Sun
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="1"> Mon
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="2"> Tue
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="3"> Wed
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="4"> Thu
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="5"> Fri
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; background:#f0f2f5; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:13px;">
+                            <input type="checkbox" class="fu-day-cb" value="6"> Sat
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Interval input (shown when repeatType = days_interval) -->
+                <div id="fuIntervalGroup" style="display:none; margin-bottom:15px;">
+                    <label style="font-weight:600; font-size:14px; display:block; margin-bottom:5px;">Every how many days?</label>
+                    <input type="number" id="fuRepeatInterval" value="3" min="1" max="365" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;">
+                </div>
+
+                <div class="form-group">
+                    <label>🔁 Repeat How Many Times? (0 = Unlimited)</label>
+                    <input type="number" id="fuRepeatCount" value="0" min="0" max="999" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;">
+                </div>
+            </div>
+
             <div class="form-group" id="fuStatusGroup" style="display:none;">
                 <label>Status</label>
                 <select id="fuStatus">
@@ -1615,6 +1684,23 @@
                     statusActionsHtml = `<button onclick="updateFollowUpStatus('${f.id}','completed')" title="Complete">✅</button>`;
                 }
 
+                // Schedule info
+                let scheduleHtml = '';
+                if (f.scheduleDate && f.scheduleTime) {
+                    const repeatLabels = { none: 'Once', daily: 'Daily', weekly: 'Weekly', weekdays: 'Custom Days', days_interval: `Every ${f.repeatInterval||1} days`, monthly: 'Monthly', annually: 'Annually' };
+                    const repeatLabel = repeatLabels[f.repeatType] || 'Once';
+                    const timesLabel = f.repeatCount > 0 ? `× ${f.repeatCount}` : '∞ Unlimited';
+                    const sentLabel = f.repeatSent > 0 ? ` (${f.repeatSent} sent)` : '';
+                    
+                    scheduleHtml = `
+                        <div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); font-size:12px; color:var(--text-muted);">
+                            <div>📅 ${f.scheduleDate} at ${f.scheduleTime}</div>
+                            <div>🔄 ${repeatLabel} ${timesLabel}${sentLabel}</div>
+                            ${f.nextSendDate ? `<div>⏳ Next: ${new Date(f.nextSendDate).toLocaleDateString()} ${new Date(f.nextSendDate).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>` : ''}
+                        </div>
+                    `;
+                }
+
                 card.innerHTML = `
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-right:80px;">
                         <span class="fu-type ${typeClasses[f.type] || 'fu-type-sales'}">${typeLabels[f.type] || f.type}</span>
@@ -1625,8 +1711,9 @@
                     <div class="fu-info">
                         ${f.askAbout ? `<span><span class="fu-label">❓ Ask:</span> ${f.askAbout}</span>` : ''}
                     </div>
-                    ${f.startWords ? `<div class="fu-start-words">💬 "${f.startWords}"</div>` : ''}
-                    <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+                    ${f.startWords ? `<div class="fu-start-words">💬 "${f.startWords.substring(0, 80)}${f.startWords.length > 80 ? '...' : ''}"</div>` : ''}
+                    ${scheduleHtml}
+                    <div style="margin-top:8px; font-size:12px; color:var(--text-muted);">
                         <span>${statusLabels[f.status] || f.status}</span>
                     </div>
                     <div class="fu-actions">
@@ -1639,6 +1726,23 @@
             });
         }
 
+        function toggleRepeatOptions() {
+            const val = document.getElementById('fuRepeatType').value;
+            document.getElementById('fuWeekdayGroup').style.display = val === 'weekdays' ? 'block' : 'none';
+            document.getElementById('fuIntervalGroup').style.display = val === 'days_interval' ? 'block' : 'none';
+        }
+
+        function getSelectedDays() {
+            const cbs = document.querySelectorAll('.fu-day-cb:checked');
+            return Array.from(cbs).map(cb => parseInt(cb.value));
+        }
+
+        function setSelectedDays(days) {
+            document.querySelectorAll('.fu-day-cb').forEach(cb => {
+                cb.checked = days.includes(parseInt(cb.value));
+            });
+        }
+
         function openFollowUpModal() {
             document.getElementById('fuModalTitle').innerText = 'New Follow Up';
             document.getElementById('fuEditId').value = '';
@@ -1647,6 +1751,13 @@
             document.getElementById('fuAskAbout').value = '';
             document.getElementById('fuStartWords').value = '';
             document.getElementById('fuType').value = 'sales';
+            document.getElementById('fuScheduleDate').value = '';
+            document.getElementById('fuScheduleTime').value = '09:00';
+            document.getElementById('fuRepeatType').value = 'none';
+            document.getElementById('fuRepeatInterval').value = '3';
+            document.getElementById('fuRepeatCount').value = '0';
+            setSelectedDays([]);
+            toggleRepeatOptions();
             document.getElementById('fuStatusGroup').style.display = 'none';
             document.getElementById('fuModalOverlay').style.display = 'flex';
         }
@@ -1663,6 +1774,14 @@
             const type = document.getElementById('fuType').value;
             const editId = document.getElementById('fuEditId').value;
             const status = document.getElementById('fuStatus').value;
+            
+            // Schedule fields
+            const scheduleDate = document.getElementById('fuScheduleDate').value;
+            const scheduleTime = document.getElementById('fuScheduleTime').value;
+            const repeatType = document.getElementById('fuRepeatType').value;
+            const repeatDays = getSelectedDays();
+            const repeatInterval = parseInt(document.getElementById('fuRepeatInterval').value) || 1;
+            const repeatCount = parseInt(document.getElementById('fuRepeatCount').value) || 0;
 
             if (!phone && !name) {
                 alert("Please enter at least a phone number or customer name.");
@@ -1674,7 +1793,19 @@
             n.classList.add('show');
 
             try {
-                const payload = { phoneNumber: phone, customerName: name, askAbout, startWords, type };
+                const payload = { 
+                    phoneNumber: phone, 
+                    customerName: name, 
+                    askAbout, 
+                    startWords, 
+                    type,
+                    scheduleDate,
+                    scheduleTime,
+                    repeatType,
+                    repeatDays,
+                    repeatInterval,
+                    repeatCount
+                };
                 
                 if (editId) {
                     payload.status = status;
@@ -1714,6 +1845,16 @@
             document.getElementById('fuStartWords').value = f.startWords || '';
             document.getElementById('fuType').value = f.type || 'sales';
             document.getElementById('fuStatus').value = f.status || 'pending';
+            
+            // Load schedule fields
+            document.getElementById('fuScheduleDate').value = f.scheduleDate || '';
+            document.getElementById('fuScheduleTime').value = f.scheduleTime || '09:00';
+            document.getElementById('fuRepeatType').value = f.repeatType || 'none';
+            document.getElementById('fuRepeatInterval').value = f.repeatInterval || 3;
+            document.getElementById('fuRepeatCount').value = f.repeatCount ?? 0;
+            setSelectedDays(f.repeatDays || []);
+            toggleRepeatOptions();
+            
             document.getElementById('fuStatusGroup').style.display = 'block';
             document.getElementById('fuModalOverlay').style.display = 'flex';
         }
