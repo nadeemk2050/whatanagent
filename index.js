@@ -703,10 +703,12 @@ app.post('/api/followups', async (req, res) => {
     const docSnap = await getDoc(doc(db, "appData", "followups"));
     let followups = docSnap.exists() ? docSnap.data().followups || [] : [];
     
-    // Calculate next send date if schedule is provided
+    // Calculate next send date if schedule is provided (using UTC to avoid timezone mismatch)
     let nextSendDate = null;
     if (data.scheduleDate && data.scheduleTime) {
-      nextSendDate = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).getTime();
+      const [y, m, d] = data.scheduleDate.split('-').map(Number);
+      const [hh, mm] = data.scheduleTime.split(':').map(Number);
+      nextSendDate = Date.UTC(y, m - 1, d, hh, mm, 0);
     }
 
     const newFollowup = {
@@ -748,10 +750,12 @@ app.put('/api/followups/:id', async (req, res) => {
     const idx = followups.findIndex(f => f.id === id);
     if (idx === -1) return res.status(404).json({ error: 'Follow-up not found.' });
     
-    // Recalculate nextSendDate if schedule changed
+    // Recalculate nextSendDate if schedule changed (using UTC)
     let updatedData = { ...data, id, updatedAt: Date.now() };
     if (data.scheduleDate && data.scheduleTime) {
-      updatedData.nextSendDate = new Date(`${data.scheduleDate}T${data.scheduleTime}:00`).getTime();
+      const [y, m, d] = data.scheduleDate.split('-').map(Number);
+      const [hh, mm] = data.scheduleTime.split(':').map(Number);
+      updatedData.nextSendDate = Date.UTC(y, m - 1, d, hh, mm, 0);
     }
     // Don't overwrite repeatSent counter on edit unless explicitly provided
     if (data.repeatSent === undefined) delete updatedData.repeatSent;
@@ -981,24 +985,24 @@ app.post('/webhook', async (req, res) => {
 });
 
 // ===== FOLLOW-UP AUTO-SEND SCHEDULER =====
-// Calculates the next send date based on repeat settings
+// Calculates the next send date based on repeat settings (ALL UTC)
 function calculateNextSendDate(followup) {
   if (!followup.nextSendDate) return null;
   if (followup.repeatType === 'none') return null; // one-time only
   
-  const baseDate = new Date(followup.nextSendDate);
   const scheduleTimeParts = (followup.scheduleTime || '09:00').split(':');
   const hours = parseInt(scheduleTimeParts[0]) || 9;
   const mins = parseInt(scheduleTimeParts[1]) || 0;
   
+  const baseDate = new Date(followup.nextSendDate);
   let nextDate = new Date(baseDate);
   
   switch (followup.repeatType) {
     case 'daily':
-      nextDate.setDate(nextDate.getDate() + 1);
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1);
       break;
     case 'weekly':
-      nextDate.setDate(nextDate.getDate() + 7);
+      nextDate.setUTCDate(nextDate.getUTCDate() + 7);
       break;
     case 'weekdays': {
       // Find next selected day
@@ -1007,8 +1011,8 @@ function calculateNextSendDate(followup) {
       let found = false;
       for (let i = 1; i <= 7; i++) {
         const checkDate = new Date(baseDate);
-        checkDate.setDate(checkDate.getDate() + i);
-        if (repeatDays.includes(checkDate.getDay())) {
+        checkDate.setUTCDate(checkDate.getUTCDate() + i);
+        if (repeatDays.includes(checkDate.getUTCDay())) {
           nextDate = checkDate;
           found = true;
           break;
@@ -1018,19 +1022,20 @@ function calculateNextSendDate(followup) {
       break;
     }
     case 'days_interval':
-      nextDate.setDate(nextDate.getDate() + (followup.repeatInterval || 1));
+      nextDate.setUTCDate(nextDate.getUTCDate() + (followup.repeatInterval || 1));
       break;
     case 'monthly':
-      nextDate.setMonth(nextDate.getMonth() + 1);
+      nextDate.setUTCMonth(nextDate.getUTCMonth() + 1);
       break;
     case 'annually':
-      nextDate.setFullYear(nextDate.getFullYear() + 1);
+      nextDate.setUTCFullYear(nextDate.getUTCFullYear() + 1);
       break;
     default:
       return null;
   }
   
-  nextDate.setHours(hours, mins, 0, 0);
+  // Preserve the original scheduled time in UTC
+  nextDate.setUTCHours(hours, mins, 0, 0);
   return nextDate.getTime();
 }
 
