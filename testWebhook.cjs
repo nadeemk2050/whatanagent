@@ -16,8 +16,8 @@ const data = JSON.stringify({
 });
 
 const options = {
-  hostname: 'us-central1-whatanagent-a1e59.cloudfunctions.net',
-  path: '/api/webhook',
+  hostname: 'whatanagent-api.onrender.com', // ← Replace after Render deploy
+  path: '/webhook',
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
