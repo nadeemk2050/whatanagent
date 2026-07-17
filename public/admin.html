@@ -6,7 +6,10 @@
     <title>AI Agent Admin</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#25d366">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="WhatAnAgent">
     <style>
         :root {
             --primary: #25D366; 
@@ -128,7 +131,6 @@
             .container { margin: 10px auto; padding: 0 10px; }
             .card { padding: 15px; }
             .topbar { justify-content: space-between; }
-            .btn-pwa-install { display: none; }
             
             /* Sidebar takes whole screen */
             .sidebar { width: 100% !important; left: -100% !important; }
@@ -241,7 +243,7 @@
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
-            <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366; display: none;">📲 Install App</div>
+            <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
             <div class="menu-item" onclick="handleLogout()" style="color: red;">🚪 Logout</div>
         </div>
 
@@ -1934,21 +1936,42 @@
 
         // PWA Installation & Service Worker Integration
         let deferredPrompt;
+        
+        // Check if on iOS Safari
+        function isIOS() {
+            return /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+        }
+        
+        // Show install button
+        function showInstallButtons() {
+            const installBtns = document.querySelectorAll('.btn-pwa-install');
+            installBtns.forEach(btn => btn.style.display = 'block');
+        }
+
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            const installBtns = document.querySelectorAll('.btn-pwa-install');
-            installBtns.forEach(btn => btn.style.display = 'block');
+            showInstallButtons();
         });
 
+        // On iOS, show install instructions since beforeinstallprompt doesn't fire
+        if (isIOS()) {
+            showInstallButtons();
+        }
+
         async function installPWA() {
-            if (!deferredPrompt) return;
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            console.log(`User response to install prompt: ${outcome}`);
-            deferredPrompt = null;
-            const installBtns = document.querySelectorAll('.btn-pwa-install');
-            installBtns.forEach(btn => btn.style.display = 'none');
+            if (deferredPrompt) {
+                // Android: use native install prompt
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to install prompt: ${outcome}`);
+                deferredPrompt = null;
+                const installBtns = document.querySelectorAll('.btn-pwa-install');
+                installBtns.forEach(btn => btn.style.display = 'none');
+            } else if (isIOS()) {
+                // iOS: show instructions
+                alert('📱 To install on iPhone/iPad:\n\n1. Tap the Share button (📤) at the bottom of Safari\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add" in the top right corner');
+            }
         }
 
         if ('serviceWorker' in navigator) {
@@ -1958,6 +1981,14 @@
                     .catch(err => console.log('Service Worker registration failed:', err));
             });
         }
+
+        // Also show install button in sidebar after page loads (for iOS)
+        setTimeout(() => {
+            const sidebarBtn = document.querySelector('.sidebar .btn-pwa-install');
+            if (sidebarBtn && (deferredPrompt || isIOS())) {
+                sidebarBtn.style.display = 'block';
+            }
+        }, 1000);
     </script>
 </body>
 </html>
