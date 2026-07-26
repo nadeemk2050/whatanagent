@@ -279,7 +279,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       });
       const completion = await openai.chat.completions.create({
         messages: dsMessages,
-        model: "deepseek-chat",
+        model: "deepseek-v4-flash",
         temperature: 0.7,
       });
       finalReply = completion.choices[0].message.content;
