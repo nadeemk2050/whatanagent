@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.10.4 (SEO Agent + AI Workspace Live Chat + Publish Page + Contact Book + OCR + Boss KB) -->
+    <!-- APP VERSION: 2026.09.10.5 (Code Studio - Monaco VS Code editor + AI + WordPress save) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -202,6 +202,8 @@
     </script>
     <!-- SheetJS for Excel (.xlsx) import support -->
     <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Monaco Editor (the VS Code engine) for Code Studio -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
 </head>
 <body>
 
@@ -651,6 +653,7 @@
                         <button id="seoTabBtnKnowledge" onclick="switchSeoTab('knowledge')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📚 Knowledge Base for SEO Agent</button>
                         <button id="seoTabBtnAddPage" onclick="switchSeoTab('addpage')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add / Publish Page</button>
                         <button id="seoTabBtnWorkspace" onclick="switchSeoTab('workspace')" style="padding:10px 16px; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🤖 AI Workspace (Live Chat)</button>
+                        <button id="seoTabBtnCodeStudio" onclick="switchSeoTab('codestudio')" style="padding:10px 16px; background:#e3f2fd; color:#0d47a1; border:1px solid #90caf9; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">💻 Code Studio</button>
                     </div>
                 </div>
 
@@ -817,6 +820,68 @@
                         <div style="padding:10px; display:flex; gap:8px; border-top:1px solid var(--border);">
                             <input type="text" id="aiWsInput" placeholder="Tell the AI what to do... e.g. Create a draft page about copper scrap buying in UAE" style="flex:1; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;" onkeydown="if(event.key==='Enter') sendWsMessage()">
                             <button onclick="sendWsMessage()" id="aiWsSendBtn" style="padding:12px 24px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Send ➤</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 6: CODE STUDIO (Monaco + AI) -->
+                <div id="seoTabCodeStudio" style="display:none;">
+                    <div class="card" style="padding:0; overflow:hidden;">
+                        <div style="padding:12px 15px; border-bottom:1px solid var(--border); display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <b style="font-size:16px;">💻 Code Studio</b>
+                                <span style="font-size:12px; color:#667781;">Monaco editor (VS Code engine) · AI powered · publish directly</span>
+                            </div>
+                            <select id="csSource" onchange="csSourceChanged()" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                                <option value="new">✨ New File</option>
+                                <option value="files">📇 My Files</option>
+                                <option value="page">📄 WordPress Page</option>
+                                <option value="post">📝 WordPress Post</option>
+                                <option value="url">🌐 Fetch URL</option>
+                            </select>
+                        </div>
+                        <div style="padding:10px 15px; background:#fafbfc; border-bottom:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <div id="csCtlNew" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" id="csFileName" placeholder="File name e.g. homepage.html" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; width:220px; box-sizing:border-box;">
+                                <select id="csLanguage" onchange="csLangChanged()" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                                    <option value="html">HTML</option><option value="css">CSS</option><option value="javascript">JavaScript</option><option value="json">JSON</option><option value="markdown">Markdown</option><option value="xml">XML</option><option value="plaintext">Plain Text</option>
+                                </select>
+                            </div>
+                            <div id="csCtlFiles" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <select id="csFileList" onchange="csLoadFile(this.value)" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; min-width:240px;"></select>
+                                <button onclick="csDeleteFile()" style="padding:8px 12px; background:#fbe9e7; color:#c62828; border:1px solid #ffab91; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Delete</button>
+                            </div>
+                            <div id="csCtlWp" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <select id="csSite" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"></select>
+                                <select id="csWpList" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; min-width:260px;"></select>
+                                <button onclick="csLoadWpItem()" style="padding:8px 14px; background:var(--primary); color:white; border:none; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">⬇️ Load</button>
+                            </div>
+                            <div id="csCtlUrl" style="display:none; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" id="csUrl" placeholder="https://..." style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; width:320px; box-sizing:border-box;">
+                                <button onclick="csFetchUrl()" style="padding:8px 14px; background:var(--primary); color:white; border:none; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">⬇️ Fetch</button>
+                            </div>
+                        </div>
+                        <div style="padding:8px 15px; font-size:12px; color:#546e7a;" id="csStatus">Ready. Choose a source above. 📄</div>
+                        <div id="monacoEditor" style="height:440px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);"></div>
+                        <div style="padding:10px 15px; border-bottom:1px solid var(--border); display:flex; gap:8px; flex-wrap:wrap; align-items:center; background:#f0fdf4;">
+                            <b style="font-size:13px;">✨ AI Code:</b>
+                            <input type="text" id="csAiInstruction" placeholder="e.g. Make this mobile responsive · improve SEO (h1/h2, meta) · fix the layout · add image alt texts" style="flex:1; min-width:240px; padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px; box-sizing:border-box;" onkeydown="if(event.key==='Enter') csAiModify()">
+                            <select id="csAiModel" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"><option value="deepseek">DeepSeek</option><option value="gemini">Gemini</option></select>
+                            <button onclick="csAiModify()" id="csAiBtn" style="padding:10px 16px; background:#1b5e20; color:white; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">✨ Generate / Modify</button>
+                        </div>
+                        <div id="csDiffWrap" style="display:none;">
+                            <div style="padding:8px 15px; font-size:12px; color:#ef6c00; font-weight:bold;">🔍 Review changes (left = current, right = AI version)</div>
+                            <div id="monacoDiff" style="height:360px; border-top:1px solid var(--border); border-bottom:1px solid var(--border);"></div>
+                            <div style="padding:10px 15px; display:flex; gap:10px;">
+                                <button onclick="csApplyDiff()" style="padding:10px 18px; background:var(--primary); color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">✅ Apply AI changes</button>
+                                <button onclick="csDiscardDiff()" style="padding:10px 18px; background:#e0e0e0; color:#333; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">❌ Discard</button>
+                            </div>
+                        </div>
+                        <div style="padding:12px 15px; display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="csSaveFile()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">💾 Save to My Files</button>
+                            <button onclick="csSaveToWp()" id="csWpSaveBtn" style="display:none; padding:10px 16px; background:#ef6c00; color:white; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">🚀 Save to WordPress</button>
+                            <button onclick="csDownload()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">📥 Download</button>
+                            <button onclick="csCopy()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold;">📋 Copy</button>
                         </div>
                     </div>
                 </div>
@@ -3024,8 +3089,8 @@
         var SEO_SITE_KEY = 'www.alshaabalwaseem.com';
 
         function switchSeoTab(tab) {
-            const tabs = { site: 'seoTabSite', instructions: 'seoTabInstructions', knowledge: 'seoTabKnowledge', addpage: 'seoTabAddPage', workspace: 'seoTabWorkspace' };
-            const btns = { site: 'seoTabBtnSite', instructions: 'seoTabBtnInstructions', knowledge: 'seoTabBtnKnowledge', addpage: 'seoTabBtnAddPage', workspace: 'seoTabBtnWorkspace' };
+            const tabs = { site: 'seoTabSite', instructions: 'seoTabInstructions', knowledge: 'seoTabKnowledge', addpage: 'seoTabAddPage', workspace: 'seoTabWorkspace', codestudio: 'seoTabCodeStudio' };
+            const btns = { site: 'seoTabBtnSite', instructions: 'seoTabBtnInstructions', knowledge: 'seoTabBtnKnowledge', addpage: 'seoTabBtnAddPage', workspace: 'seoTabBtnWorkspace', codestudio: 'seoTabBtnCodeStudio' };
             Object.keys(tabs).forEach(function(k) {
                 const panel = document.getElementById(tabs[k]);
                 const btn = document.getElementById(btns[k]);
@@ -3036,6 +3101,7 @@
                     btn.style.border = (k === tab) ? 'none' : '1px solid var(--border)';
                 }
             });
+            if (tab === 'codestudio') initCodeStudio();
         }
 
         async function loadSeoAgent() {
@@ -3307,6 +3373,270 @@
             wsBusy = false;
             if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Send ➤'; }
             wsRender(); wsPersist();
+        }
+
+        // ===== CODE STUDIO (Monaco editor + AI + WordPress) =====
+        var csEditor = null, csDiffEditor = null, csFilesCache = [], csCurrent = { source: 'new', name: '', language: 'html', wp: null, fileId: null };
+
+        function csStatus(msg, ok) {
+            const el = document.getElementById('csStatus');
+            if (!el) return;
+            el.style.color = ok === false ? '#c62828' : '#546e7a';
+            el.innerText = msg;
+        }
+
+        function initMonacoLoader(cb) {
+            if (window.monaco) { cb(); return; }
+            if (typeof require === 'undefined' || !require.config) { csStatus('⚠️ Monaco editor could not load (check internet connection).', false); return; }
+            require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+            require(['vs/editor/editor.main'], function() { cb(); });
+        }
+
+        function initCodeStudio() {
+            initMonacoLoader(function() {
+                if (!csEditor) {
+                    csEditor = monaco.editor.create(document.getElementById('monacoEditor'), {
+                        value: '<!-- Welcome to Code Studio -->\n<!-- Open a WordPress page, fetch a URL, or start a new file — then let AI help you. -->',
+                        language: 'html', theme: 'vs-dark', automaticLayout: true,
+                        minimap: { enabled: true }, fontSize: 13, wordWrap: 'on'
+                    });
+                } else {
+                    csEditor.layout();
+                }
+                csPopulateSites();
+                csLoadFilesList();
+                csSourceChanged();
+            });
+        }
+
+        function csPopulateSites() {
+            const sel = document.getElementById('csSite');
+            if (!sel) return;
+            const src = document.getElementById('aiWsSite');
+            if (src && src.options.length) { sel.innerHTML = src.innerHTML; }
+            else { sel.innerHTML = '<option value="www.alshaabalwaseem.com">www.alshaabalwaseem.com</option>'; }
+        }
+
+        function csSourceChanged() {
+            const src = (document.getElementById('csSource') || {}).value || 'new';
+            const show = function(id, on) { const el = document.getElementById(id); if (el) el.style.display = on ? 'flex' : 'none'; };
+            show('csCtlNew', src === 'new');
+            show('csCtlFiles', src === 'files');
+            show('csCtlWp', src === 'page' || src === 'post');
+            show('csCtlUrl', src === 'url');
+            csCurrent.source = src;
+            if (src === 'files') csLoadFilesList();
+            if ((src === 'page' || src === 'post') && csEditor !== null) csLoadWpItems();
+        }
+
+        function csLangChanged() {
+            const lang = (document.getElementById('csLanguage') || {}).value || 'html';
+            csCurrent.language = lang;
+            if (csEditor && window.monaco) monaco.editor.setModelLanguage(csEditor.getModel(), lang);
+        }
+
+        async function csLoadFilesList() {
+            try {
+                const res = await fetch('api/seo/code/files');
+                csFilesCache = (await res.json()) || [];
+            } catch(e) { csFilesCache = []; }
+            const sel = document.getElementById('csFileList');
+            if (!sel) return;
+            sel.innerHTML = csFilesCache.length
+                ? '<option value="">— select a file —</option>' + csFilesCache.map(function(f) { return '<option value="' + f.id + '">' + wsEsc(f.name) + '</option>'; }).join('')
+                : '<option value="">(no saved files yet)</option>';
+        }
+
+        async function csLoadFile(id) {
+            if (!id || !csEditor) return;
+            try {
+                const res = await fetch('api/seo/code/files/' + id);
+                const f = await res.json();
+                if (!res.ok) throw new Error(f.error || 'load failed');
+                csCurrent = { source: 'files', name: f.name, language: f.language || 'html', wp: null, fileId: f.id };
+                const langSel = document.getElementById('csLanguage');
+                if (langSel) langSel.value = f.language || 'html';
+                if (window.monaco) monaco.editor.setModelLanguage(csEditor.getModel(), f.language || 'html');
+                csEditor.setValue(f.content || '');
+                document.getElementById('csWpSaveBtn').style.display = 'none';
+                csStatus('📇 Loaded file: ' + f.name);
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csSaveFile() {
+            if (!csEditor) return;
+            let name = (document.getElementById('csFileName') || {}).value || csCurrent.name || '';
+            name = name.trim();
+            if (!name) { name = (typeof prompt === 'function' ? prompt('File name:', csCurrent.name || 'snippet.html') : '') || ''; }
+            if (!name) return;
+            const lang = (document.getElementById('csLanguage') || {}).value || csCurrent.language || 'html';
+            csStatus('⏳ Saving file...');
+            try {
+                const res = await fetch('api/seo/code/files', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: csCurrent.fileId || null, name: name, language: lang, content: csEditor.getValue() })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'save failed');
+                csCurrent.fileId = data.id; csCurrent.name = name; csCurrent.language = lang;
+                await csLoadFilesList();
+                csStatus('✅ Saved to My Files: ' + name);
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csDeleteFile() {
+            const sel = document.getElementById('csFileList');
+            const id = sel ? sel.value : '';
+            if (!id) return;
+            if (!confirm('Delete this file permanently?')) return;
+            try {
+                await fetch('api/seo/code/files/' + id, { method: 'DELETE' });
+                if (csCurrent.fileId === id) csCurrent.fileId = null;
+                await csLoadFilesList();
+                csStatus('🗑️ File deleted');
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csLoadWpItems() {
+            const siteKey = (document.getElementById('csSite') || {}).value || '';
+            const type = (document.getElementById('csSource') || {}).value === 'post' ? 'post' : 'page';
+            const sel = document.getElementById('csWpList');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">⏳ loading...</option>';
+            try {
+                const res = await fetch('api/seo/code/wp-list?siteKey=' + encodeURIComponent(siteKey) + '&type=' + type);
+                const items = await res.json();
+                if (!res.ok) throw new Error(items.error || 'failed');
+                sel.innerHTML = (items.length
+                    ? items.map(function(i) { return '<option value="' + i.id + '">#' + i.id + ' · ' + wsEsc(i.title || '(no title)') + ' [' + i.status + ']</option>'; }).join('')
+                    : '<option value="">(none found)</option>');
+            } catch(e) { sel.innerHTML = '<option value="">❌ ' + wsEsc(e.message) + '</option>'; }
+        }
+
+        async function csLoadWpItem() {
+            const sel = document.getElementById('csWpList');
+            const id = sel ? sel.value : '';
+            if (!id || !csEditor) return;
+            const siteKey = (document.getElementById('csSite') || {}).value || '';
+            const type = (document.getElementById('csSource') || {}).value === 'post' ? 'post' : 'page';
+            csStatus('⏳ Loading from WordPress...');
+            try {
+                const res = await fetch('api/seo/code/wp-load', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ siteKey: siteKey, type: type, id: id })
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'load failed');
+                csCurrent = { source: type, name: d.title, language: 'html', wp: { siteKey: siteKey, type: type, id: d.id, title: d.title, link: d.link }, fileId: null };
+                if (window.monaco) monaco.editor.setModelLanguage(csEditor.getModel(), 'html');
+                const langSel = document.getElementById('csLanguage');
+                if (langSel) langSel.value = 'html';
+                csEditor.setValue(d.content || '');
+                document.getElementById('csWpSaveBtn').style.display = 'inline-block';
+                csStatus('📄 Loaded ' + type + ' #' + d.id + ': ' + d.title + ' (' + d.status + ')');
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csSaveToWp() {
+            if (!csCurrent.wp || !csEditor) return;
+            if (!confirm('Update "' + csCurrent.wp.title + '" on WordPress with the editor content?')) return;
+            csStatus('⏳ Saving to WordPress...');
+            try {
+                const res = await fetch('api/seo/code/wp-save', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ siteKey: csCurrent.wp.siteKey, type: csCurrent.wp.type, id: csCurrent.wp.id, title: csCurrent.wp.title, content: csEditor.getValue() })
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'save failed');
+                csStatus('✅ Updated on WordPress [' + d.status + ']: ' + d.link);
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csFetchUrl() {
+            const url = ((document.getElementById('csUrl') || {}).value || '').trim();
+            if (!url || !csEditor) return;
+            csStatus('⏳ Fetching ' + url + ' ...');
+            try {
+                const res = await fetch('api/seo/code/fetch-url', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'fetch failed');
+                const ct = String(d.contentType || '');
+                csCurrent = { source: 'url', name: url.split('/').pop() || 'fetched.txt', language: ct.includes('json') ? 'json' : (ct.includes('html') ? 'html' : 'plaintext'), wp: null, fileId: null };
+                if (window.monaco) monaco.editor.setModelLanguage(csEditor.getModel(), csCurrent.language);
+                csEditor.setValue(d.text || '');
+                document.getElementById('csWpSaveBtn').style.display = 'none';
+                csStatus('🌐 Fetched ' + ct + ' (' + (d.text || '').length + ' chars)');
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+        }
+
+        async function csAiModify() {
+            const instr = ((document.getElementById('csAiInstruction') || {}).value || '').trim();
+            if (!instr) { csStatus('⚠️ Type what you want the AI to change first.', false); return; }
+            if (!csEditor || !csEditor.getValue().trim()) { csStatus('⚠️ Editor is empty.', false); return; }
+            const btn = document.getElementById('csAiBtn');
+            btn.disabled = true; btn.innerText = '⏳ AI working...';
+            csStatus('✨ AI is modifying your code...');
+            try {
+                const model = (document.getElementById('csAiModel') || {}).value || 'deepseek';
+                const res = await fetch('api/seo/code/ai', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ instruction: instr, code: csEditor.getValue(), language: csCurrent.language || 'html', model: model })
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'AI failed');
+                csShowDiff(d.code, d.notes);
+                csStatus('🔍 AI changes ready — review the diff and click Apply.');
+            } catch(e) { csStatus('❌ ' + e.message, false); }
+            btn.disabled = false; btn.innerText = '✨ Generate / Modify';
+        }
+
+        function csShowDiff(newCode) {
+            const wrap = document.getElementById('csDiffWrap');
+            if (!wrap) return;
+            wrap.style.display = 'block';
+            if (!csDiffEditor) {
+                csDiffEditor = monaco.editor.createDiffEditor(document.getElementById('monacoDiff'), {
+                    theme: 'vs-dark', automaticLayout: true, readOnly: false, originalEditable: false, fontSize: 13, wordWrap: 'on'
+                });
+            }
+            const lang = csCurrent.language || 'html';
+            csDiffEditor.setModel({
+                original: monaco.editor.createModel(csEditor.getValue(), lang),
+                modified: monaco.editor.createModel(newCode || '', lang)
+            });
+            csDiffEditor.layout();
+        }
+
+        function csApplyDiff() {
+            if (!csDiffEditor) return;
+            const val = csDiffEditor.getModel().modified.getValue();
+            csEditor.setValue(val);
+            csDiscardDiff();
+            csStatus('✅ AI changes applied. Do not forget to Save 💾 or Save to WordPress 🚀');
+        }
+
+        function csDiscardDiff() {
+            const wrap = document.getElementById('csDiffWrap');
+            if (wrap) wrap.style.display = 'none';
+        }
+
+        function csDownload() {
+            if (!csEditor) return;
+            const blob = new Blob([csEditor.getValue()], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = csCurrent.name || 'code.txt';
+            a.click();
+        }
+
+        function csCopy() {
+            if (!csEditor) return;
+            navigator.clipboard.writeText(csEditor.getValue())
+                .then(function() { csStatus('📋 Copied to clipboard'); })
+                .catch(function() { csStatus('❌ Copy failed (clipboard permission)', false); });
         }
 
         // PWA Installation & Service Worker Integration

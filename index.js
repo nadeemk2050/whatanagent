@@ -526,10 +526,17 @@ async function buildBossLiveData(bossNumber) {
 }
 
 // Boss-mode AI reply: obeys boss rules + answers from live app data only
-async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCfg) {
+async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCfg, extraMessages = []) {
   const provider = settings.ACTIVE_AI_PROVIDER || 'deepseek';
   try {
     const liveData = await buildBossLiveData(bossCfg.number);
+
+    // Load SEO Agent sites so the boss AI can also work on the websites
+    let seoSites = {};
+    try {
+      const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
+      seoSites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
+    } catch (e) { seoSites = {}; }
 
     const bossName = bossCfg.address || 'Boss';
     const languageRule = bossCfg.language === 'english' ? "Always reply in English."
@@ -595,9 +602,22 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
         "- Do NOT ask whether to add the recipient to the phone book - the app asks that automatically after sending.\n\n";
     }
 
+    if (Object.keys(seoSites).length > 0) {
+      const seoFirstKey = Object.keys(seoSites)[0];
+      const seoList = Object.keys(seoSites).map(k => `- ${k} | ${(seoSites[k].cmsPlatform || 'wordpress')} | ${seoSites[k].url || ''} | credentials: CONFIGURED (never printed)`).join('\n');
+      systemInstruction +=
+        "### SEO AGENT POWERS (FULL WEBSITE ADMIN ACCESS) ###\n" +
+        "You have FULL admin power over the boss's connected websites: you can READ and MODIFY them, and fetch data from anywhere on the internet. NEVER say you cannot access websites or SEO tools - you CAN and you MUST use your actions.\n" +
+        "CONNECTED WEBSITES:\n" + seoList + "\n\n" +
+        "When the boss asks for website/SEO work (list/read/create/update/delete pages or posts, upload images, site info, keyword research, fetch any URL), output hidden action blocks at the VERY END of your reply, exactly like:\n" +
+        "```action\n{\"action\":\"list_pages\",\"params\":{\"siteKey\":\"" + seoFirstKey + "\"}}\n```\n" +
+        seoActionsDocForPrompt(seoFirstKey) + "\n\n" +
+        "After an action runs, the app sends you 'ACTION RESULT' messages - then continue until the task is done, and finish with a clear summary for the boss. NEVER mention or show these action blocks.\n\n";
+    }
+
     systemInstruction +=
       "### HOW TO ANSWER ###\n" +
-      "- The boss may ask about real app data: the last person who chatted, what that person asked, chat summaries, the phone numbers of the last 5 (or N) chatting persons, leads, counts, etc.\n" +
+      "- The boss may ask about real app data: the last person who chatted, what that person asked, chat summaries, the phone numbers of the last 5 (or N) chatting persons, leads, counts - and also about his WEBSITES (pages, posts, SEO, images) using the SEO AGENT POWERS above.\n" +
       "- ALWAYS answer using ONLY the LIVE APP DATA, BOSS KNOWLEDGE and instructions above. NEVER invent, guess or hallucinate numbers, names, messages or statistics.\n" +
       (bossCfg.unavailableAction === 'alternative'
         ? "- If the boss asks for something not present in the live data, say it is not available and suggest the closest alternative you can offer.\n"
@@ -611,6 +631,11 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
     const q = query(collection(db, "chats", senderNumber, "messages"), orderBy("timestamp", "asc"));
     const snapshot = await getDocs(q);
     const messages = snapshot.docs.map(d => d.data());
+
+    // Append agent-loop context (SEO action results) on top of the stored chat history
+    if (extraMessages && extraMessages.length > 0) {
+      extraMessages.forEach(m => messages.push({ sender: m.role === 'assistant' ? 'bot' : 'user', text: m.content }));
+    }
 
     let finalReply = "";
 
@@ -827,9 +852,38 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
     return;
   }
 
-  // --- Everything else = boss data queries / orders -> boss-mode AI ---
-  const rawReply = await generateBossAIResponse(userText, senderNumber, settings, bossCfg);
-  console.log(`[BOSS RAW REPLY] ${(rawReply || '').substring(0, 600).replace(/\n/g, ' ⏎ ')}`);
+  // --- Everything else = boss data queries / orders -> boss-mode AI (with SEO action loop) ---
+  const extraMessages = [];
+  let rawReply = await generateBossAIResponse(userText, senderNumber, settings, bossCfg, extraMessages);
+  console.log(`[BOSS RAW REPLY] ${(rawReply || '').substring(0, 500).replace(/\n/g, ' ⏎ ')}`);
+
+  // SEO agent loop: execute any action blocks the boss AI produced, then let it continue
+  const seoActionsDone = [];
+  try {
+    let seoSites = {};
+    const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
+    seoSites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
+    for (let step = 0; step < 5; step++) {
+      const acts = extractSeoActions(rawReply || '');
+      if (acts.length === 0) break;
+      extraMessages.push({ role: 'assistant', content: rawReply });
+      const resultParts = [];
+      for (const act of acts) {
+        console.log(`[BOSS SEO ACTION] ${act.action} ${JSON.stringify(act.params || {})}`);
+        const out = await executeSeoAction(act.action, act.params || {}, seoSites);
+        const ok = !(out && out.error);
+        seoActionsDone.push({ action: act.action, ok: ok });
+        resultParts.push('ACTION RESULT (' + act.action + '):\n' + seoTrunc(out, 3000));
+      }
+      extraMessages.push({ role: 'user', content: resultParts.join('\n\n') });
+      rawReply = await generateBossAIResponse(userText, senderNumber, settings, bossCfg, extraMessages);
+      console.log(`[BOSS RAW REPLY ${step + 2}] ${(rawReply || '').substring(0, 300).replace(/\n/g, ' ⏎ ')}`);
+    }
+  } catch (seoErr) { console.error('Boss SEO action loop error:', seoErr.message); }
+
+  // Remove any action blocks from the final text sent to the boss
+  rawReply = stripSeoActionBlocks(rawReply || '');
+  if (!rawReply && seoActionsDone.length > 0) rawReply = '✅ Kaam ho gaya, Boss.';
 
   // 1) Execute message-sending tags [SENDMSG: ...]
   const sendResult = await processBossSendTags(rawReply, settings, bossCfg);
@@ -1728,6 +1782,28 @@ async function executeSeoAction(name, params, sites) {
   }
 }
 
+function seoActionsDocForPrompt(defaultKey) {
+  return 'AVAILABLE ACTIONS (name - params):\n' +
+    '- list_sites - {}\n' +
+    '- get_env - {siteKey}\n' +
+    '- site_info - {siteKey}\n' +
+    '- list_pages - {siteKey, search?, perPage?}\n' +
+    '- get_page - {siteKey, id}\n' +
+    '- create_page - {siteKey, title, content, status: "draft"|"publish"}\n' +
+    '- update_page - {siteKey, id, title?, content?, status?}\n' +
+    '- delete_page - {siteKey, id}\n' +
+    '- list_posts - {siteKey, search?, perPage?}\n' +
+    '- get_post - {siteKey, id}\n' +
+    '- create_post - {siteKey, title, content, status: "draft"|"publish", categories?}\n' +
+    '- update_post - {siteKey, id, title?, content?, status?, categories?}\n' +
+    '- delete_post - {siteKey, id}\n' +
+    '- list_categories - {siteKey}\n' +
+    '- create_category - {siteKey, name}\n' +
+    '- upload_media - {siteKey, imageUrl, filename?, alt?}  (downloads any image URL into the media library)\n' +
+    '- search_web - {query}  (Google results for research)\n' +
+    '- fetch_url - {url}  (fetch text/JSON/HTML from any URL)';
+}
+
 function buildWorkspacePrompt(seo) {
   const sites = seo.sites || {};
   const siteLines = Object.keys(sites).map(k => {
@@ -1900,6 +1976,166 @@ app.post('/api/seo/ai-chat', async (req, res) => {
     res.json({ success: true, reply: finalReply || '(no reply)', actions: executed });
   } catch (err) {
     console.error('AI Workspace error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================================
+// --- CODE STUDIO (Monaco editor: files, WordPress, AI) ---
+// ==========================================================
+app.get('/api/seo/code/files', async (req, res) => {
+  try {
+    const snap = await getDoc(doc(db, "appData", "codeStudio"));
+    const files = snap.exists() ? (snap.data().files || []) : [];
+    res.json(files.map(f => ({ id: f.id, name: f.name, language: f.language, updatedAt: f.updatedAt })));
+  } catch (error) { res.status(500).json({ error: 'Failed to load files.' }); }
+});
+
+app.get('/api/seo/code/files/:id', async (req, res) => {
+  try {
+    const snap = await getDoc(doc(db, "appData", "codeStudio"));
+    const files = snap.exists() ? (snap.data().files || []) : [];
+    const f = files.find(x => x.id === req.params.id);
+    if (!f) return res.status(404).json({ error: 'File not found.' });
+    res.json(f);
+  } catch (error) { res.status(500).json({ error: 'Failed to load file.' }); }
+});
+
+app.post('/api/seo/code/files', async (req, res) => {
+  try {
+    const { id, name, language, content } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'File name is required.' });
+    const ref = doc(db, "appData", "codeStudio");
+    const snap = await getDoc(ref);
+    const files = snap.exists() ? (snap.data().files || []) : [];
+    const now = Date.now();
+    if (id) {
+      const idx = files.findIndex(x => x.id === id);
+      if (idx === -1) return res.status(404).json({ error: 'File not found.' });
+      files[idx] = { ...files[idx], name: name.trim(), language: language || files[idx].language, content: content || '', updatedAt: now };
+    } else {
+      files.push({ id: 'f' + now + Math.random().toString(36).slice(2, 7), name: name.trim(), language: language || 'html', content: content || '', createdAt: now, updatedAt: now });
+    }
+    await setDoc(ref, { files });
+    res.json({ success: true, id: id || files[files.length - 1].id });
+  } catch (error) { res.status(500).json({ error: 'Failed to save file.' }); }
+});
+
+app.delete('/api/seo/code/files/:id', async (req, res) => {
+  try {
+    const ref = doc(db, "appData", "codeStudio");
+    const snap = await getDoc(ref);
+    let files = snap.exists() ? (snap.data().files || []) : [];
+    files = files.filter(x => x.id !== req.params.id);
+    await setDoc(ref, { files });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Failed to delete file.' }); }
+});
+
+// Helper: loads a site's env from the SEO Agent document
+async function getSeoSite(siteKey) {
+  const snap = await getDoc(doc(db, "appData", "seoAgent"));
+  const seo = snap.exists() ? snap.data() : {};
+  const sites = seo.sites || {};
+  const key = siteKey || Object.keys(sites)[0];
+  const site = sites[key] || {};
+  if (!site.url || !site.cmsUsername || !site.cmsPassword) {
+    throw new Error(`Site '${key}' is missing url/username/app password in the SEO Agent ENV.`);
+  }
+  return { key, site, sites };
+}
+
+app.get('/api/seo/code/wp-list', async (req, res) => {
+  try {
+    const type = req.query.type === 'post' ? 'post' : 'page';
+    const { site } = await getSeoSite(req.query.siteKey);
+    const path = type === 'post'
+      ? '/posts?per_page=50&status=publish,draft,pending,private&orderby=modified&order=desc'
+      : '/pages?per_page=50&status=publish,draft,pending,private&orderby=modified&order=desc';
+    const data = await seoWp(site, 'get', path);
+    res.json(data.map(i => ({ id: i.id, title: (i.title && i.title.rendered) || '', status: i.status })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/seo/code/wp-load', async (req, res) => {
+  try {
+    const { siteKey, type, id } = req.body || {};
+    const { site } = await getSeoSite(siteKey);
+    const path = (type === 'post' ? '/posts/' : '/pages/') + id + '?context=edit';
+    const d = await seoWp(site, 'get', path);
+    res.json({
+      success: true, id: d.id,
+      title: (d.title && (d.title.raw || d.title.rendered)) || '',
+      status: d.status, link: d.link,
+      content: (d.content && (d.content.raw || d.content.rendered)) || ''
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/seo/code/wp-save', async (req, res) => {
+  try {
+    const { siteKey, type, id, title, content } = req.body || {};
+    if (!id) return res.status(400).json({ error: 'WordPress item id is required.' });
+    const { site } = await getSeoSite(siteKey);
+    const path = (type === 'post' ? '/posts/' : '/pages/') + id;
+    const body = { content: content || '' };
+    if (title) body.title = title;
+    const d = await seoWp(site, 'post', path, body);
+    console.log(`[CODE STUDIO] Saved ${type || 'page'} ${id} on ${site.url}`);
+    res.json({ success: true, link: d.link, status: d.status });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/seo/code/fetch-url', async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'URL is required.' });
+    const r = await axios.get(url, { timeout: 25000, maxContentLength: 10 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } });
+    const ct = String(r.headers['content-type'] || '').toLowerCase();
+    let text = typeof r.data === 'string' ? r.data : JSON.stringify(r.data, null, 2);
+    if (ct.includes('html') && typeof r.data === 'string') {
+      // Return the raw HTML source so it can be edited in the code editor
+      text = r.data.substring(0, 200000);
+    }
+    res.json({ success: true, contentType: ct, text: text.substring(0, 200000) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/seo/code/ai', async (req, res) => {
+  try {
+    const { instruction, code, language, model } = req.body || {};
+    if (!instruction || !instruction.trim()) return res.status(400).json({ error: 'Please describe what to change.' });
+    if (!code || !code.trim()) return res.status(400).json({ error: 'Editor is empty.' });
+    if (code.length > 120000) return res.status(400).json({ error: 'Code too large (max 120k chars).' });
+
+    const settings = await getSettings();
+    const useModel = model === 'gemini' ? 'gemini' : 'deepseek';
+    const lang = language || 'html';
+    const fenceMark = '```';
+    const prompt = 'You are an elite senior web developer working inside a code editor.\n' +
+      'Your task: modify the code below EXACTLY as instructed and return the COMPLETE updated file.\n\n' +
+      'Language: ' + lang + '\n' +
+      'Instruction: ' + instruction + '\n\n' +
+      'RULES:\n' +
+      '- Return ONLY the complete updated code inside ONE fenced code block. No partial code. No placeholders like "... rest unchanged".\n' +
+      '- Any explanation (maximum 2 short lines) must be placed OUTSIDE and BEFORE the fenced block.\n' +
+      '- Keep everything that should not change exactly as it is.\n\n' +
+      'CURRENT CODE:\n' + fenceMark + lang + '\n' + code + '\n' + fenceMark;
+
+    const reply = await workspaceModelReply(
+      'You are an expert code assistant inside an editor. Always output the FULL updated code in a single fenced block.',
+      [{ role: 'user', content: prompt }],
+      useModel,
+      settings
+    );
+
+    const fence = reply.match(/```[a-z0-9]*\s*([\s\S]*?)```/i);
+    const newCode = fence ? fence[1] : reply.trim();
+    const notes = fence ? reply.replace(fence[0], '').trim() : '';
+    console.log(`[CODE STUDIO] AI (${useModel}) modified ${lang} code (${code.length} -> ${newCode.length} chars)`);
+    res.json({ success: true, code: newCode, notes: notes });
+  } catch (err) {
+    console.error('Code Studio AI error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

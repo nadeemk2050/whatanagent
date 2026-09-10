@@ -39,7 +39,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
   // Never intercept API calls, Firestore or external CDNs
-  if (url.pathname.startsWith('/api') || url.hostname.includes('firestore') || url.hostname.includes('googleapis') || url.hostname.includes('gstatic') || url.hostname.includes('unpkg')) {
+  if (url.pathname.startsWith('/api') || url.hostname.includes('firestore') || url.hostname.includes('googleapis') || url.hostname.includes('gstatic') || url.hostname.includes('unpkg') || url.hostname.includes('jsdelivr')) {
     return;
   }
 
