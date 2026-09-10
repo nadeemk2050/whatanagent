@@ -129,7 +129,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       }
     } catch (err) { console.warn("Could not load knowledge", err); }
 
-    // Contact tracking
+    // Contact tracking (per-contact merge -> safe with concurrent chats)
     let needsGreeting = false;
     let needsOnboarding = true;
     const contactsRef = doc(db, "appData", "contacts");
@@ -139,14 +139,9 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       const today = new Date().toDateString();
       const cInfo = contacts[senderNumber] || {};
       
-      if (!contacts[senderNumber] || contacts[senderNumber].lastGreetingDate !== today) {
+      if (cInfo.lastGreetingDate !== today) {
         needsGreeting = true;
-        contacts[senderNumber] = {
-          ...cInfo,
-          lastGreetingDate: today,
-          firstContacted: cInfo.firstContacted || new Date().toISOString()
-        };
-        await setDoc(contactsRef, contacts);
+        await setDoc(contactsRef, { [senderNumber]: { lastGreetingDate: today, firstContacted: cInfo.firstContacted || new Date().toISOString() } }, { merge: true });
       }
       
       if (cInfo.leadName && cInfo.leadCompany && cInfo.leadProducts && cInfo.leadEmail && cInfo.leadWebsite) {
@@ -299,17 +294,15 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       finalReply = finalReply.replace(leadMatch[0], '').trim();
       
       try {
-        const cSnap = await getDoc(contactsRef);
-        let cData = cSnap.exists() ? cSnap.data() : {};
-        if (!cData[senderNumber]) cData[senderNumber] = {};
-        
-        if (leadName !== 'N/A' && leadName !== '') cData[senderNumber].leadName = leadName;
-        if (leadCompany !== 'N/A' && leadCompany !== '') cData[senderNumber].leadCompany = leadCompany;
-        if (leadProducts !== 'N/A' && leadProducts !== '') cData[senderNumber].leadProducts = leadProducts;
-        if (leadEmail !== 'N/A' && leadEmail !== '') cData[senderNumber].leadEmail = leadEmail;
-        if (leadWebsite !== 'N/A' && leadWebsite !== '') cData[senderNumber].leadWebsite = leadWebsite;
-        
-        await setDoc(contactsRef, cData);
+        const leadFields = {};
+        if (leadName !== 'N/A' && leadName !== '') leadFields.leadName = leadName;
+        if (leadCompany !== 'N/A' && leadCompany !== '') leadFields.leadCompany = leadCompany;
+        if (leadProducts !== 'N/A' && leadProducts !== '') leadFields.leadProducts = leadProducts;
+        if (leadEmail !== 'N/A' && leadEmail !== '') leadFields.leadEmail = leadEmail;
+        if (leadWebsite !== 'N/A' && leadWebsite !== '') leadFields.leadWebsite = leadWebsite;
+        if (Object.keys(leadFields).length > 0) {
+          await setDoc(contactsRef, { [senderNumber]: leadFields }, { merge: true });
+        }
       } catch(e) { console.error("Error saving lead info:", e); }
     }
 
@@ -317,11 +310,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     if (finalReply.includes('[HANDOVER]')) {
       finalReply = finalReply.replace('[HANDOVER]', '').trim();
       try {
-        const cSnap = await getDoc(contactsRef);
-        let cData = cSnap.exists() ? cSnap.data() : {};
-        if (!cData[senderNumber]) cData[senderNumber] = {};
-        cData[senderNumber].aiPaused = true;
-        await setDoc(contactsRef, cData);
+        await setDoc(contactsRef, { [senderNumber]: { aiPaused: true } }, { merge: true });
       } catch(e) { console.error("Error pausing AI on Handover:", e); }
     }
 
@@ -592,6 +581,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
         "For EACH recipient, output a hidden tag at the VERY END of your reply, exactly in this format:\n" +
         "[SENDMSG: 971501234567 | the full exact message text]\n" +
         "Rules:\n" +
+        "- If you do NOT output the [SENDMSG: ...] tag, NOTHING is sent. NEVER say a message was sent, dispatched or done unless you actually output its [SENDMSG] tag.\n" +
         "- Phone must be international format, digits only (country code + number). If the boss gives a local number starting with 0, replace the leading 0 with the country code " + (bossCfg.countryCode || '971') + ".\n" +
         "- The tag message text must be the exact final wording to send.\n" +
         "- You may output multiple [SENDMSG: ...] tags (one per recipient) in a single reply.\n" +
@@ -708,19 +698,20 @@ async function processBossSendTags(replyText, settings, bossCfg) {
   }
 
   if (sent.length > 0) {
-    // Snapshot the chat-contact list BEFORE we add the send targets to it
+    // Snapshot the chat-contact list BEFORE we record the send targets
     const priorChatKeys = Object.keys(contacts);
 
-    // Pause AI for everyone we messaged (same behaviour as the REPLY command), except the boss himself
+    // Record interaction timestamp only - AI stays ACTIVE (sending never pauses the AI)
     try {
+      const stampUpdates = {};
       sent.forEach(t => {
         if (phoneMatch(t, bossCfg.number)) return;
-        if (!contacts[t]) contacts[t] = {};
-        contacts[t].aiPaused = true;
-        contacts[t].lastInteraction = Date.now();
+        stampUpdates[t] = { lastInteraction: Date.now() };
       });
-      await setDoc(doc(db, "appData", "contacts"), contacts);
-    } catch (e) { console.error("Failed to pause AI for SENDMSG targets:", e.message); }
+      if (Object.keys(stampUpdates).length > 0) {
+        await setDoc(doc(db, "appData", "contacts"), stampUpdates, { merge: true });
+      }
+    } catch (e) { console.error("Failed to update timestamps for SENDMSG targets:", e.message); }
 
     // Detect brand-new numbers (not in Contact Book and never chatted) so the app can ask the boss
     for (const t of sent) {
@@ -826,14 +817,11 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
     if (targetNumber && msgBody) {
       await sendWhatsAppMessage(targetNumber, msgBody, settings);
 
-      // Pause AI for that customer & mark interaction
+      // Mark interaction only - AI stays ACTIVE
       const contactsRef = doc(db, "appData", "contacts");
       const contactsSnap = await getDoc(contactsRef);
-      let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-      if (!contacts[targetNumber]) contacts[targetNumber] = {};
-      contacts[targetNumber].aiPaused = true;
-      contacts[targetNumber].lastInteraction = Date.now();
-      await setDoc(contactsRef, contacts);
+      const contacts = contactsSnap.exists() ? contactsSnap.data() : {};
+      await setDoc(contactsRef, { [targetNumber]: { lastInteraction: Date.now() } }, { merge: true });
 
       // If the number is brand new, offer to save it to the Contact Book
       let addSuggest = '';
@@ -845,7 +833,7 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
         }
       } catch (e) {}
 
-      await sendWhatsAppMessage(senderNumber, `✅ Sent & AI Paused for +${targetNumber}.` + addSuggest, settings);
+      await sendWhatsAppMessage(senderNumber, `✅ Sent to +${targetNumber} (AI stays active).` + addSuggest, settings);
       return;
     }
     await sendWhatsAppMessage(senderNumber, "Boss, use this format: REPLY <number> <message>", settings);
@@ -884,6 +872,22 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
   // Remove any action blocks from the final text sent to the boss
   rawReply = stripSeoActionBlocks(rawReply || '');
   if (!rawReply && seoActionsDone.length > 0) rawReply = '✅ Kaam ho gaya, Boss.';
+
+  // Safety net: if the AI CLAIMS a message was sent but produced NO [SENDMSG] tag, nothing was sent.
+  // Force one corrective pass so it either sends for real or asks for the missing details.
+  const claimsSent = /(sent|bhej di|bhej diya|dispatched|send kar di|message bhej|already done|done already|ho gaya hai)/i.test(rawReply || '');
+  const hasSendTag = /\[SEND[\s_]?MSG:/i.test(rawReply || '');
+  if (claimsSent && !hasSendTag) {
+    console.log('[BOSS SEND-CORRECTION] AI claimed a send without any tag - retrying with correction');
+    extraMessages.push({ role: 'assistant', content: rawReply });
+    extraMessages.push({ role: 'user', content: 'SYSTEM CHECK: You claimed or implied that the message was sent, but you did NOT output any [SENDMSG: number | message] tag - so NOTHING was actually sent. If you have the recipient number and the message text, output the [SENDMSG] tag NOW. If something is missing (e.g. the number), ask the boss for it. NEVER claim anything was sent without the tag.' });
+    try {
+      const corrected = await generateBossAIResponse(userText, senderNumber, settings, bossCfg, extraMessages);
+      const correctedClean = stripSeoActionBlocks(corrected || '');
+      rawReply = correctedClean || rawReply;
+      console.log(`[BOSS SEND-CORRECTION] corrected reply now has send tag: ${/\[SEND[\s_]?MSG:/i.test(rawReply)}`);
+    } catch (corrErr) { console.error('Send correction retry failed:', corrErr.message); }
+  }
 
   // 1) Execute message-sending tags [SENDMSG: ...]
   const sendResult = await processBossSendTags(rawReply, settings, bossCfg);
@@ -1186,14 +1190,8 @@ app.post('/api/chats/reply', async (req, res) => {
     const settings = await getSettings();
     await sendWhatsAppMessage(number, text, settings);
     
-    // Pause AI & Update interaction timestamp
-    const contactsRef = doc(db, "appData", "contacts");
-    const contactsSnap = await getDoc(contactsRef);
-    let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-    if (!contacts[number]) contacts[number] = {};
-    contacts[number].aiPaused = true;
-    contacts[number].lastInteraction = Date.now();
-    await setDoc(contactsRef, contacts);
+    // Update interaction timestamp only - AI stays ACTIVE (manual chatting never pauses the AI)
+    await setDoc(doc(db, "appData", "contacts"), { [number]: { lastInteraction: Date.now() } }, { merge: true });
     
     res.json({ success: true });
   } catch (err) { res.status(500).json({error: "Failed to send"}); }
@@ -1202,12 +1200,8 @@ app.post('/api/chats/reply', async (req, res) => {
 app.post('/api/chats/toggleAI', async (req, res) => {
   try {
     const { number, aiPaused } = req.body;
-    const contactsRef = doc(db, "appData", "contacts");
-    const contactsSnap = await getDoc(contactsRef);
-    let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-    if (!contacts[number]) contacts[number] = {};
-    contacts[number].aiPaused = aiPaused;
-    await setDoc(contactsRef, contacts);
+    // Per-contact merged write (manual toggle button in the dashboard)
+    await setDoc(doc(db, "appData", "contacts"), { [number]: { aiPaused: !!aiPaused } }, { merge: true });
     res.json({ success: true });
   } catch (err) { res.status(500).json({error: "Failed to toggle"}); }
 });
@@ -2367,19 +2361,10 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
   return response.response.text().trim();
 }
 
-app.post('/webhook', async (req, res) => {
-  res.status(200).send('EVENT_RECEIVED'); // Quick ack
-  
-  try {
-    const { body } = req;
-    if (body.object === 'whatsapp_business_account') {
-      const entry = body.entry?.[0];
-      const message = entry?.changes?.[0]?.value?.messages?.[0];
-      if (!message) return;
-
-      const senderNumber = message.from;
-      let userText = "";
-      const settings = await getSettings();
+async function processIncomingMessage(message) {
+  const senderNumber = message.from;
+  let userText = "";
+  const settings = await getSettings();
 
       if (message.type === 'text') {
         userText = message.text.body;
@@ -2513,7 +2498,7 @@ app.post('/webhook', async (req, res) => {
         return;
       }
 
-      // Proxy check
+      // Proxy check (owner relay)
       if (settings.OWNER_PHONE_NUMBER && senderNumber === settings.OWNER_PHONE_NUMBER) {
         if (userText.toUpperCase().startsWith("REPLY ")) {
           const parts = userText.split(" ");
@@ -2522,64 +2507,97 @@ app.post('/webhook', async (req, res) => {
           
           if (targetNumber && msgBody) {
             await sendWhatsAppMessage(targetNumber, msgBody, settings);
-            
-            // Pause AI & Update interaction timestamp
-            const contactsRef = doc(db, "appData", "contacts");
-            const contactsSnap = await getDoc(contactsRef);
-            let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-            if (!contacts[targetNumber]) contacts[targetNumber] = {};
-            contacts[targetNumber].aiPaused = true;
-            contacts[targetNumber].lastInteraction = Date.now();
-            await setDoc(contactsRef, contacts);
-
-            await sendWhatsAppMessage(senderNumber, `✅ Sent & AI Paused for ${targetNumber}.`, settings);
+            // Mark interaction only - AI stays ACTIVE (manual sending never pauses the AI)
+            await setDoc(doc(db, "appData", "contacts"), { [targetNumber]: { lastInteraction: Date.now() } }, { merge: true });
+            await sendWhatsAppMessage(senderNumber, `✅ Sent for +${targetNumber} (AI stays active).`, settings);
             return;
           }
         }
       }
 
-      // Generate AI Reply
+      // Track chat counts / interaction - per-contact merged write so simultaneous chats never overwrite each other
       const contactsRef = doc(db, "appData", "contacts");
-      const contactsSnap = await getDoc(contactsRef);
-      let contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-      if (!contacts[senderNumber]) contacts[senderNumber] = {};
-      
-      // Increment, set last interaction timestamp, and save chat count
-      const currentCount = (contacts[senderNumber].chatCount || 0) + 1;
-      contacts[senderNumber].chatCount = currentCount;
-      contacts[senderNumber].lastInteraction = Date.now();
-      await setDoc(contactsRef, contacts);
+      let wasPaused = false;
+      try {
+        const contactsSnap = await getDoc(contactsRef);
+        const contacts = contactsSnap.exists() ? contactsSnap.data() : {};
+        const info = contacts[senderNumber] || {};
+        wasPaused = info.aiPaused === true;
+        const currentCount = (info.chatCount || 0) + 1;
 
-      // Auto-save new chat contacts into the Contact Book (first message only)
-      if (currentCount === 1) {
-        try {
-          await setDoc(doc(db, "contactBook", normalizePhone(senderNumber)), {
-            phone: normalizePhone(senderNumber),
-            phoneRaw: senderNumber,
-            source: 'AI Chat',
-            inChat: true,
-            leadStatus: 'New',
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          }, { merge: true });
-        } catch(cbErr) { console.error('Contact book auto-save failed:', cbErr.message); }
-      }
+        await setDoc(contactsRef, {
+          [senderNumber]: {
+            chatCount: currentCount,
+            lastInteraction: Date.now(),
+            firstContacted: info.firstContacted || new Date().toISOString()
+          }
+        }, { merge: true });
 
-      // Trigger 4-chatting alert to owner
-      if (currentCount === 4 && settings.OWNER_PHONE_NUMBER && senderNumber !== settings.OWNER_PHONE_NUMBER) {
-        const alertMsg = `⚠️ Alert: Customer +${senderNumber} is chatting regularly (4 messages exchanged). You can click to join the chat directly here: https://wa.me/${senderNumber}`;
-        console.log(`[ALERT] Sending regular-chatter alert to owner: ${settings.OWNER_PHONE_NUMBER}`);
-        try {
-          await sendWhatsAppMessage(settings.OWNER_PHONE_NUMBER, alertMsg, settings);
-        } catch (alertErr) {
-          console.error("Failed to send owner alert:", alertErr.message);
+        // Auto-save new chat contacts into the Contact Book (first message only)
+        if (currentCount === 1) {
+          try {
+            await setDoc(doc(db, "contactBook", normalizePhone(senderNumber)), {
+              phone: normalizePhone(senderNumber),
+              phoneRaw: senderNumber,
+              source: 'AI Chat',
+              inChat: true,
+              leadStatus: 'New',
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            }, { merge: true });
+          } catch(cbErr) { console.error('Contact book auto-save failed:', cbErr.message); }
         }
-      }
-      
-      if (!contacts[senderNumber].aiPaused) {
+
+        // Trigger 4-chatting alert to owner
+        if (currentCount === 4 && settings.OWNER_PHONE_NUMBER && senderNumber !== settings.OWNER_PHONE_NUMBER) {
+          const alertMsg = `⚠️ Alert: Customer +${senderNumber} is chatting regularly (4 messages exchanged). You can click to join the chat directly here: https://wa.me/${senderNumber}`;
+          console.log(`[ALERT] Sending regular-chatter alert to owner: ${settings.OWNER_PHONE_NUMBER}`);
+          try {
+            await sendWhatsAppMessage(settings.OWNER_PHONE_NUMBER, alertMsg, settings);
+          } catch (alertErr) {
+            console.error("Failed to send owner alert:", alertErr.message);
+          }
+        }
+      } catch (cErr) { console.error('Contact tracking error:', cErr.message); }
+
+      if (!wasPaused) {
         const replyText = await generateAIResponse(userText, senderNumber, settings);
         await sendWhatsAppMessage(senderNumber, replyText, settings);
       }
+}
+
+app.post('/webhook', async (req, res) => {
+  res.status(200).send('EVENT_RECEIVED'); // Quick ack
+
+  try {
+    const { body } = req;
+    if (body.object !== 'whatsapp_business_account') return;
+
+    // Collect ALL messages from the payload - Meta can batch several messages
+    // (from several different people) into ONE webhook call.
+    const bySender = new Map();
+    for (const entry of (body.entry || [])) {
+      for (const change of (entry.changes || [])) {
+        const msgs = (change.value && change.value.messages) || [];
+        for (const m of msgs) {
+          if (!m || !m.from) continue;
+          if (!bySender.has(m.from)) bySender.set(m.from, []);
+          bySender.get(m.from).push(m);
+        }
+      }
+    }
+    const totalMsgs = [...bySender.values()].reduce((n, arr) => n + arr.length, 0);
+    if (totalMsgs === 0) return;
+    if (totalMsgs > 1) console.log(`[WEBHOOK] Batch received: ${totalMsgs} message(s) from ${bySender.size} sender(s)`);
+
+    // Process each sender's messages in order, but ALL senders CONCURRENTLY
+    for (const [num, msgs] of bySender.entries()) {
+      (async () => {
+        for (const m of msgs) {
+          try { await processIncomingMessage(m); }
+          catch (e) { console.error(`Webhook message processing error (${num}):`, e.message); }
+        }
+      })();
     }
   } catch (error) {
     console.error('Webhook Error:', error.message);

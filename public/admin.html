@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.10.5 (Code Studio - Monaco VS Code editor + AI + WordPress save) -->
+    <!-- APP VERSION: 2026.09.10.6 (Never-Pause AI + Parallel multi-chat replies + Reliable boss sending) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -1608,14 +1608,13 @@
             msgList.appendChild(bubble);
             msgList.scrollTop = msgList.scrollHeight;
 
-            // Sends to API (which auto-pauses AI)
+            // Sends to API - AI stays ACTIVE (manual chatting never pauses the AI)
             await fetch('api/chats/reply', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ number: activeContact, text })
             });
-            
-            activeAiPaused = true;
+            // Keep the current AI status as-is (only the toggle button changes it)
             updateAiBtn();
         }
 
