@@ -1449,6 +1449,92 @@ app.post('/api/ai/extract-contacts', async (req, res) => {
   }
 });
 
+// ==========================================================
+// --- SEO AGENT (site env, instructions, SEO knowledge base) ---
+// ==========================================================
+app.get('/api/seo', async (req, res) => {
+  try {
+    const snap = await getDoc(doc(db, "appData", "seoAgent"));
+    res.json(snap.exists() ? snap.data() : {});
+  } catch (error) { res.status(500).json({ error: 'Failed to load SEO settings.' }); }
+});
+
+app.post('/api/seo', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const ref = doc(db, "appData", "seoAgent");
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? snap.data() : {};
+
+    const merged = {
+      instructions: (body.instructions !== undefined) ? body.instructions : (current.instructions || ''),
+      knowledge: { ...(current.knowledge || {}), ...(body.knowledge || {}) },
+      sites: { ...(current.sites || {}) },
+      updatedAt: Date.now()
+    };
+
+    // Merge each site's env settings individually (so partial saves never wipe other fields)
+    if (body.sites && typeof body.sites === 'object') {
+      for (const [key, val] of Object.entries(body.sites)) {
+        merged.sites[key] = { ...(merged.sites[key] || {}), ...(val || {}), updatedAt: Date.now() };
+      }
+    }
+
+    await setDoc(ref, merged);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('SEO save error:', error.message);
+    res.status(500).json({ error: 'Failed to save SEO settings.' });
+  }
+});
+
+// Publish (or save as draft) a WordPress page on the configured SEO site
+app.post('/api/seo/publish-page', async (req, res) => {
+  try {
+    const { siteKey, title, content, status, pageId } = req.body || {};
+    if (!title || !title.trim()) return res.status(400).json({ error: 'Page name (title) is required.' });
+    if (!content || !content.trim()) return res.status(400).json({ error: 'Page text is required.' });
+
+    const snap = await getDoc(doc(db, "appData", "seoAgent"));
+    const seo = snap.exists() ? snap.data() : {};
+    const sites = seo.sites || {};
+    const key = siteKey || Object.keys(sites)[0];
+    const site = sites[key] || {};
+
+    if (!site.url || !site.cmsUsername || !site.cmsPassword) {
+      return res.status(400).json({ error: `Site URL, CMS username and app password are required in the SEO Agent ENV for ${key || 'this site'}.` });
+    }
+
+    const base = site.url.replace(/\/+$/, '');
+    const endpoint = pageId ? `${base}/wp-json/wp/v2/pages/${pageId}` : `${base}/wp-json/wp/v2/pages`;
+
+    // If plain text (no HTML), convert double new lines into paragraphs
+    let html = content;
+    if (!/<[a-z][\s\S]*>/i.test(content)) {
+      html = content.split(/\n{2,}/).map(p => '<p>' + p.split('\n').join('<br>') + '</p>').join('\n');
+    }
+
+    console.log(`[SEO PAGE] ${pageId ? 'Updating' : 'Creating'} "${title}" (${status}) on ${key} -> ${endpoint}`);
+
+    const r = await axios({
+      method: 'post',
+      url: endpoint,
+      auth: { username: site.cmsUsername, password: site.cmsPassword },
+      headers: { 'Content-Type': 'application/json' },
+      data: { title: title.trim(), content: html, status: status === 'publish' ? 'publish' : 'draft' },
+      timeout: 30000
+    });
+
+    console.log(`[SEO PAGE] Success: id=${r.data.id} status=${r.data.status} link=${r.data.link}`);
+    res.json({ success: true, id: r.data.id, link: r.data.link, status: r.data.status, site: key });
+  } catch (err) {
+    const wpMsg = err.response && err.response.data && (err.response.data.message || err.response.data.code)
+      ? (err.response.data.message || err.response.data.code) : err.message;
+    console.error('Publish page error:', wpMsg);
+    res.status(500).json({ error: 'WordPress rejected the request: ' + wpMsg });
+  }
+});
+
 // --- Follow-Ups API ---
 app.get('/api/followups', async (req, res) => {
   try {

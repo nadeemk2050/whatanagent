@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.10.2 (Contact Book + Leads Book + OCR + Boss KB) -->
+    <!-- APP VERSION: 2026.09.10.3 (SEO Agent + Add/Publish Page + Contact Book + OCR + Boss KB) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -246,6 +246,7 @@
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
+            <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
@@ -639,6 +640,156 @@
                 </div>
             </div>
 
+            <!-- SEO Agent Section -->
+            <div id="seoSection" class="app-section">
+                <div class="card" style="margin-bottom:20px;">
+                    <h2 style="margin:0;">🔎 SEO Agent</h2>
+                    <p class="subtitle" style="margin:6px 0 0 0;">Dedicated SEO workspace: site connection settings, agent instructions and SEO knowledge base.</p>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:15px;">
+                        <button id="seoTabBtnSite" onclick="switchSeoTab('site')" style="padding:10px 16px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🌐 www.alshaabalwaseem.com SEO</button>
+                        <button id="seoTabBtnInstructions" onclick="switchSeoTab('instructions')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📝 Instructions for SEO Agent</button>
+                        <button id="seoTabBtnKnowledge" onclick="switchSeoTab('knowledge')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📚 Knowledge Base for SEO Agent</button>
+                        <button id="seoTabBtnAddPage" onclick="switchSeoTab('addpage')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add / Publish Page</button>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 1: SITE ENV -->
+                <div id="seoTabSite" style="display:block;">
+                    <div class="card">
+                        <h3 style="margin-top:0; color:var(--primary);">⚙️ ENV FOR THIS SITE — www.alshaabalwaseem.com</h3>
+                        <p class="subtitle" style="margin-bottom:20px;">Connection keys and settings your SEO Agent will use for this website. Saved securely in your Firebase database.</p>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🌐 Site Info</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:2; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Website URL</label><input type="text" id="seoSiteUrl" placeholder="https://www.alshaabalwaseem.com" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">CMS Platform</label><select id="seoCmsPlatform" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"><option value="wordpress">WordPress</option><option value="shopify">Shopify</option><option value="wix">Wix</option><option value="custom">Custom HTML</option><option value="other">Other</option></select></div>
+                                <div style="flex:2; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Sitemap URL</label><input type="text" id="seoSitemapUrl" placeholder="https://www.alshaabalwaseem.com/sitemap.xml" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🔑 CMS Access (to edit pages, posts & meta tags)</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:2; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Admin / Login URL</label><input type="text" id="seoCmsAdminUrl" placeholder="https://www.alshaabalwaseem.com/wp-admin" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Username</label><input type="text" id="seoCmsUsername" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">App Password / API Key</label><input type="text" id="seoCmsPassword" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🖥️ FTP / SFTP (optional)</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:2; min-width:200px;"><label style="font-size:13px; font-weight:normal;">Host</label><input type="text" id="seoFtpHost" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:100px;"><label style="font-size:13px; font-weight:normal;">Port</label><input type="text" id="seoFtpPort" placeholder="21" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:150px;"><label style="font-size:13px; font-weight:normal;">User</label><input type="text" id="seoFtpUser" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:150px;"><label style="font-size:13px; font-weight:normal;">Password</label><input type="text" id="seoFtpPassword" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">📊 Analytics & Search Engines</label>
+                            <div style="margin-top:8px;"><label style="font-size:13px; font-weight:normal;">Google Search Console Access (API key / service account JSON / verification code)</label><textarea id="seoGsc" style="width:100%; height:80px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px; resize:vertical;"></textarea></div>
+                            <div style="margin-top:10px;"><label style="font-size:13px; font-weight:normal;">GSC Property URL</label><input type="text" id="seoGscProperty" placeholder="https://www.alshaabalwaseem.com/" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:10px;">
+                                <div style="flex:1; min-width:160px;"><label style="font-size:13px; font-weight:normal;">Google Analytics ID</label><input type="text" id="seoGaId" placeholder="G-XXXXXXXXXX" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:160px;"><label style="font-size:13px; font-weight:normal;">Tag Manager ID</label><input type="text" id="seoGtmId" placeholder="GTM-XXXXXXX" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:160px;"><label style="font-size:13px; font-weight:normal;">Google Ads Customer ID</label><input type="text" id="seoAdsId" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:160px;"><label style="font-size:13px; font-weight:normal;">Bing Webmaster Key</label><input type="text" id="seoBingKey" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:160px;"><label style="font-size:13px; font-weight:normal;">Meta Pixel ID</label><input type="text" id="seoMetaPixel" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🔍 SEO Tools & Search APIs</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:2; min-width:220px;"><label style="font-size:13px; font-weight:normal;">Serper API Key (Google search results)</label><input type="text" id="seoSerperKey" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Google CX (Search Engine ID)</label><input type="text" id="seoGoogleCx" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Google CSE API Key</label><input type="text" id="seoGoogleCseKey" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">📘 Facebook Auto-Posting</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Facebook Page ID</label><input type="text" id="seoFbPageId" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:3; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Facebook Page Access Token</label><textarea id="seoFbPageToken" style="width:100%; height:70px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px; resize:vertical;"></textarea></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🤖 SEO AI Engine</label>
+                            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
+                                <div style="flex:1; min-width:150px;"><label style="font-size:13px; font-weight:normal;">AI Provider</label><select id="seoAiProvider" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"><option value="deepseek">DeepSeek</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select></div>
+                                <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">AI Model</label><input type="text" id="seoAiModel" placeholder="gemini-2.5-flash" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                                <div style="flex:2; min-width:240px;"><label style="font-size:13px; font-weight:normal;">AI API Key (if different from main Env Settings)</label><input type="text" id="seoAiKey" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="border-top:1px solid var(--border); padding-top:15px;">
+                            <label style="font-weight:bold;">🎯 Targets</label>
+                            <div style="margin-top:8px;"><label style="font-size:13px; font-weight:normal;">Target Keywords (one per line or comma separated)</label><textarea id="seoKeywords" style="width:100%; height:70px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px; resize:vertical;"></textarea></div>
+                            <div style="margin-top:10px;"><label style="font-size:13px; font-weight:normal;">Target Locations & Languages</label><input type="text" id="seoTargetLocations" placeholder="e.g. UAE, Dubai, Saudi Arabia — English + Arabic" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
+                            <div style="margin-top:10px;"><label style="font-size:13px; font-weight:normal;">Notes</label><textarea id="seoNotes" style="width:100%; height:60px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px; resize:vertical;"></textarea></div>
+                        </div>
+
+                        <button onclick="saveSeoEnv()" class="btn-save">💾 Save Site ENV</button>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 2: INSTRUCTIONS -->
+                <div id="seoTabInstructions" style="display:none;">
+                    <div class="card">
+                        <h3 style="margin-top:0;">📝 Instructions for SEO Agent</h3>
+                        <p class="subtitle" style="margin-bottom:15px;">Write exactly how your SEO agent should work — its duties, limits, schedule and priorities. The agent will always follow these instructions.</p>
+                        <textarea id="seoInstructions" style="height:260px; width:100%;" placeholder="Example:&#10;1. You are the SEO agent for www.alshaabalwaseem.com.&#10;2. Every day: check site health, broken links, and page speed.&#10;3. Every week: suggest 3 new blog topics based on our keywords and report them to the boss on WhatsApp.&#10;4. Never publish anything without boss approval.&#10;5. Always write meta titles under 60 characters and descriptions under 155 characters.&#10;6. Use English + Arabic where relevant."></textarea>
+                        <button onclick="saveSeoInstructions()" class="btn-save">💾 Save Instructions</button>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 3: KNOWLEDGE BASE -->
+                <div id="seoTabKnowledge" style="display:none;">
+                    <div class="card">
+                        <h3 style="margin-top:0;">📚 Knowledge Base for SEO Agent</h3>
+                        <p class="subtitle" style="margin-bottom:15px;">Everything the SEO agent should know about this website, business and market.</p>
+                        <div class="form-group"><label>Business / Website Description</label><textarea id="seoKbSiteDescription" style="height:90px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Products & Services</label><textarea id="seoKbProducts" style="height:90px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Target Keywords & Topics</label><textarea id="seoKbKeywords" style="height:90px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Target Countries / Cities / Languages</label><textarea id="seoKbLocations" style="height:70px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Competitors (websites & notes)</label><textarea id="seoKbCompetitors" style="height:70px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Content Tone & Style</label><textarea id="seoKbTone" style="height:70px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>SEO Rules & Guidelines (custom)</label><textarea id="seoKbRules" style="height:90px; width:100%;"></textarea></div>
+                        <div class="form-group"><label>Important Pages / URLs</label><textarea id="seoKbPages" style="height:70px; width:100%;"></textarea></div>
+                        <button onclick="saveSeoKnowledge()" class="btn-save">💾 Save SEO Knowledge Base</button>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 4: ADD / PUBLISH PAGE -->
+                <div id="seoTabAddPage" style="display:none;">
+                    <div class="card">
+                        <h3 style="margin-top:0;">➕ Add Page & Publish</h3>
+                        <p class="subtitle" style="margin-bottom:15px;">Create a new page on the website. Save it as a draft to review later, or publish it live instantly.</p>
+                        <div class="form-group">
+                            <label>🌐 Website</label>
+                            <select id="seoPageSite" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>📄 Page Name (required)</label>
+                            <input type="text" id="seoPageTitle" placeholder="e.g. Copper Scrap Buying Services in UAE" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label>📝 Text on Page (required — plain text or HTML)</label>
+                            <textarea id="seoPageContent" style="height:240px; width:100%;" placeholder="Write the page content here...&#10;&#10;Separate paragraphs with a blank line. Basic HTML is also allowed."></textarea>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button onclick="saveSeoPage('draft')" style="flex:1; min-width:180px; padding:12px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save as Draft</button>
+                            <button onclick="saveSeoPage('publish')" style="flex:1; min-width:180px; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🚀 Publish Page Live</button>
+                        </div>
+                        <div id="seoPageResult" style="margin-top:15px; display:none; padding:12px; border-radius:8px; font-size:14px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Live Chat Section -->
             <div id="chatSection" class="app-section">
                 <div class="card" style="padding: 0; border: none; box-shadow: none;">
@@ -913,6 +1064,20 @@
     </div>
 
     <script>
+        // When the dashboard is hosted on Firebase Hosting, forward API calls to the Render backend
+        (function() {
+            const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
+            if (!isFirebaseHost) return;
+            const API_BASE = 'https://whatanagent.onrender.com/';
+            const origFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                if (typeof input === 'string' && (input.startsWith('api/') || input.startsWith('/api/'))) {
+                    input = API_BASE + (input.startsWith('/') ? input.substring(1) : input);
+                }
+                return origFetch(input, init);
+            };
+        })();
+
         // Global edit mode indices
         let editingFaqIndex = null;
         let editingProductIndex = null;
@@ -2820,6 +2985,206 @@
             if (id === 'contactbook') loadContactBook();
             if (id === 'leadsbook') loadLeadsBook();
         };
+
+        // ======================================================
+        // ===== SEO AGENT (site env + instructions + KB) =======
+        // ======================================================
+        var SEO_SITE_KEY = 'www.alshaabalwaseem.com';
+
+        function switchSeoTab(tab) {
+            const tabs = { site: 'seoTabSite', instructions: 'seoTabInstructions', knowledge: 'seoTabKnowledge', addpage: 'seoTabAddPage' };
+            const btns = { site: 'seoTabBtnSite', instructions: 'seoTabBtnInstructions', knowledge: 'seoTabBtnKnowledge', addpage: 'seoTabBtnAddPage' };
+            Object.keys(tabs).forEach(function(k) {
+                const panel = document.getElementById(tabs[k]);
+                const btn = document.getElementById(btns[k]);
+                if (panel) panel.style.display = (k === tab) ? 'block' : 'none';
+                if (btn) {
+                    btn.style.background = (k === tab) ? 'var(--primary)' : '#f0f2f5';
+                    btn.style.color = (k === tab) ? 'white' : '#333';
+                    btn.style.border = (k === tab) ? 'none' : '1px solid var(--border)';
+                }
+            });
+        }
+
+        async function loadSeoAgent() {
+            let data = {};
+            try {
+                const res = await fetch('api/seo');
+                data = (await res.json()) || {};
+            } catch(e) { data = {}; }
+            const site = (data.sites && data.sites[SEO_SITE_KEY]) || {};
+            const kv = data.knowledge || {};
+            const setVal = function(id, v, def) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.value = (v === undefined || v === null || v === '') ? (def || '') : v;
+            };
+            // Tab 1 - ENV FOR THIS SITE
+            setVal('seoSiteUrl', site.url, 'https://www.alshaabalwaseem.com');
+            setVal('seoCmsPlatform', site.cmsPlatform, 'wordpress');
+            setVal('seoSitemapUrl', site.sitemapUrl, 'https://www.alshaabalwaseem.com/sitemap.xml');
+            setVal('seoCmsAdminUrl', site.cmsAdminUrl, '');
+            setVal('seoCmsUsername', site.cmsUsername, '');
+            setVal('seoCmsPassword', site.cmsPassword, '');
+            setVal('seoFtpHost', site.ftpHost, '');
+            setVal('seoFtpPort', site.ftpPort, '');
+            setVal('seoFtpUser', site.ftpUser, '');
+            setVal('seoFtpPassword', site.ftpPassword, '');
+            setVal('seoGsc', site.gscAccess, '');
+            setVal('seoGaId', site.gaId, '');
+            setVal('seoGtmId', site.gtmId, '');
+            setVal('seoAdsId', site.adsId, '');
+            setVal('seoBingKey', site.bingKey, '');
+            setVal('seoMetaPixel', site.metaPixel, '');
+            setVal('seoGscProperty', site.gscPropertyUrl, '');
+            setVal('seoSerperKey', site.serperKey, '');
+            setVal('seoGoogleCx', site.googleCx, '');
+            setVal('seoGoogleCseKey', site.googleCseKey, '');
+            setVal('seoFbPageId', site.fbPageId, '');
+            setVal('seoFbPageToken', site.fbPageToken, '');
+            setVal('seoAiProvider', site.aiProvider, 'deepseek');
+            setVal('seoAiModel', site.aiModel, '');
+            setVal('seoAiKey', site.aiKey, '');
+            setVal('seoKeywords', site.keywords, '');
+            setVal('seoTargetLocations', site.targetLocations, '');
+            setVal('seoNotes', site.notes, '');
+            // Tab 2 - Instructions
+            setVal('seoInstructions', data.instructions, '');
+            // Tab 3 - Knowledge Base
+            setVal('seoKbSiteDescription', kv.siteDescription, '');
+            setVal('seoKbProducts', kv.products, '');
+            setVal('seoKbKeywords', kv.keywords, '');
+            setVal('seoKbLocations', kv.locations, '');
+            setVal('seoKbCompetitors', kv.competitors, '');
+            setVal('seoKbTone', kv.tone, '');
+            setVal('seoKbRules', kv.rules, '');
+            setVal('seoKbPages', kv.pages, '');
+
+            // Populate the Add / Publish Page site selector
+            const sitesSel = document.getElementById('seoPageSite');
+            if (sitesSel) {
+                const keys = Object.keys(data.sites || {});
+                const list = keys.length ? keys : [SEO_SITE_KEY];
+                sitesSel.innerHTML = list.map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('');
+            }
+        }
+
+        async function saveSeoEnv() {
+            const gv = function(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+            const site = {
+                url: gv('seoSiteUrl') || 'https://www.alshaabalwaseem.com',
+                cmsPlatform: gv('seoCmsPlatform'),
+                sitemapUrl: gv('seoSitemapUrl'),
+                cmsAdminUrl: gv('seoCmsAdminUrl'),
+                cmsUsername: gv('seoCmsUsername'),
+                cmsPassword: gv('seoCmsPassword'),
+                ftpHost: gv('seoFtpHost'),
+                ftpPort: gv('seoFtpPort'),
+                ftpUser: gv('seoFtpUser'),
+                ftpPassword: gv('seoFtpPassword'),
+                gscAccess: gv('seoGsc'),
+                gaId: gv('seoGaId'),
+                gtmId: gv('seoGtmId'),
+                adsId: gv('seoAdsId'),
+                bingKey: gv('seoBingKey'),
+                metaPixel: gv('seoMetaPixel'),
+                gscPropertyUrl: gv('seoGscProperty'),
+                serperKey: gv('seoSerperKey'),
+                googleCx: gv('seoGoogleCx'),
+                googleCseKey: gv('seoGoogleCseKey'),
+                fbPageId: gv('seoFbPageId'),
+                fbPageToken: gv('seoFbPageToken'),
+                aiProvider: gv('seoAiProvider'),
+                aiModel: gv('seoAiModel'),
+                aiKey: gv('seoAiKey'),
+                keywords: gv('seoKeywords'),
+                targetLocations: gv('seoTargetLocations'),
+                notes: gv('seoNotes')
+            };
+            toastMsg('⏳ Saving site env...');
+            try {
+                const payload = { sites: {} };
+                payload.sites[SEO_SITE_KEY] = site;
+                const res = await fetch('api/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!res.ok) throw new Error('save failed');
+                toastMsg('✅ Site ENV saved!');
+            } catch(e) { toastMsg('❌ Failed to save site env'); }
+        }
+
+        async function saveSeoInstructions() {
+            const el = document.getElementById('seoInstructions');
+            toastMsg('⏳ Saving instructions...');
+            try {
+                const res = await fetch('api/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instructions: el ? el.value : '' }) });
+                if (!res.ok) throw new Error('save failed');
+                toastMsg('✅ Instructions saved!');
+            } catch(e) { toastMsg('❌ Failed to save instructions'); }
+        }
+
+        async function saveSeoKnowledge() {
+            const gv = function(id) { const el = document.getElementById(id); return el ? el.value : ''; };
+            const knowledge = {
+                siteDescription: gv('seoKbSiteDescription'),
+                products: gv('seoKbProducts'),
+                keywords: gv('seoKbKeywords'),
+                locations: gv('seoKbLocations'),
+                competitors: gv('seoKbCompetitors'),
+                tone: gv('seoKbTone'),
+                rules: gv('seoKbRules'),
+                pages: gv('seoKbPages')
+            };
+            toastMsg('⏳ Saving SEO knowledge base...');
+            try {
+                const res = await fetch('api/seo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ knowledge: knowledge }) });
+                if (!res.ok) throw new Error('save failed');
+                toastMsg('✅ SEO Knowledge Base saved!');
+            } catch(e) { toastMsg('❌ Failed to save SEO knowledge base'); }
+        }
+
+        // Chain SEO loader onto section switching
+        const origShowSectionSeo = showSection;
+        showSection = function(id) {
+            origShowSectionSeo(id);
+            if (id === 'seo') loadSeoAgent();
+        };
+
+        async function saveSeoPage(status) {
+            const titleEl = document.getElementById('seoPageTitle');
+            const contentEl = document.getElementById('seoPageContent');
+            const siteEl = document.getElementById('seoPageSite');
+            const resultEl = document.getElementById('seoPageResult');
+            const title = titleEl ? titleEl.value.trim() : '';
+            const content = contentEl ? contentEl.value.trim() : '';
+            const siteKey = siteEl && siteEl.value ? siteEl.value : SEO_SITE_KEY;
+            const show = function(html, ok) {
+                if (!resultEl) return;
+                resultEl.style.display = 'block';
+                resultEl.style.background = ok ? '#e8f5e9' : '#fbe9e7';
+                resultEl.style.border = '1px solid ' + (ok ? '#a5d6a7' : '#ffab91');
+                resultEl.innerHTML = html;
+            };
+            if (!title) { show('⚠️ Please enter the Page Name.', false); return; }
+            if (!content) { show('⚠️ Please write the Text on Page.', false); return; }
+            toastMsg(status === 'publish' ? '🚀 Publishing page...' : '💾 Saving draft...', 5000);
+            try {
+                const res = await fetch('api/seo/publish-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ siteKey: siteKey, title: title, content: content, status: status })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Failed');
+                show((status === 'publish' ? '✅ <b>Page published live on ' + siteKey + '!</b>' : '✅ <b>Draft saved on ' + siteKey + '!</b>') +
+                    '<br>Page ID: ' + data.id + ' • Status: ' + data.status +
+                    (data.link ? '<br><a href="' + data.link + '" target="_blank" style="color:#1565c0; font-weight:bold;">🔗 Open page</a>' : ''), true);
+                toastMsg(status === 'publish' ? '🚀 Page published!' : '💾 Draft saved!');
+                if (titleEl) titleEl.value = '';
+                if (contentEl) contentEl.value = '';
+            } catch(e) {
+                show('❌ ' + e.message, false);
+                toastMsg('❌ Failed to save page');
+            }
+        }
 
         // PWA Installation & Service Worker Integration
         let deferredPrompt;
