@@ -594,7 +594,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
     }
 
     if (Object.keys(seoSites).length > 0) {
-      const seoFirstKey = Object.keys(seoSites)[0];
+      const seoFirstKey = getMainSeoSiteKey(seoSites);
       const seoList = Object.keys(seoSites).map(k => `- ${k} | ${(seoSites[k].cmsPlatform || 'wordpress')} | ${seoSites[k].url || ''} | credentials: CONFIGURED (never printed)`).join('\n');
       systemInstruction +=
         "### SEO AGENT POWERS (FULL WEBSITE ADMIN ACCESS) ###\n" +
@@ -1718,7 +1718,7 @@ async function updateSavedSeoSiteField(siteKey, field, value) {
 
 async function executeSeoAction(name, params, sites) {
   params = params || {};
-  const firstKey = Object.keys(sites)[0];
+  const firstKey = getMainSeoSiteKey(sites);
   const siteKey = params.siteKey || firstKey;
   const site = sites[siteKey] || {};
   const noSite = ['list_sites', 'search_web', 'fetch_url'].includes(name);
@@ -2029,6 +2029,17 @@ async function executeSeoAction(name, params, sites) {
   }
 }
 
+function getMainSeoSiteKey(sites) {
+  const keys = Object.keys(sites || {});
+  if (!keys.length) return 'site';
+  const marked = keys.find(k => sites[k] && sites[k].isDefault);
+  if (marked) return marked;
+  const named = keys.find(k => /alshaabalwaseem/i.test(k));
+  if (named) return named;
+  const www = keys.find(k => /^www\./i.test(k));
+  return www || keys[0];
+}
+
 function seoActionsDocForPrompt(defaultKey) {
   return 'AVAILABLE ACTIONS (name - params):\n' +
     '- list_sites - {}\n' +
@@ -2058,7 +2069,7 @@ function seoActionsDocForPrompt(defaultKey) {
     '- facebook_status - {siteKey}  (check if the Facebook page connection works)\n' +
     '- post_to_facebook - {siteKey, message, link?}  (publishes a post on the connected Facebook page; link shows a preview card - use for sharing news, offers and updates)\n' +
     '- facebook_connect - {siteKey, token}  (one-time Facebook setup: only run when the user gives a fresh access token to paste)\n' +
-    'Use siteKey "' + (defaultKey || 'site') + '" for the main connected website.\n' +
+    'When the user does not name a specific website, ALWAYS use siteKey "' + (defaultKey || 'site') + '" - that is the MAIN website. Only use a different siteKey when the user explicitly names that other site.\n' +
     'TO ADD A NEW PAGE INTO THE WEBSITE NAVIGATION MENU: first list_menus, then list_menu_locations (find the MAIN menu id), then get_menu_items (find the parent item such as "Products"), then add_menu_item with pageId and parentId to nest it under that item - or parentId 0 for a top-level item.\n' +
     'DAILY NEWS / UPDATES WORKFLOW: for news, industry updates, price trends, machinery inventories or supplier spotlights ALWAYS use create_post (NOT pages) with status "publish" and the matching category id from list_categories. Category tree: "Industry News" hub with children "Plastics Updates", "Metals Updates", "Machinery & Inventories", "Supplier Spotlights". Write a strong SEO headline including the year, 300-600 words, add 1-2 internal links to related PRODUCT pages of the site (e.g. /hdpe100-regrind-scrap-trading/, /pc-bottle-scrap/, /aluminium-acsr-scrap/), mention AL SAHAM AL AHMAR once as the company. After publishing, Google is notified automatically - the action result contains "indexing" info; report it honestly. If the Facebook page is connected (check with facebook_status), you may also share the new post with post_to_facebook {message: headline + short teaser, link: post link}.';
 }
@@ -2090,13 +2101,13 @@ HOW TO TAKE ACTION:
 When you need to DO something, output one or more fenced action blocks exactly like:
 
 \`\`\`action
-{"action":"list_pages","params":{"siteKey":"${Object.keys(sites)[0] || 'site'}"}}
+{"action":"list_pages","params":{"siteKey":"${getMainSeoSiteKey(sites)}"}}
 \`\`\`
 
 The app executes each action and answers with "ACTION RESULT (action)" messages. Then continue until the task is complete, and finish with a clear summary for the user.
 
 AVAILABLE ACTIONS (name - params):
-${seoActionsDocForPrompt(Object.keys(sites)[0] || 'site')}
+${seoActionsDocForPrompt(getMainSeoSiteKey(sites))}
 
 RULES:
 1. NEVER print passwords, app passwords, tokens or API keys. Say "configured" instead.
@@ -2177,7 +2188,8 @@ app.post('/api/seo/ai-chat', async (req, res) => {
       return res.status(400).json({ error: 'No SEO site configured yet. Open the ENV tab and save site credentials first.' });
     }
 
-    const systemPrompt = buildWorkspacePrompt(seo);
+    const selectedSite = (body.siteKey && sites[body.siteKey]) ? body.siteKey : getMainSeoSiteKey(sites);
+    const systemPrompt = buildWorkspacePrompt(seo) + '\n\nCURRENTLY SELECTED SITE: the user has site "' + selectedSite + '" selected in the dropdown. Use siteKey "' + selectedSite + '" unless the user explicitly names a different site in the conversation.';
     const working = messages.slice(-24).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
     const executed = [];
     let finalReply = '';
