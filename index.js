@@ -1785,10 +1785,9 @@ async function executeSeoAction(name, params, sites) {
         const menuId = parseInt(params.menuId);
         if (!menuId) return { error: 'menuId is required (use list_menus first).' };
         const body = {
-          menu: menuId,
           status: 'publish',
           parent: parseInt(params.parentId) || 0,
-          position: parseInt(params.position) || 0
+          menu_order: parseInt(params.position) || 0
         };
         if (params.pageId) {
           body.type = 'post_type';
@@ -1808,18 +1807,48 @@ async function executeSeoAction(name, params, sites) {
         } else {
           return { error: 'Provide pageId (existing page) or url (custom link).' };
         }
-        const d = await seoWp(site, 'post', '/menu-items', body);
-        return { created: true, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', url: d.url, parent: d.parent, menu: menuId };
+        // CRITICAL: the `menus` field is what ATTACHES the item to the menu.
+        // Without it WordPress silently creates an orphan item that never shows in the nav.
+        // Standard WP expects an array [menuId]; some installs (custom REST schema) expect a plain integer.
+        const isAttached = (x) => Array.isArray(x.menus) ? x.menus.includes(menuId) : Number(x.menus) === menuId;
+        let d = null;
+        let lastErr = null;
+        for (const menusVal of [[menuId], menuId]) {
+          try {
+            d = await seoWp(site, 'post', '/menu-items', { ...body, menus: menusVal });
+            lastErr = null;
+            break;
+          } catch (e1) {
+            lastErr = e1;
+            const msg = String((e1.response && e1.response.data && (e1.response.data.message || e1.response.data.code)) || e1.message || '');
+            if (!/menus/i.test(msg)) break; // unrelated error - no point retrying with a different shape
+          }
+        }
+        if (!d) {
+          const msg = String((lastErr && lastErr.response && lastErr.response.data && lastErr.response.data.message) || (lastErr && lastErr.message) || 'unknown error');
+          return { error: 'Menu item create failed: ' + msg };
+        }
+        // Verify it is really in the menu; repair if it landed as an orphan
+        let attached = isAttached(d);
+        if (!attached && d.id) {
+          for (const menusVal of [[menuId], menuId]) {
+            try {
+              const d2 = await seoWp(site, 'post', `/menu-items/${d.id}`, { menus: menusVal });
+              if (isAttached(d2)) { d = d2; attached = true; break; }
+            } catch (e2) { /* try the other shape */ }
+          }
+        }
+        return { created: true, attached, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', url: d.url, parent: d.parent, menu: menuId };
       }
       case 'update_menu_item': {
         if (!params.itemId) return { error: 'itemId is required.' };
         const body = {};
         if (params.title) body.title = params.title;
         if (params.parentId !== undefined) body.parent = parseInt(params.parentId) || 0;
-        if (params.position !== undefined) body.position = parseInt(params.position) || 0;
+        if (params.position !== undefined) body.menu_order = parseInt(params.position) || 0;
         if (params.url) body.url = params.url;
         const d = await seoWp(site, 'post', `/menu-items/${params.itemId}`, body);
-        return { updated: true, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '' };
+        return { updated: true, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', parent: d.parent, order: d.menu_order };
       }
       case 'delete_menu_item': {
         if (!params.itemId) return { error: 'itemId is required.' };
@@ -1860,7 +1889,7 @@ function seoActionsDocForPrompt(defaultKey) {
     '- list_menus - {siteKey}  (website navigation menus)\n' +
     '- list_menu_locations - {siteKey}  (which menu is in primary/header/footer location)\n' +
     '- get_menu_items - {siteKey, menuId}  (all items of a menu with ids, titles, parents)\n' +
-    '- add_menu_item - {siteKey, menuId, title?, pageId?, url?, parentId?, position?}  (adds a page link or custom link to a menu; parentId nests it under another item e.g. under "Products")\n' +
+    '- add_menu_item - {siteKey, menuId, title?, pageId?, url?, parentId?, position?}  (ADDS the item INTO the menu so it appears in the website navigation; parentId nests it under another item such as the "PRODUCTS" menu item; position = order number inside the menu, e.g. 9. IMPORTANT: run get_menu_items first - if the item already exists in the menu, use update_menu_item instead of creating a duplicate. The reply shows attached:true when the item is really in the menu)\n' +
     '- update_menu_item - {siteKey, itemId, title?, parentId?, position?, url?}  (rename or move a menu item)\n' +
     '- delete_menu_item - {siteKey, itemId}\n' +
     'Use siteKey "' + (defaultKey || 'site') + '" for the main connected website.\n' +
