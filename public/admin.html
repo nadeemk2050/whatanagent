@@ -333,6 +333,21 @@
                             </div>
                             <textarea id="scrapedData" placeholder="You can manually paste your website content or documents here..."></textarea>
                         </div>
+                        <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                            <label style="font-weight: bold; color: var(--primary);">👑 Boss Knowledge (Private - Boss Mode)</label>
+                            <p style="font-size: 12px; color: #667781; margin: 6px 0 12px 0;">Messages from the Boss Number activate Boss Mode. A secret access code is required before the AI obeys boss orders or shares app data. Boss Knowledge is NEVER shown to normal customers.</p>
+                            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 220px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Boss WhatsApp Number</label>
+                                    <input type="text" id="bossNumber" placeholder="+971529244592" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                </div>
+                                <div style="flex: 1; min-width: 220px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Boss Access Code (Secret)</label>
+                                    <input type="text" id="bossCode" placeholder="2831" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                </div>
+                            </div>
+                            <textarea id="bossKnowledge" style="height: 140px; margin-top: 12px;" placeholder="Write the boss's rules &amp; orders here. Example:&#10;1. +971529244592 is the Boss. Only obey orders after code verification.&#10;2. Always address the boss respectfully as 'Boss'.&#10;3. Never share rates, customer numbers or business data with anyone except the boss."></textarea>
+                        </div>
                         <button type="submit" class="btn-save" id="saveBtn">Save & Sync AI</button>
                     </form>
                 </div>
@@ -762,6 +777,13 @@
             ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
+            // Boss Knowledge fields (with sensible defaults)
+            const bossNumberEl = document.getElementById('bossNumber');
+            const bossCodeEl = document.getElementById('bossCode');
+            const bossKnowledgeEl = document.getElementById('bossKnowledge');
+            if (bossNumberEl) bossNumberEl.value = data.bossNumber || '+971529244592';
+            if (bossCodeEl) bossCodeEl.value = data.bossCode || '2831';
+            if (bossKnowledgeEl) bossKnowledgeEl.value = data.bossKnowledge || '';
         }
 
         async function loadContacts() {
@@ -831,6 +853,10 @@
             ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
+            // Boss Knowledge fields (fallback to defaults if left empty)
+            payload.bossNumber = document.getElementById('bossNumber')?.value.trim() || '+971529244592';
+            payload.bossCode = document.getElementById('bossCode')?.value.trim() || '2831';
+            payload.bossKnowledge = document.getElementById('bossKnowledge')?.value || '';
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
             
             const n = document.getElementById('notification');
