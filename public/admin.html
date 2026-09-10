@@ -199,6 +199,8 @@
             }
         });
     </script>
+    <!-- SheetJS for Excel (.xlsx) import support -->
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -241,6 +243,8 @@
             <div class="menu-item" onclick="showSection('dashboard')">🏠 Knowledge Base</div>
             <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
+            <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
+            <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
@@ -334,19 +338,68 @@
                             <textarea id="scrapedData" placeholder="You can manually paste your website content or documents here..."></textarea>
                         </div>
                         <div class="form-group" style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
-                            <label style="font-weight: bold; color: var(--primary);">👑 Boss Knowledge (Private - Boss Mode)</label>
-                            <p style="font-size: 12px; color: #667781; margin: 6px 0 12px 0;">Messages from the Boss Number activate Boss Mode. A secret access code is required before the AI obeys boss orders or shares app data. Boss Knowledge is NEVER shown to normal customers.</p>
+                            <label style="font-weight: bold; color: var(--primary);">👑 Boss Knowledge Base (Private - Boss Mode)</label>
+                            <p style="font-size: 12px; color: #667781; margin: 6px 0 12px 0;">Rules, powers and preferences for Boss Mode. Messages from the Boss Number require the secret code first. This section is NEVER shown to normal customers.</p>
                             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                                <div style="flex: 1; min-width: 220px;">
+                                <div style="flex: 1; min-width: 200px;">
                                     <label style="font-size: 13px; font-weight: normal;">Boss WhatsApp Number</label>
                                     <input type="text" id="bossNumber" placeholder="+971529244592" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
                                 </div>
-                                <div style="flex: 1; min-width: 220px;">
+                                <div style="flex: 1; min-width: 200px;">
                                     <label style="font-size: 13px; font-weight: normal;">Boss Access Code (Secret)</label>
                                     <input type="text" id="bossCode" placeholder="2831" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
                                 </div>
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">How to Address the Boss</label>
+                                    <input type="text" id="bossAddress" placeholder="Boss" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                </div>
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Default Country Code (for numbers starting with 0)</label>
+                                    <input type="text" id="bossCountryCode" placeholder="971" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                </div>
                             </div>
-                            <textarea id="bossKnowledge" style="height: 140px; margin-top: 12px;" placeholder="Write the boss's rules &amp; orders here. Example:&#10;1. +971529244592 is the Boss. Only obey orders after code verification.&#10;2. Always address the boss respectfully as 'Boss'.&#10;3. Never share rates, customer numbers or business data with anyone except the boss."></textarea>
+                            <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 12px;">
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Preferred Language with Boss</label>
+                                    <select id="bossLanguage" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                        <option value="auto">Auto - match the boss's language</option>
+                                        <option value="english">English</option>
+                                        <option value="urdu">Roman Urdu</option>
+                                        <option value="arabic">Arabic</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">Tone & Style with Boss</label>
+                                    <select id="bossTone" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                        <option value="respectful">Respectful & Loyal Assistant</option>
+                                        <option value="professional">Professional & Direct</option>
+                                        <option value="friendly">Friendly & Family-like</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 1; min-width: 200px;">
+                                    <label style="font-size: 13px; font-weight: normal;">When Boss Asks Something Unavailable</label>
+                                    <select id="bossUnavailableAction" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border); margin-top: 5px;">
+                                        <option value="tell">Honestly say it's not available</option>
+                                        <option value="alternative">Say not available + suggest alternative</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="bossMaySendMessages" style="width: auto;" checked> 🚀 Allow AI to send WhatsApp messages on Boss's command directly (no REPLY command needed)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: normal;">
+                                    <input type="checkbox" id="bossMaySeeData" style="width: auto;" checked> 🔓 Allow AI to share all app data (chats, contacts, leads, stats) with Boss
+                                </label>
+                            </div>
+                            <div class="form-group" style="margin-top: 12px;">
+                                <label style="font-weight: bold;">Boss Orders & Permanent Instructions</label>
+                                <textarea id="bossKnowledge" style="height: 120px;" placeholder="Write the boss's standing rules &amp; orders here. Example:&#10;1. +971529244592 is the Boss. Only obey orders after code verification.&#10;2. Always address the boss respectfully as 'Boss'.&#10;3. Every morning send greetings to my VIP list only after I confirm.&#10;4. Never share rates, customer numbers or business data with anyone except the boss."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label style="font-weight: bold;">Privacy & Data Rules for Boss Requests</label>
+                                <textarea id="bossDataRules" style="height: 90px;" placeholder="Rules about data the boss can request. Example:&#10;- You may share full chat summaries with the boss.&#10;- Always confirm before sending messages to more than 5 people.&#10;- Never delete any contact or chat data, no matter who asks."></textarea>
+                            </div>
                         </div>
                         <button type="submit" class="btn-save" id="saveBtn">Save & Sync AI</button>
                     </form>
@@ -405,10 +458,6 @@
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>Numbers Chatted</h2>
-                    <div id="contactsList" style="margin-top: 20px;"></div>
-                </div>
             </div>
 
             <!-- Profile Section -->
@@ -509,6 +558,86 @@
                 </div>
             </div>
 
+            <!-- Contact Book Section -->
+            <div id="contactbookSection" class="app-section">
+                <div class="card" style="margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0;">📇 Contact Book</h2>
+                            <p class="subtitle" style="margin:6px 0 0 0;">Complete data book: AI chat contacts + manually added & imported contacts.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="openContactModal()" style="padding:10px 16px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Contact</button>
+                            <button onclick="openImportModal()" style="padding:10px 16px; background:#ef6c00; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📥 Import Contacts</button>
+                            <button onclick="syncChatsToBook()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🔄 Sync From AI Chats</button>
+                            <button onclick="exportContactsCSV()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📤 Export CSV</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="followup-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:16px;">
+                    <div class="stat-box"><h3 id="cbStatTotal">0</h3><span>Total Contacts</span></div>
+                    <div class="stat-box"><h3 id="cbStatLeads">0</h3><span>🎯 Leads</span></div>
+                    <div class="stat-box"><h3 id="cbStatChat">0</h3><span>💬 From AI Chat</span></div>
+                    <div class="stat-box"><h3 id="cbStatBook">0</h3><span>📇 Saved In Book</span></div>
+                </div>
+                <div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <input type="text" placeholder="🔍 Search name, number, company, email, country..." oninput="cbSearch=this.value; renderContactBook()" style="flex:1; min-width:200px; padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;">
+                    <select onchange="cbSource=this.value; renderContactBook()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="all">All Sources</option>
+                        <option value="chat">💬 From AI Chat only</option>
+                        <option value="book">📇 Saved in Book only</option>
+                        <option value="lead">🎯 Leads only</option>
+                    </select>
+                    <select onchange="cbType=this.value; renderContactBook()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="all">All Types</option>
+                        <option value="Buyer">Buyer</option>
+                        <option value="Supplier">Supplier</option>
+                        <option value="Partner">Partner</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div id="contactsList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px;">
+                    <div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">Loading contacts...</div>
+                </div>
+            </div>
+
+            <!-- Leads Book Section -->
+            <div id="leadsbookSection" class="app-section">
+                <div class="card" style="margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0;">📈 Leads Book</h2>
+                            <p class="subtitle" style="margin:6px 0 0 0;">Every captured lead - from AI chats, manual entries and imports - with pipeline status.</p>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button onclick="openContactModal()" style="padding:10px 16px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Lead</button>
+                            <button onclick="exportLeadsCSV()" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📤 Export CSV</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="followup-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:16px;">
+                    <div class="stat-box"><h3 id="lbStatTotal">0</h3><span>Total Leads</span></div>
+                    <div class="stat-box"><h3 id="lbStatNew">0</h3><span>🆕 New</span></div>
+                    <div class="stat-box"><h3 id="lbStatContacted">0</h3><span>📞 In Progress</span></div>
+                    <div class="stat-box"><h3 id="lbStatWon">0</h3><span>🏆 Won</span></div>
+                </div>
+                <div style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <input type="text" placeholder="🔍 Search leads by name, company, phone, product..." oninput="leadsSearch=this.value; renderLeadsBook()" style="flex:1; min-width:200px; padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;">
+                    <select onchange="leadsStatusFilter=this.value; renderLeadsBook()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
+                        <option value="all">All Statuses</option>
+                        <option value="New">🆕 New</option>
+                        <option value="Contacted">📞 Contacted</option>
+                        <option value="Interested">👀 Interested</option>
+                        <option value="Negotiation">🤝 Negotiation</option>
+                        <option value="Won">🏆 Won</option>
+                        <option value="Lost">❌ Lost</option>
+                    </select>
+                </div>
+                <div id="leadsList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px;">
+                    <div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">Loading leads...</div>
+                </div>
+            </div>
+
             <!-- Live Chat Section -->
             <div id="chatSection" class="app-section">
                 <div class="card" style="padding: 0; border: none; box-shadow: none;">
@@ -549,6 +678,76 @@
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
+
+    <!-- Import Contacts Modal -->
+    <div id="importModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div class="card" style="width:100%; max-width:720px; max-height:90vh; overflow-y:auto; padding:25px; box-sizing:border-box;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin-top:0;">📥 Import Contacts to Contact Book</h3>
+                <button onclick="closeImportModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#667781;">✕</button>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:15px;">
+                <button id="impTabBtnPaste" onclick="switchImportTab('paste')" style="padding:8px 14px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📋 Paste List</button>
+                <button id="impTabBtnFile" onclick="switchImportTab('file')" style="padding:8px 14px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📄 CSV / Excel File</button>
+                <button id="impTabBtnVcf" onclick="switchImportTab('vcf')" style="padding:8px 14px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📱 vCard (.vcf)</button>
+                <button id="impTabBtnOcr" onclick="switchImportTab('ocr')" style="padding:8px 14px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🤖 PDF / Image (AI OCR)</button>
+            </div>
+            <div id="impTabPaste" style="display:block;">
+                <p class="subtitle" style="margin:0 0 10px 0;">Paste contacts from anywhere - each line one contact. Examples:<br><code>Ali Khan, +971501234567, ali@company.com, Dubai</code> or <code>+971501234567</code> or a name on one line and the number on the next.</p>
+                <textarea id="impPasteText" style="width:100%; height:150px; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; font-family:monospace; font-size:13px;" placeholder="Ali Khan, +971501234567&#10;Ahmed Traders, 923001234567, ahmed@traders.com, Pakistan&#10;+971559876543"></textarea>
+                <button onclick="parsePasteImport()" style="margin-top:10px; padding:10px 18px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🔍 Parse & Preview</button>
+            </div>
+            <div id="impTabFile" style="display:none;">
+                <p class="subtitle" style="margin:0 0 10px 0;">Upload a CSV or Excel file from your phone, Google Contacts export, CRM or any spreadsheet. Column headers (name, phone, email, company, city...) are auto-detected.</p>
+                <input type="file" id="impCsvFile" accept=".csv,.xlsx,.xls,text/csv" onchange="handleImportFile('impCsvFile','csv')" style="width:100%; padding:10px; border:1px dashed var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div id="impTabVcf" style="display:none;">
+                <p class="subtitle" style="margin:0 0 10px 0;">Upload a .vcf file (exported from iPhone, Android or Google Contacts).</p>
+                <input type="file" id="impVcfFile" accept=".vcf,.vcard,text/vcard" onchange="handleImportFile('impVcfFile','vcf')" style="width:100%; padding:10px; border:1px dashed var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div id="impTabOcr" style="display:none;">
+                <p class="subtitle" style="margin:0 0 10px 0;">Upload a PDF, business card photo, invoice, letterhead or any document/image/CSV. AI (OCR) will read it and extract all contacts (name, phone, email, company, city) automatically - then you review before importing.</p>
+                <input type="file" id="impOcrFile" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.csv,.txt,image/*,application/pdf,text/csv,text/plain" onchange="handleOcrImport(this)" style="width:100%; padding:10px; border:1px dashed var(--border); border-radius:8px; box-sizing:border-box;">
+            </div>
+            <div id="impPreview" style="display:none; margin-top:15px; border-top:1px solid var(--border); padding-top:15px;">
+                <div id="impPreviewSummary" style="font-weight:bold; margin-bottom:10px;"></div>
+                <div id="impPreviewTable" style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:8px; font-size:12px;"></div>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <button onclick="confirmImport()" id="impConfirmBtn" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">✅ Import Now</button>
+                    <button onclick="clearImportPreview()" style="padding:12px 20px; background:#e0e0e0; color:#333; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Contact Modal -->
+    <div id="contactModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div class="card" style="width:100%; max-width:600px; max-height:90vh; overflow-y:auto; padding:25px; box-sizing:border-box;">
+            <h3 style="margin-top:0;" id="contactModalTitle">➕ Add New Contact</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="form-group"><label>📞 Phone (WhatsApp) *</label><input type="text" id="cPhone" placeholder="971501234567" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>📞 Phone 2 (Optional)</label><input type="text" id="cPhone2" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>👤 Name</label><input type="text" id="cName" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🏢 Company</label><input type="text" id="cCompany" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>💼 Designation</label><input type="text" id="cDesignation" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>📧 Email</label><input type="text" id="cEmail" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🌐 Website</label><input type="text" id="cWebsite" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🌍 Country</label><input type="text" id="cCountry" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🏙️ City</label><input type="text" id="cCity" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🏠 Address</label><input type="text" id="cAddress" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>📦 Products / Material</label><input type="text" id="cProducts" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                <div class="form-group"><label>🔥 Contact Type</label><select id="cType" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option value="">- Select -</option><option>Buyer</option><option>Supplier</option><option>Partner</option><option>Other</option></select></div>
+                <div class="form-group"><label>📊 Lead Status</label><select id="cLeadStatus" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option>New</option><option>Contacted</option><option>Interested</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
+                <div class="form-group"><label>🚩 Priority</label><select id="cPriority" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option value="">- Select -</option><option>High</option><option>Medium</option><option>Low</option></select></div>
+            </div>
+            <div class="form-group"><label>🏷️ Tags (comma separated)</label><input type="text" id="cTags" placeholder="e.g. copper, dubai, vip" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+            <div class="form-group"><label>📝 Notes / Remarks</label><textarea id="cNotes" style="width:100%; height:70px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; resize:vertical;"></textarea></div>
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <button onclick="saveContactModal()" style="flex:1; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Contact</button>
+                <button onclick="closeContactModal()" style="flex:1; padding:12px; background:#e0e0e0; color:#333; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Manual Details Modal -->
     <div id="manualDetailsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
@@ -777,60 +976,54 @@
             ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 if (document.getElementById(key)) document.getElementById(key).value = data[key] || '';
             });
-            // Boss Knowledge fields (with sensible defaults)
+            // Boss Knowledge Base fields (with sensible defaults)
             const bossNumberEl = document.getElementById('bossNumber');
             const bossCodeEl = document.getElementById('bossCode');
             const bossKnowledgeEl = document.getElementById('bossKnowledge');
             if (bossNumberEl) bossNumberEl.value = data.bossNumber || '+971529244592';
             if (bossCodeEl) bossCodeEl.value = data.bossCode || '2831';
             if (bossKnowledgeEl) bossKnowledgeEl.value = data.bossKnowledge || '';
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+            setVal('bossAddress', data.bossAddress || 'Boss');
+            setVal('bossCountryCode', data.bossCountryCode || '971');
+            setVal('bossLanguage', data.bossLanguage || 'auto');
+            setVal('bossTone', data.bossTone || 'respectful');
+            setVal('bossUnavailableAction', data.bossUnavailableAction || 'tell');
+            setVal('bossDataRules', data.bossDataRules || '');
+            setChk('bossMaySendMessages', data.bossMaySendMessages !== false);
+            setChk('bossMaySeeData', data.bossMaySeeData !== false);
         }
 
         async function loadContacts() {
-            const res = await fetch('api/contacts');
-            const contacts = await res.json();
-            const listDiv = document.getElementById('contactsList');
-            listDiv.innerHTML = '';
-            
-            const numbers = Object.keys(contacts).sort((a, b) => {
-                const timeA = contacts[a].lastInteraction || 0;
-                const timeB = contacts[b].lastInteraction || 0;
-                return timeB - timeA;
-            });
-            
-            // Calculate Analytics stats
+            let contacts = {};
+            try {
+                const res = await fetch('api/contacts');
+                contacts = (await res.json()) || {};
+            } catch(e) { contacts = {}; }
+            chatContactsCache = contacts;
+
+            const numbers = Object.keys(contacts);
             let total = numbers.length;
             let leads = 0;
             let activeAI = 0;
             let pausedAI = 0;
-            
+
             numbers.forEach(num => {
-                const info = contacts[num];
+                const info = contacts[num] || {};
                 if (info.leadName || info.leadEmail) leads++;
                 if (info.aiPaused) pausedAI++; else activeAI++;
-                
-                const d = new Date(info.firstContacted).toLocaleString();
-                const leadName = info.leadName ? `<br><b style="color:var(--primary);">👤 Name: ${info.leadName}</b>` : '';
-                const leadCompany = info.leadCompany ? `<br>🏢 Company: ${info.leadCompany}` : '';
-                const leadProducts = info.leadProducts ? `<br>📦 Products: ${info.leadProducts}` : '';
-                const leadEmail = info.leadEmail ? `<br>📧 Email: ${info.leadEmail}` : '';
-                const leadWebsite = info.leadWebsite ? `<br>🌐 Website: ${info.leadWebsite}` : '';
-                
-                const manName = info.manualName ? `<br><b style="color:#2196f3;">📝 Manual Name: ${info.manualName}</b>` : '';
-                const manCountry = info.manualCountry ? `<br>🌍 Country: ${info.manualCountry}` : '';
-                const manActivity = info.manualActivity ? `<br>⚡ Activity: ${info.manualActivity}` : '';
-                const manRemarks = info.manualRemarks ? `<br>💬 Remarks: ${info.manualRemarks}` : '';
-                
-                listDiv.innerHTML += `
-                    <div class="contact-item">
-                        <span>📞 +${num} ${leadName} ${leadCompany} ${leadProducts} ${leadEmail} ${leadWebsite} ${manName} ${manCountry} ${manActivity} ${manRemarks}</span>
-                        <span class="contact-date">First: ${d} <br> Last Greeted: ${info.lastGreetingDate}</span>
-                    </div>`;
             });
-            
-            document.getElementById('statTotalContacts').innerText = total;
-            document.getElementById('statCapturedLeads').innerText = leads;
-            document.getElementById('statActiveAI').innerText = `${activeAI} / ${pausedAI}`;
+
+            const elTotal = document.getElementById('statTotalContacts');
+            const elLeads = document.getElementById('statCapturedLeads');
+            const elActive = document.getElementById('statActiveAI');
+            if (elTotal) elTotal.innerText = total;
+            if (elLeads) elLeads.innerText = leads;
+            if (elActive) elActive.innerText = `${activeAI} / ${pausedAI}`;
+
+            // Refresh Contact Book view (merges AI chat contacts automatically)
+            renderContactBook();
         }
 
         async function loadEnv() {
@@ -853,10 +1046,18 @@
             ['companyProfile','timings','locationAndBranches','googleMapsLink','logistics','customRules','scrapedData','onboardingPrompt','brandVoice','fallbackAction'].forEach(key => {
                 payload[key] = document.getElementById(key).value;
             });
-            // Boss Knowledge fields (fallback to defaults if left empty)
+            // Boss Knowledge Base fields (fallback to defaults if left empty)
             payload.bossNumber = document.getElementById('bossNumber')?.value.trim() || '+971529244592';
             payload.bossCode = document.getElementById('bossCode')?.value.trim() || '2831';
             payload.bossKnowledge = document.getElementById('bossKnowledge')?.value || '';
+            payload.bossAddress = document.getElementById('bossAddress')?.value.trim() || 'Boss';
+            payload.bossCountryCode = document.getElementById('bossCountryCode')?.value.trim() || '971';
+            payload.bossLanguage = document.getElementById('bossLanguage')?.value || 'auto';
+            payload.bossTone = document.getElementById('bossTone')?.value || 'respectful';
+            payload.bossUnavailableAction = document.getElementById('bossUnavailableAction')?.value || 'tell';
+            payload.bossMaySendMessages = document.getElementById('bossMaySendMessages')?.checked !== false;
+            payload.bossMaySeeData = document.getElementById('bossMaySeeData')?.checked !== false;
+            payload.bossDataRules = document.getElementById('bossDataRules')?.value || '';
             await fetch('api/knowledge', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
             
             const n = document.getElementById('notification');
@@ -1958,6 +2159,665 @@
         showSection = function(id) {
             origShowSection(id);
             if (id === 'followup') loadFollowUps();
+        };
+
+        // ======================================================
+        // ===== CONTACT BOOK & LEADS BOOK (Data Book Module) ===
+        // ======================================================
+        var chatContactsCache = {};
+        var contactBookCache = [];
+        var editingBookPhone = null;
+        var importParsedRows = [];
+        var cbSearch = '', cbSource = 'all', cbType = 'all';
+        var leadsSearch = '', leadsStatusFilter = 'all';
+        var LEAD_STATUSES = ['New', 'Contacted', 'Interested', 'Negotiation', 'Won', 'Lost'];
+        var BTN_ROW = 'padding:6px 10px; border:1px solid var(--border); background:#f7f9fa; border-radius:6px; cursor:pointer; font-size:12px; font-weight:bold;';
+
+        function esc(v) { return String(v === undefined || v === null ? '' : v).replace(/[&<>"']/g, function(m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
+        function normalizePhoneJs(p) { return String(p || '').replace(/\D/g, ''); }
+        function pickFirst() { for (let i = 0; i < arguments.length; i++) { const v = arguments[i]; if (v !== undefined && v !== null && String(v).trim() !== '') return v; } return ''; }
+        function toastMsg(msg, ms) { const n = document.getElementById('notification'); if (!n) return; n.innerText = msg; n.classList.add('show'); setTimeout(function() { n.classList.remove('show'); }, ms || 2200); }
+        function isChatLead(info) { return !!(info.leadName || info.leadCompany || info.leadProducts || info.leadEmail || info.leadWebsite); }
+
+        // Merges AI-chat contacts + saved Contact Book contacts into one unified list
+        function buildUnifiedContacts() {
+            const map = new Map();
+            Object.keys(chatContactsCache || {}).forEach(function(num) {
+                const info = chatContactsCache[num] || {};
+                const phone = normalizePhoneJs(num);
+                if (!phone) return;
+                map.set(phone, {
+                    phone: phone,
+                    name: pickFirst(info.manualName, info.leadName),
+                    company: info.leadCompany || '',
+                    designation: '',
+                    email: info.leadEmail || '',
+                    website: info.leadWebsite || '',
+                    country: info.manualCountry || '',
+                    city: '', address: '', phone2: '',
+                    products: info.leadProducts || '',
+                    activity: info.manualActivity || '',
+                    notes: info.manualRemarks || '',
+                    tags: [], leadStatus: 'New', priority: '', type: '', source: 'AI Chat',
+                    fromChat: true, fromBook: false,
+                    chatCount: info.chatCount || 0,
+                    lastChatAt: info.lastInteraction || 0,
+                    firstContacted: info.firstContacted || 0,
+                    aiPaused: !!info.aiPaused,
+                    isLead: isChatLead(info)
+                });
+            });
+            (contactBookCache || []).forEach(function(b) {
+                const phone = normalizePhoneJs(b.phone || b.id || '');
+                if (!phone) return;
+                const ex = map.get(phone);
+                if (ex) {
+                    map.set(phone, Object.assign({}, ex, {
+                        name: pickFirst(b.name, ex.name),
+                        company: pickFirst(b.company, ex.company),
+                        designation: pickFirst(b.designation, ex.designation),
+                        email: pickFirst(b.email, ex.email),
+                        website: pickFirst(b.website, ex.website),
+                        country: pickFirst(b.country, ex.country),
+                        city: pickFirst(b.city, ex.city),
+                        address: pickFirst(b.address, ex.address),
+                        phone2: pickFirst(b.phone2, ex.phone2),
+                        products: pickFirst(b.products, ex.products),
+                        activity: pickFirst(b.activity, ex.activity),
+                        notes: pickFirst(b.notes, ex.notes),
+                        tags: (b.tags && b.tags.length) ? b.tags : ex.tags,
+                        leadStatus: pickFirst(b.leadStatus, ex.leadStatus, 'New'),
+                        priority: pickFirst(b.priority, ex.priority),
+                        type: pickFirst(b.type, ex.type),
+                        source: 'AI Chat + Book',
+                        fromBook: true,
+                        isLead: !!(ex.isLead || b.isLead || (b.leadStatus && b.leadStatus !== 'New'))
+                    }));
+                } else {
+                    map.set(phone, Object.assign({}, b, {
+                        phone: phone, fromChat: false, fromBook: true,
+                        leadStatus: b.leadStatus || 'New',
+                        isLead: !!(b.isLead || (b.leadStatus && b.leadStatus !== 'New'))
+                    }));
+                }
+            });
+            return Array.from(map.values()).sort(function(a, b) { return (b.lastChatAt || 0) - (a.lastChatAt || 0); });
+        }
+
+        async function loadContactBook() {
+            try {
+                const results = await Promise.all([
+                    fetch('api/contactbook').then(function(r) { return r.json(); }),
+                    fetch('api/contacts').then(function(r) { return r.json(); })
+                ]);
+                contactBookCache = Array.isArray(results[0]) ? results[0] : [];
+                chatContactsCache = results[1] || {};
+            } catch(e) { console.error('Contact book load error:', e); }
+            renderContactBook();
+        }
+
+        function renderContactBook() {
+            const list = document.getElementById('contactsList');
+            if (!list) return;
+            const all = buildUnifiedContacts();
+            const setTxt = function(id, v) { const el = document.getElementById(id); if (el) el.innerText = v; };
+            setTxt('cbStatTotal', all.length);
+            setTxt('cbStatLeads', all.filter(function(c) { return c.isLead; }).length);
+            setTxt('cbStatChat', all.filter(function(c) { return c.fromChat; }).length);
+            setTxt('cbStatBook', all.filter(function(c) { return c.fromBook; }).length);
+
+            const q = (cbSearch || '').toLowerCase();
+            const filtered = all.filter(function(c) {
+                if (cbSource === 'chat' && !c.fromChat) return false;
+                if (cbSource === 'book' && !c.fromBook) return false;
+                if (cbSource === 'lead' && !c.isLead) return false;
+                if (cbType !== 'all' && (c.type || '') !== cbType) return false;
+                if (!q) return true;
+                return [c.name, c.company, c.email, c.phone, c.country, c.city, c.products, c.website, c.notes, c.activity, (c.tags || []).join(' ')].join(' ').toLowerCase().includes(q);
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">No contacts found. Click "➕ Add Contact" or "📥 Import Contacts" to get started.</div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(function(c) {
+                const badges = [];
+                if (c.fromChat) badges.push('<span style="background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">💬 AI Chat' + (c.chatCount ? ' • ' + c.chatCount + ' msgs' : '') + '</span>');
+                if (c.fromBook) badges.push('<span style="background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">📇 Book</span>');
+                if (c.isLead) badges.push('<span style="background:#fff3e0; color:#ef6c00; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">🎯 Lead</span>');
+                if (c.aiPaused) badges.push('<span style="background:#fbe9e7; color:#c62828; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏸️ AI Paused</span>');
+                const row = function(icon, val) { return val ? '<div>' + icon + ' ' + esc(val) + '</div>' : ''; };
+                return `
+                <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                        <b style="font-size:15px;">${esc(c.name || ('+' + c.phone))}</b>
+                        <div style="display:flex; gap:4px; flex-wrap:wrap;">${badges.join(' ')}</div>
+                    </div>
+                    <div style="font-size:13px; color:#3b4a54; display:flex; flex-direction:column; gap:3px;">
+                        <div>📞 +${esc(c.phone)}${c.phone2 ? ' / +' + esc(normalizePhoneJs(c.phone2)) : ''}</div>
+                        ${row('🏢', c.company)} ${row('💼', c.designation)} ${row('📧', c.email)} ${row('🌐', c.website)}
+                        ${row('🌍', [c.city, c.country].filter(Boolean).join(', '))} ${row('📦', c.products)} ${row('⚡', c.activity)}
+                        ${(c.tags && c.tags.length) ? '<div>🏷️ ' + c.tags.map(function(t) { return esc(t); }).join(', ') + '</div>' : ''}
+                        ${row('📝', c.notes)}
+                        ${c.lastChatAt ? '<div style="color:#667781; font-size:12px;">🕒 Last chat: ' + new Date(c.lastChatAt).toLocaleString() + '</div>' : ''}
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:10px;">
+                        ${c.fromChat ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
+                        ${(!c.fromBook && c.fromChat) ? `<button onclick="saveChatContactToBook('${c.phone}')" style="${BTN_ROW}">💾 Save to Book</button>` : ''}
+                        <button onclick="openContactModal('${c.phone}')" style="${BTN_ROW}">✏️ Edit</button>
+                        ${c.fromBook ? `<button onclick="deleteBookContact('${c.phone}')" style="${BTN_ROW} color:#c62828;">🗑️</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function openChatFromBook(phone) {
+            showSection('chat');
+            if (typeof openChat === 'function') openChat(normalizePhoneJs(phone));
+        }
+
+        async function saveChatContactToBook(phone) {
+            const key = normalizePhoneJs(phone);
+            const info = chatContactsCache[key] || {};
+            toastMsg('⏳ Saving to Contact Book...');
+            try {
+                const res = await fetch('api/contactbook', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: key, phoneRaw: key, source: 'AI Chat',
+                        name: pickFirst(info.manualName, info.leadName),
+                        company: info.leadCompany || '',
+                        products: info.leadProducts || '',
+                        email: info.leadEmail || '',
+                        website: info.leadWebsite || '',
+                        country: info.manualCountry || '',
+                        activity: info.manualActivity || '',
+                        notes: info.manualRemarks || ''
+                    })
+                });
+                if (!res.ok) throw new Error('save failed');
+                toastMsg('✅ Saved to Contact Book!');
+                await loadContactBook();
+                renderLeadsBook();
+            } catch(e) { toastMsg('❌ Failed to save contact'); }
+        }
+
+        async function deleteBookContact(phone) {
+            if (!confirm('Delete this contact from the Contact Book?')) return;
+            try {
+                await fetch('api/contactbook/' + normalizePhoneJs(phone), { method: 'DELETE' });
+                toastMsg('🗑️ Contact deleted');
+                await loadContactBook();
+                renderLeadsBook();
+            } catch(e) { toastMsg('❌ Failed to delete'); }
+        }
+
+        async function syncChatsToBook() {
+            toastMsg('⏳ Syncing AI chat contacts into the book...');
+            try {
+                const res = await fetch('api/contactbook/sync-chats', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'sync failed');
+                toastMsg('✅ ' + data.synced + ' chat contacts synced to book');
+                await loadContactBook();
+                renderLeadsBook();
+            } catch(e) { toastMsg('❌ Sync failed: ' + e.message, 3500); }
+        }
+
+        function downloadCSV(rows, cols, filename) {
+            const cell = function(v) { return '"' + String(v === undefined || v === null ? '' : (Array.isArray(v) ? v.join('; ') : v)).replace(/"/g, '""') + '"'; };
+            const csv = [cols.join(',')].concat(rows.map(function(r) { return cols.map(function(k) { return cell(r[k]); }).join(','); })).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+        }
+
+        function exportContactsCSV() {
+            downloadCSV(buildUnifiedContacts(), ['name','phone','phone2','company','designation','email','website','country','city','address','products','activity','type','source','leadStatus','priority','tags','notes'], 'contact-book.csv');
+        }
+
+        function exportLeadsCSV() {
+            downloadCSV(buildUnifiedContacts().filter(function(c) { return c.isLead; }), ['name','phone','company','email','website','country','city','products','leadStatus','priority','notes'], 'leads-book.csv');
+        }
+
+        // ===== Add / Edit Contact Modal =====
+        function openContactModal(phone) {
+            editingBookPhone = null;
+            const unified = phone ? buildUnifiedContacts().find(function(x) { return x.phone === normalizePhoneJs(phone); }) : null;
+            const b = phone ? (contactBookCache || []).find(function(x) { return normalizePhoneJs(x.phone || x.id) === normalizePhoneJs(phone); }) : null;
+            if (b) editingBookPhone = normalizePhoneJs(b.phone || b.id);
+            const c = unified || {};
+            document.getElementById('contactModalTitle').innerText = phone ? '✏️ Edit Contact' : '➕ Add New Contact';
+            document.getElementById('cPhone').value = phone ? normalizePhoneJs(phone) : '';
+            document.getElementById('cPhone2').value = c.phone2 || '';
+            document.getElementById('cName').value = c.name || '';
+            document.getElementById('cCompany').value = c.company || '';
+            document.getElementById('cDesignation').value = c.designation || '';
+            document.getElementById('cEmail').value = c.email || '';
+            document.getElementById('cWebsite').value = c.website || '';
+            document.getElementById('cCountry').value = c.country || '';
+            document.getElementById('cCity').value = c.city || '';
+            document.getElementById('cAddress').value = c.address || '';
+            document.getElementById('cProducts').value = c.products || '';
+            document.getElementById('cType').value = c.type || '';
+            document.getElementById('cLeadStatus').value = c.leadStatus || 'New';
+            document.getElementById('cPriority').value = c.priority || '';
+            document.getElementById('cTags').value = (c.tags && c.tags.length) ? c.tags.join(', ') : '';
+            document.getElementById('cNotes').value = c.notes || '';
+            document.getElementById('contactModal').style.display = 'flex';
+        }
+
+        function closeContactModal() {
+            document.getElementById('contactModal').style.display = 'none';
+            editingBookPhone = null;
+        }
+
+        async function saveContactModal() {
+            const gv = function(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+            const phone = normalizePhoneJs(gv('cPhone'));
+            if (!phone || phone.length < 6) return alert('Please enter a valid phone number (with country code).');
+            const payload = {
+                phone: phone,
+                phoneRaw: gv('cPhone'),
+                phone2: gv('cPhone2'),
+                name: gv('cName'), company: gv('cCompany'), designation: gv('cDesignation'),
+                email: gv('cEmail'), website: gv('cWebsite'),
+                country: gv('cCountry'), city: gv('cCity'), address: gv('cAddress'),
+                products: gv('cProducts'), type: gv('cType'),
+                leadStatus: gv('cLeadStatus') || 'New', priority: gv('cPriority'),
+                tags: gv('cTags'), notes: gv('cNotes')
+            };
+            toastMsg('⏳ Saving contact...');
+            try {
+                let res;
+                if (editingBookPhone) {
+                    payload.__full = true;
+                    res = await fetch('api/contactbook/' + editingBookPhone, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                } else {
+                    payload.source = 'Manual';
+                    res = await fetch('api/contactbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                }
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'save failed');
+                toastMsg('✅ Contact saved!');
+                closeContactModal();
+                await loadContactBook();
+                renderLeadsBook();
+            } catch(e) { toastMsg('❌ ' + e.message, 3500); }
+        }
+
+        // ===== Leads Book =====
+        async function loadLeadsBook() {
+            try {
+                const results = await Promise.all([
+                    fetch('api/contactbook').then(function(r) { return r.json(); }),
+                    fetch('api/contacts').then(function(r) { return r.json(); })
+                ]);
+                contactBookCache = Array.isArray(results[0]) ? results[0] : [];
+                chatContactsCache = results[1] || {};
+            } catch(e) { console.error('Leads book load error:', e); }
+            renderLeadsBook();
+        }
+
+        function renderLeadsBook() {
+            const list = document.getElementById('leadsList');
+            if (!list) return;
+            const leads = buildUnifiedContacts().filter(function(c) { return c.isLead; });
+            const setTxt = function(id, v) { const el = document.getElementById(id); if (el) el.innerText = v; };
+            setTxt('lbStatTotal', leads.length);
+            setTxt('lbStatNew', leads.filter(function(c) { return (c.leadStatus || 'New') === 'New'; }).length);
+            setTxt('lbStatContacted', leads.filter(function(c) { return ['Contacted', 'Interested', 'Negotiation'].indexOf(c.leadStatus) >= 0; }).length);
+            setTxt('lbStatWon', leads.filter(function(c) { return c.leadStatus === 'Won'; }).length);
+
+            const q = (leadsSearch || '').toLowerCase();
+            const filtered = leads.filter(function(c) {
+                if (leadsStatusFilter !== 'all' && (c.leadStatus || 'New') !== leadsStatusFilter) return false;
+                if (!q) return true;
+                return [c.name, c.company, c.email, c.phone, c.products, c.website, c.country, c.city, c.notes].join(' ').toLowerCase().includes(q);
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">No leads found. Leads are captured automatically from AI chats, or add them manually with "➕ Add Lead".</div>';
+                return;
+            }
+
+            list.innerHTML = filtered.map(function(c) {
+                const opts = LEAD_STATUSES.map(function(s) { return '<option value="' + s + '"' + ((c.leadStatus || 'New') === s ? ' selected' : '') + '>' + s + '</option>'; }).join('');
+                return `
+                <div style="border:1px solid var(--border); border-radius:10px; padding:14px; background:#fff; display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                        <b style="font-size:15px;">${esc(c.name || ('+' + c.phone))}</b>
+                        <span style="background:#fff3e0; color:#ef6c00; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">🎯 ${esc(c.leadStatus || 'New')}</span>
+                    </div>
+                    <div style="font-size:13px; color:#3b4a54; display:flex; flex-direction:column; gap:3px;">
+                        <div>📞 +${esc(c.phone)}</div>
+                        ${c.company ? '<div>🏢 ' + esc(c.company) + (c.designation ? ' · ' + esc(c.designation) : '') + '</div>' : ''}
+                        ${c.email ? '<div>📧 ' + esc(c.email) + '</div>' : ''}
+                        ${c.website ? '<div>🌐 ' + esc(c.website) + '</div>' : ''}
+                        ${c.products ? '<div>📦 ' + esc(c.products) + '</div>' : ''}
+                        ${(c.country || c.city) ? '<div>🌍 ' + esc([c.city, c.country].filter(Boolean).join(', ')) + '</div>' : ''}
+                        ${c.notes ? '<div>📝 ' + esc(c.notes) + '</div>' : ''}
+                        ${c.lastChatAt ? '<div style="color:#667781; font-size:12px;">🕒 Last chat: ' + new Date(c.lastChatAt).toLocaleString() + '</div>' : ''}
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:10px;">
+                        <select onchange="updateLeadStatus('${c.phone}', this.value)" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; font-weight:bold;">${opts}</select>
+                        ${c.fromChat ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
+                        ${!c.fromBook ? `<button onclick="saveChatContactToBook('${c.phone}')" style="${BTN_ROW}">💾 Save to Book</button>` : ''}
+                        <button onclick="openContactModal('${c.phone}')" style="${BTN_ROW}">✏️ Edit</button>
+                        ${c.fromBook ? `<button onclick="deleteBookContact('${c.phone}')" style="${BTN_ROW} color:#c62828;">🗑️</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function updateLeadStatus(phone, status) {
+            const key = normalizePhoneJs(phone);
+            toastMsg('⏳ Updating lead status...');
+            try {
+                const inBook = (contactBookCache || []).some(function(x) { return normalizePhoneJs(x.phone || x.id) === key; });
+                const info = chatContactsCache[key] || {};
+                let res;
+                if (inBook) {
+                    res = await fetch('api/contactbook/' + key, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leadStatus: status }) });
+                } else {
+                    res = await fetch('api/contactbook', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            phone: key, source: 'AI Chat', leadStatus: status,
+                            name: pickFirst(info.manualName, info.leadName),
+                            company: info.leadCompany || '', products: info.leadProducts || '',
+                            email: info.leadEmail || '', website: info.leadWebsite || '',
+                            country: info.manualCountry || ''
+                        })
+                    });
+                }
+                if (!res.ok) throw new Error('update failed');
+                toastMsg('✅ Lead status: ' + status);
+                await loadLeadsBook();
+                renderContactBook();
+            } catch(e) { toastMsg('❌ Failed to update status'); }
+        }
+
+        // ===== Import Engine (Paste / CSV / Excel / vCard) =====
+        function openImportModal() {
+            importParsedRows = [];
+            document.getElementById('impPreview').style.display = 'none';
+            document.getElementById('impPasteText').value = '';
+            document.getElementById('impCsvFile').value = '';
+            document.getElementById('impVcfFile').value = '';
+            const ocrEl = document.getElementById('impOcrFile');
+            if (ocrEl) ocrEl.value = '';
+            switchImportTab('paste');
+            document.getElementById('importModal').style.display = 'flex';
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').style.display = 'none';
+            importParsedRows = [];
+        }
+
+        function switchImportTab(tab) {
+            const tabs = { paste: 'impTabPaste', file: 'impTabFile', vcf: 'impTabVcf', ocr: 'impTabOcr' };
+            const btns = { paste: 'impTabBtnPaste', file: 'impTabBtnFile', vcf: 'impTabBtnVcf', ocr: 'impTabBtnOcr' };
+            Object.keys(tabs).forEach(function(k) {
+                const panel = document.getElementById(tabs[k]);
+                const btn = document.getElementById(btns[k]);
+                if (panel) panel.style.display = (k === tab) ? 'block' : 'none';
+                if (btn) {
+                    btn.style.background = (k === tab) ? 'var(--primary)' : '#f0f2f5';
+                    btn.style.color = (k === tab) ? 'white' : '#333';
+                    btn.style.border = (k === tab) ? 'none' : '1px solid var(--border)';
+                }
+            });
+        }
+
+        function parsePasteImport() {
+            const text = document.getElementById('impPasteText').value || '';
+            if (!text.trim()) return alert('Please paste some contacts first.');
+            previewImport(rowsToContacts(parseCSVText(text)));
+        }
+
+        async function handleImportFile(inputId, kind) {
+            const input = document.getElementById(inputId);
+            const f = input && input.files ? input.files[0] : null;
+            if (!f) return;
+            try {
+                if (kind === 'vcf') {
+                    const text = await f.text();
+                    previewImport(parseVCardText(text));
+                } else if (/\.xlsx?$/i.test(f.name)) {
+                    if (typeof XLSX === 'undefined') return alert('Excel parser not loaded (no internet?). Please export as CSV and try again.');
+                    const buf = await f.arrayBuffer();
+                    const wb = XLSX.read(buf);
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }).map(function(r) { return r.map(function(c) { return c === null || c === undefined ? '' : String(c); }); });
+                    previewImport(rowsToContacts(rows));
+                } else {
+                    const text = await f.text();
+                    previewImport(rowsToContacts(parseCSVText(text)));
+                }
+            } catch(e) {
+                alert('Could not read the file: ' + e.message);
+                if (input) input.value = '';
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise(function(resolve, reject) {
+                const r = new FileReader();
+                r.onload = function() { resolve(String(r.result).split(',')[1] || ''); };
+                r.onerror = reject;
+                r.readAsDataURL(file);
+            });
+        }
+
+        async function handleOcrImport(input) {
+            const f = input && input.files ? input.files[0] : null;
+            if (!f) return;
+            if (f.size > 15 * 1024 * 1024) { alert('File too large (max 15 MB).'); input.value = ''; return; }
+            toastMsg('🤖 AI is reading the file (OCR)... this can take a few seconds', 6000);
+            try {
+                const base64 = await fileToBase64(f);
+                const res = await fetch('api/ai/extract-contacts', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileBase64: base64, mimeType: f.type || 'application/pdf', fileName: f.name })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Extraction failed');
+                if (!data.contacts || !data.contacts.length) {
+                    toastMsg('⚠️ No contacts found in this file', 3500);
+                    return;
+                }
+                toastMsg('✅ AI found ' + data.contacts.length + ' contact(s) - review below', 3000);
+                previewImport(data.contacts);
+            } catch(e) {
+                alert('OCR failed: ' + e.message);
+                if (input) input.value = '';
+            }
+        }
+
+        function parseCSVText(text) {
+            const rows = [];
+            let row = []; let cur = ''; let inQ = false;
+            for (let i = 0; i < text.length; i++) {
+                const ch = text[i];
+                if (inQ) {
+                    if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+                    else cur += ch;
+                } else {
+                    if (ch === '"') inQ = true;
+                    else if (ch === ',' || ch === ';' || ch === '\t') { row.push(cur); cur = ''; }
+                    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+                    else if (ch === '\r') { /* skip */ }
+                    else cur += ch;
+                }
+            }
+            if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+            return rows.filter(function(r) { return r.some(function(c) { return String(c).trim() !== ''; }); });
+        }
+
+        function detectColumnMap(headerRow) {
+            const find = function(opts) { return headerRow.findIndex(function(h) { return opts.some(function(o) { return h.includes(o); }); }); };
+            return {
+                phone: find(['phone', 'mobile', 'tel', 'whatsapp', 'number', 'cell', 'contact no']),
+                name: find(['name']),
+                email: find(['email', 'e-mail', 'mail']),
+                company: find(['company', 'organisation', 'organization', 'business', 'firm']),
+                designation: find(['designation', 'title', 'position', 'job']),
+                city: find(['city', 'town']),
+                country: find(['country', 'region']),
+                address: find(['address', 'street']),
+                website: find(['website', 'url', 'web']),
+                products: find(['product', 'material', 'item']),
+                notes: find(['note', 'remark', 'comment', 'description']),
+                tags: find(['tag', 'label', 'group'])
+            };
+        }
+
+        function rowsToContacts(rows) {
+            if (!rows || !rows.length) return [];
+            const header = rows[0].map(function(h) { return String(h).toLowerCase(); });
+            const hasHeader = header.some(function(h) { return /phone|mobile|tel|whatsapp|name|email|company/.test(h); }) && !/\d{7,}/.test(header.join(' '));
+            if (hasHeader) {
+                const map = detectColumnMap(header);
+                return rows.slice(1).map(function(cells) {
+                    const getc = function(i) { return (i >= 0 && cells[i] !== undefined && cells[i] !== null) ? String(cells[i]).trim() : ''; };
+                    return {
+                        phone: getc(map.phone), name: getc(map.name), email: getc(map.email), company: getc(map.company),
+                        designation: getc(map.designation), city: getc(map.city), country: getc(map.country),
+                        address: getc(map.address), website: getc(map.website), products: getc(map.products),
+                        notes: getc(map.notes), tags: getc(map.tags), source: 'Import'
+                    };
+                }).filter(function(c) { return normalizePhoneJs(c.phone).length >= 6; });
+            }
+            // Headerless smart parsing (also pairs a name line with the following phone line)
+            const out = [];
+            let pendingName = '';
+            rows.forEach(function(cells) {
+                const vals = cells.map(function(c) { return String(c).trim(); }).filter(Boolean);
+                if (vals.length === 0) return;
+                if (vals.length === 1) {
+                    const v = vals[0];
+                    const digits = normalizePhoneJs(v);
+                    if (digits.length >= 7 && /^[\+\d][\d\s\-\(\)\.]+$/.test(v)) {
+                        out.push({ phone: v, name: pendingName, source: 'Import' }); pendingName = '';
+                    } else {
+                        const m = v.match(/([\+]?\d[\d\s\-\(\)\.]{6,}\d)/);
+                        if (m) {
+                            const phone = m[1];
+                            const name = v.replace(phone, '').replace(/[,\-|]+$/, '').trim();
+                            out.push({ phone: phone, name: name || pendingName, source: 'Import' }); pendingName = '';
+                        } else { pendingName = v; }
+                    }
+                    return;
+                }
+                let phone = '', email = '', website = '';
+                const others = [];
+                vals.forEach(function(v) {
+                    if (!phone && normalizePhoneJs(v).length >= 7) { phone = v; return; }
+                    if (!email && v.includes('@')) { email = v; return; }
+                    if (!website && /^(https?:\/\/|www\.)/i.test(v)) { website = v; return; }
+                    others.push(v);
+                });
+                const name = others.shift() || pendingName || '';
+                pendingName = '';
+                out.push({ phone: phone, name: name, email: email, website: website, notes: others.join(' | '), source: 'Import' });
+            });
+            return out.filter(function(c) { return normalizePhoneJs(c.phone).length >= 6; });
+        }
+
+        function parseVCardText(text) {
+            const cards = text.split(/BEGIN:VCARD/i).slice(1);
+            const out = [];
+            cards.forEach(function(card) {
+                const get = function(tag) {
+                    const m = card.match(new RegExp('^' + tag + '[^:\n]*:(.*)$', 'im'));
+                    return m ? m[1].trim() : '';
+                };
+                let name = get('FN');
+                if (!name) {
+                    const n = get('N');
+                    name = n ? n.split(';').filter(Boolean).reverse().join(' ').trim() : '';
+                }
+                const tels = [];
+                const telRe = /^TEL[^:\n]*:(.*)$/gim;
+                let tm;
+                while ((tm = telRe.exec(card)) !== null) tels.push(tm[1].trim());
+                const tel = tels.find(function(t) { return normalizePhoneJs(t).length >= 7; }) || '';
+                if (!tel) return;
+                const email = get('EMAIL');
+                const org = get('ORG');
+                const title = get('TITLE');
+                const url = get('URL');
+                const note = get('NOTE');
+                const adr = get('ADR');
+                let country = '', city = '';
+                if (adr) {
+                    const parts = adr.split(';').map(function(p) { return p.trim(); }).filter(Boolean);
+                    country = parts[parts.length - 1] || '';
+                    city = parts[parts.length - 2] || '';
+                }
+                out.push({ phone: tel, name: name, email: email, company: org, designation: title, website: url, city: city, country: country, notes: note ? note.replace(/\\n/g, ' ') : '', source: 'Import' });
+            });
+            return out;
+        }
+
+        function previewImport(rows) {
+            importParsedRows = (rows || []).filter(function(r) { return normalizePhoneJs(r.phone).length >= 6; });
+            const preview = document.getElementById('impPreview');
+            const summary = document.getElementById('impPreviewSummary');
+            const table = document.getElementById('impPreviewTable');
+            if (!importParsedRows.length) {
+                preview.style.display = 'block';
+                summary.innerText = '⚠️ No valid contacts found (a phone number is required for every contact).';
+                table.innerHTML = '';
+                document.getElementById('impConfirmBtn').style.display = 'none';
+                return;
+            }
+            document.getElementById('impConfirmBtn').style.display = 'block';
+            summary.innerText = '✅ ' + importParsedRows.length + ' contacts ready to import' + ((rows.length - importParsedRows.length) > 0 ? ' (' + (rows.length - importParsedRows.length) + ' skipped - no phone)' : '');
+            const head = '<div style="display:grid; grid-template-columns:1.2fr 1.2fr 1.4fr 1fr; gap:4px; padding:8px; background:#f0f2f5; font-weight:bold; position:sticky; top:0;"><span>Name</span><span>Phone</span><span>Email</span><span>Company</span></div>';
+            const body = importParsedRows.slice(0, 50).map(function(r) {
+                return '<div style="display:grid; grid-template-columns:1.2fr 1.2fr 1.4fr 1fr; gap:4px; padding:6px 8px; border-bottom:1px solid var(--border);">' +
+                    '<span>' + esc(r.name || '-') + '</span><span>' + esc(r.phone) + '</span><span>' + esc(r.email || '-') + '</span><span>' + esc(r.company || '-') + '</span></div>';
+            }).join('');
+            table.innerHTML = head + body + (importParsedRows.length > 50 ? '<div style="padding:8px; color:#667781;">... and ' + (importParsedRows.length - 50) + ' more</div>' : '');
+            preview.style.display = 'block';
+        }
+
+        function clearImportPreview() {
+            importParsedRows = [];
+            document.getElementById('impPreview').style.display = 'none';
+            document.getElementById('impCsvFile').value = '';
+            document.getElementById('impVcfFile').value = '';
+        }
+
+        async function confirmImport() {
+            if (!importParsedRows.length) return;
+            toastMsg('⏳ Importing ' + importParsedRows.length + ' contacts...');
+            try {
+                const res = await fetch('api/contactbook/import', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contacts: importParsedRows })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Import failed');
+                toastMsg('✅ Imported ' + data.imported + ' contacts' + (data.skipped ? ' (' + data.skipped + ' skipped)' : ''), 3500);
+                closeImportModal();
+                await loadContactBook();
+                renderLeadsBook();
+            } catch(e) { toastMsg('❌ ' + e.message, 4000); }
+        }
+
+        // Chain section loader for the new books
+        const origShowSectionBook = showSection;
+        showSection = function(id) {
+            origShowSectionBook(id);
+            if (id === 'contactbook') loadContactBook();
+            if (id === 'leadsbook') loadLeadsBook();
         };
 
         // PWA Installation & Service Worker Integration
