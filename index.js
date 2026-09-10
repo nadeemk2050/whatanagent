@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import crypto from 'crypto';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as cheerio from 'cheerio';
@@ -1574,7 +1575,11 @@ app.post('/api/seo/publish-page', async (req, res) => {
     });
 
     console.log(`[SEO PAGE] Success: id=${r.data.id} status=${r.data.status} link=${r.data.link}`);
-    res.json({ success: true, id: r.data.id, link: r.data.link, status: r.data.status, site: key });
+    let indexing = null;
+    if (r.data.status === 'publish' && r.data.link) {
+      indexing = await notifySearchEngines(site, [r.data.link], 'page publish');
+    }
+    res.json({ success: true, id: r.data.id, link: r.data.link, status: r.data.status, site: key, indexing });
   } catch (err) {
     const wpMsg = err.response && err.response.data && (err.response.data.message || err.response.data.code)
       ? (err.response.data.message || err.response.data.code) : err.message;
@@ -1618,6 +1623,58 @@ async function seoWp(site, method, path, data) {
   if (data) { cfg.data = data; cfg.headers = { 'Content-Type': 'application/json' }; }
   const r = await axios(cfg);
   return r.data;
+}
+
+// Google service account -> short-lived access token (RS256 JWT signed with Node crypto - no extra deps)
+function b64url(input) {
+  return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function googleServiceToken(sa, scopes) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claims = { iss: sa.client_email, scope: scopes, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 };
+  const input = b64url(JSON.stringify(header)) + '.' + b64url(JSON.stringify(claims));
+  const sig = crypto.sign('RSA-SHA256', Buffer.from(input), sa.private_key);
+  const jwt = input + '.' + b64url(sig);
+  const r = await axios.post('https://oauth2.googleapis.com/token',
+    'grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=' + jwt,
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 });
+  return r.data.access_token;
+}
+
+// URGENT INDEXING: tell Google about fresh/changed URLs (Indexing API) + refresh the GSC sitemap submission.
+async function notifySearchEngines(site, urls, kind) {
+  const out = { google: [], sitemap: null, note: '' };
+  try {
+    let sa = null;
+    try { sa = JSON.parse(site.gscAccess || '{}'); } catch (e) { sa = null; }
+    if (!sa || !sa.client_email) { out.note = 'No Google service account in SEO ENV - indexing skipped.'; return out; }
+    const token = await googleServiceToken(sa, 'https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/indexing');
+    for (const u of (urls || []).slice(0, 10)) {
+      try {
+        const r = await axios.post('https://indexing.googleapis.com/v3/urlNotifications:publish',
+          { url: u, type: 'URL_UPDATED' },
+          { headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, timeout: 20000 });
+        out.google.push({ url: u, ok: r.status === 200 });
+      } catch (e) {
+        const msg = String((e.response && e.response.data && e.response.data.error && e.response.data.error.message) || e.message).substring(0, 140);
+        out.google.push({ url: u, ok: false, error: msg });
+      }
+    }
+    try {
+      const prop = encodeURIComponent(site.gscPropertyUrl || site.url || '');
+      const feed = encodeURIComponent(site.sitemapUrl || ((site.url || '').replace(/\/+$/, '') + '/sitemap_index.xml'));
+      const sr = await axios.put(`https://searchconsole.googleapis.com/webmasters/v3/sites/${prop}/sitemaps/${feed}`, {},
+        { headers: { Authorization: 'Bearer ' + token }, timeout: 20000 });
+      out.sitemap = sr.status; // 204 = accepted
+    } catch (e) { out.sitemap = 'error'; }
+    console.log(`[INDEX] ${kind || 'publish'} -> google:`, JSON.stringify(out.google), '| sitemap:', out.sitemap);
+  } catch (e) {
+    out.note = 'Google notify error: ' + String(e.message).substring(0, 150);
+    console.log('[INDEX] error:', out.note);
+  }
+  return out;
 }
 
 async function executeSeoAction(name, params, sites) {
@@ -1666,7 +1723,9 @@ async function executeSeoAction(name, params, sites) {
       }
       case 'create_page': {
         const d = await seoWp(site, 'post', '/pages', { title: params.title, content: seoHtml(params.content || ''), status: params.status === 'publish' ? 'publish' : 'draft' });
-        return { created: true, id: d.id, status: d.status, link: d.link };
+        const out = { created: true, id: d.id, status: d.status, link: d.link };
+        if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'page');
+        return out;
       }
       case 'update_page': {
         const body = {};
@@ -1674,7 +1733,9 @@ async function executeSeoAction(name, params, sites) {
         if (params.content) body.content = seoHtml(params.content);
         if (params.status) body.status = params.status;
         const d = await seoWp(site, 'post', `/pages/${params.id}`, body);
-        return { updated: true, id: d.id, status: d.status, link: d.link };
+        const out = { updated: true, id: d.id, status: d.status, link: d.link };
+        if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'page update');
+        return out;
       }
       case 'delete_page': {
         const d = await seoWp(site, 'delete', `/pages/${params.id}?force=true`);
@@ -1696,7 +1757,9 @@ async function executeSeoAction(name, params, sites) {
         const body = { title: params.title, content: seoHtml(params.content || ''), status: params.status === 'publish' ? 'publish' : 'draft' };
         if (Array.isArray(params.categories)) body.categories = params.categories;
         const d = await seoWp(site, 'post', '/posts', body);
-        return { created: true, id: d.id, status: d.status, link: d.link };
+        const out = { created: true, id: d.id, status: d.status, link: d.link };
+        if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'post');
+        return out;
       }
       case 'update_post': {
         const body = {};
@@ -1705,7 +1768,9 @@ async function executeSeoAction(name, params, sites) {
         if (params.status) body.status = params.status;
         if (Array.isArray(params.categories)) body.categories = params.categories;
         const d = await seoWp(site, 'post', `/posts/${params.id}`, body);
-        return { updated: true, id: d.id, status: d.status, link: d.link };
+        const out = { updated: true, id: d.id, status: d.status, link: d.link };
+        if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'post update');
+        return out;
       }
       case 'delete_post': {
         const d = await seoWp(site, 'delete', `/posts/${params.id}?force=true`);
@@ -1893,7 +1958,8 @@ function seoActionsDocForPrompt(defaultKey) {
     '- update_menu_item - {siteKey, itemId, title?, parentId?, position?, url?}  (rename or move a menu item)\n' +
     '- delete_menu_item - {siteKey, itemId}\n' +
     'Use siteKey "' + (defaultKey || 'site') + '" for the main connected website.\n' +
-    'TO ADD A NEW PAGE INTO THE WEBSITE NAVIGATION MENU: first list_menus, then list_menu_locations (find the MAIN menu id), then get_menu_items (find the parent item such as "Products"), then add_menu_item with pageId and parentId to nest it under that item - or parentId 0 for a top-level item.';
+    'TO ADD A NEW PAGE INTO THE WEBSITE NAVIGATION MENU: first list_menus, then list_menu_locations (find the MAIN menu id), then get_menu_items (find the parent item such as "Products"), then add_menu_item with pageId and parentId to nest it under that item - or parentId 0 for a top-level item.\n' +
+    'DAILY NEWS / UPDATES WORKFLOW: for news, industry updates, price trends, machinery inventories or supplier spotlights ALWAYS use create_post (NOT pages) with status "publish" and the matching category id from list_categories. Category tree: "Industry News" hub with children "Plastics Updates", "Metals Updates", "Machinery & Inventories", "Supplier Spotlights". Write a strong SEO headline including the year, 300-600 words, add 1-2 internal links to related PRODUCT pages of the site (e.g. /hdpe100-regrind-scrap-trading/, /pc-bottle-scrap/, /aluminium-acsr-scrap/), mention AL SAHAM AL AHMAR once as the company. After publishing, Google is notified automatically - the action result contains "indexing" info; report it honestly.';
 }
 
 function buildWorkspacePrompt(seo) {
