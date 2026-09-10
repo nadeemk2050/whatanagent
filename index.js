@@ -1772,6 +1772,67 @@ async function executeSeoAction(name, params, sites) {
         return { url: params.url, contentType: ct, text: seoTrunc(text, 4000) };
       }
 
+      // --- WordPress navigation menus ---
+      case 'list_menus': {
+        const data = await seoWp(site, 'get', '/menus?per_page=100');
+        return data.map(m => ({ id: m.id, name: m.name, slug: m.slug, locations: m.locations || [] }));
+      }
+      case 'list_menu_locations': {
+        const data = await seoWp(site, 'get', '/menu-locations');
+        return data;
+      }
+      case 'get_menu_items': {
+        const menuId = parseInt(params.menuId) || 0;
+        const path = menuId ? `/menu-items?menus=${menuId}&per_page=100&orderby=menu_order&order=asc` : '/menu-items?per_page=100&orderby=menu_order&order=asc';
+        const data = await seoWp(site, 'get', path);
+        return data.map(i => ({ id: i.id, title: (i.title && (i.title.raw || i.title.rendered)) || '', url: i.url, parent: i.parent, order: i.menu_order, object: i.object, objectId: i.object_id }));
+      }
+      case 'add_menu_item': {
+        const menuId = parseInt(params.menuId);
+        if (!menuId) return { error: 'menuId is required (use list_menus first).' };
+        const body = {
+          menu: menuId,
+          status: 'publish',
+          parent: parseInt(params.parentId) || 0,
+          position: parseInt(params.position) || 0
+        };
+        if (params.pageId) {
+          body.type = 'post_type';
+          body.object = 'page';
+          body.object_id = parseInt(params.pageId);
+          body.title = params.title || '';
+          if (!body.title) {
+            try {
+              const p = await seoWp(site, 'get', `/pages/${params.pageId}?context=edit`);
+              body.title = (p.title && (p.title.raw || p.title.rendered)) || '';
+            } catch (e) { /* keep empty - WP may fill it */ }
+          }
+        } else if (params.url) {
+          body.type = 'custom';
+          body.url = params.url;
+          body.title = params.title || params.url;
+        } else {
+          return { error: 'Provide pageId (existing page) or url (custom link).' };
+        }
+        const d = await seoWp(site, 'post', '/menu-items', body);
+        return { created: true, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', url: d.url, parent: d.parent, menu: menuId };
+      }
+      case 'update_menu_item': {
+        if (!params.itemId) return { error: 'itemId is required.' };
+        const body = {};
+        if (params.title) body.title = params.title;
+        if (params.parentId !== undefined) body.parent = parseInt(params.parentId) || 0;
+        if (params.position !== undefined) body.position = parseInt(params.position) || 0;
+        if (params.url) body.url = params.url;
+        const d = await seoWp(site, 'post', `/menu-items/${params.itemId}`, body);
+        return { updated: true, id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '' };
+      }
+      case 'delete_menu_item': {
+        if (!params.itemId) return { error: 'itemId is required.' };
+        const d = await seoWp(site, 'delete', `/menu-items/${params.itemId}?force=true`);
+        return { deleted: !!d.deleted, id: params.itemId };
+      }
+
       default:
         return { error: `Unknown action '${name}'.` };
     }
@@ -1785,7 +1846,7 @@ async function executeSeoAction(name, params, sites) {
 function seoActionsDocForPrompt(defaultKey) {
   return 'AVAILABLE ACTIONS (name - params):\n' +
     '- list_sites - {}\n' +
-    '- get_env - {siteKey}\n' +
+    '- get_env - {siteKey}  (site settings; secrets always show as SET (hidden))\n' +
     '- site_info - {siteKey}\n' +
     '- list_pages - {siteKey, search?, perPage?}\n' +
     '- get_page - {siteKey, id}\n' +
@@ -1801,7 +1862,15 @@ function seoActionsDocForPrompt(defaultKey) {
     '- create_category - {siteKey, name}\n' +
     '- upload_media - {siteKey, imageUrl, filename?, alt?}  (downloads any image URL into the media library)\n' +
     '- search_web - {query}  (Google results for research)\n' +
-    '- fetch_url - {url}  (fetch text/JSON/HTML from any URL)';
+    '- fetch_url - {url}  (fetch text/JSON/HTML from any URL)\n' +
+    '- list_menus - {siteKey}  (website navigation menus)\n' +
+    '- list_menu_locations - {siteKey}  (which menu is in primary/header/footer location)\n' +
+    '- get_menu_items - {siteKey, menuId}  (all items of a menu with ids, titles, parents)\n' +
+    '- add_menu_item - {siteKey, menuId, title?, pageId?, url?, parentId?, position?}  (adds a page link or custom link to a menu; parentId nests it under another item e.g. under "Products")\n' +
+    '- update_menu_item - {siteKey, itemId, title?, parentId?, position?, url?}  (rename or move a menu item)\n' +
+    '- delete_menu_item - {siteKey, itemId}\n' +
+    'Use siteKey "' + (defaultKey || 'site') + '" for the main connected website.\n' +
+    'TO ADD A NEW PAGE INTO THE WEBSITE NAVIGATION MENU: first list_menus, then list_menu_locations (find the MAIN menu id), then get_menu_items (find the parent item such as "Products"), then add_menu_item with pageId and parentId to nest it under that item - or parentId 0 for a top-level item.';
 }
 
 function buildWorkspacePrompt(seo) {
@@ -1837,24 +1906,7 @@ When you need to DO something, output one or more fenced action blocks exactly l
 The app executes each action and answers with "ACTION RESULT (action)" messages. Then continue until the task is complete, and finish with a clear summary for the user.
 
 AVAILABLE ACTIONS (name - params):
-- list_sites - {}
-- get_env - {siteKey}  (site settings; secrets show as SET (hidden), never real values)
-- site_info - {siteKey}
-- list_pages - {siteKey, search?, perPage?}
-- get_page - {siteKey, id}
-- create_page - {siteKey, title, content, status: "draft"|"publish"}
-- update_page - {siteKey, id, title?, content?, status?}
-- delete_page - {siteKey, id}
-- list_posts - {siteKey, search?, perPage?}
-- get_post - {siteKey, id}
-- create_post - {siteKey, title, content, status: "draft"|"publish", categories?}
-- update_post - {siteKey, id, title?, content?, status?, categories?}
-- delete_post - {siteKey, id}
-- list_categories - {siteKey}
-- create_category - {siteKey, name}
-- upload_media - {siteKey, imageUrl, filename?, alt?}  (downloads any image URL into the WordPress media library)
-- search_web - {query}  (Google results for research & competitor checks)
-- fetch_url - {url}  (fetch text/JSON from any URL)
+${seoActionsDocForPrompt(Object.keys(sites)[0] || 'site')}
 
 RULES:
 1. NEVER print passwords, app passwords, tokens or API keys. Say "configured" instead.
