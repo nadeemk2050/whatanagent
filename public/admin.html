@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.10.7 (News section + auto Google urgent-indexing on publish) -->
+    <!-- APP VERSION: 2026.09.10.8 (Workspace copy/paste + hidden page titles + news indexing) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -805,7 +805,10 @@
                                 </select>
                                 <select id="aiWsSite" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"></select>
                             </div>
-                            <button onclick="clearWsChat()" style="padding:8px 12px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Clear Chat</button>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button onclick="wsCopyAll()" title="Copy the whole conversation to clipboard" style="padding:8px 12px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">📋 Copy All</button>
+                                <button onclick="clearWsChat()" style="padding:8px 12px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Clear Chat</button>
+                            </div>
                         </div>
                         <div id="aiWsMessages" style="height:430px; overflow-y:auto; padding:15px; background:#f7f9fa; display:flex; flex-direction:column; gap:10px;"></div>
                         <div style="padding:8px 10px; display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--border); background:#fff;">
@@ -818,9 +821,10 @@
                             <button onclick="wsQuick('Upload this image to the WordPress media library: ')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🖼️ Upload Image</button>
                             <button onclick="wsQuick('Check my latest 5 blog posts and suggest concrete SEO improvements for each.')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🚀 SEO Audit</button>
                         </div>
-                        <div style="padding:10px; display:flex; gap:8px; border-top:1px solid var(--border);">
-                            <input type="text" id="aiWsInput" placeholder="Tell the AI what to do... e.g. Create a draft page about copper scrap buying in UAE" style="flex:1; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;" onkeydown="if(event.key==='Enter') sendWsMessage()">
-                            <button onclick="sendWsMessage()" id="aiWsSendBtn" style="padding:12px 24px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Send ➤</button>
+                        <div style="padding:10px; display:flex; gap:8px; border-top:1px solid var(--border); align-items:flex-end;">
+                            <textarea id="aiWsInput" rows="1" placeholder="Tell the AI what to do... (Enter = send, Shift+Enter = new line, Ctrl+V = paste)" style="flex:1; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box; resize:vertical; min-height:46px; max-height:150px; font-family:inherit;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault(); sendWsMessage();}"></textarea>
+                            <button onclick="wsPaste()" title="Paste from clipboard into the input" style="padding:12px 14px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; font-weight:bold; white-space:nowrap;">📋 Paste</button>
+                            <button onclick="sendWsMessage()" id="aiWsSendBtn" style="padding:12px 24px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; white-space:nowrap;">Send ➤</button>
                         </div>
                     </div>
                 </div>
@@ -3316,17 +3320,22 @@
                 box.innerHTML = '<div style="text-align:center; color:#667781; padding:30px; line-height:1.7;">🤖 <b>AI Workspace ready.</b><br>Full power over your websites: create / edit / delete pages & posts, upload images, categories, web search, fetch any data.<br>Try: <i>"List all pages on ' + wsEsc(siteName) + '"</i></div>';
                 return;
             }
-            box.innerHTML = wsHistory.map(function(m) {
-                if (m.role === 'user') {
-                    return '<div style="align-self:flex-end; max-width:80%; background:var(--primary); color:white; padding:10px 14px; border-radius:12px 12px 0 12px; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsEsc(m.content) + '</div>';
+            box.innerHTML = wsHistory.map(function(m, i) {
+                const isUser = m.role === 'user';
+                let inner;
+                if (isUser) {
+                    inner = '<div style="max-width:100%; background:var(--primary); color:white; padding:10px 14px; border-radius:12px 12px 0 12px; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsEsc(m.content) + '</div>';
+                } else {
+                    let acts = '';
+                    if (m.actions && m.actions.length) {
+                        acts = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #cfd8dc; font-size:12px; color:#546e7a;">' + m.actions.map(function(a) {
+                            return '⚙️ ' + wsEsc(a.action) + (a.ok ? ' ✅' : ' ❌') + (a.summary ? ' — ' + wsEsc(a.summary) : '');
+                        }).join('<br>') + '</div>';
+                    }
+                    inner = '<div style="max-width:100%; background:#fff; border:1px solid var(--border); padding:10px 14px; border-radius:12px 12px 12px 0; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsMd(m.content) + acts + '</div>';
                 }
-                let acts = '';
-                if (m.actions && m.actions.length) {
-                    acts = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #cfd8dc; font-size:12px; color:#546e7a;">' + m.actions.map(function(a) {
-                        return '⚙️ ' + wsEsc(a.action) + (a.ok ? ' ✅' : ' ❌') + (a.summary ? ' — ' + wsEsc(a.summary) : '');
-                    }).join('<br>') + '</div>';
-                }
-                return '<div style="align-self:flex-start; max-width:85%; background:#fff; border:1px solid var(--border); padding:10px 14px; border-radius:12px 12px 12px 0; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsMd(m.content) + acts + '</div>';
+                const copyBtn = '<button onclick="wsCopyMsg(' + i + ')" title="Copy this message" style="margin-top:3px; align-self:' + (isUser ? 'flex-end' : 'flex-start') + '; background:none; border:none; color:#8b9aa8; cursor:pointer; font-size:11px; padding:0 2px;">📋 Copy</button>';
+                return '<div style="display:flex; flex-direction:column; max-width:85%; align-self:' + (isUser ? 'flex-end' : 'flex-start') + ';">' + inner + copyBtn + '</div>';
             }).join('');
             box.scrollTop = box.scrollHeight;
         }
@@ -3334,6 +3343,37 @@
         function wsPersist() { try { localStorage.setItem('aiWsChat_v1', JSON.stringify(wsHistory.slice(-40))); } catch(e) {} }
         function wsLoad() { try { const raw = localStorage.getItem('aiWsChat_v1'); wsHistory = raw ? (JSON.parse(raw) || []) : []; } catch(e) { wsHistory = []; } }
         function wsQuick(prefix) { const i = document.getElementById('aiWsInput'); if (!i) return; i.value = prefix; i.focus(); }
+        function wsCopyText(t) {
+            t = String(t || '');
+            const fallback = function() {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.focus(); ta.select();
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return ok;
+                } catch(e) { return false; }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(t).then(function() { toastMsg('📋 Copied!'); }).catch(function() { toastMsg(fallback() ? '📋 Copied!' : '❌ Copy failed'); });
+            } else { toastMsg(fallback() ? '📋 Copied!' : '❌ Copy failed'); }
+        }
+        function wsCopyMsg(i) { const m = wsHistory[i]; if (m) wsCopyText(m.content || ''); }
+        function wsCopyAll() {
+            if (!wsHistory.length) { toastMsg('Nothing to copy yet'); return; }
+            wsCopyText(wsHistory.map(function(m) { return (m.role === 'user' ? '👤 ' : '🤖 ') + (m.content || ''); }).join('\n\n---\n\n'));
+        }
+        async function wsPaste() {
+            const i = document.getElementById('aiWsInput'); if (!i) return;
+            try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    const t = await navigator.clipboard.readText();
+                    if (t) { i.value = (i.value ? i.value + '\n' : '') + t; }
+                    i.focus();
+                } else { i.focus(); toastMsg('Press Ctrl+V to paste'); }
+            } catch(e) { i.focus(); toastMsg('Clipboard blocked - press Ctrl+V to paste'); }
+        }
         function clearWsChat() { if (!confirm('Clear the AI Workspace chat?')) return; wsHistory = []; wsPersist(); wsRender(); }
 
         async function sendWsMessage() {
