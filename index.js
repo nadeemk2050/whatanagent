@@ -1535,6 +1535,375 @@ app.post('/api/seo/publish-page', async (req, res) => {
   }
 });
 
+// ==========================================================
+// --- AI WORKSPACE (vibe-coding chat with full site powers) ---
+// ==========================================================
+function seoTrunc(v, n) {
+  const s = (typeof v === 'string') ? v : JSON.stringify(v);
+  return (s && s.length > n) ? s.substring(0, n) + ' ...[truncated]' : (s || '');
+}
+
+function seoHtml(content) {
+  if (/<[a-z][\s\S]*>/i.test(content)) return content;
+  return content.split(/\n{2,}/).map(p => '<p>' + p.split('\n').join('<br>') + '</p>').join('\n');
+}
+
+function slimWpItem(it) {
+  return {
+    id: it.id,
+    title: (it.title && (it.title.raw || it.title.rendered)) || '',
+    status: it.status,
+    link: it.link,
+    modified: it.modified,
+    excerpt: String(it.excerpt && (it.excerpt.raw || it.excerpt.rendered) || '').replace(/<[^>]+>/g, '').substring(0, 200)
+  };
+}
+
+async function seoWp(site, method, path, data) {
+  const base = site.url.replace(/\/+$/, '');
+  const cfg = {
+    method: method,
+    url: base + '/wp-json/wp/v2' + path,
+    auth: { username: site.cmsUsername, password: site.cmsPassword },
+    timeout: 45000
+  };
+  if (data) { cfg.data = data; cfg.headers = { 'Content-Type': 'application/json' }; }
+  const r = await axios(cfg);
+  return r.data;
+}
+
+async function executeSeoAction(name, params, sites) {
+  params = params || {};
+  const firstKey = Object.keys(sites)[0];
+  const siteKey = params.siteKey || firstKey;
+  const site = sites[siteKey] || {};
+  const noSite = ['list_sites', 'search_web', 'fetch_url'].includes(name);
+  if (!noSite && (!site.url || !site.cmsUsername || !site.cmsPassword)) {
+    return { error: `Site '${siteKey}' is missing url/username/app password in the SEO Agent ENV.` };
+  }
+
+  try {
+    switch (name) {
+      case 'list_sites':
+        return Object.keys(sites).map(k => ({ siteKey: k, url: sites[k].url, cmsPlatform: sites[k].cmsPlatform, sitemapUrl: sites[k].sitemapUrl }));
+
+      case 'get_env': {
+        const set = v => v ? 'SET (hidden)' : '(empty)';
+        return {
+          siteKey: siteKey, url: site.url, cmsPlatform: site.cmsPlatform, sitemapUrl: site.sitemapUrl,
+          cmsAdminUrl: site.cmsAdminUrl, cmsUsername: site.cmsUsername, cmsPassword: set(site.cmsPassword),
+          gscAccess: set(site.gscAccess), gscPropertyUrl: site.gscPropertyUrl, aiProvider: site.aiProvider, aiModel: site.aiModel,
+          aiKey: set(site.aiKey), serperKey: set(site.serperKey), googleCx: site.googleCx,
+          fbPageId: site.fbPageId, fbPageToken: set(site.fbPageToken),
+          keywords: site.keywords, targetLocations: site.targetLocations, notes: site.notes
+        };
+      }
+
+      case 'site_info': {
+        const base = site.url.replace(/\/+$/, '');
+        const r = await axios.get(base + '/wp-json', { timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        return { name: r.data.name, description: r.data.description, url: r.data.url, home: r.data.home };
+      }
+
+      case 'list_pages': {
+        const per = Math.min(50, parseInt(params.perPage) || 20);
+        let path = `/pages?per_page=${per}&status=publish,draft,pending,private&orderby=modified&order=desc`;
+        if (params.search) path += '&search=' + encodeURIComponent(params.search);
+        const data = await seoWp(site, 'get', path);
+        return { count: data.length, pages: data.map(slimWpItem) };
+      }
+      case 'get_page': {
+        const d = await seoWp(site, 'get', `/pages/${params.id}?context=edit`);
+        return { id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', status: d.status, link: d.link, content: seoTrunc((d.content && (d.content.raw || d.content.rendered)) || '', 8000) };
+      }
+      case 'create_page': {
+        const d = await seoWp(site, 'post', '/pages', { title: params.title, content: seoHtml(params.content || ''), status: params.status === 'publish' ? 'publish' : 'draft' });
+        return { created: true, id: d.id, status: d.status, link: d.link };
+      }
+      case 'update_page': {
+        const body = {};
+        if (params.title) body.title = params.title;
+        if (params.content) body.content = seoHtml(params.content);
+        if (params.status) body.status = params.status;
+        const d = await seoWp(site, 'post', `/pages/${params.id}`, body);
+        return { updated: true, id: d.id, status: d.status, link: d.link };
+      }
+      case 'delete_page': {
+        const d = await seoWp(site, 'delete', `/pages/${params.id}?force=true`);
+        return { deleted: !!d.deleted, id: params.id };
+      }
+
+      case 'list_posts': {
+        const per = Math.min(50, parseInt(params.perPage) || 20);
+        let path = `/posts?per_page=${per}&status=publish,draft,pending,private&orderby=modified&order=desc`;
+        if (params.search) path += '&search=' + encodeURIComponent(params.search);
+        const data = await seoWp(site, 'get', path);
+        return { count: data.length, posts: data.map(slimWpItem) };
+      }
+      case 'get_post': {
+        const d = await seoWp(site, 'get', `/posts/${params.id}?context=edit`);
+        return { id: d.id, title: (d.title && (d.title.raw || d.title.rendered)) || '', status: d.status, link: d.link, categories: d.categories, content: seoTrunc((d.content && (d.content.raw || d.content.rendered)) || '', 8000) };
+      }
+      case 'create_post': {
+        const body = { title: params.title, content: seoHtml(params.content || ''), status: params.status === 'publish' ? 'publish' : 'draft' };
+        if (Array.isArray(params.categories)) body.categories = params.categories;
+        const d = await seoWp(site, 'post', '/posts', body);
+        return { created: true, id: d.id, status: d.status, link: d.link };
+      }
+      case 'update_post': {
+        const body = {};
+        if (params.title) body.title = params.title;
+        if (params.content) body.content = seoHtml(params.content);
+        if (params.status) body.status = params.status;
+        if (Array.isArray(params.categories)) body.categories = params.categories;
+        const d = await seoWp(site, 'post', `/posts/${params.id}`, body);
+        return { updated: true, id: d.id, status: d.status, link: d.link };
+      }
+      case 'delete_post': {
+        const d = await seoWp(site, 'delete', `/posts/${params.id}?force=true`);
+        return { deleted: !!d.deleted, id: params.id };
+      }
+
+      case 'list_categories': {
+        const data = await seoWp(site, 'get', '/categories?per_page=50');
+        return data.map(c => ({ id: c.id, name: c.name, count: c.count }));
+      }
+      case 'create_category': {
+        const d = await seoWp(site, 'post', '/categories', { name: params.name });
+        return { created: true, id: d.id, name: d.name, slug: d.slug };
+      }
+
+      case 'upload_media': {
+        if (!params.imageUrl) return { error: 'imageUrl is required.' };
+        const img = await axios.get(params.imageUrl, { responseType: 'arraybuffer', timeout: 30000, maxContentLength: 15 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const contentType = img.headers['content-type'] || 'image/jpeg';
+        const ext = (contentType.split('/')[1] || 'jpg').split(';')[0];
+        const fname = params.filename || ('upload-' + Date.now() + '.' + ext);
+        const base = site.url.replace(/\/+$/, '');
+        const r = await axios.post(base + '/wp-json/wp/v2/media', Buffer.from(img.data), {
+          auth: { username: site.cmsUsername, password: site.cmsPassword },
+          headers: { 'Content-Type': contentType, 'Content-Disposition': `attachment; filename="${fname}"` },
+          maxBodyLength: Infinity, timeout: 90000
+        });
+        if (params.alt && r.data.id) {
+          try { await axios.post(base + '/wp-json/wp/v2/media/' + r.data.id, { alt_text: params.alt }, { auth: { username: site.cmsUsername, password: site.cmsPassword }, timeout: 20000 }); } catch (e) {}
+        }
+        return { uploaded: true, id: r.data.id, url: r.data.source_url, filename: fname, alt: params.alt || '' };
+      }
+
+      case 'search_web': {
+        const anySite = site && site.serperKey ? site : (sites[firstKey] || {});
+        if (!anySite.serperKey) return { error: 'Serper API key is not configured in the SEO Agent ENV.' };
+        const r = await axios.post('https://google.serper.dev/search', { q: params.query, num: 8 }, { headers: { 'X-API-KEY': anySite.serperKey, 'Content-Type': 'application/json' }, timeout: 25000 });
+        return {
+          query: params.query,
+          results: (r.data.organic || []).slice(0, 8).map(o => ({ title: o.title, link: o.link, snippet: seoTrunc(o.snippet || '', 220) })),
+          peopleAlsoAsk: (r.data.peopleAlsoAsk || []).slice(0, 5).map(p => p.question)
+        };
+      }
+
+      case 'fetch_url': {
+        const r = await axios.get(params.url, { timeout: 25000, maxContentLength: 10 * 1024 * 1024, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } });
+        const ct = String(r.headers['content-type'] || '').toLowerCase();
+        let text = '';
+        if (typeof r.data === 'string' && ct.includes('html')) {
+          const $ = cheerio.load(r.data);
+          $('script,style,noscript,iframe,svg').remove();
+          text = $('body').text().replace(/\s+/g, ' ').trim();
+        } else if (typeof r.data === 'string') {
+          text = r.data;
+        } else {
+          text = JSON.stringify(r.data);
+        }
+        return { url: params.url, contentType: ct, text: seoTrunc(text, 4000) };
+      }
+
+      default:
+        return { error: `Unknown action '${name}'.` };
+    }
+  } catch (err) {
+    const wpMsg = err.response && err.response.data && (err.response.data.message || err.response.data.code)
+      ? (err.response.data.message || err.response.data.code) : err.message;
+    return { error: String(wpMsg) };
+  }
+}
+
+function buildWorkspacePrompt(seo) {
+  const sites = seo.sites || {};
+  const siteLines = Object.keys(sites).map(k => {
+    const s = sites[k] || {};
+    return `- ${k} | ${s.cmsPlatform || 'wordpress'} | ${s.url || ''} | admin: ${s.cmsAdminUrl || ''} | credentials: CONFIGURED (used automatically - never printed) | sitemap: ${s.sitemapUrl || 'n/a'}`;
+  });
+  const kv = seo.knowledge || {};
+  let ctx = '';
+  if (seo.instructions) ctx += 'BOSS INSTRUCTIONS (always follow):\n' + seo.instructions + '\n';
+  if (kv.siteDescription) ctx += 'BUSINESS: ' + kv.siteDescription + '\n';
+  if (kv.products) ctx += 'PRODUCTS & SERVICES: ' + kv.products + '\n';
+  if (kv.keywords) ctx += 'KEYWORDS: ' + kv.keywords + '\n';
+  if (kv.locations) ctx += 'TARGET LOCATIONS/LANGUAGES: ' + kv.locations + '\n';
+  if (kv.competitors) ctx += 'COMPETITORS: ' + kv.competitors + '\n';
+  if (kv.tone) ctx += 'TONE & STYLE: ' + kv.tone + '\n';
+  if (kv.rules) ctx += 'RULES: ' + kv.rules + '\n';
+
+  return `You are "AI Workspace" - the powerful operator assistant inside the SEO Agent dashboard of Al Saham company. You can DO things, not just talk: you have full admin access to the connected websites and can fetch any data from anywhere.
+
+CONNECTED SITES (env configured in the app):
+${siteLines.join('\n') || '- none configured'}
+
+${ctx}
+HOW TO TAKE ACTION:
+When you need to DO something, output one or more fenced action blocks exactly like:
+
+\`\`\`action
+{"action":"list_pages","params":{"siteKey":"${Object.keys(sites)[0] || 'site'}"}}
+\`\`\`
+
+The app executes each action and answers with "ACTION RESULT (action)" messages. Then continue until the task is complete, and finish with a clear summary for the user.
+
+AVAILABLE ACTIONS (name - params):
+- list_sites - {}
+- get_env - {siteKey}  (site settings; secrets show as SET (hidden), never real values)
+- site_info - {siteKey}
+- list_pages - {siteKey, search?, perPage?}
+- get_page - {siteKey, id}
+- create_page - {siteKey, title, content, status: "draft"|"publish"}
+- update_page - {siteKey, id, title?, content?, status?}
+- delete_page - {siteKey, id}
+- list_posts - {siteKey, search?, perPage?}
+- get_post - {siteKey, id}
+- create_post - {siteKey, title, content, status: "draft"|"publish", categories?}
+- update_post - {siteKey, id, title?, content?, status?, categories?}
+- delete_post - {siteKey, id}
+- list_categories - {siteKey}
+- create_category - {siteKey, name}
+- upload_media - {siteKey, imageUrl, filename?, alt?}  (downloads any image URL into the WordPress media library)
+- search_web - {query}  (Google results for research & competitor checks)
+- fetch_url - {url}  (fetch text/JSON from any URL)
+
+RULES:
+1. NEVER print passwords, app passwords, tokens or API keys. Say "configured" instead.
+2. Before DELETING anything or PUBLISHING live content, ask the user for confirmation in the conversation first (unless they already confirmed in this chat).
+3. Create content as "draft" by default unless the user says publish.
+4. Write clean SEO-friendly HTML in content (h2/h3, paragraphs, lists). You may write in English, Arabic or Roman Urdu.
+5. Reply in the user's language (English / Roman Urdu / Arabic).
+6. Base every answer on real data from action results - NEVER invent data.
+7. If an action fails, read the error, fix it if possible, or explain clearly what is wrong.`;
+}
+
+function extractSeoActions(text) {
+  const acts = [];
+  let m;
+  const fenceRe = /```(?:action|json)?\s*([\s\S]*?)```/gi;
+  while ((m = fenceRe.exec(text)) !== null) {
+    const body = m[1].trim();
+    if (!/"action"\s*:/.test(body)) continue;
+    try { const obj = JSON.parse(body); if (obj && obj.action) acts.push(obj); } catch (e) {}
+  }
+  if (acts.length === 0) {
+    const tagRe = /\[ACTION:\s*(\{[\s\S]*?\})\s*\]/gi;
+    while ((m = tagRe.exec(text)) !== null) {
+      try { const obj = JSON.parse(m[1]); if (obj && obj.action) acts.push(obj); } catch (e) {}
+    }
+  }
+  return acts;
+}
+
+function stripSeoActionBlocks(text) {
+  return text
+    .replace(/```(?:action|json)?\s*[\s\S]*?```/gi, (blk) => (/"action"\s*:/.test(blk) ? '' : blk))
+    .replace(/\[ACTION:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .trim();
+}
+
+async function workspaceModelReply(systemPrompt, messages, model, settings) {
+  if (model === 'gemini') {
+    if (!settings.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.');
+    const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
+    const gm = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemPrompt });
+    const contents = [];
+    let lastRole = '';
+    messages.forEach(m => {
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      if (role === lastRole) {
+        contents[contents.length - 1].parts[0].text += '\n\n' + m.content;
+      } else {
+        contents.push({ role: role, parts: [{ text: m.content }] });
+        lastRole = role;
+      }
+    });
+    const result = await generateContentWithRetry(gm, { contents });
+    return result.response.text().trim();
+  }
+  if (!settings.DEEPSEEK_API_KEY) throw new Error('DeepSeek API key is not configured.');
+  const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY });
+  const completion = await openai.chat.completions.create({
+    messages: [{ role: 'system', content: systemPrompt }].concat(messages),
+    model: 'deepseek-v4-flash',
+    temperature: 0.4
+  });
+  return (completion.choices[0].message.content || '').trim();
+}
+
+app.post('/api/seo/ai-chat', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const model = body.model === 'gemini' ? 'gemini' : 'deepseek';
+    if (!messages.length) return res.status(400).json({ error: 'Message is required.' });
+
+    const settings = await getSettings();
+    const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
+    const seo = seoSnap.exists() ? seoSnap.data() : {};
+    const sites = seo.sites || {};
+    if (Object.keys(sites).length === 0) {
+      return res.status(400).json({ error: 'No SEO site configured yet. Open the ENV tab and save site credentials first.' });
+    }
+
+    const systemPrompt = buildWorkspacePrompt(seo);
+    const working = messages.slice(-24).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
+    const executed = [];
+    let finalReply = '';
+
+    for (let step = 0; step < 6; step++) {
+      const reply = await workspaceModelReply(systemPrompt, working, model, settings);
+      const actions = extractSeoActions(reply || '');
+      const cleaned = stripSeoActionBlocks(reply || '');
+
+      if (actions.length === 0) { finalReply = cleaned || reply || ''; break; }
+
+      working.push({ role: 'assistant', content: reply });
+      const resultParts = [];
+      for (const act of actions) {
+        console.log(`[AI WORKSPACE] (${model}) action: ${act.action}`);
+        const out = await executeSeoAction(act.action, act.params, sites);
+        const ok = !(out && out.error);
+        let summary = '';
+        if (ok) {
+          if (out && out.count !== undefined) summary = out.count + ' item(s)';
+          else if (out && out.id) summary = 'id ' + out.id;
+          else if (Array.isArray(out)) summary = out.length + ' item(s)';
+          else if (out && out.deleted) summary = 'deleted';
+          else if (out && out.uploaded) summary = 'uploaded';
+          else if (out && out.updated) summary = 'updated';
+          else if (out && out.created) summary = 'created';
+          else summary = 'done';
+        } else {
+          summary = out.error;
+        }
+        executed.push({ action: act.action, params: act.params || {}, ok: ok, summary: summary });
+        resultParts.push('ACTION RESULT (' + act.action + '):\n' + seoTrunc(out, 3000));
+      }
+      working.push({ role: 'user', content: resultParts.join('\n\n') });
+      if (step === 5) finalReply = cleaned || 'Action limit reached - here is what was completed so far.';
+    }
+
+    res.json({ success: true, reply: finalReply || '(no reply)', actions: executed });
+  } catch (err) {
+    console.error('AI Workspace error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Follow-Ups API ---
 app.get('/api/followups', async (req, res) => {
   try {

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.10.3 (SEO Agent + Add/Publish Page + Contact Book + OCR + Boss KB) -->
+    <!-- APP VERSION: 2026.09.10.4 (SEO Agent + AI Workspace Live Chat + Publish Page + Contact Book + OCR + Boss KB) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -650,6 +650,7 @@
                         <button id="seoTabBtnInstructions" onclick="switchSeoTab('instructions')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📝 Instructions for SEO Agent</button>
                         <button id="seoTabBtnKnowledge" onclick="switchSeoTab('knowledge')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">📚 Knowledge Base for SEO Agent</button>
                         <button id="seoTabBtnAddPage" onclick="switchSeoTab('addpage')" style="padding:10px 16px; background:#f0f2f5; color:#333; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add / Publish Page</button>
+                        <button id="seoTabBtnWorkspace" onclick="switchSeoTab('workspace')" style="padding:10px 16px; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🤖 AI Workspace (Live Chat)</button>
                     </div>
                 </div>
 
@@ -786,6 +787,37 @@
                             <button onclick="saveSeoPage('publish')" style="flex:1; min-width:180px; padding:12px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🚀 Publish Page Live</button>
                         </div>
                         <div id="seoPageResult" style="margin-top:15px; display:none; padding:12px; border-radius:8px; font-size:14px;"></div>
+                    </div>
+                </div>
+
+                <!-- SEO TAB 5: AI WORKSPACE -->
+                <div id="seoTabWorkspace" style="display:none;">
+                    <div class="card" style="padding:0; overflow:hidden;">
+                        <div style="padding:15px; border-bottom:1px solid var(--border); display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                                <b style="font-size:16px;">🤖 AI Workspace</b>
+                                <select id="aiWsModel" onchange="localStorage.setItem('aiWsModel', this.value)" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                                    <option value="deepseek">DeepSeek (v4 Flash)</option>
+                                    <option value="gemini">Google Gemini 2.5 Flash</option>
+                                </select>
+                                <select id="aiWsSite" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px;"></select>
+                            </div>
+                            <button onclick="clearWsChat()" style="padding:8px 12px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Clear Chat</button>
+                        </div>
+                        <div id="aiWsMessages" style="height:430px; overflow-y:auto; padding:15px; background:#f7f9fa; display:flex; flex-direction:column; gap:10px;"></div>
+                        <div style="padding:8px 10px; display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--border); background:#fff;">
+                            <button onclick="wsQuick('List all pages on my website with titles, ids and status.')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">📄 List Pages</button>
+                            <button onclick="wsQuick('Draft a new blog post about ')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">📝 New Blog Post</button>
+                            <button onclick="wsQuick('Create a draft page titled \'\' with this content: ')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🆕 New Page</button>
+                            <button onclick="wsQuick('Show me the site info and WordPress details.')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">📊 Site Info</button>
+                            <button onclick="wsQuick('Search the web for: ')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🔍 Web Search</button>
+                            <button onclick="wsQuick('Upload this image to the WordPress media library: ')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🖼️ Upload Image</button>
+                            <button onclick="wsQuick('Check my latest 5 blog posts and suggest concrete SEO improvements for each.')" style="padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:14px; cursor:pointer; font-size:12px;">🚀 SEO Audit</button>
+                        </div>
+                        <div style="padding:10px; display:flex; gap:8px; border-top:1px solid var(--border);">
+                            <input type="text" id="aiWsInput" placeholder="Tell the AI what to do... e.g. Create a draft page about copper scrap buying in UAE" style="flex:1; padding:12px; border:1px solid var(--border); border-radius:8px; font-size:14px; box-sizing:border-box;" onkeydown="if(event.key==='Enter') sendWsMessage()">
+                            <button onclick="sendWsMessage()" id="aiWsSendBtn" style="padding:12px 24px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Send ➤</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2992,8 +3024,8 @@
         var SEO_SITE_KEY = 'www.alshaabalwaseem.com';
 
         function switchSeoTab(tab) {
-            const tabs = { site: 'seoTabSite', instructions: 'seoTabInstructions', knowledge: 'seoTabKnowledge', addpage: 'seoTabAddPage' };
-            const btns = { site: 'seoTabBtnSite', instructions: 'seoTabBtnInstructions', knowledge: 'seoTabBtnKnowledge', addpage: 'seoTabBtnAddPage' };
+            const tabs = { site: 'seoTabSite', instructions: 'seoTabInstructions', knowledge: 'seoTabKnowledge', addpage: 'seoTabAddPage', workspace: 'seoTabWorkspace' };
+            const btns = { site: 'seoTabBtnSite', instructions: 'seoTabBtnInstructions', knowledge: 'seoTabBtnKnowledge', addpage: 'seoTabBtnAddPage', workspace: 'seoTabBtnWorkspace' };
             Object.keys(tabs).forEach(function(k) {
                 const panel = document.getElementById(tabs[k]);
                 const btn = document.getElementById(btns[k]);
@@ -3067,6 +3099,19 @@
                 const list = keys.length ? keys : [SEO_SITE_KEY];
                 sitesSel.innerHTML = list.map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('');
             }
+
+            // Populate AI Workspace site selector + restore chat
+            const wsSiteSel = document.getElementById('aiWsSite');
+            if (wsSiteSel) {
+                const keys2 = Object.keys(data.sites || {});
+                const list2 = keys2.length ? keys2 : [SEO_SITE_KEY];
+                wsSiteSel.innerHTML = list2.map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('');
+            }
+            const modelSel = document.getElementById('aiWsModel');
+            const savedModel = localStorage.getItem('aiWsModel');
+            if (modelSel && savedModel) modelSel.value = savedModel;
+            if (!wsHistory.length) wsLoad();
+            wsRender();
         }
 
         async function saveSeoEnv() {
@@ -3184,6 +3229,84 @@
                 show('❌ ' + e.message, false);
                 toastMsg('❌ Failed to save page');
             }
+        }
+
+        // ===== AI WORKSPACE (live chat with full site powers) =====
+        var wsHistory = [];
+        var wsBusy = false;
+
+        function wsEsc(t) { return String(t || '').replace(/[&<>"']/g, function(m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
+        function wsMd(t) {
+            return wsEsc(t)
+                .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+                .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" style="color:#1565c0;">$1</a>');
+        }
+
+        function wsRender() {
+            const box = document.getElementById('aiWsMessages');
+            if (!box) return;
+            if (!wsHistory.length) {
+                const siteName = (document.getElementById('aiWsSite') || {}).value || 'my site';
+                box.innerHTML = '<div style="text-align:center; color:#667781; padding:30px; line-height:1.7;">🤖 <b>AI Workspace ready.</b><br>Full power over your websites: create / edit / delete pages & posts, upload images, categories, web search, fetch any data.<br>Try: <i>"List all pages on ' + wsEsc(siteName) + '"</i></div>';
+                return;
+            }
+            box.innerHTML = wsHistory.map(function(m) {
+                if (m.role === 'user') {
+                    return '<div style="align-self:flex-end; max-width:80%; background:var(--primary); color:white; padding:10px 14px; border-radius:12px 12px 0 12px; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsEsc(m.content) + '</div>';
+                }
+                let acts = '';
+                if (m.actions && m.actions.length) {
+                    acts = '<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #cfd8dc; font-size:12px; color:#546e7a;">' + m.actions.map(function(a) {
+                        return '⚙️ ' + wsEsc(a.action) + (a.ok ? ' ✅' : ' ❌') + (a.summary ? ' — ' + wsEsc(a.summary) : '');
+                    }).join('<br>') + '</div>';
+                }
+                return '<div style="align-self:flex-start; max-width:85%; background:#fff; border:1px solid var(--border); padding:10px 14px; border-radius:12px 12px 12px 0; font-size:14px; white-space:pre-wrap; word-break:break-word;">' + wsMd(m.content) + acts + '</div>';
+            }).join('');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function wsPersist() { try { localStorage.setItem('aiWsChat_v1', JSON.stringify(wsHistory.slice(-40))); } catch(e) {} }
+        function wsLoad() { try { const raw = localStorage.getItem('aiWsChat_v1'); wsHistory = raw ? (JSON.parse(raw) || []) : []; } catch(e) { wsHistory = []; } }
+        function wsQuick(prefix) { const i = document.getElementById('aiWsInput'); if (!i) return; i.value = prefix; i.focus(); }
+        function clearWsChat() { if (!confirm('Clear the AI Workspace chat?')) return; wsHistory = []; wsPersist(); wsRender(); }
+
+        async function sendWsMessage() {
+            const input = document.getElementById('aiWsInput');
+            const text = input ? input.value.trim() : '';
+            if (!text || wsBusy) return;
+            input.value = '';
+            wsHistory.push({ role: 'user', content: text });
+            wsRender(); wsPersist();
+
+            wsBusy = true;
+            const sendBtn = document.getElementById('aiWsSendBtn');
+            if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '⏳ Working...'; }
+            const box = document.getElementById('aiWsMessages');
+            if (box) { box.innerHTML += '<div id="wsTyping" style="align-self:flex-start; color:#667781; font-size:13px; padding:6px 10px; background:#fff; border:1px solid var(--border); border-radius:12px;">🤖 thinking / working...</div>'; box.scrollTop = box.scrollHeight; }
+
+            try {
+                const model = (document.getElementById('aiWsModel') || {}).value || 'deepseek';
+                const siteKey = (document.getElementById('aiWsSite') || {}).value || SEO_SITE_KEY;
+                localStorage.setItem('aiWsModel', model);
+                const res = await fetch('api/seo/ai-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: wsHistory.slice(-24).map(function(m) { return { role: m.role, content: m.content }; }),
+                        model: model,
+                        siteKey: siteKey
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'AI error');
+                wsHistory.push({ role: 'assistant', content: data.reply || '(no reply)', actions: data.actions || [] });
+            } catch(e) {
+                wsHistory.push({ role: 'assistant', content: '❌ ' + e.message });
+            }
+
+            wsBusy = false;
+            if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Send ➤'; }
+            wsRender(); wsPersist();
         }
 
         // PWA Installation & Service Worker Integration
