@@ -1677,6 +1677,45 @@ async function notifySearchEngines(site, urls, kind) {
   return out;
 }
 
+// ---------- Facebook Page helpers ----------
+async function fbGraph(path, method, params) {
+  const base = 'https://graph.facebook.com/v20.0';
+  if (!method || method === 'GET') {
+    const qs = new URLSearchParams(params || {}).toString();
+    const r = await axios.get(base + path + (qs ? ('?' + qs) : ''), { timeout: 25000 });
+    return r.data;
+  }
+  const r = await axios({ method, url: base + path, data: params || {}, timeout: 25000 });
+  return r.data;
+}
+
+async function fbPostToPage(site, message, link) {
+  if (!site.fbPageId || !site.fbPageToken) return { error: 'Facebook Page ID / token not set in the SEO Agent ENV.' };
+  try {
+    const body = { message: message, access_token: site.fbPageToken };
+    if (link) body.link = link;
+    const d = await fbGraph('/' + site.fbPageId + '/feed', 'POST', body);
+    return { posted: true, id: d.id, url: 'https://facebook.com/' + d.id };
+  } catch (e) {
+    const msg = String((e.response && e.response.data && e.response.data.error && e.response.data.error.message) || e.message);
+    return { error: 'Facebook post failed: ' + msg.substring(0, 200) };
+  }
+}
+
+// Save one field back into appData/seoAgent -> sites[siteKey][field]
+async function updateSavedSeoSiteField(siteKey, field, value) {
+  try {
+    const ref = doc(db, 'appData', 'seoAgent');
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? snap.data() : {};
+    const sites = data.sites || {};
+    if (!sites[siteKey]) sites[siteKey] = {};
+    sites[siteKey][field] = value;
+    await setDoc(ref, { sites }, { merge: true });
+    return true;
+  } catch (e) { console.log('save seo field failed:', e.message); return false; }
+}
+
 async function executeSeoAction(name, params, sites) {
   params = params || {};
   const firstKey = Object.keys(sites)[0];
@@ -1758,7 +1797,14 @@ async function executeSeoAction(name, params, sites) {
         if (Array.isArray(params.categories)) body.categories = params.categories;
         const d = await seoWp(site, 'post', '/posts', body);
         const out = { created: true, id: d.id, status: d.status, link: d.link };
-        if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'post');
+        if (d.status === 'publish' && d.link) {
+          out.indexing = await notifySearchEngines(site, [d.link], 'post');
+          if (/^(yes|true|1|on)$/i.test(String(site.fbAutoPost || '')) && site.fbPageId && site.fbPageToken) {
+            const fb = await fbPostToPage(site, (params.title || 'New update from AL SAHAM AL AHMAR') + '\n\n' + d.link, d.link);
+            out.facebook = fb.error ? { ok: false, error: fb.error } : { ok: true, url: fb.url };
+            console.log('[FB] auto-share:', JSON.stringify(out.facebook));
+          }
+        }
         return out;
       }
       case 'update_post': {
@@ -1923,6 +1969,58 @@ async function executeSeoAction(name, params, sites) {
 
       default:
         return { error: `Unknown action '${name}'.` };
+
+      case 'facebook_status': {
+        if (!site.fbPageId) return { error: 'fbPageId is not set in the SEO ENV.' };
+        if (!site.fbPageToken) return { error: 'fbPageToken is not set in the SEO ENV.' };
+        try {
+          const d = await fbGraph('/' + site.fbPageId, 'GET', { fields: 'name,fan_count,link', access_token: site.fbPageToken });
+          return { connected: true, page: d.name, followers: d.fan_count, link: d.link, pageId: site.fbPageId };
+        } catch (e) {
+          const msg = String((e.response && e.response.data && e.response.data.error && e.response.data.error.message) || e.message);
+          return { connected: false, error: msg.substring(0, 220) };
+        }
+      }
+      case 'post_to_facebook': {
+        if (!params.message) return { error: 'message is required.' };
+        return await fbPostToPage(site, params.message, params.link || '');
+      }
+      case 'facebook_connect': {
+        // One-time setup: user pastes a fresh access token (Graph API Explorer).
+        // With fbAppId + fbAppSecret we convert it to a long-lived USER token, then fetch the PAGE token and save it.
+        const token = String(params.token || '').trim();
+        if (!token) return { error: 'token is required - paste the fresh access token from Graph API Explorer.' };
+        const steps = [];
+        try {
+          let userToken = token;
+          if (site.fbAppId && site.fbAppSecret) {
+            try {
+              const ex = await fbGraph('/oauth/access_token', 'GET', { grant_type: 'fb_exchange_token', client_id: site.fbAppId, client_secret: site.fbAppSecret, fb_exchange_token: token });
+              if (ex.access_token) { userToken = ex.access_token; steps.push('converted to long-lived user token'); }
+            } catch (e) { steps.push('exchange skipped (check fbAppId/fbAppSecret): ' + String(e.message).substring(0, 80)); }
+          } else { steps.push('no fbAppId/fbAppSecret set - using token as-is (may expire soon)'); }
+          let pageToken = null;
+          let pageName = '';
+          let pageId = site.fbPageId || '';
+          try {
+            const acc = await fbGraph('/me/accounts', 'GET', { access_token: userToken, fields: 'id,name,access_token' });
+            const pages = (acc && acc.data) || [];
+            const match = pages.find(p => String(p.id) === String(site.fbPageId)) || pages[0];
+            if (match && match.access_token) { pageToken = match.access_token; pageName = match.name; pageId = match.id; steps.push('found page "' + match.name + '" (' + match.id + ')'); }
+            else steps.push('no pages found under this token');
+          } catch (e) { steps.push('/me/accounts not available (maybe it is already a page token)'); }
+          if (!pageToken) pageToken = userToken;
+          const check = await fbGraph('/' + (pageId || 'me'), 'GET', { fields: 'name,fan_count', access_token: pageToken });
+          if (pageId && !site.fbPageId) await updateSavedSeoSiteField(siteKey, 'fbPageId', pageId);
+          await updateSavedSeoSiteField(siteKey, 'fbPageToken', pageToken);
+          steps.push('token verified against page "' + check.name + '"');
+          console.log('[FB] facebook_connect success:', check.name, '(' + pageId + ')');
+          return { connected: true, page: check.name, followers: check.fan_count, pageId: pageId, saved: true, steps };
+        } catch (e) {
+          const msg = String((e.response && e.response.data && e.response.data.error && e.response.data.error.message) || e.message);
+          return { connected: false, error: msg.substring(0, 250), steps };
+        }
+      }
     }
   } catch (err) {
     const wpMsg = err.response && err.response.data && (err.response.data.message || err.response.data.code)
@@ -1957,9 +2055,12 @@ function seoActionsDocForPrompt(defaultKey) {
     '- add_menu_item - {siteKey, menuId, title?, pageId?, url?, parentId?, position?}  (ADDS the item INTO the menu so it appears in the website navigation; parentId nests it under another item such as the "PRODUCTS" menu item; position = order number inside the menu, e.g. 9. IMPORTANT: run get_menu_items first - if the item already exists in the menu, use update_menu_item instead of creating a duplicate. The reply shows attached:true when the item is really in the menu)\n' +
     '- update_menu_item - {siteKey, itemId, title?, parentId?, position?, url?}  (rename or move a menu item)\n' +
     '- delete_menu_item - {siteKey, itemId}\n' +
+    '- facebook_status - {siteKey}  (check if the Facebook page connection works)\n' +
+    '- post_to_facebook - {siteKey, message, link?}  (publishes a post on the connected Facebook page; link shows a preview card - use for sharing news, offers and updates)\n' +
+    '- facebook_connect - {siteKey, token}  (one-time Facebook setup: only run when the user gives a fresh access token to paste)\n' +
     'Use siteKey "' + (defaultKey || 'site') + '" for the main connected website.\n' +
     'TO ADD A NEW PAGE INTO THE WEBSITE NAVIGATION MENU: first list_menus, then list_menu_locations (find the MAIN menu id), then get_menu_items (find the parent item such as "Products"), then add_menu_item with pageId and parentId to nest it under that item - or parentId 0 for a top-level item.\n' +
-    'DAILY NEWS / UPDATES WORKFLOW: for news, industry updates, price trends, machinery inventories or supplier spotlights ALWAYS use create_post (NOT pages) with status "publish" and the matching category id from list_categories. Category tree: "Industry News" hub with children "Plastics Updates", "Metals Updates", "Machinery & Inventories", "Supplier Spotlights". Write a strong SEO headline including the year, 300-600 words, add 1-2 internal links to related PRODUCT pages of the site (e.g. /hdpe100-regrind-scrap-trading/, /pc-bottle-scrap/, /aluminium-acsr-scrap/), mention AL SAHAM AL AHMAR once as the company. After publishing, Google is notified automatically - the action result contains "indexing" info; report it honestly.';
+    'DAILY NEWS / UPDATES WORKFLOW: for news, industry updates, price trends, machinery inventories or supplier spotlights ALWAYS use create_post (NOT pages) with status "publish" and the matching category id from list_categories. Category tree: "Industry News" hub with children "Plastics Updates", "Metals Updates", "Machinery & Inventories", "Supplier Spotlights". Write a strong SEO headline including the year, 300-600 words, add 1-2 internal links to related PRODUCT pages of the site (e.g. /hdpe100-regrind-scrap-trading/, /pc-bottle-scrap/, /aluminium-acsr-scrap/), mention AL SAHAM AL AHMAR once as the company. After publishing, Google is notified automatically - the action result contains "indexing" info; report it honestly. If the Facebook page is connected (check with facebook_status), you may also share the new post with post_to_facebook {message: headline + short teaser, link: post link}.';
 }
 
 function buildWorkspacePrompt(seo) {
