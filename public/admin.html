@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.11.4 (critical fix: workspace chat no longer hangs + fast image insert) -->
+    <!-- APP VERSION: 2026.09.11.5 (boss AI surrogate fix + topbar WhatAnAgent v1.2 label) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -237,7 +237,10 @@
                 <button class="menu-btn" onclick="toggleSidebar()">☰</button>
                 <h2 style="margin: 0; font-size: 1.2rem;">AI Admin Dashboard</h2>
             </div>
-            <button class="btn-pwa-install" onclick="installPWA()">📲 Install App</button>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 13px; font-weight: bold; color: #546e7a; background: #f0f2f5; border: 1px solid var(--border); padding: 6px 12px; border-radius: 16px; white-space: nowrap;">WhatAnAgent v1.2</span>
+                <button class="btn-pwa-install" onclick="installPWA()">📲 Install App</button>
+            </div>
         </div>
 
         <!-- Sidebar -->

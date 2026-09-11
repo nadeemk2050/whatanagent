@@ -101,6 +101,24 @@ async function sendWhatsAppMessage(to, text, settings) {
   }
 }
 
+// --- Text safety helpers: AI APIs reject JSON that contains unpaired UTF-16 surrogates
+// (this happens when an emoji gets cut in half by a character limit - it broke ALL boss replies on 2026-09-11) ---
+function sanitizeText(s) {
+  if (typeof s !== 'string') return s == null ? '' : String(s);
+  return s
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')    // high surrogate not followed by a low one
+    .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, ''); // low surrogate not preceded by a high one
+}
+
+function safeTruncate(s, n) {
+  if (typeof s !== 'string') s = s == null ? '' : String(s);
+  if (s.length <= n) return s;
+  let cut = s.substring(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xD800 && last <= 0xDBFF) cut = cut.substring(0, cut.length - 1); // never leave half an emoji
+  return cut;
+}
+
 async function generateAIResponse(userPrompt, senderNumber, settings) {
   const provider = settings.ACTIVE_AI_PROVIDER || 'deepseek';
 
@@ -245,20 +263,21 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     let lastRole = "";
     messages.forEach(m => {
       const role = m.sender === "user" ? "user" : "model";
+      const t = sanitizeText(m.text);
       if (role === lastRole) {
-        geminiContents[geminiContents.length - 1].parts[0].text += "\n" + m.text;
+        geminiContents[geminiContents.length - 1].parts[0].text += "\n" + t;
       } else {
-        geminiContents.push({ role: role, parts: [{text: m.text}] });
+        geminiContents.push({ role: role, parts: [{text: t}] });
         lastRole = role;
       }
     });
     // Ensure we don't pass an empty contents array if for some reason it's empty
-    if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{text: userPrompt}] });
+    if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{text: sanitizeText(userPrompt)}] });
 
     // Build DeepSeek Messages
-    const dsMessages = [{ role: "system", content: systemInstruction }];
+    const dsMessages = [{ role: "system", content: sanitizeText(systemInstruction) }];
     messages.slice(-50).forEach(m => {
-      dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: m.text });
+      dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: sanitizeText(m.text) });
     });
 
     let finalReply = "";
@@ -267,7 +286,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({
          model: "gemini-2.5-flash",
-         systemInstruction: systemInstruction,
+         systemInstruction: sanitizeText(systemInstruction),
       });
       const result = await model.generateContent({ contents: geminiContents });
       finalReply = result.response.text();
@@ -502,7 +521,7 @@ async function buildBossLiveData(bossNumber) {
             block += `   Last messages with +${num}:\n`;
             msgs.forEach(m => {
               const who = m.sender === 'user' ? 'Customer' : 'Bot';
-              const txt = (m.text || '').substring(0, 200).replace(/\n/g, ' ');
+              const txt = sanitizeText(safeTruncate(m.text || '', 200)).replace(/\n/g, ' ');
               block += `   - ${who} (${timeAgo(m.timestamp)}): ${txt}\n`;
             });
           }
@@ -634,27 +653,28 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
     if (provider === 'gemini') {
       if (!settings.GEMINI_API_KEY) return "Boss, the Gemini API key is not configured.";
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction: systemInstruction });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction: sanitizeText(systemInstruction) });
       const geminiContents = [];
       let lastRole = "";
       messages.forEach(m => {
         const role = m.sender === "user" ? "user" : "model";
+        const t = sanitizeText(m.text);
         if (role === lastRole) {
-          geminiContents[geminiContents.length - 1].parts[0].text += "\n" + m.text;
+          geminiContents[geminiContents.length - 1].parts[0].text += "\n" + t;
         } else {
-          geminiContents.push({ role: role, parts: [{ text: m.text }] });
+          geminiContents.push({ role: role, parts: [{ text: t }] });
           lastRole = role;
         }
       });
-      if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{ text: userPrompt }] });
+      if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{ text: sanitizeText(userPrompt) }] });
       const result = await model.generateContent({ contents: geminiContents });
       finalReply = result.response.text();
     } else {
       if (!settings.DEEPSEEK_API_KEY) return "Boss, the DeepSeek API key is not configured.";
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY });
-      const dsMessages = [{ role: "system", content: systemInstruction }];
+      const dsMessages = [{ role: "system", content: sanitizeText(systemInstruction) }];
       messages.slice(-30).forEach(m => {
-        dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: m.text });
+        dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: sanitizeText(m.text) });
       });
       const completion = await openai.chat.completions.create({
         messages: dsMessages,
@@ -1593,8 +1613,8 @@ app.post('/api/seo/publish-page', async (req, res) => {
 // --- AI WORKSPACE (vibe-coding chat with full site powers) ---
 // ==========================================================
 function seoTrunc(v, n) {
-  const s = (typeof v === 'string') ? v : JSON.stringify(v);
-  return (s && s.length > n) ? s.substring(0, n) + ' ...[truncated]' : (s || '');
+  const s = sanitizeText((typeof v === 'string') ? v : JSON.stringify(v));
+  return (s && s.length > n) ? safeTruncate(s, n) + ' ...[truncated]' : (s || '');
 }
 
 function seoHtml(content) {
@@ -2203,15 +2223,16 @@ async function workspaceModelReply(systemPrompt, messages, model, settings) {
   if (model === 'gemini') {
     if (!settings.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.');
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-    const gm = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemPrompt });
+    const gm = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sanitizeText(systemPrompt) });
     const contents = [];
     let lastRole = '';
     messages.forEach(m => {
       const role = m.role === 'assistant' ? 'model' : 'user';
+      const t = sanitizeText(m.content);
       if (role === lastRole) {
-        contents[contents.length - 1].parts[0].text += '\n\n' + m.content;
+        contents[contents.length - 1].parts[0].text += '\n\n' + t;
       } else {
-        contents.push({ role: role, parts: [{ text: m.content }] });
+        contents.push({ role: role, parts: [{ text: t }] });
         lastRole = role;
       }
     });
@@ -2222,7 +2243,7 @@ async function workspaceModelReply(systemPrompt, messages, model, settings) {
   const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 120000, maxRetries: 1 });
   const t0 = Date.now();
   const completion = await openai.chat.completions.create({
-    messages: [{ role: 'system', content: systemPrompt }].concat(messages),
+    messages: [{ role: 'system', content: sanitizeText(systemPrompt) }].concat(messages.map(m => ({ role: m.role, content: sanitizeText(m.content) }))),
     model: 'deepseek-v4-flash',
     temperature: 0.4
   });
