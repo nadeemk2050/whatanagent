@@ -29,7 +29,8 @@ const db = getFirestore(firebaseApp);
 dotenv.config();
 
 const app = express();
-app.use(express.json());
+// Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
+app.use(express.json({ limit: '30mb' }));
 app.use(express.static('public'));
 
 // --- Settings Management ---
@@ -2116,7 +2117,8 @@ RULES:
 4. Write clean SEO-friendly HTML in content (h2/h3, paragraphs, lists). You may write in English, Arabic or Roman Urdu.
 5. Reply in the user's language (English / Roman Urdu / Arabic).
 6. Base every answer on real data from action results - NEVER invent data.
-7. If an action fails, read the error, fix it if possible, or explain clearly what is wrong.`;
+7. If an action fails, read the error, fix it if possible, or explain clearly what is wrong.
+8. When a user message contains "ATTACHED IMAGE(S) ALREADY UPLOADED ...": those images are ALREADY in the WordPress media library of the given site. Use their URLs directly inside page/post content (as <img src="..."> or as featured image) - never upload them again and never invent image URLs. If the message says the upload failed, tell the user clearly instead of pretending it worked.`;
 }
 
 function extractSeoActions(text) {
@@ -2180,6 +2182,11 @@ app.post('/api/seo/ai-chat', async (req, res) => {
     const model = body.model === 'gemini' ? 'gemini' : 'deepseek';
     if (!messages.length) return res.status(400).json({ error: 'Message is required.' });
 
+    // If the user presses the ⏹ Stop button in the dashboard, the browser aborts the request -
+    // detect it here so the remaining model calls / actions are not executed.
+    let clientGone = false;
+    req.on('close', () => { if (!res.writableEnded) clientGone = true; });
+
     const settings = await getSettings();
     const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
     const seo = seoSnap.exists() ? seoSnap.data() : {};
@@ -2195,7 +2202,9 @@ app.post('/api/seo/ai-chat', async (req, res) => {
     let finalReply = '';
 
     for (let step = 0; step < 6; step++) {
+      if (clientGone) { console.log('[AI WORKSPACE] Client stopped - ending action loop'); return; }
       const reply = await workspaceModelReply(systemPrompt, working, model, settings);
+      if (clientGone) { console.log('[AI WORKSPACE] Client stopped - ending action loop'); return; }
       const actions = extractSeoActions(reply || '');
       const cleaned = stripSeoActionBlocks(reply || '');
 
@@ -2204,6 +2213,7 @@ app.post('/api/seo/ai-chat', async (req, res) => {
       working.push({ role: 'assistant', content: reply });
       const resultParts = [];
       for (const act of actions) {
+        if (clientGone) { console.log('[AI WORKSPACE] Client stopped - ending action loop'); return; }
         console.log(`[AI WORKSPACE] (${model}) action: ${act.action}`);
         const out = await executeSeoAction(act.action, act.params, sites);
         const ok = !(out && out.error);
@@ -2231,6 +2241,53 @@ app.post('/api/seo/ai-chat', async (req, res) => {
   } catch (err) {
     console.error('AI Workspace error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload an image chosen from the user's computer (AI Workspace attach button) into the WordPress media library.
+app.post('/api/seo/upload-image', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const fileBase64 = String(body.fileBase64 || '');
+    if (!fileBase64) return res.status(400).json({ error: 'No image data received.' });
+
+    const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
+    const seo = seoSnap.exists() ? seoSnap.data() : {};
+    const sites = seo.sites || {};
+    if (Object.keys(sites).length === 0) {
+      return res.status(400).json({ error: 'No SEO site configured yet. Open the SEO Agent ENV tab and save the site credentials first.' });
+    }
+    const selectedSite = (body.siteKey && sites[body.siteKey]) ? body.siteKey : getMainSeoSiteKey(sites);
+    const site = sites[selectedSite];
+
+    let mime = String(body.mimeType || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    if (!/^image\//.test(mime)) mime = 'image/jpeg';
+    const extMap = { 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/bmp': 'bmp', 'image/avif': 'avif', 'image/svg+xml': 'svg' };
+    const ext = extMap[mime] || 'jpg';
+    let filename = String(body.filename || '').split(/[\\/]/).pop().replace(/[^\w.\- ]+/g, '-').trim();
+    if (!filename) filename = 'site-image-' + Date.now() + '.' + ext;
+    if (!/\.[a-z0-9]{2,5}$/i.test(filename)) filename += '.' + ext;
+
+    const buf = Buffer.from(fileBase64.replace(/^data:[^,]+,/, ''), 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'Image data is empty.' });
+    if (buf.length > 25 * 1024 * 1024) return res.status(400).json({ error: 'Image is too large (max 25MB).' });
+
+    const base = site.url.replace(/\/+$/, '');
+    const r = await axios.post(base + '/wp-json/wp/v2/media', buf, {
+      auth: { username: site.cmsUsername, password: site.cmsPassword },
+      headers: { 'Content-Type': mime, 'Content-Disposition': 'attachment; filename="' + filename + '"' },
+      maxBodyLength: Infinity, timeout: 120000
+    });
+    const out = { success: true, site: selectedSite, id: r.data.id, url: r.data.source_url, filename: filename };
+    if (body.alt && r.data.id) {
+      try { await axios.post(base + '/wp-json/wp/v2/media/' + r.data.id, { alt_text: String(body.alt) }, { auth: { username: site.cmsUsername, password: site.cmsPassword }, timeout: 20000 }); } catch (e) {}
+    }
+    console.log('[MEDIA UPLOAD] ' + filename + ' -> ' + out.url + ' (' + selectedSite + ')');
+    res.json(out);
+  } catch (err) {
+    const detail = (err.response && err.response.data && (err.response.data.message || err.response.data.code)) || err.message;
+    console.error('Media upload error:', detail);
+    res.status(500).json({ error: 'WordPress rejected the upload: ' + detail });
   }
 });
 
