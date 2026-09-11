@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.11.5 (boss AI surrogate fix + topbar WhatAnAgent v1.2 label) -->
+    <!-- APP VERSION: 2026.09.11.6 (real WhatsApp delivery statuses + 24h window warning) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -947,6 +947,7 @@
                             <div class="chat-messages" id="chatMessageList">
                                 <div style="text-align:center; color:#667781; margin-top:50px;">Select a contact to view chat history.</div>
                             </div>
+                            <div id="chatWindowWarning" style="display:none; padding:10px 14px; background:#fff8e1; border-top:1px solid #ffe082; color:#8d6e00; font-size:12px; font-weight:bold; line-height:1.55;"></div>
                             <div class="chat-input" id="chatInputBar" style="display:none;">
                                 <input type="text" id="chatMsgInput" placeholder="Type a manual reply...">
                                 <button onclick="suggestChatReply()" style="background: #ef6c00; margin-right: 5px; padding: 12px 20px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer;" id="suggestReplyBtn">💡 Suggest Reply</button>
@@ -1547,10 +1548,13 @@
                 msgList.innerHTML = '';
                 if (snapshot.empty) {
                     msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">No messages yet.</div>';
+                    updateChatWindowWarning(0);
                     return;
                 }
+                let lastUserTs = 0;
                 snapshot.forEach(docSnap => {
                     const m = docSnap.data();
+                    if (m.sender === 'user' && m.timestamp && m.timestamp > lastUserTs) lastUserTs = m.timestamp;
                     const bubble = document.createElement('div');
                     bubble.className = `msg-bubble msg-${m.sender}`;
                     
@@ -1565,13 +1569,18 @@
                         timeStr = `${day} ${month}, ${hours}:${minutes}`;
                     }
 
-                    // Status indicator (double tick for sent bot messages)
+                    // Real delivery states from Meta: sent (accepted) -> delivered -> read / failed
                     let statusHtml = '';
                     if (m.sender === 'bot') {
-                        if (m.status === 'sent') {
-                            statusHtml = `<span class="msg-status sent" title="Sent">✓✓</span>`;
+                        if (m.status === 'read') {
+                            statusHtml = `<span class="msg-status" title="Read by recipient" style="color:#2196f3; font-weight:bold;">✓✓</span>`;
+                        } else if (m.status === 'delivered') {
+                            statusHtml = `<span class="msg-status sent" title="Delivered to recipient's phone">✓✓</span>`;
+                        } else if (m.status === 'failed') {
+                            const why = m.error ? ((m.error.title || 'Delivery failed') + (m.error.code ? ' (' + m.error.code + ')' : '') + (m.error.details ? ' — ' + m.error.details : '')) : 'Delivery failed';
+                            statusHtml = `<span class="msg-status" title="${why.replace(/"/g, '&quot;')}" style="color:#c62828; font-weight:bold;">⚠ Not delivered</span>`;
                         } else {
-                            statusHtml = `<span class="msg-status" title="Pending">✓</span>`;
+                            statusHtml = `<span class="msg-status" title="Accepted by WhatsApp - delivery not confirmed yet">✓</span>`;
                         }
                     }
 
@@ -1581,6 +1590,7 @@
                     `;
                     msgList.appendChild(bubble);
                 });
+                updateChatWindowWarning(lastUserTs);
                 msgList.scrollTop = msgList.scrollHeight;
             }, (error) => {
                 console.error("Firestore real-time subscription error:", error);
@@ -1596,9 +1606,31 @@
         function closeChatView() {
             document.getElementById('chatContainerEl').classList.remove('chat-open');
             activeContact = null;
+            const warm = document.getElementById('chatWindowWarning');
+            if (warm) warm.style.display = 'none';
             if (activeMessageListener) {
                 activeMessageListener();
                 activeMessageListener = null;
+            }
+        }
+
+        // WhatsApp only delivers normal (free-form) messages within 24h of the customer's last message.
+        // Outside that window Meta accepts the message but silently drops it - warn the user clearly.
+        function updateChatWindowWarning(lastUserTs) {
+            const el = document.getElementById('chatWindowWarning');
+            if (!el) return;
+            if (!lastUserTs) {
+                el.style.display = 'block';
+                el.innerHTML = '⚠️ <b>This contact has never messaged you.</b> WhatsApp only delivers normal messages within 24 hours of the customer\'s last message — send only if they already messaged you (or use an approved template).';
+                return;
+            }
+            const hours = (Date.now() - lastUserTs) / 3600000;
+            if (hours > 24) {
+                const ago = hours >= 48 ? Math.floor(hours / 24) + ' day(s)' : Math.floor(hours) + ' hour(s)';
+                el.style.display = 'block';
+                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. Wait for the customer to message first, or use an approved template.';
+            } else {
+                el.style.display = 'none';
             }
         }
 

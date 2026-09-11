@@ -8,7 +8,7 @@ import * as cheerio from 'cheerio';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, writeBatch } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -72,7 +72,7 @@ async function sendWhatsAppMessage(to, text, settings) {
   }
 
   try {
-    await axios({
+    const resp = await axios({
       method: 'POST',
       url: `https://graph.facebook.com/${apiVersion}/${phoneId}/messages`,
       headers: {
@@ -87,11 +87,15 @@ async function sendWhatsAppMessage(to, text, settings) {
       }
     });
 
-    // Log to Firestore with status
+    // Log to Firestore. "sent" only means Meta ACCEPTED the message - the real delivery
+    // status (delivered / read / failed) arrives later via the status webhook and updates this doc.
+    const wamid = (resp.data && resp.data.messages && resp.data.messages[0] && resp.data.messages[0].id) || null;
     await addDoc(collection(db, "chats", to, "messages"), {
       sender: "bot",
       text: text,
       status: "sent",
+      wamid: wamid,
+      metaAcceptedAt: Date.now(),
       timestamp: Date.now()
     });
     return true;
@@ -99,6 +103,28 @@ async function sendWhatsAppMessage(to, text, settings) {
     console.error("Error sending WhatsApp message:", err.response ? err.response.data : err.message); 
     return false;
   }
+}
+
+// Applies a Meta delivery status (sent / delivered / read / failed) to the matching logged message.
+// NOTE: Meta accepts the send API call even when it will NOT deliver (e.g. customer idle > 24h),
+// so "failed" events carry the real reason (e.g. error 131047 re-engagement) - the dashboard shows it.
+async function updateMessageStatus(st) {
+  if (!st || !st.id || !st.recipient_id) return;
+  const snap = await getDocs(query(collection(db, "chats", st.recipient_id, "messages"), where("wamid", "==", st.id), limit(1)));
+  if (snap.empty) return;
+  const upd = { status: st.status, statusUpdatedAt: Date.now() };
+  if (st.status === 'failed') {
+    const err = (st.errors && st.errors[0]) || {};
+    upd.error = {
+      code: err.code || 0,
+      title: err.title || 'Delivery failed',
+      details: (err.error_data && err.error_data.details) || err.message || ''
+    };
+    console.log(`[WEBHOOK] ❌ Message to ${st.recipient_id} FAILED: ${upd.error.code} ${upd.error.title} - ${upd.error.details}`);
+  } else {
+    console.log(`[WEBHOOK] Message to ${st.recipient_id} -> ${st.status}`);
+  }
+  await setDoc(snap.docs[0].ref, upd, { merge: true });
 }
 
 // --- Text safety helpers: AI APIs reject JSON that contains unpaired UTF-16 surrogates
@@ -1210,12 +1236,12 @@ app.post('/api/chats/reply', async (req, res) => {
   try {
     const { number, text } = req.body;
     const settings = await getSettings();
-    await sendWhatsAppMessage(number, text, settings);
+    const accepted = await sendWhatsAppMessage(number, text, settings);
     
     // Update interaction timestamp only - AI stays ACTIVE (manual chatting never pauses the AI)
     await setDoc(doc(db, "appData", "contacts"), { [number]: { lastInteraction: Date.now() } }, { merge: true });
     
-    res.json({ success: true });
+    res.json({ success: true, accepted: !!accepted });
   } catch (err) { res.status(500).json({error: "Failed to send"}); }
 });
 
@@ -2917,6 +2943,23 @@ app.post('/webhook', async (req, res) => {
     const { body } = req;
     if (body.object !== 'whatsapp_business_account') return;
 
+    // --- Delivery status updates (sent / delivered / read / failed) ---
+    // These arrive even when there are no incoming messages, so process BEFORE the empty check.
+    for (const entry of (body.entry || [])) {
+      for (const change of (entry.changes || [])) {
+        const statuses = (change.value && change.value.statuses) || [];
+        for (const st of statuses) {
+          updateMessageStatus(st).catch(e => console.error('[WEBHOOK] Status update error:', e.message));
+        }
+      }
+    }
+
+    // Remember the WhatsApp Business Account id (entry.id) - needed later to manage message templates
+    const wabaId = (body.entry || []).map(e => e && e.id).filter(Boolean)[0];
+    if (wabaId) {
+      setDoc(doc(db, "appData", "settings"), { WA_WABA_ID: wabaId }, { merge: true }).catch(() => {});
+    }
+
     // Collect ALL messages from the payload - Meta can batch several messages
     // (from several different people) into ONE webhook call.
     const bySender = new Map();
@@ -3019,11 +3062,26 @@ async function processFollowUpScheduler() {
       
       // Check if it's time to send
       if (f.nextSendDate <= now) {
-        console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
-        
-        // Send WhatsApp message
+        // WhatsApp only DELIVERS free-form messages within 24h of the customer's last message.
+        // Outside that window Meta accepts the API call but silently drops the message,
+        // so we skip it (and log why) instead of pretending it was sent.
+        let windowOpen = false;
+        try {
+          const mq = query(collection(db, "chats", f.phoneNumber, "messages"), orderBy("timestamp", "desc"), limit(20));
+          const ms = await getDocs(mq);
+          ms.forEach(d => {
+            const m = d.data();
+            if (m.sender === 'user' && m.timestamp && (now - m.timestamp) < 24 * 60 * 60 * 1000) windowOpen = true;
+          });
+        } catch (e) { windowOpen = false; }
+
         if (f.startWords) {
-          await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
+          if (windowOpen) {
+            console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
+            await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
+          } else {
+            console.log(`[SCHEDULER] ⚠️ Skipped follow-up to ${f.phoneNumber}: no customer message in the last 24h - WhatsApp would not deliver it.`);
+          }
         }
         
         // Update counters
