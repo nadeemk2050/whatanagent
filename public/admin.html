@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.11.2 (Stop button + reliable PC image picker in AI Workspace) -->
+    <!-- APP VERSION: 2026.09.11.4 (critical fix: workspace chat no longer hangs + fast image insert) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -3598,7 +3598,7 @@
                     try {
                         const uploaded = await wsUploadAttachments(siteKey, attachedNow, signal);
                         const lines = uploaded.map(function(u) { return '- ' + u.filename + ' -> ' + u.url + ' (media id ' + u.id + ')'; });
-                        context = 'ATTACHED IMAGE(S) ALREADY UPLOADED to the WordPress media library of site "' + siteKey + '":\n' + lines.join('\n') + '\nThese image URLs are live - use them directly in the content of the page/post (as <img src="URL"> or featured image) when the user asks to add them to a page or blog post. Do NOT upload them again.';
+                        context = 'ATTACHED IMAGE(S) ALREADY UPLOADED to the WordPress media library of site "' + siteKey + '":\n' + lines.join('\n') + '\nDo NOT upload them again. To place them into a page or blog post, use the add_images_to_page / add_images_to_post action with these URLs and the page id (or slug) - do NOT rewrite the whole page content.';
                         wsHistory.push({ role: 'assistant', content: '🖼️ Image(s) uploaded to the media library of ' + siteKey + ':\n' + uploaded.map(function(u) { return u.url; }).join('\n') });
                     } catch(ue) {
                         if (wsStopped || (ue && ue.name === 'AbortError')) throw ue;

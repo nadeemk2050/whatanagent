@@ -1717,6 +1717,52 @@ async function updateSavedSeoSiteField(siteKey, field, value) {
   } catch (e) { console.log('save seo field failed:', e.message); return false; }
 }
 
+// Build an image gallery HTML block for seoAddImagesToContent.
+function seoImgBlock(list, altText, caption, heading) {
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const parts = [];
+  if (heading) parts.push('<h2>' + esc(heading) + '</h2>');
+  parts.push('<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:18px 0;">');
+  list.forEach((u, i) => {
+    const alt = esc((altText || '') + (list.length > 1 ? ' ' + (i + 1) : ''));
+    parts.push('<figure style="margin:0;"><img src="' + esc(u) + '" alt="' + alt + '" loading="lazy" style="width:100%; height:auto; border-radius:8px;" />' + (caption ? '<figcaption style="font-size:13px; color:#555; margin-top:6px;">' + esc(caption) + '</figcaption>' : '') + '</figure>');
+  });
+  parts.push('</div>');
+  return parts.join('\n');
+}
+
+// FAST image insert: appends (or prepends) image(s) into an existing page/post WITHOUT rewriting the content.
+// This avoids the old failure where the model had to read a 12k-char page and re-send it (truncated -> never completed).
+async function seoAddImagesToContent(site, isPage, params) {
+  const type = isPage ? 'pages' : 'posts';
+  const list = (Array.isArray(params.imageUrls) ? params.imageUrls : (params.imageUrl ? [params.imageUrl] : []))
+    .map(u => String(u).trim()).filter(u => /^https?:\/\//i.test(u));
+  if (!list.length) return { error: 'imageUrls is required - pass the media library URL list as an array, e.g. imageUrls:["https://...jpg","https://...jpg"].' };
+
+  let id = params.id;
+  if (!id && params.slug) {
+    const found = await seoWp(site, 'get', '/' + type + '?slug=' + encodeURIComponent(params.slug) + '&context=edit');
+    if (Array.isArray(found) && found.length) id = found[0].id;
+  }
+  if (!id) return { error: 'Provide the ' + (isPage ? 'page' : 'post') + ' id (or slug) to add the images to. Use list_pages first if the id is unknown.' };
+
+  const d = await seoWp(site, 'get', '/' + type + '/' + id + '?context=edit');
+  const raw = (d.content && (d.content.raw || d.content.rendered)) || '';
+  const title = (d.title && (d.title.raw || d.title.rendered)) || '';
+  const block = seoImgBlock(list, params.alt || title, params.caption || '', params.heading || '');
+  const content = (params.position === 'start') ? (block + '\n\n' + raw) : (raw + '\n\n' + block);
+  const updated = await seoWp(site, 'post', '/' + type + '/' + id, { content });
+  const out = {
+    updated: true, id: updated.id, kind: isPage ? 'page' : 'post', title,
+    link: updated.link, status: updated.status, added: list.length,
+    imagesOnPageNow: (content.match(/<img\s/gi) || []).length
+  };
+  if (updated.status === 'publish' && updated.link) {
+    try { out.indexing = await notifySearchEngines(site, [updated.link], isPage ? 'page images' : 'post images'); } catch (e) {}
+  }
+  return out;
+}
+
 async function executeSeoAction(name, params, sites) {
   params = params || {};
   const firstKey = getMainSeoSiteKey(sites);
@@ -1777,6 +1823,10 @@ async function executeSeoAction(name, params, sites) {
         if (d.status === 'publish' && d.link) out.indexing = await notifySearchEngines(site, [d.link], 'page update');
         return out;
       }
+      case 'add_images_to_page':
+        return await seoAddImagesToContent(site, true, params);
+      case 'add_images_to_post':
+        return await seoAddImagesToContent(site, false, params);
       case 'delete_page': {
         const d = await seoWp(site, 'delete', `/pages/${params.id}?force=true`);
         return { deleted: !!d.deleted, id: params.id };
@@ -2059,6 +2109,8 @@ function seoActionsDocForPrompt(defaultKey) {
     '- list_categories - {siteKey}\n' +
     '- create_category - {siteKey, name}\n' +
     '- upload_media - {siteKey, imageUrl, filename?, alt?}  (downloads any image URL into the media library)\n' +
+    '- add_images_to_page - {siteKey, id, imageUrls:["url1","url2"], alt?, caption?, heading?, position?:"end"|"start"}  (FAST and SAFE: inserts the images directly into an existing page - you do NOT need to read or re-send the page content)\n' +
+    '- add_images_to_post - {siteKey, id, imageUrls:["url1","url2"], alt?, caption?, heading?, position?:"end"|"start"}  (same for blog posts)\n' +
     '- search_web - {query}  (Google results for research)\n' +
     '- fetch_url - {url}  (fetch text/JSON/HTML from any URL)\n' +
     '- list_menus - {siteKey}  (website navigation menus)\n' +
@@ -2118,7 +2170,8 @@ RULES:
 5. Reply in the user's language (English / Roman Urdu / Arabic).
 6. Base every answer on real data from action results - NEVER invent data.
 7. If an action fails, read the error, fix it if possible, or explain clearly what is wrong.
-8. When a user message contains "ATTACHED IMAGE(S) ALREADY UPLOADED ...": those images are ALREADY in the WordPress media library of the given site. Use their URLs directly inside page/post content (as <img src="..."> or as featured image) - never upload them again and never invent image URLs. If the message says the upload failed, tell the user clearly instead of pretending it worked.`;
+8. When a user message contains "ATTACHED IMAGE(S) ALREADY UPLOADED ...": those images are ALREADY in the WordPress media library of the given site - never upload them again and never invent image URLs. If the message says the upload failed, tell the user clearly instead of pretending it worked.
+9. TO PUT IMAGES INTO A PAGE OR POST: call add_images_to_page or add_images_to_post with the imageUrls list and the page id (use list_pages first if you need the id). NEVER fetch the page and re-send its whole content in update_page just to add images - long page content gets truncated and the task then fails. When the task is only about adding images, ONE action call is enough (do not repeat it).`;
 }
 
 function extractSeoActions(text) {
@@ -2166,12 +2219,14 @@ async function workspaceModelReply(systemPrompt, messages, model, settings) {
     return result.response.text().trim();
   }
   if (!settings.DEEPSEEK_API_KEY) throw new Error('DeepSeek API key is not configured.');
-  const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY });
+  const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 120000, maxRetries: 1 });
+  const t0 = Date.now();
   const completion = await openai.chat.completions.create({
     messages: [{ role: 'system', content: systemPrompt }].concat(messages),
     model: 'deepseek-v4-flash',
     temperature: 0.4
   });
+  console.log('[AI WORKSPACE] deepseek reply in ' + (Date.now() - t0) + 'ms (' + ((completion.usage && completion.usage.total_tokens) || '?') + ' tokens)');
   return (completion.choices[0].message.content || '').trim();
 }
 
@@ -2184,8 +2239,12 @@ app.post('/api/seo/ai-chat', async (req, res) => {
 
     // If the user presses the ⏹ Stop button in the dashboard, the browser aborts the request -
     // detect it here so the remaining model calls / actions are not executed.
+    // IMPORTANT: listen on res - res 'close' fires when the response is finished OR when the
+    // client really drops the connection. Listening on req fires as soon as the JSON body is
+    // consumed (normal stream completion!) and would mark EVERY request as "client gone"
+    // before the AI call even started - which made every chat request hang forever.
     let clientGone = false;
-    req.on('close', () => { if (!res.writableEnded) clientGone = true; });
+    res.on('close', () => { if (!res.writableEnded) clientGone = true; });
 
     const settings = await getSettings();
     const seoSnap = await getDoc(doc(db, "appData", "seoAgent"));
@@ -2245,8 +2304,7 @@ app.post('/api/seo/ai-chat', async (req, res) => {
 });
 
 // Upload an image chosen from the user's computer (AI Workspace attach button) into the WordPress media library.
-app.post('/api/seo/upload-image', async (req, res) => {
-  try {
+app.post('/api/seo/upload-image', async (req, res) => {  try {
     const body = req.body || {};
     const fileBase64 = String(body.fileBase64 || '');
     if (!fileBase64) return res.status(400).json({ error: 'No image data received.' });
