@@ -127,6 +127,41 @@ async function updateMessageStatus(st) {
   await setDoc(snap.docs[0].ref, upd, { merge: true });
 }
 
+// --- WhatsApp TEMPLATES: the ONLY way to deliver a message when the customer has not messaged in 24h ---
+async function getWaTemplates(settings) {
+  if (!settings.WA_WABA_ID) return { error: 'WhatsApp Business Account id not captured yet - it is saved automatically as soon as the app receives a webhook.' };
+  const r = await axios.get('https://graph.facebook.com/' + (process.env.API_VERSION || 'v20.0') + '/' + settings.WA_WABA_ID + '/message_templates',
+    { params: { fields: 'name,status,language,category,components', limit: 100 }, headers: { Authorization: 'Bearer ' + settings.WHATSAPP_TOKEN }, timeout: 30000 });
+  return { templates: (r.data && r.data.data) || [] };
+}
+
+async function sendWhatsAppTemplate(to, templateName, languageCode, variables, settings) {
+  const token = settings.WHATSAPP_TOKEN;
+  const phoneId = settings.PHONE_NUMBER_ID;
+  const apiVersion = process.env.API_VERSION || 'v20.0';
+  if (!token || !phoneId) throw new Error('WhatsApp token / phone id missing in settings.');
+  const vars = (variables || []).map(v => String(v == null ? '' : v)).filter(v => v !== '');
+  const components = vars.length ? [{ type: 'body', parameters: vars.map(v => ({ type: 'text', text: v })) }] : [];
+  const resp = await axios({
+    method: 'POST',
+    url: `https://graph.facebook.com/${apiVersion}/${phoneId}/messages`,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    data: { messaging_product: 'whatsapp', to: to, type: 'template', template: { name: templateName, language: { code: languageCode || 'en_US' }, components: components } }
+  });
+  const wamid = (resp.data && resp.data.messages && resp.data.messages[0] && resp.data.messages[0].id) || null;
+  await addDoc(collection(db, 'chats', to, 'messages'), {
+    sender: 'bot',
+    text: '📨 Template "' + templateName + '" sent' + (vars.length ? ': ' + vars.join(' · ') : ''),
+    status: 'sent',
+    wamid: wamid,
+    isTemplate: true,
+    templateName: templateName,
+    metaAcceptedAt: Date.now(),
+    timestamp: Date.now()
+  });
+  return true;
+}
+
 // --- Text safety helpers: AI APIs reject JSON that contains unpaired UTF-16 surrogates
 // (this happens when an emoji gets cut in half by a character limit - it broke ALL boss replies on 2026-09-11) ---
 function sanitizeText(s) {
@@ -1814,7 +1849,7 @@ async function executeSeoAction(name, params, sites) {
   const firstKey = getMainSeoSiteKey(sites);
   const siteKey = params.siteKey || firstKey;
   const site = sites[siteKey] || {};
-  const noSite = ['list_sites', 'search_web', 'fetch_url'].includes(name);
+  const noSite = ['list_sites', 'search_web', 'fetch_url', 'schedule_task', 'list_tasks', 'cancel_task', 'list_templates', 'send_template'].includes(name);
   if (!noSite && (!site.url || !site.cmsUsername || !site.cmsPassword)) {
     return { error: `Site '${siteKey}' is missing url/username/app password in the SEO Agent ENV.` };
   }
@@ -1972,6 +2007,86 @@ async function executeSeoAction(name, params, sites) {
           text = JSON.stringify(r.data);
         }
         return { url: params.url, contentType: ct, text: seoTrunc(text, 4000) };
+      }
+
+      // --- Scheduled tasks ("Tasks for AI") ---
+      case 'schedule_task': {
+        const runAt = params.runAt
+          ? parseInt(params.runAt)
+          : (params.inMinutes ? Date.now() + Math.max(1, parseInt(params.inMinutes)) * 60000
+          : (params.at ? Date.parse(params.at) : 0));
+        if (!runAt || isNaN(runAt)) return { error: 'Give a time: inMinutes (e.g. 10) OR at (ISO date-time with timezone, e.g. 2026-09-12T10:00:00+04:00).' };
+        if (runAt < Date.now() - 60000) return { error: 'That time is already in the past.' };
+        const taskType = params.taskType === 'send_message' ? 'send_message' : (params.taskType === 'send_template' ? 'send_template' : 'ai_task');
+        if (taskType === 'send_message' && (!params.target || !params.message)) return { error: 'send_message task needs target (phone number) and message.' };
+        if (taskType === 'send_template' && (!params.target || !params.templateName)) return { error: 'send_template task needs target and templateName (see list_templates for approved names).' };
+        if (taskType === 'ai_task' && !params.instruction) return { error: 'ai_task needs instruction (what the AI should do).' };
+        const taskObj = {
+          id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+          taskType: taskType,
+          title: String(params.title || params.message || params.instruction || params.templateName || taskType).substring(0, 60),
+          target: params.target ? normalizePhone(params.target) : '',
+          message: params.message || '',
+          instruction: params.instruction || '',
+          templateName: params.templateName || '',
+          language: params.language || 'en_US',
+          variables: Array.isArray(params.variables) ? params.variables : [],
+          siteKey: params.siteKey || '',
+          model: params.model || '',
+          runAt: runAt,
+          status: 'pending',
+          createdBy: 'ai',
+          createdAt: Date.now()
+        };
+        const tRef = doc(db, 'appData', 'aiTasks');
+        const tSnap = await getDoc(tRef);
+        const tList = tSnap.exists() ? (tSnap.data().tasks || []) : [];
+        tList.push(taskObj);
+        await setDoc(tRef, { tasks: tList }, { merge: true });
+        return { scheduled: true, id: taskObj.id, taskType: taskType, runAt: runAt, runAtDubai: new Date(runAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }), note: 'Task saved - the app will run it automatically at that time.' };
+      }
+      case 'list_tasks': {
+        const tRef = doc(db, 'appData', 'aiTasks');
+        const tSnap = await getDoc(tRef);
+        const tList = tSnap.exists() ? (tSnap.data().tasks || []) : [];
+        return {
+          count: tList.length,
+          tasks: tList.slice(-20).map(t => ({
+            id: t.id, taskType: t.taskType, title: safeTruncate(String(t.title || ''), 70),
+            runAt: new Date(t.runAt).toISOString(),
+            runAtDubai: new Date(t.runAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }),
+            status: t.status, result: safeTruncate(String(t.result || ''), 150)
+          }))
+        };
+      }
+      case 'cancel_task': {
+        const tRef = doc(db, 'appData', 'aiTasks');
+        const tSnap = await getDoc(tRef);
+        const tList = tSnap.exists() ? (tSnap.data().tasks || []) : [];
+        const found = tList.find(x => x.id === params.id);
+        if (!found) return { error: 'Task not found: ' + params.id + ' (use list_tasks to see the ids).' };
+        found.status = 'cancelled';
+        found.result = 'Cancelled by AI request';
+        found.executedAt = Date.now();
+        await setDoc(tRef, { tasks: tList }, { merge: true });
+        return { cancelled: true, id: params.id };
+      }
+      case 'list_templates': {
+        const settings = await getSettings();
+        const out = await getWaTemplates(settings);
+        if (out.error) return { error: out.error };
+        return { count: out.templates.length, templates: out.templates.map(t => ({ name: t.name, language: t.language, category: t.category, status: t.status })) };
+      }
+      case 'send_template': {
+        const settings = await getSettings();
+        const target = normalizePhone(params.target || '');
+        if (!target || !params.templateName) return { error: 'send_template needs target (phone) and templateName - use list_templates to see the approved ones.' };
+        try {
+          await sendWhatsAppTemplate(target, params.templateName, params.language || 'en_US', Array.isArray(params.variables) ? params.variables : [], settings);
+          return { sent: true, target: target, templateName: params.templateName, note: 'Template messages ARE delivered even when the customer has not messaged in the last 24 hours.' };
+        } catch (e) {
+          return { error: 'WhatsApp rejected the template: ' + (e.response ? JSON.stringify(e.response.data).substring(0, 250) : e.message) };
+        }
       }
 
       // --- WordPress navigation menus ---
@@ -2159,6 +2274,11 @@ function seoActionsDocForPrompt(defaultKey) {
     '- add_images_to_post - {siteKey, id, imageUrls:["url1","url2"], alt?, caption?, heading?, position?:"end"|"start"}  (same for blog posts)\n' +
     '- search_web - {query}  (Google results for research)\n' +
     '- fetch_url - {url}  (fetch text/JSON/HTML from any URL)\n' +
+    '- schedule_task - {taskType:"send_message"|"send_template"|"ai_task", inMinutes?|at?, target?, message?, instruction?, templateName?, language?, variables?:[...], title?}  (schedules a FUTURE task that runs automatically: send_message = normal message, delivered ONLY within 24h of the last message from the customer; send_template = approved template, delivered ANY time; ai_task = website job e.g. "Publish a blog post...". Use inMinutes for "after/in X minutes" (e.g. 10). For exact dates use at as ISO WITH timezone offset (+04:00 for Dubai), e.g. "2026-09-12T10:00:00+04:00". Current Dubai time: ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ')\n' +
+    '- list_tasks - {}  (list scheduled/executed tasks with ids)\n' +
+    '- cancel_task - {id}  (cancel a scheduled task)\n' +
+    '- list_templates - {}  (approved WhatsApp message templates on the account)\n' +
+    '- send_template - {target, templateName, language?, variables?:["v1","v2"]}  (sends an approved TEMPLATE - the ONLY way to deliver a message when the customer has NOT messaged in the last 24 hours. ALWAYS use list_templates first; variables fill {{1}}, {{2}}... in the template body)\n' +
     '- list_menus - {siteKey}  (website navigation menus)\n' +
     '- list_menu_locations - {siteKey}  (which menu is in primary/header/footer location)\n' +
     '- get_menu_items - {siteKey, menuId}  (all items of a menu with ids, titles, parents)\n' +
@@ -2650,6 +2770,132 @@ app.delete('/api/followups/:id', async (req, res) => {
   }
 });
 
+// --- Tasks for AI API (scheduled WhatsApp messages / AI website jobs) ---
+app.get('/api/ai-tasks', async (req, res) => {
+  try {
+    const snap = await getDoc(doc(db, 'appData', 'aiTasks'));
+    res.json(snap.exists() ? (snap.data().tasks || []) : []);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/ai-tasks', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const runAt = parseInt(b.runAt) || 0;
+    if (!runAt) return res.status(400).json({ error: 'Pick a date & time for the task.' });
+    if (runAt < Date.now() - 30000) return res.status(400).json({ error: 'That time is already in the past - pick a future time.' });
+    const taskType = (b.taskType === 'send_message' || b.taskType === 'send_template') ? b.taskType : 'ai_task';
+    if (taskType === 'send_message' && (!b.target || !String(b.message || '').trim())) {
+      return res.status(400).json({ error: 'Enter the WhatsApp number and the message to send.' });
+    }
+    if (taskType === 'send_template' && (!b.target || !b.templateName)) {
+      return res.status(400).json({ error: 'Template task needs the WhatsApp number and a template.' });
+    }
+    if (taskType === 'ai_task' && !String(b.instruction || '').trim()) {
+      return res.status(400).json({ error: 'Write the instruction for the AI.' });
+    }
+    const task = {
+      id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      taskType: taskType,
+      title: String(b.title || b.message || b.instruction || b.templateName || '').substring(0, 60),
+      target: b.target ? normalizePhone(b.target) : '',
+      message: String(b.message || ''),
+      instruction: String(b.instruction || ''),
+      templateName: b.templateName || '',
+      language: b.language || 'en_US',
+      variables: Array.isArray(b.variables) ? b.variables : [],
+      siteKey: b.siteKey || '',
+      model: b.model || '',
+      runAt: runAt,
+      status: 'pending',
+      createdBy: 'dashboard',
+      createdAt: Date.now()
+    };
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    tasks.push(task);
+    await setDoc(ref, { tasks }, { merge: true });
+    res.json({ success: true, task });
+  } catch (e) { res.status(500).json({ error: 'Failed to save task: ' + e.message }); }
+});
+
+app.post('/api/ai-tasks/cancel', async (req, res) => {
+  try {
+    const id = (req.body || {}).id;
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    const t = tasks.find(x => x.id === id);
+    if (!t) return res.status(404).json({ error: 'Task not found.' });
+    if (t.status === 'pending' || t.status === 'running') { t.status = 'cancelled'; t.result = 'Cancelled from the dashboard'; t.executedAt = Date.now(); }
+    await setDoc(ref, { tasks }, { merge: true });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/ai-tasks/delete', async (req, res) => {
+  try {
+    const id = (req.body || {}).id;
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    let tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    tasks = tasks.filter(x => x.id !== id);
+    await setDoc(ref, { tasks }, { merge: true });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- WhatsApp templates API ---
+app.get('/api/wa-templates', async (req, res) => {
+  try {
+    const settings = await getSettings();
+    const out = await getWaTemplates(settings);
+    if (out.error) return res.status(400).json({ error: out.error });
+    const list = out.templates.map(t => {
+      const body = ((t.components || []).find(c => c.type === 'BODY') || {}).text || '';
+      const found = body.match(/\{\{\d+\}\}/g) || [];
+      const varCount = found.length ? Math.max.apply(null, found.map(x => parseInt(x.replace(/\D/g, '')))) : 0;
+      return { name: t.name, status: t.status, language: t.language, category: t.category, body: body, varCount: varCount };
+    });
+    res.json({ success: true, templates: list });
+  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 300) : e.message }); }
+});
+
+app.post('/api/wa-templates/create', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name || '').toLowerCase().replace(/[^a-z0-9_]/g, '_').substring(0, 60);
+    if (!/^[a-z0-9_]{3,60}$/.test(name)) return res.status(400).json({ error: 'Template name: lowercase letters, numbers and underscores only (3-60 chars).' });
+    if (!String(b.bodyText || '').trim()) return res.status(400).json({ error: 'Template body text is required. Use {{1}}, {{2}} for variables.' });
+    const settings = await getSettings();
+    if (!settings.WA_WABA_ID) return res.status(400).json({ error: 'WhatsApp Business Account id not captured yet - send/receive one WhatsApp message first.' });
+    const components = [];
+    if (String(b.headerText || '').trim()) components.push({ type: 'HEADER', format: 'TEXT', text: String(b.headerText).trim() });
+    components.push({ type: 'BODY', text: String(b.bodyText).trim() });
+    const payload = {
+      name: name,
+      language: b.language || 'en_US',
+      category: (b.category === 'MARKETING' || b.category === 'AUTHENTICATION') ? b.category : 'UTILITY',
+      components: components
+    };
+    const r = await axios.post('https://graph.facebook.com/' + (process.env.API_VERSION || 'v20.0') + '/' + settings.WA_WABA_ID + '/message_templates', payload,
+      { headers: { Authorization: 'Bearer ' + settings.WHATSAPP_TOKEN, 'Content-Type': 'application/json' }, timeout: 60000 });
+    res.json({ success: true, id: r.data && r.data.id, status: r.data && r.data.status, category: payload.category, note: 'Submitted to WhatsApp for review - approved templates appear in the template list.' });
+  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 400) : e.message }); }
+});
+
+app.post('/api/chats/send-template', async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.number || !b.templateName) return res.status(400).json({ error: 'number and templateName are required.' });
+    const settings = await getSettings();
+    await sendWhatsAppTemplate(b.number, b.templateName, b.language || 'en_US', b.variables || [], settings);
+    await setDoc(doc(db, 'appData', 'contacts'), { [b.number]: { lastInteraction: Date.now() } }, { merge: true });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 300) : e.message }); }
+});
+
 // --- Webhooks ---
 app.get('/webhook', async (req, res) => {
   const mode = req.query['hub.mode'];
@@ -3118,12 +3364,88 @@ async function processFollowUpScheduler() {
   }
 }
 
+// ===== TASKS FOR AI — runs scheduled tasks (send WhatsApp message / AI website job) =====
+async function processAiTasks() {
+  try {
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    const now = Date.now();
+    let changed = false;
+
+    for (const t of tasks) {
+      if (!t || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
+      console.log(`[AI TASKS] Running task ${t.id} (${t.taskType}): "${String(t.title || t.message || t.instruction || '').substring(0, 60)}"`);
+      t.status = 'running';
+      t.startedAt = now;
+      try {
+        if (t.taskType === 'send_message') {
+          const target = normalizePhone(t.target || '');
+          if (!target) throw new Error('Missing target number.');
+          // Free-form messages are only DELIVERED within 24h of the customer's last message.
+          let windowOpen = false;
+          try {
+            const mq = query(collection(db, 'chats', target, 'messages'), orderBy('timestamp', 'desc'), limit(20));
+            const ms = await getDocs(mq);
+            ms.forEach(d => {
+              const m = d.data();
+              if (m.sender === 'user' && m.timestamp && (now - m.timestamp) < 24 * 60 * 60 * 1000) windowOpen = true;
+            });
+          } catch (e) { windowOpen = false; }
+          if (!windowOpen) {
+            t.status = 'done';
+            t.result = '⚠️ NOT sent: +' + target + ' has not messaged in the last 24 hours — WhatsApp would not deliver a normal message. Ask them to message first (or use an approved template).';
+          } else {
+            const settings = await getSettings();
+            const ok = await sendWhatsAppMessage(target, t.message || '', settings);
+            t.status = ok ? 'done' : 'failed';
+            t.result = ok ? '✅ Message accepted by WhatsApp — real delivery status (✓ / ✓✓ / Not delivered) is shown in the Live Chat ticks.' : '❌ WhatsApp API rejected the send.';
+          }
+        } else if (t.taskType === 'send_template') {
+          const settings = await getSettings();
+          const target = normalizePhone(t.target || '');
+          if (!target) throw new Error('Missing target number.');
+          await sendWhatsAppTemplate(target, t.templateName, t.language || 'en_US', t.variables || [], settings);
+          t.status = 'done';
+          t.result = '✅ Template "' + t.templateName + '" accepted by WhatsApp — templates are delivered even outside the 24h window (✓ = sent, ✓✓ = delivered in the chat).';
+        } else if (t.taskType === 'ai_task') {
+          const seoSnap = await getDoc(doc(db, 'appData', 'seoAgent'));
+          const sites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
+          const siteKey = t.siteKey || getMainSeoSiteKey(sites);
+          const r = await axios.post('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/seo/ai-chat', {
+            messages: [{ role: 'user', content: t.instruction || '' }],
+            model: t.model === 'gemini' ? 'gemini' : 'deepseek',
+            siteKey: siteKey
+          }, { timeout: 300000 });
+          t.status = 'done';
+          t.result = '🤖 ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500);
+        } else {
+          t.status = 'failed';
+          t.result = 'Unknown task type: ' + t.taskType;
+        }
+      } catch (e) {
+        t.status = 'failed';
+        t.result = '❌ ' + safeTruncate(e.response ? ((e.response.status || '') + ' ' + JSON.stringify(e.response.data || {})) : e.message, 400);
+      }
+      t.executedAt = Date.now();
+      changed = true;
+    }
+
+    if (changed) {
+      await setDoc(ref, { tasks: tasks.slice(-200) }, { merge: true });
+    }
+  } catch (e) {
+    console.error('[AI TASKS] Runner error:', e.message);
+  }
+}
+
 // Start the scheduler (runs every 60 seconds)
 function startFollowUpScheduler() {
   console.log('[SCHEDULER] Started - checking every 60 seconds');
-  // Run immediately on start, then every 60s
+  // Run immediately on start, then every 60s (follow-ups + scheduled AI tasks)
   processFollowUpScheduler();
-  setInterval(processFollowUpScheduler, 60 * 1000);
+  processAiTasks();
+  setInterval(() => { processFollowUpScheduler(); processAiTasks(); }, 60 * 1000);
 }
 
 // --- Server Startup (Render) ---

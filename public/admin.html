@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.11.6 (real WhatsApp delivery statuses + 24h window warning) -->
+    <!-- APP VERSION: 2026.09.11.8 (WhatsApp templates: send anytime outside 24h window) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -249,6 +249,7 @@
             <div class="menu-item" onclick="showSection('dashboard')">🏠 Knowledge Base</div>
             <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
+            <div class="menu-item" onclick="showSection('tasks'); loadAiTasks();">⏰ Tasks for AI</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
             <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
@@ -578,6 +579,78 @@
                 
                 <div class="followup-grid" id="followupGrid">
                     <div class="followup-empty"><h3>📋 No Follow Ups Yet</h3><p>Click "New Follow Up" to add your first task!</p></div>
+                </div>
+            </div>
+
+            <!-- Tasks for AI Section -->
+            <div id="tasksSection" class="app-section">
+                <h2 style="margin-bottom:5px;">⏰ Tasks for AI</h2>
+                <p class="subtitle" style="margin-top:0;">Give the AI a job now — it runs it automatically later: send a WhatsApp message in 10 minutes, message someone on 12 Sep at 10:00, publish a blog at 11:00, etc. Tasks are saved in the app database.</p>
+
+                <div class="card" style="margin-bottom:20px;">
+                    <h3 style="margin-top:0;">➕ New Task <span id="taskNextTimer" style="float:right; font-size:13px; color:#546e7a; font-weight:normal;"></span></h3>
+                    <div class="form-group">
+                        <label>What should the AI do?</label>
+                        <select id="taskKind" onchange="taskKindChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                            <option value="send_message">💬 Send a WhatsApp message (delivered within 24h of their last message)</option>
+                            <option value="send_template">📨 Send WhatsApp template (delivered ANY time — for cold contacts)</option>
+                            <option value="ai_task">🤖 AI website job — publish blog / update page / any instruction</option>
+                        </select>
+                    </div>
+                    <div id="taskSendFields">
+                        <div class="form-group">
+                            <label>Send to (WhatsApp number)</label>
+                            <input type="text" id="taskTarget" placeholder="e.g. 971501234567 or 0501234567" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label>Message to send</label>
+                            <textarea id="taskMessage" placeholder="Type the exact message text..."></textarea>
+                        </div>
+                    </div>
+                    <div id="taskTemplateFields" style="display:none;">
+                        <div class="form-group">
+                            <label>Send to (WhatsApp number)</label>
+                            <input type="text" id="taskTemplateTarget" placeholder="e.g. 971501234567" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label>Template (approved by WhatsApp)</label>
+                            <select id="taskTemplateSelect" onchange="taskTemplateChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></select>
+                        </div>
+                        <div id="taskTemplateVars"></div>
+                    </div>
+                    <div id="taskAiFields" style="display:none;">
+                        <div class="form-group">
+                            <label>Instruction for the AI</label>
+                            <textarea id="taskInstruction" placeholder="e.g. Publish a blog post about today's copper scrap prices, then report the link."></textarea>
+                        </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:200px;"><label>Website</label><select id="taskSite" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></select></div>
+                            <div class="form-group" style="flex:1; min-width:140px;"><label>AI model</label><select id="taskModel" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option value="deepseek">DeepSeek (v4 Flash)</option><option value="gemini">Google Gemini 2.5 Flash</option></select></div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>🗓️ When (date & time — your local time)</label>
+                        <input type="datetime-local" id="taskWhen" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                            <button type="button" onclick="taskQuick(10)" style="padding:8px 12px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">⏱️ In 10 minutes</button>
+                            <button type="button" onclick="taskQuick(30)" style="padding:8px 12px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">In 30 minutes</button>
+                            <button type="button" onclick="taskQuick(60)" style="padding:8px 12px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">In 1 hour</button>
+                            <button type="button" onclick="taskQuick(180)" style="padding:8px 12px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">In 3 hours</button>
+                            <button type="button" onclick="taskTomorrow(10)" style="padding:8px 12px; background:#eef4f8; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🌅 Tomorrow 10:00</button>
+                        </div>
+                    </div>
+                    <button class="btn-save" onclick="saveAiTask()">✅ Save Task — the AI will run it at that time</button>
+                    <div id="taskSaveResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
+                </div>
+
+                <div class="card" style="margin-bottom:20px;">
+                    <h3 style="margin-top:0;">🕒 Scheduled & Running</h3>
+                    <div id="taskUpcoming"><p class="subtitle">Loading...</p></div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top:0;">📜 Done / Failed / Cancelled</h3>
+                    <div id="taskHistory"><p class="subtitle">Loading...</p></div>
                 </div>
             </div>
 
@@ -951,6 +1024,7 @@
                             <div class="chat-input" id="chatInputBar" style="display:none;">
                                 <input type="text" id="chatMsgInput" placeholder="Type a manual reply...">
                                 <button onclick="suggestChatReply()" style="background: #ef6c00; margin-right: 5px; padding: 12px 20px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer;" id="suggestReplyBtn">💡 Suggest Reply</button>
+                                <button onclick="openWaTemplateModal()" title="Send an approved WhatsApp template - delivered even outside the 24h window" style="background:#1565c0; margin-right:5px; padding:12px 16px; border:none; border-radius:8px; color:white; font-weight:bold; cursor:pointer;">📨 Template</button>
                                 <button onclick="sendManualReply()">Send</button>
                             </div>
                         </div>
@@ -962,6 +1036,23 @@
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
+
+    <!-- WhatsApp Template Modal -->
+    <div id="waTemplateModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div class="card" style="width:100%; max-width:560px; max-height:90vh; overflow-y:auto; padding:25px; box-sizing:border-box; margin:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin-top:0;">📨 Send WhatsApp Template</h3>
+                <button onclick="closeWaTemplateModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#667781;">✕</button>
+            </div>
+            <p class="subtitle" style="margin-top:0;">Templates are approved by WhatsApp and are <b>delivered even when the customer has not messaged in the last 24 hours</b>.</p>
+            <div class="form-group"><label>To</label><input type="text" id="waTplTo" readonly style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:#f0f2f5;"></div>
+            <div class="form-group"><label>Template</label><select id="waTplSelect" onchange="waTplChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></select></div>
+            <div id="waTplBody" style="display:none; margin-bottom:12px; padding:10px 12px; background:#f7f9fa; border-radius:8px; white-space:pre-wrap; font-size:13px; color:#546e7a;"></div>
+            <div id="waTplVars"></div>
+            <button class="btn-save" onclick="sendWaTemplate()" id="waTplSendBtn">📨 Send Template</button>
+            <div id="waTplResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
+        </div>
+    </div>
 
     <!-- Import Contacts Modal -->
     <div id="importModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
@@ -1621,17 +1712,85 @@
             if (!el) return;
             if (!lastUserTs) {
                 el.style.display = 'block';
-                el.innerHTML = '⚠️ <b>This contact has never messaged you.</b> WhatsApp only delivers normal messages within 24 hours of the customer\'s last message — send only if they already messaged you (or use an approved template).';
+                el.innerHTML = '⚠️ <b>This contact has never messaged you.</b> WhatsApp only delivers normal messages within 24 hours of the customer\'s last message — use the 📨 Template button below to message them anyway (templates are delivered anytime).';
                 return;
             }
             const hours = (Date.now() - lastUserTs) / 3600000;
             if (hours > 24) {
                 const ago = hours >= 48 ? Math.floor(hours / 24) + ' day(s)' : Math.floor(hours) + ' hour(s)';
                 el.style.display = 'block';
-                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. Wait for the customer to message first, or use an approved template.';
+                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. Tap the 📨 <b>Template</b> button below to message them anyway (templates are delivered anytime).';
             } else {
                 el.style.display = 'none';
             }
+        }
+
+        // ===== WhatsApp template sending (delivered even outside the 24h window) =====
+        var waTemplatesCache = [];
+
+        async function loadWaTemplateOptions() {
+            const sel = document.getElementById('waTplSelect');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Loading templates...</option>';
+            try {
+                const r = await fetch('api/wa-templates');
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Failed to load templates');
+                waTemplatesCache = (d.templates || []).filter(t => t.status === 'APPROVED');
+                if (!waTemplatesCache.length) { sel.innerHTML = '<option value="">(no approved templates yet)</option>'; return; }
+                sel.innerHTML = waTemplatesCache.map((t, i) => '<option value="' + i + '">' + wsEsc(t.name) + ' · ' + wsEsc(t.language) + ' · ' + wsEsc(t.category) + '</option>').join('');
+                waTplChanged();
+            } catch (e) { sel.innerHTML = '<option value="">❌ ' + wsEsc(e.message) + '</option>'; }
+        }
+
+        function openWaTemplateModal() {
+            if (!activeContact) { toastMsg('Open a chat first'); return; }
+            document.getElementById('waTplTo').value = '+' + activeContact;
+            document.getElementById('waTplResult').style.display = 'none';
+            document.getElementById('waTemplateModal').style.display = 'flex';
+            loadWaTemplateOptions();
+        }
+        function closeWaTemplateModal() { document.getElementById('waTemplateModal').style.display = 'none'; }
+
+        function waTplChanged() {
+            const t = waTemplatesCache[parseInt(document.getElementById('waTplSelect').value)];
+            const bodyEl = document.getElementById('waTplBody');
+            const varsEl = document.getElementById('waTplVars');
+            varsEl.innerHTML = '';
+            if (!t) { bodyEl.style.display = 'none'; return; }
+            bodyEl.style.display = 'block';
+            bodyEl.innerText = t.body || '(no body text)';
+            for (let i = 1; i <= (t.varCount || 0); i++) {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                div.innerHTML = '<label>Variable {{' + i + '}}</label><input type="text" id="waTplVar' + i + '" placeholder="{{' + i + '}}" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">';
+                varsEl.appendChild(div);
+            }
+        }
+
+        async function sendWaTemplate() {
+            const t = waTemplatesCache[parseInt(document.getElementById('waTplSelect').value)];
+            const box = document.getElementById('waTplResult');
+            if (!t) { toastMsg('Pick a template first'); return; }
+            const variables = [];
+            for (let i = 1; i <= (t.varCount || 0); i++) {
+                const el = document.getElementById('waTplVar' + i);
+                variables.push(el ? el.value.trim() : '');
+            }
+            const btn = document.getElementById('waTplSendBtn');
+            btn.disabled = true; btn.innerText = '⏳ Sending...';
+            try {
+                const r = await fetch('api/chats/send-template', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: activeContact, templateName: t.name, language: t.language, variables: variables }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Failed');
+                box.style.display = 'block'; box.style.background = '#e8f5e9'; box.style.color = '#1b5e20';
+                box.innerHTML = '✅ Template sent! The chat shows the message — ✓ = accepted, ✓✓ = delivered, ⚠ = not delivered.';
+                toastMsg('📨 Template sent');
+            } catch (e) {
+                box.style.display = 'block'; box.style.background = '#fbe9e7'; box.style.color = '#c62828';
+                box.innerText = '❌ ' + e.message;
+            }
+            btn.disabled = false; btn.innerText = '📨 Send Template';
         }
 
         function updateAiBtn() {
@@ -3723,6 +3882,218 @@
                 '<p style="max-width:560px; margin:16px auto 0; color:#90a4ae; font-size:13px;">This section is being built — daily automatic collection and summaries will appear here as soon as it goes live. 🔜</p>' +
                 '</div>';
         }
+
+        // ===== TASKS FOR AI (scheduled WhatsApp messages + AI website jobs) =====
+        var aiTasksCache = [];
+
+        function taskKindChanged() {
+            const k = document.getElementById('taskKind').value;
+            document.getElementById('taskSendFields').style.display = (k === 'send_message') ? 'block' : 'none';
+            document.getElementById('taskAiFields').style.display = (k === 'ai_task') ? 'block' : 'none';
+            document.getElementById('taskTemplateFields').style.display = (k === 'send_template') ? 'block' : 'none';
+            if (k === 'send_template') loadTaskTemplateOptions();
+        }
+
+        async function loadTaskTemplateOptions() {
+            const sel = document.getElementById('taskTemplateSelect');
+            if (!sel || sel.options.length) return;
+            sel.innerHTML = '<option value="">Loading templates...</option>';
+            try {
+                const r = await fetch('api/wa-templates');
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Failed');
+                const list = (d.templates || []).filter(t => t.status === 'APPROVED');
+                window.__taskTemplates = list;
+                if (!list.length) { sel.innerHTML = '<option value="">(no approved templates yet)</option>'; return; }
+                sel.innerHTML = list.map((t, i) => '<option value="' + i + '">' + wsEsc(t.name) + ' · ' + wsEsc(t.language) + '</option>').join('');
+                taskTemplateChanged();
+            } catch (e) { sel.innerHTML = '<option value="">❌ ' + wsEsc(e.message) + '</option>'; }
+        }
+
+        function taskTemplateChanged() {
+            const list = window.__taskTemplates || [];
+            const t = list[parseInt((document.getElementById('taskTemplateSelect') || {}).value)];
+            const varsEl = document.getElementById('taskTemplateVars');
+            if (!varsEl) return;
+            varsEl.innerHTML = '';
+            if (!t) return;
+            for (let i = 1; i <= (t.varCount || 0); i++) {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                div.innerHTML = '<label>Variable {{' + i + '}}</label><input type="text" id="taskTplVar' + i + '" placeholder="{{' + i + '}}" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">';
+                varsEl.appendChild(div);
+            }
+        }
+
+        function taskPad(n) { return String(n).padStart(2, '0'); }
+        function taskLocalValue(d) {
+            return d.getFullYear() + '-' + taskPad(d.getMonth() + 1) + '-' + taskPad(d.getDate()) + 'T' + taskPad(d.getHours()) + ':' + taskPad(d.getMinutes());
+        }
+        function taskQuick(min) {
+            const d = new Date(Date.now() + min * 60000);
+            document.getElementById('taskWhen').value = taskLocalValue(d);
+            toastMsg('⏱️ Set for ' + d.toLocaleString());
+        }
+        function taskTomorrow(hour) {
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            d.setHours(hour, 0, 0, 0);
+            document.getElementById('taskWhen').value = taskLocalValue(d);
+            toastMsg('🗓️ Set for ' + d.toLocaleString());
+        }
+
+        async function loadAiTasks() {
+            try {
+                const r = await fetch('api/ai-tasks');
+                aiTasksCache = await r.json();
+            } catch (e) { aiTasksCache = []; }
+            const sel = document.getElementById('taskSite');
+            if (sel && !sel.options.length) {
+                try {
+                    const sr = await fetch('api/seo');
+                    const sdata = await sr.json();
+                    const keys = Object.keys(sdata.sites || {});
+                    sel.innerHTML = (keys.length ? keys : ['www.alshaabalwaseem.com']).map(k => '<option value="' + k + '">' + k + '</option>').join('');
+                } catch (e) { sel.innerHTML = '<option value="">(no site configured)</option>'; }
+            }
+            renderAiTasks();
+            updateTaskCountdowns();
+        }
+
+        function taskFmt(ms) {
+            if (!ms) return '';
+            const d = new Date(ms);
+            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        function taskCountdown(ms) {
+            const diff = ms - Date.now();
+            if (diff <= 0) return 'now';
+            const s = Math.floor(diff / 1000);
+            const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+            if (d > 0) return 'in ' + d + 'd ' + h + 'h';
+            if (h > 0) return 'in ' + h + 'h ' + m + 'm';
+            if (m > 0) return 'in ' + m + 'm ' + ss + 's';
+            return 'in ' + ss + 's';
+        }
+
+        function taskCard(t, isPending) {
+            const kindIcon = t.taskType === 'send_message' ? '💬' : (t.taskType === 'send_template' ? '📨' : '🤖');
+            const who = (t.taskType === 'send_message' || t.taskType === 'send_template') ? ('to +' + (t.target || '')) : ('site: ' + (t.siteKey || 'main'));
+            const body = t.taskType === 'send_message' ? (t.message || '') : (t.taskType === 'send_template' ? ('Template: ' + (t.templateName || '') + (t.variables && t.variables.length ? ' — ' + t.variables.join(' · ') : '')) : (t.instruction || ''));
+            let statusBadge = '';
+            if (t.status === 'pending') statusBadge = '<span style="background:#e3f2fd; color:#1565c0; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">⏳ Scheduled</span>';
+            else if (t.status === 'running') statusBadge = '<span style="background:#fff8e1; color:#8d6e00; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">▶️ Running</span>';
+            else if (t.status === 'done') statusBadge = '<span style="background:#e8f5e9; color:#1b5e20; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">✅ Done</span>';
+            else if (t.status === 'failed') statusBadge = '<span style="background:#fbe9e7; color:#c62828; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">❌ Failed</span>';
+            else statusBadge = '<span style="background:#f0f2f5; color:#546e7a; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">🚫 Cancelled</span>';
+
+            const countdown = (isPending && t.runAt) ? ' ⏱️ <b class="task-count" data-runat="' + t.runAt + '">' + taskCountdown(t.runAt) + '</b>' : '';
+            const actions = isPending
+                ? '<button onclick="cancelAiTask(\'' + t.id + '\')" style="padding:6px 12px; background:#fbe9e7; color:#c62828; border:1px solid #ffab91; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🚫 Cancel</button>'
+                : '<button onclick="deleteAiTask(\'' + t.id + '\')" style="padding:6px 12px; background:#f0f2f5; color:#546e7a; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Remove</button>';
+
+            return '<div style="border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff;">' +
+                '<div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;">' +
+                    '<b style="font-size:14px;">' + kindIcon + ' ' + wsEsc(t.title || 'Task') + '</b>' +
+                    '<div>' + statusBadge + countdown + '</div>' +
+                '</div>' +
+                '<div style="font-size:12px; color:#546e7a; margin-top:6px;">🕒 <b>' + taskFmt(t.runAt) + '</b> · ' + wsEsc(who) + '</div>' +
+                '<div style="font-size:13px; margin-top:6px; white-space:pre-wrap; word-break:break-word; color:#111b21;">' + wsEsc(String(body).substring(0, 300)) + '</div>' +
+                (t.result ? '<div style="font-size:12px; margin-top:8px; padding:8px 10px; background:#f7f9fa; border-radius:8px; white-space:pre-wrap; word-break:break-word;">' + wsEsc(String(t.result).substring(0, 500)) + '</div>' : '') +
+                '<div style="margin-top:10px; display:flex; gap:8px;">' + actions + '</div>' +
+            '</div>';
+        }
+
+        function renderAiTasks() {
+            const up = document.getElementById('taskUpcoming');
+            const hi = document.getElementById('taskHistory');
+            if (!up || !hi) return;
+            const pending = aiTasksCache.filter(t => t.status === 'pending' || t.status === 'running').sort((a, b) => (a.runAt || 0) - (b.runAt || 0));
+            const history = aiTasksCache.filter(t => t.status !== 'pending' && t.status !== 'running').sort((a, b) => (b.executedAt || b.createdAt || 0) - (a.executedAt || a.createdAt || 0)).slice(0, 30);
+            up.innerHTML = pending.length ? pending.map(t => taskCard(t, true)).join('') : '<p class="subtitle">No scheduled tasks yet — create one above. ⏰</p>';
+            hi.innerHTML = history.length ? history.map(t => taskCard(t, false)).join('') : '<p class="subtitle">Nothing here yet.</p>';
+        }
+
+        function updateTaskCountdowns() {
+            document.querySelectorAll('.task-count').forEach(el => {
+                const runAt = parseInt(el.getAttribute('data-runat'));
+                if (runAt) el.innerText = taskCountdown(runAt);
+            });
+            const top = document.getElementById('taskNextTimer');
+            if (top) {
+                const pending = aiTasksCache.filter(t => t.status === 'pending').sort((a, b) => (a.runAt || 0) - (b.runAt || 0));
+                top.innerText = pending.length ? ('⏭️ Next task ' + taskCountdown(pending[0].runAt) + ' — ' + taskFmt(pending[0].runAt)) : '';
+            }
+        }
+
+        async function saveAiTask() {
+            const kind = document.getElementById('taskKind').value;
+            const whenVal = document.getElementById('taskWhen').value;
+            const box = document.getElementById('taskSaveResult');
+            box.style.display = 'none';
+            if (!whenVal) { toastMsg('📅 Pick a date & time first'); return; }
+            const runAt = new Date(whenVal).getTime();
+            if (isNaN(runAt)) { toastMsg('❌ Invalid date/time'); return; }
+            const body = {
+                taskType: kind,
+                runAt: runAt,
+                target: (kind === 'send_template'
+                    ? ((document.getElementById('taskTemplateTarget') || {}).value || '')
+                    : ((document.getElementById('taskTarget') || {}).value || '')).trim(),
+                message: (document.getElementById('taskMessage').value || '').trim(),
+                instruction: (document.getElementById('taskInstruction').value || '').trim(),
+                siteKey: (document.getElementById('taskSite') || {}).value || '',
+                model: (document.getElementById('taskModel') || {}).value || 'deepseek'
+            };
+            if (kind === 'send_template') {
+                const list = window.__taskTemplates || [];
+                const tpl = list[parseInt((document.getElementById('taskTemplateSelect') || {}).value)];
+                if (!tpl) { toastMsg('Pick a template first'); return; }
+                body.templateName = tpl.name;
+                body.language = tpl.language;
+                const vars = [];
+                for (let i = 1; i <= (tpl.varCount || 0); i++) {
+                    const el = document.getElementById('taskTplVar' + i);
+                    vars.push(el ? el.value.trim() : '');
+                }
+                body.variables = vars;
+                body.message = '';
+                body.instruction = '';
+            }
+            try {
+                const r = await fetch('api/ai-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'Failed');
+                box.style.display = 'block';
+                box.style.background = '#e8f5e9'; box.style.color = '#1b5e20';
+                box.innerHTML = '✅ Task saved! The AI will run it on <b>' + taskFmt(runAt) + '</b> (' + taskCountdown(runAt) + ').';
+                toastMsg('✅ Task scheduled');
+                document.getElementById('taskMessage').value = '';
+                document.getElementById('taskInstruction').value = '';
+                loadAiTasks();
+            } catch (e) {
+                box.style.display = 'block';
+                box.style.background = '#fbe9e7'; box.style.color = '#c62828';
+                box.innerText = '❌ ' + e.message;
+            }
+        }
+
+        async function cancelAiTask(id) {
+            if (!confirm('Cancel this task?')) return;
+            try { await fetch('api/ai-tasks/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }); toastMsg('🚫 Task cancelled'); loadAiTasks(); } catch (e) { toastMsg('❌ Failed'); }
+        }
+        async function deleteAiTask(id) {
+            try { await fetch('api/ai-tasks/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }); toastMsg('🗑️ Removed'); loadAiTasks(); } catch (e) { toastMsg('❌ Failed'); }
+        }
+
+        // Live countdown ticker + auto refresh while the Tasks section is open
+        setInterval(function() {
+            updateTaskCountdowns();
+            const sec = document.getElementById('tasksSection');
+            if (sec && sec.classList.contains('active')) {
+                if (!window.__taskRefreshAt || Date.now() - window.__taskRefreshAt > 30000) { window.__taskRefreshAt = Date.now(); loadAiTasks(); }
+            }
+        }, 1000);
 
         // ===== CODE STUDIO (Monaco editor + AI + WordPress) =====
         var csEditor = null, csDiffEditor = null, csFilesCache = [], csCurrent = { source: 'new', name: '', language: 'html', wp: null, fileId: null };
