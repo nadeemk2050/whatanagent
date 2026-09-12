@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.11.8 (WhatsApp templates: send anytime outside 24h window) -->
+    <!-- APP VERSION: 2026.09.12.1 (never block any number + template variable validation) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -1719,7 +1719,7 @@
             if (hours > 24) {
                 const ago = hours >= 48 ? Math.floor(hours / 24) + ' day(s)' : Math.floor(hours) + ' hour(s)';
                 el.style.display = 'block';
-                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. Tap the 📨 <b>Template</b> button below to message them anyway (templates are delivered anytime).';
+                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. The app always attempts the send (nothing is blocked — check the ticks). Tap the 📨 <b>Template</b> button below for guaranteed delivery.';
             } else {
                 el.style.display = 'none';
             }
@@ -1768,14 +1768,34 @@
             }
         }
 
+        // Friendly translations for common WhatsApp API errors
+        function waFriendlyError(msg) {
+            const m = String(msg || '');
+            if (m.indexOf('132000') !== -1) return 'All template variables must be filled with a value ({{1}}, {{2}}...).';
+            if (m.indexOf('132001') !== -1) return 'That template is not approved (yet) on your WhatsApp account.';
+            if (m.indexOf('131047') !== -1) return 'This customer has not messaged in the last 24 hours - WhatsApp blocks normal messages. Use a template instead.';
+            if (m.indexOf('131026') !== -1) return 'This number cannot receive WhatsApp messages (not on WhatsApp or blocked by the user).';
+            return m;
+        }
+
         async function sendWaTemplate() {
             const t = waTemplatesCache[parseInt(document.getElementById('waTplSelect').value)];
             const box = document.getElementById('waTplResult');
             if (!t) { toastMsg('Pick a template first'); return; }
             const variables = [];
+            const missing = [];
             for (let i = 1; i <= (t.varCount || 0); i++) {
                 const el = document.getElementById('waTplVar' + i);
-                variables.push(el ? el.value.trim() : '');
+                const v = el ? el.value.trim() : '';
+                variables.push(v);
+                if (!v) missing.push(i);
+            }
+            if (missing.length) {
+                box.style.display = 'block'; box.style.background = '#fff8e1'; box.style.color = '#8d6e00';
+                box.innerHTML = '⚠️ Please fill all template variables first: ' + missing.map(n => '<b>{{' + n + '}}</b>').join(', ') + '<br>(WhatsApp requires a value for every variable, e.g. the customer name and the amount.)';
+                const first = document.getElementById('waTplVar' + missing[0]);
+                if (first) first.focus();
+                return;
             }
             const btn = document.getElementById('waTplSendBtn');
             btn.disabled = true; btn.innerText = '⏳ Sending...';
@@ -1788,7 +1808,7 @@
                 toastMsg('📨 Template sent');
             } catch (e) {
                 box.style.display = 'block'; box.style.background = '#fbe9e7'; box.style.color = '#c62828';
-                box.innerText = '❌ ' + e.message;
+                box.innerText = '❌ ' + waFriendlyError(e.message);
             }
             btn.disabled = false; btn.innerText = '📨 Send Template';
         }
@@ -4052,10 +4072,14 @@
                 body.templateName = tpl.name;
                 body.language = tpl.language;
                 const vars = [];
+                const missingVars = [];
                 for (let i = 1; i <= (tpl.varCount || 0); i++) {
                     const el = document.getElementById('taskTplVar' + i);
-                    vars.push(el ? el.value.trim() : '');
+                    const v = el ? el.value.trim() : '';
+                    vars.push(v);
+                    if (!v) missingVars.push(i);
                 }
+                if (missingVars.length) { toastMsg('⚠️ Fill template variable(s): ' + missingVars.map(n => '{{' + n + '}}').join(', ')); return; }
                 body.variables = vars;
                 body.message = '';
                 body.instruction = '';

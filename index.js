@@ -2085,7 +2085,11 @@ async function executeSeoAction(name, params, sites) {
           await sendWhatsAppTemplate(target, params.templateName, params.language || 'en_US', Array.isArray(params.variables) ? params.variables : [], settings);
           return { sent: true, target: target, templateName: params.templateName, note: 'Template messages ARE delivered even when the customer has not messaged in the last 24 hours.' };
         } catch (e) {
-          return { error: 'WhatsApp rejected the template: ' + (e.response ? JSON.stringify(e.response.data).substring(0, 250) : e.message) };
+          const d = e.response ? JSON.stringify(e.response.data) : e.message;
+          let friendly = d.substring(0, 250);
+          if (d.indexOf('132000') !== -1) friendly = 'missing template variables - every {{1}}, {{2}}... must be provided in variables';
+          else if (d.indexOf('132001') !== -1) friendly = 'template not found or not approved on the account (use list_templates to see the approved ones)';
+          return { error: 'WhatsApp rejected the template: ' + friendly };
         }
       }
 
@@ -3308,26 +3312,11 @@ async function processFollowUpScheduler() {
       
       // Check if it's time to send
       if (f.nextSendDate <= now) {
-        // WhatsApp only DELIVERS free-form messages within 24h of the customer's last message.
-        // Outside that window Meta accepts the API call but silently drops the message,
-        // so we skip it (and log why) instead of pretending it was sent.
-        let windowOpen = false;
-        try {
-          const mq = query(collection(db, "chats", f.phoneNumber, "messages"), orderBy("timestamp", "desc"), limit(20));
-          const ms = await getDocs(mq);
-          ms.forEach(d => {
-            const m = d.data();
-            if (m.sender === 'user' && m.timestamp && (now - m.timestamp) < 24 * 60 * 60 * 1000) windowOpen = true;
-          });
-        } catch (e) { windowOpen = false; }
-
+        // NEVER block a number: always attempt the send. WhatsApp itself may not deliver a message
+        // to a customer who has not messaged in 24h - the chat then shows "⚠ Not delivered" with the reason.
+        console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
         if (f.startWords) {
-          if (windowOpen) {
-            console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
-            await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
-          } else {
-            console.log(`[SCHEDULER] ⚠️ Skipped follow-up to ${f.phoneNumber}: no customer message in the last 24h - WhatsApp would not deliver it.`);
-          }
+          await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
         }
         
         // Update counters
@@ -3382,7 +3371,8 @@ async function processAiTasks() {
         if (t.taskType === 'send_message') {
           const target = normalizePhone(t.target || '');
           if (!target) throw new Error('Missing target number.');
-          // Free-form messages are only DELIVERED within 24h of the customer's last message.
+          // NEVER block a number: always attempt the send. (Even if the customer has not messaged in
+          // 24h we still try - WhatsApp decides delivery, and the chat ticks show the real result.)
           let windowOpen = false;
           try {
             const mq = query(collection(db, 'chats', target, 'messages'), orderBy('timestamp', 'desc'), limit(20));
@@ -3392,15 +3382,12 @@ async function processAiTasks() {
               if (m.sender === 'user' && m.timestamp && (now - m.timestamp) < 24 * 60 * 60 * 1000) windowOpen = true;
             });
           } catch (e) { windowOpen = false; }
-          if (!windowOpen) {
-            t.status = 'done';
-            t.result = '⚠️ NOT sent: +' + target + ' has not messaged in the last 24 hours — WhatsApp would not deliver a normal message. Ask them to message first (or use an approved template).';
-          } else {
-            const settings = await getSettings();
-            const ok = await sendWhatsAppMessage(target, t.message || '', settings);
-            t.status = ok ? 'done' : 'failed';
-            t.result = ok ? '✅ Message accepted by WhatsApp — real delivery status (✓ / ✓✓ / Not delivered) is shown in the Live Chat ticks.' : '❌ WhatsApp API rejected the send.';
-          }
+          const settings = await getSettings();
+          const ok = await sendWhatsAppMessage(target, t.message || '', settings);
+          t.status = ok ? 'done' : 'failed';
+          t.result = ok
+            ? ('✅ Message accepted by WhatsApp.' + (windowOpen ? '' : ' NOTE: the customer has not messaged in the last 24 hours - if WhatsApp drops it, the chat will show "⚠ Not delivered" with the reason.'))
+            : '❌ WhatsApp API rejected the send.';
         } else if (t.taskType === 'send_template') {
           const settings = await getSettings();
           const target = normalizePhone(t.target || '');
