@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
+import { initWaWeb, getWaWebStatus, getWaWebChats, getWaWebMessages, sendWaWebMessage, logoutWaWeb, downloadWaWebMedia } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -27,6 +28,9 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
 dotenv.config();
+
+// Initialize WhatsApp Web (Baileys Multi-Device Client with Firestore Cloud Persistence)
+initWaWeb(db);
 
 // --- STAGING REPLICA ISOLATION (Railway replica running alongside production Render) ---
 // STAGING_MODE=1 -> this instance NEVER runs the 60s schedulers (follow-ups / scheduled AI tasks),
@@ -48,6 +52,54 @@ app.use(express.static('public'));
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'whatanagent', role: NODE_ROLE, staging: STAGING_MODE, dryRun: DRY_RUN, schedulers: schedulerState, uptimeSec: Math.round(process.uptime()) });
+});
+
+// --- WHATSAPP WEB (BAILEYS MULTI-DEVICE CLIENT) REST ENDPOINTS ---
+app.get('/api/wa-web/status', (req, res) => {
+  res.json(getWaWebStatus());
+});
+
+app.get('/api/wa-web/chats', (req, res) => {
+  res.json({ chats: getWaWebChats() });
+});
+
+app.get('/api/wa-web/messages', (req, res) => {
+  const jid = req.query.jid;
+  if (!jid) return res.status(400).json({ error: 'Missing jid parameter' });
+  res.json({ messages: getWaWebMessages(jid) });
+});
+
+app.get('/api/wa-web/download-media', async (req, res) => {
+  try {
+    const { jid, msgId } = req.query;
+    if (!jid || !msgId) return res.status(400).send('Missing jid or msgId');
+    const { buffer, mimetype, fileName } = await downloadWaWebMedia(jid, msgId);
+    res.setHeader('Content-Type', mimetype);
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send('Error downloading media: ' + err.message);
+  }
+});
+
+app.post('/api/wa-web/send', async (req, res) => {
+  try {
+    const { to, message } = req.body;
+    if (!to || !message) return res.status(400).json({ error: 'Missing to or message in body' });
+    const result = await sendWaWebMessage(to, message);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/logout', async (req, res) => {
+  try {
+    const result = await logoutWaWeb();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Settings Management ---
