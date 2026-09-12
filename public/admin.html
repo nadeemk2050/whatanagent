@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.12.1 (never block any number + template variable validation) -->
+    <!-- APP VERSION: 2026.09.12.2 (clear per-chat WhatsApp window status: green open / red blocked) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Agent Admin</title>
@@ -1705,23 +1705,27 @@
             }
         }
 
-        // WhatsApp only delivers normal (free-form) messages within 24h of the customer's last message.
-        // Outside that window Meta accepts the message but silently drops it - warn the user clearly.
+        // WhatsApp window status per chat (the 24h rule applies to EVERY business - set by WhatsApp, not this app)
         function updateChatWindowWarning(lastUserTs) {
             const el = document.getElementById('chatWindowWarning');
             if (!el) return;
             if (!lastUserTs) {
                 el.style.display = 'block';
-                el.innerHTML = '⚠️ <b>This contact has never messaged you.</b> WhatsApp only delivers normal messages within 24 hours of the customer\'s last message — use the 📨 Template button below to message them anyway (templates are delivered anytime).';
+                el.style.background = '#fff8e1'; el.style.borderTopColor = '#ffe082'; el.style.color = '#8d6e00';
+                el.innerHTML = '🚫 <b>WhatsApp is blocking normal messages to this customer</b> — they have never messaged you. The WhatsApp rule (same for every business, not this app): normal messages are delivered only within 24 hours of the customer last message. 👉 Use the 📨 <b>Template</b> button — templates are delivered anytime.';
                 return;
             }
             const hours = (Date.now() - lastUserTs) / 3600000;
             if (hours > 24) {
                 const ago = hours >= 48 ? Math.floor(hours / 24) + ' day(s)' : Math.floor(hours) + ' hour(s)';
                 el.style.display = 'block';
-                el.innerHTML = '⚠️ <b>Last customer message was ' + ago + ' ago.</b> WhatsApp will <b>NOT deliver</b> a normal message after 24 hours — one tick = sent, but it may never arrive. The app always attempts the send (nothing is blocked — check the ticks). Tap the 📨 <b>Template</b> button below for guaranteed delivery.';
+                el.style.background = '#fff8e1'; el.style.borderTopColor = '#ffe082'; el.style.color = '#8d6e00';
+                el.innerHTML = '🚫 <b>WhatsApp is blocking normal messages to this customer</b> — their last message was <b>' + ago + ' ago</b>. The WhatsApp rule (same for every business, not this app): normal messages are delivered only within 24 hours of the customer last message. 👉 Use the 📨 <b>Template</b> button (delivered anytime), or wait for the customer to message you — then normal chat works again for 24 hours.';
             } else {
-                el.style.display = 'none';
+                const ago2 = hours >= 1 ? Math.floor(hours) + ' hour(s)' : Math.max(1, Math.floor(hours * 60)) + ' minute(s)';
+                el.style.display = 'block';
+                el.style.background = '#e8f5e9'; el.style.borderTopColor = '#a5d6a7'; el.style.color = '#1b5e20';
+                el.innerHTML = '✅ <b>WhatsApp window is open</b> — this customer messaged you ' + ago2 + ' ago, so <b>normal messages to them WILL be delivered</b>. (Window closes 24 hours after their last message.)';
             }
         }
 
