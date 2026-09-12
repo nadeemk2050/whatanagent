@@ -233,45 +233,147 @@ function upsertMessageToChat(msg, isHistorySync = false) {
   scheduleHistorySaveToFirestore();
 }
 
-// Restore session auth files from Firestore collection (sub-documents avoid 1MB document limit)
+// Restore session auth files from Firestore chunks (fast, grouped, well below 1MB limit)
 async function restoreSessionFromFirestore(db) {
   if (!db) return;
   try {
-    const snap = await getDocs(collection(db, "waWebSession"));
-    if (!snap.empty) {
-      let count = 0;
-      snap.forEach(docSnap => {
-        const fn = docSnap.id.replace(/___/g, '/').replace(/_dot_/g, '.');
-        const data = docSnap.data();
-        if (data && data.content) {
-          const filePath = path.join(AUTH_DIR, fn);
-          fs.writeFileSync(filePath, data.content, 'utf-8');
-          count++;
+    const metaSnap = await getDoc(doc(db, "waWebSessionChunks", "meta"));
+    if (metaSnap.exists()) {
+      const meta = metaSnap.data();
+      const totalChunks = meta.totalChunks || 0;
+      let restoredCount = 0;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkSnap = await getDoc(doc(db, "waWebSessionChunks", `chunk_${i}`));
+        if (chunkSnap.exists()) {
+          const chunkData = chunkSnap.data();
+          if (chunkData && chunkData.data) {
+            try {
+              const files = JSON.parse(chunkData.data);
+              for (const [fn, content] of Object.entries(files)) {
+                const filePath = path.join(AUTH_DIR, fn);
+                fs.writeFileSync(filePath, content, 'utf-8');
+                restoredCount++;
+              }
+            } catch (e) {}
+          }
         }
-      });
-      console.log(`[WA-WEB AUTH] Restored ${count} session credentials from Firestore collection`);
+      }
+      console.log(`[WA-WEB AUTH] Restored ${restoredCount} session files from Firestore chunks`);
+    } else {
+      // Backward compatibility check for individual files
+      const legacySnap = await getDocs(collection(db, "waWebSession"));
+      if (!legacySnap.empty) {
+        let count = 0;
+        legacySnap.forEach(docSnap => {
+          const fn = docSnap.id.replace(/___/g, '/').replace(/_dot_/g, '.');
+          const data = docSnap.data();
+          if (data && data.content) {
+            const filePath = path.join(AUTH_DIR, fn);
+            fs.writeFileSync(filePath, data.content, 'utf-8');
+            count++;
+          }
+        });
+        console.log(`[WA-WEB AUTH] Restored ${count} legacy session credentials from Firestore`);
+      }
     }
   } catch (err) {
     console.warn('[WA-WEB AUTH] Could not restore session from Firestore:', err.message);
   }
 }
 
-// Sync session auth files to Firestore collection (each file has its own document)
+// Debounced and chunked sync to Firestore (groups 900+ small files into 2-4 docs, avoiding write exhaustion)
+let syncSessionTimeout = null;
+let isSyncingSession = false;
+
 async function syncSessionToFirestore(db) {
-  if (!db) return;
+  if (!db || isSyncingSession) return;
+  if (!fs.existsSync(AUTH_DIR)) return;
+
   try {
-    if (!fs.existsSync(AUTH_DIR)) return;
+    isSyncingSession = true;
     const fileNames = fs.readdirSync(AUTH_DIR);
+    if (fileNames.length === 0) return;
+
+    const filesMap = {};
     for (const fn of fileNames) {
       const fp = path.join(AUTH_DIR, fn);
-      if (fs.statSync(fp).isFile()) {
-        const content = fs.readFileSync(fp, 'utf-8');
-        const docId = fn.replace(/\./g, '_dot_').replace(/\//g, '___');
-        await setDoc(doc(db, "waWebSession", docId), { content, updatedAt: Date.now() }, { merge: true });
-      }
+      try {
+        if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+          filesMap[fn] = fs.readFileSync(fp, 'utf-8');
+        }
+      } catch (e) {}
     }
+
+    const totalFiles = Object.keys(filesMap).length;
+    if (totalFiles === 0) return;
+
+    // Split into chunks under 450KB each
+    const chunks = [];
+    let currentChunk = {};
+    let currentChunkSize = 0;
+
+    for (const [filename, content] of Object.entries(filesMap)) {
+      const entrySize = filename.length + content.length + 20;
+      if (currentChunkSize + entrySize > 450 * 1024) {
+        chunks.push(currentChunk);
+        currentChunk = {};
+        currentChunkSize = 0;
+      }
+      currentChunk[filename] = content;
+      currentChunkSize += entrySize;
+    }
+    if (Object.keys(currentChunk).length > 0) {
+      chunks.push(currentChunk);
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      await setDoc(doc(db, "waWebSessionChunks", `chunk_${i}`), {
+        data: JSON.stringify(chunks[i]),
+        updatedAt: Date.now()
+      });
+    }
+
+    await setDoc(doc(db, "waWebSessionChunks", "meta"), {
+      totalChunks: chunks.length,
+      totalFiles: totalFiles,
+      updatedAt: Date.now()
+    });
+
+    console.log(`[WA-WEB AUTH] Synced ${totalFiles} auth files to Firestore in ${chunks.length} chunks`);
   } catch (err) {
     console.warn('[WA-WEB AUTH] Could not sync session to Firestore:', err.message);
+  } finally {
+    isSyncingSession = false;
+  }
+}
+
+function scheduleSessionSync(db) {
+  if (syncSessionTimeout) clearTimeout(syncSessionTimeout);
+  syncSessionTimeout = setTimeout(() => {
+    syncSessionToFirestore(db);
+  }, 4000);
+}
+
+async function clearFirestoreSession(db) {
+  if (!db) return;
+  try {
+    const metaSnap = await getDoc(doc(db, "waWebSessionChunks", "meta"));
+    if (metaSnap.exists()) {
+      const meta = metaSnap.data();
+      const totalChunks = meta.totalChunks || 5;
+      for (let i = 0; i < totalChunks; i++) {
+        try {
+          await deleteDoc(doc(db, "waWebSessionChunks", `chunk_${i}`));
+        } catch (e) {}
+      }
+      await deleteDoc(doc(db, "waWebSessionChunks", "meta"));
+    }
+    // Clean legacy collection if exists
+    const snap = await getDocs(collection(db, "waWebSession"));
+    snap.forEach(d => deleteDoc(d.ref));
+  } catch (e) {
+    console.error('[WA-WEB] Error clearing Firestore session:', e);
   }
 }
 
@@ -400,7 +502,7 @@ export async function initWaWeb(db = null) {
 
     sock.ev.on('creds.update', async () => {
       await saveCreds();
-      await syncSessionToFirestore(globalDb);
+      scheduleSessionSync(globalDb);
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -435,10 +537,7 @@ export async function initWaWeb(db = null) {
           try {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
             fs.mkdirSync(AUTH_DIR, { recursive: true });
-            if (globalDb) {
-              const snap = await getDocs(collection(globalDb, "waWebSession"));
-              snap.forEach(d => deleteDoc(d.ref));
-            }
+            await clearFirestoreSession(globalDb);
           } catch (e) {
             console.error('[WA-WEB] Error clearing auth session:', e);
           }
@@ -451,6 +550,10 @@ export async function initWaWeb(db = null) {
           }, 3000);
         } else {
           isInitializing = false;
+          // Re-init fresh session so new QR code is ready
+          setTimeout(() => {
+            initWaWeb(globalDb);
+          }, 1500);
         }
       } else if (connection === 'open') {
         console.log('[WA-WEB] 🟢 WhatsApp Web connected successfully!');
@@ -459,7 +562,7 @@ export async function initWaWeb(db = null) {
         waWebState.rawQr = null;
         waWebState.user = sock.user || { id: 'unknown', name: 'WhatsApp User' };
         isInitializing = false;
-        await syncSessionToFirestore(globalDb);
+        scheduleSessionSync(globalDb);
       }
     });
 
@@ -743,10 +846,7 @@ export async function logoutWaWeb() {
   try {
     fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     fs.mkdirSync(AUTH_DIR, { recursive: true });
-    if (globalDb) {
-      const snap = await getDocs(collection(globalDb, "waWebSession"));
-      snap.forEach(d => deleteDoc(d.ref));
-    }
+    await clearFirestoreSession(globalDb);
   } catch (e) {}
 
   isInitializing = false;

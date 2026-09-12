@@ -4866,9 +4866,15 @@
             }
         }
 
+        function getBackendBaseUrl() {
+            const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
+            return isFirebaseHost ? 'https://whatanagent-staging-production.up.railway.app' : '';
+        }
+
         function downloadWaMedia(jid, msgId, defaultName) {
             if (!jid || !msgId) return;
-            const url = `/api/wa-web/download-media?jid=${encodeURIComponent(jid)}&msgId=${encodeURIComponent(msgId)}`;
+            const base = getBackendBaseUrl();
+            const url = `${base}/api/wa-web/download-media?jid=${encodeURIComponent(jid)}&msgId=${encodeURIComponent(msgId)}`;
             window.open(url, '_blank');
         }
 
