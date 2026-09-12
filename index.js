@@ -35,14 +35,19 @@ dotenv.config();
 const STAGING_MODE = /^(1|true|yes|on)$/i.test(String(process.env.STAGING_MODE || ''));
 const DRY_RUN = /^(1|true|yes|on)$/i.test(String(process.env.DRY_RUN || ''));
 
+// Node identity (Render injects RENDER=true / RENDER_SERVICE_ID / RENDER_EXTERNAL_URL automatically)
+const IS_RENDER = String(process.env.RENDER || '').toLowerCase() === 'true' || !!process.env.RENDER_SERVICE_ID || !!process.env.RENDER_EXTERNAL_URL;
+const NODE_ROLE = IS_RENDER ? 'render' : (process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local');
+let schedulerState = 'starting';
+
 const app = express();
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
 app.use(express.static('public'));
 
-// Health probe (Railway / uptime monitors) - also reports isolation flags
+// Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, service: 'whatanagent', staging: STAGING_MODE, dryRun: DRY_RUN, uptimeSec: Math.round(process.uptime()) });
+  res.json({ ok: true, service: 'whatanagent', role: NODE_ROLE, staging: STAGING_MODE, dryRun: DRY_RUN, schedulers: schedulerState, uptimeSec: Math.round(process.uptime()) });
 });
 
 // --- Settings Management ---
@@ -3446,17 +3451,42 @@ async function processAiTasks() {
   }
 }
 
+// --- Legacy Render node standby gate (2026-09-12 Railway cutover) ---
+// While Render is kept as a silent standby, it must NOT run the 60s schedulers (Railway owns
+// the loops now - two nodes processing shared follow-ups/tasks would double-send to customers).
+// Checked LIVE on every tick: set appData/runtimeConfig { renderStandby: false } to give the
+// loops back to Render within 60s (rollback needs no restart). Missing flag = standby (fail-safe).
+async function renderStandbyEnabled() {
+  try {
+    const snap = await getDoc(doc(db, 'appData', 'runtimeConfig'));
+    const cfg = snap.exists() ? snap.data() : {};
+    return cfg.renderStandby !== false;
+  } catch (e) {
+    console.error('[STANDBY] runtimeConfig read failed - keeping RENDER schedulers OFF:', e.message);
+    return true;
+  }
+}
+
 // Start the scheduler (runs every 60 seconds)
 function startFollowUpScheduler() {
   if (STAGING_MODE || DRY_RUN) {
+    schedulerState = STAGING_MODE ? 'disabled:staging' : 'disabled:dry-run';
     console.log('[SCHEDULER] DISABLED (staging/dry-run instance) - production owns the 60s loops');
     return;
   }
-  console.log('[SCHEDULER] Started - checking every 60 seconds');
-  // Run immediately on start, then every 60s (follow-ups + scheduled AI tasks)
-  processFollowUpScheduler();
-  processAiTasks();
-  setInterval(() => { processFollowUpScheduler(); processAiTasks(); }, 60 * 1000);
+  const runTick = async () => {
+    if (IS_RENDER && await renderStandbyEnabled()) {
+      if (schedulerState !== 'disabled:standby') console.log('[SCHEDULER] Render node is in STANDBY - schedulers stay off (Railway owns the 60s loops)');
+      schedulerState = 'disabled:standby';
+      return;
+    }
+    schedulerState = 'active';
+    processFollowUpScheduler();
+    processAiTasks();
+  };
+  console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));
+  runTick();
+  setInterval(runTick, 60 * 1000);
 }
 
 // --- Server Startup (Render production / Railway staging replica) ---
