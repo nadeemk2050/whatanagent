@@ -28,10 +28,22 @@ const db = getFirestore(firebaseApp);
 
 dotenv.config();
 
+// --- STAGING REPLICA ISOLATION (Railway replica running alongside production Render) ---
+// STAGING_MODE=1 -> this instance NEVER runs the 60s schedulers (follow-ups / scheduled AI tasks),
+//                   so two replicas sharing the SAME Firestore can never double-send to customers.
+// DRY_RUN=1      -> every outbound WhatsApp send (text or template) is logged instead of sent.
+const STAGING_MODE = /^(1|true|yes|on)$/i.test(String(process.env.STAGING_MODE || ''));
+const DRY_RUN = /^(1|true|yes|on)$/i.test(String(process.env.DRY_RUN || ''));
+
 const app = express();
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
 app.use(express.static('public'));
+
+// Health probe (Railway / uptime monitors) - also reports isolation flags
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true, service: 'whatanagent', staging: STAGING_MODE, dryRun: DRY_RUN, uptimeSec: Math.round(process.uptime()) });
+});
 
 // --- Settings Management ---
 async function getSettings() {
@@ -62,6 +74,10 @@ migrateEnvToDb();
 
 // --- Core Helper Functions ---
 async function sendWhatsAppMessage(to, text, settings) {
+  if (DRY_RUN) {
+    console.log('[DRY-RUN] Outbound text BLOCKED -> ' + to + ' | ' + safeTruncate(text, 140));
+    return true;
+  }
   const token = settings.WHATSAPP_TOKEN;
   const phoneId = settings.PHONE_NUMBER_ID;
   const apiVersion = process.env.API_VERSION || 'v20.0';
@@ -136,6 +152,10 @@ async function getWaTemplates(settings) {
 }
 
 async function sendWhatsAppTemplate(to, templateName, languageCode, variables, settings) {
+  if (DRY_RUN) {
+    console.log('[DRY-RUN] Outbound TEMPLATE "' + templateName + '" BLOCKED -> ' + to);
+    return true;
+  }
   const token = settings.WHATSAPP_TOKEN;
   const phoneId = settings.PHONE_NUMBER_ID;
   const apiVersion = process.env.API_VERSION || 'v20.0';
@@ -3428,6 +3448,10 @@ async function processAiTasks() {
 
 // Start the scheduler (runs every 60 seconds)
 function startFollowUpScheduler() {
+  if (STAGING_MODE || DRY_RUN) {
+    console.log('[SCHEDULER] DISABLED (staging/dry-run instance) - production owns the 60s loops');
+    return;
+  }
   console.log('[SCHEDULER] Started - checking every 60 seconds');
   // Run immediately on start, then every 60s (follow-ups + scheduled AI tasks)
   processFollowUpScheduler();
@@ -3435,9 +3459,9 @@ function startFollowUpScheduler() {
   setInterval(() => { processFollowUpScheduler(); processAiTasks(); }, 60 * 1000);
 }
 
-// --- Server Startup (Render) ---
+// --- Server Startup (Render production / Railway staging replica) ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`WhatsApp AI Agent running on port ${PORT}`);
+  console.log(`WhatsApp AI Agent running on port ${PORT}${STAGING_MODE ? ' [STAGING MODE - schedulers off]' : ''}${DRY_RUN ? ' [DRY RUN - outbound sends blocked]' : ''}`);
   startFollowUpScheduler();
 });
