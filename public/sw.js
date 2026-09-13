@@ -1,4 +1,4 @@
-const CACHE_NAME = 'whatanagent-v2';
+const CACHE_NAME = 'whatanagent-v4';
 const ASSETS = [
   '/manifest.json',
   '/icon-192.png',

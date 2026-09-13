@@ -333,6 +333,7 @@ function registerContact(c) {
   waWebState.contacts.set(cleanPhone, c);
   waWebState.contacts.set(`${cleanPhone}@s.whatsapp.net`, c);
   if (c.lid) waWebState.contacts.set(c.lid, c);
+  scheduleContactsSaveToFirestore();
 
   // Update existing chat name if it was just showing numbers
   const chat = waWebState.chats.get(id) || waWebState.chats.get(`${cleanPhone}@s.whatsapp.net`);
@@ -632,6 +633,68 @@ async function restoreKnowledgeBaseFromFirestore(db) {
   }
 }
 
+
+// Persist entire contact name index into Firestore chunk
+let contactsSaveTimeout = null;
+async function saveContactsIndexToFirestore() {
+  if (!globalDb || waWebState.contacts.size === 0) return;
+  try {
+    const contactsObj = {};
+    for (const [key, val] of waWebState.contacts.entries()) {
+      if (val && (val.name || val.notify || val.verifiedName)) {
+        contactsObj[key] = {
+          name: val.name || val.notify || val.verifiedName,
+          id: val.id || key,
+          lid: val.lid || null
+        };
+      }
+    }
+    await setDoc(doc(globalDb, "appData", "waContactsIndex"), {
+      contacts: JSON.stringify(contactsObj),
+      count: Object.keys(contactsObj).length,
+      updatedAt: Date.now()
+    }, { merge: true });
+    console.log('[WA-WEB CONTACTS] Saved ' + Object.keys(contactsObj).length + ' contacts index to Firestore');
+  } catch (e) {
+    console.warn('[WA-WEB CONTACTS] Error saving contacts index:', e.message);
+  }
+}
+
+function scheduleContactsSaveToFirestore() {
+  if (contactsSaveTimeout) clearTimeout(contactsSaveTimeout);
+  contactsSaveTimeout = setTimeout(() => {
+    saveContactsIndexToFirestore();
+  }, 6000);
+}
+
+// Restore contacts index from Firestore
+async function restoreContactsIndexFromFirestore(db) {
+  if (!db) return;
+  try {
+    const snap = await getDoc(doc(db, "appData", "waContactsIndex"));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.contacts) {
+        const obj = JSON.parse(data.contacts);
+        let count = 0;
+        for (const [key, val] of Object.entries(obj)) {
+          if (val && val.name) {
+            waWebState.contacts.set(key, val);
+            count++;
+          }
+        }
+        console.log('[WA-WEB CONTACTS] Restored ' + count + ' contact names from Firestore index');
+        // Update all existing chats with newly loaded contact names
+        waWebState.chats.forEach(chat => {
+          chat.name = resolveContactName(chat.id, '', chat.name);
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[WA-WEB CONTACTS] Error restoring contacts index:', e.message);
+  }
+}
+
 // Restore text-only chat history from Firestore on startup
 async function restoreHistoryFromFirestore(db) {
   if (!db) return;
@@ -683,6 +746,7 @@ export async function initWaWeb(db = null) {
     await restoreSessionFromFirestore(globalDb);
     await restoreHistoryFromFirestore(globalDb);
     await restoreKnowledgeBaseFromFirestore(globalDb);
+    await restoreContactsIndexFromFirestore(globalDb);
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     
