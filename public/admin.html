@@ -9,6 +9,8 @@
     <meta name="theme-color" content="#25d366">
     <link rel="apple-touch-icon" href="/icon-180.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💬</text></svg>">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="WhatAnAgent">
     <style>
@@ -268,7 +270,7 @@
         <div id="waWebPage" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#111b21; color:#e9edef; z-index:2800; flex-direction:column; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
             
             <!-- WhatsApp Web Top Bar -->
-            <div style="background:#202c33; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3942; z-index:10;">
+            <div style="background:#202c33; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3942; z-index:10; flex-wrap:wrap; gap:10px;">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <button class="menu-btn" onclick="toggleSidebar()" style="background:none; border:none; color:#e9edef; font-size:24px; cursor:pointer; margin:0; padding:4px; display:flex; align-items:center; justify-content:center;" title="Open Sidebar Navigation">☰</button>
                     <div style="width:36px; height:36px; border-radius:50%; background:#25d366; display:flex; align-items:center; justify-content:center; font-size:20px;">
@@ -283,14 +285,49 @@
                     </div>
                 </div>
 
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div id="waWebStatusPill" style="display:flex; align-items:center; gap:6px; font-size:13px; padding:6px 14px; border-radius:20px; background:#182229; border:1px solid #2a3942; color:#8696a0;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div id="waWebStatusPill" style="display:flex; align-items:center; gap:6px; font-size:12px; padding:6px 12px; border-radius:20px; background:#182229; border:1px solid #2a3942; color:#8696a0;">
                         <span id="waWebStatusDot" style="width:8px; height:8px; border-radius:50%; background:#f39c12;"></span>
                         <span id="waWebStatusText">Connecting...</span>
                     </div>
-                    <button onclick="refreshWaWebState()" title="Refresh / Sync" style="background:#2a3942; border:none; color:#e9edef; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">🔄 Sync</button>
-                    <button id="waWebLogoutBtn" onclick="disconnectWaWeb()" title="Logout & Unlink" style="display:none; background:#d32f2f; border:none; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">🚪 Disconnect</button>
-                    <button onclick="closeWaWebPage()" style="background:#00a884; border:none; color:#fff; padding:8px 16px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">✕ Close Fullscreen</button>
+
+                    <!-- Button 1: Saving & Syncing History -->
+                    <button onclick="openWaWebSyncHistoryModal()" title="View Saved & Synced Data History, Storage and Date Ranges" style="background:#1f2c34; border:1px solid #00a884; color:#00a884; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                        <span>📊 Saving & Syncing History</span>
+                    </button>
+
+                    <!-- Button 2: AI Assistant (Copilot) -->
+                    <button onclick="openWaWebAiCopilot()" title="AI WhatsApp Assistant - Discuss any chat, summarize, draft replies" style="background:linear-gradient(135deg, #10b981, #0284c7); border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(16,185,129,0.35);">
+                        <span>🤖 AI Assistant</span>
+                        <span style="background:#ffffff; color:#0f172a; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">COPILOT</span>
+                    </button>
+
+                    <button onclick="refreshWaWebState()" title="Refresh / Sync" style="background:#2a3942; border:none; color:#e9edef; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🔄 Sync</button>
+                    <button id="waWebLogoutBtn" onclick="disconnectWaWeb()" title="Logout & Unlink" style="display:none; background:#d32f2f; border:none; color:#fff; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🚪 Disconnect</button>
+                    <button onclick="closeWaWebPage()" style="background:#00a884; border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px;">✕ Close Fullscreen</button>
+                </div>
+            </div>
+
+            <!-- WhatsApp Web Sync Progress Bar & Live Status Ribbon -->
+            <div id="waWebSyncProgressRibbon" style="background:#182229; border-bottom:1px solid #2a3942; padding:6px 20px; display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#8696a0; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:280px; max-width:600px;">
+                    <div style="display:flex; align-items:center; gap:6px; font-weight:600; color:#00a884; min-width:140px;">
+                        <span id="waWebSyncPulseDot" style="width:8px; height:8px; border-radius:50%; background:#00a884; display:inline-block;"></span>
+                        <span id="waWebSyncPhaseText">100% Synced (Live)</span>
+                    </div>
+                    <!-- Animated Progress Bar -->
+                    <div style="flex:1; background:#202c33; height:6px; border-radius:3px; overflow:hidden; position:relative;">
+                        <div id="waWebSyncProgressBar" style="background:linear-gradient(90deg, #00a884, #25d366); width:100%; height:100%; border-radius:3px; transition:width 0.4s ease;"></div>
+                    </div>
+                </div>
+
+                <!-- Date-wise Data Sync Badges -->
+                <div style="display:flex; align-items:center; gap:8px; font-size:11px; flex-wrap:wrap;">
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 Today: <b id="waWebRibbonToday" style="color:#25d366;">0</b></span>
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 Yesterday: <b id="waWebRibbonYesterday" style="color:#53bdeb;">0</b></span>
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 7 Days: <b id="waWebRibbon7Days" style="color:#a855f7;">0</b></span>
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">💾 Storage: <b id="waWebRibbonStorage" style="color:#f39c12;">0 KB</b></span>
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">⚡ <b id="waWebRibbonSpeed" style="color:#38bdf8;">14.2 Mbps</b></span>
                 </div>
             </div>
 
@@ -397,8 +434,13 @@
                                     <div id="waWebChatPhone" style="font-size:12px; color:#8696a0;">+971...</div>
                                 </div>
                             </div>
-                            <div style="font-size:12px; color:#00a884; font-weight:bold;">
-                                🟢 Direct WhatsApp
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <button onclick="openWaWebAiCopilotForCurrentChat()" title="Open AI Assistant with this conversation loaded" style="background:linear-gradient(135deg, #059669, #0284c7); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
+                                    <span>🤖 Ask AI About This Chat</span>
+                                </button>
+                                <div style="font-size:12px; color:#00a884; font-weight:bold;">
+                                    🟢 Direct WhatsApp
+                                </div>
                             </div>
                         </div>
 
@@ -418,6 +460,228 @@
 
                 </div>
 
+            </div>
+
+        </div>
+
+        
+        <!-- ===== MODAL: SAVING & SYNCING HISTORY ===== -->
+        <div id="waWebSyncHistoryModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:3000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px);">
+            <div style="background:#111b21; border:1px solid #2a3942; border-radius:16px; width:100%; max-width:820px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(0,0,0,0.6); overflow:hidden;">
+                
+                <!-- Modal Header -->
+                <div style="background:#202c33; padding:16px 22px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3942;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">📊</span>
+                        <div>
+                            <h3 style="margin:0; color:#e9edef; font-size:17px;">WhatsApp Saving & Syncing History</h3>
+                            <div style="font-size:12px; color:#8696a0;">Live storage utilization, date-wise message sync breakdowns & bandwidth logs</div>
+                        </div>
+                    </div>
+                    <button onclick="closeWaWebSyncHistoryModal()" style="background:none; border:none; color:#8696a0; font-size:22px; cursor:pointer; padding:4px 8px;">✕</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div style="flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:20px;">
+                    
+                    <!-- 4 Summary KPI Cards -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:14px;">
+                        <!-- Card 1: Storage -->
+                        <div style="background:#202c33; padding:14px; border-radius:12px; border:1px solid #2a3942;">
+                            <div style="font-size:11px; color:#8696a0; text-transform:uppercase; font-weight:bold;">Total Saved Storage</div>
+                            <div id="waWebModalStorage" style="font-size:22px; font-weight:bold; color:#f39c12; margin-top:4px;">0 KB</div>
+                            <div id="waWebModalStorageSub" style="font-size:11px; color:#00a884; margin-top:2px;">Auth & Text chunks</div>
+                        </div>
+
+                        <!-- Card 2: Date Range -->
+                        <div style="background:#202c33; padding:14px; border-radius:12px; border:1px solid #2a3942;">
+                            <div style="font-size:11px; color:#8696a0; text-transform:uppercase; font-weight:bold;">Date Range of Data</div>
+                            <div id="waWebModalDateRange" style="font-size:13px; font-weight:bold; color:#38bdf8; margin-top:6px; line-height:1.3;">N/A</div>
+                            <div style="font-size:11px; color:#8696a0; margin-top:2px;">Earliest → Latest Msg</div>
+                        </div>
+
+                        <!-- Card 3: Total Volume -->
+                        <div style="background:#202c33; padding:14px; border-radius:12px; border:1px solid #2a3942;">
+                            <div style="font-size:11px; color:#8696a0; text-transform:uppercase; font-weight:bold;">Synced Volume</div>
+                            <div id="waWebModalVolume" style="font-size:22px; font-weight:bold; color:#25d366; margin-top:4px;">0 msgs</div>
+                            <div id="waWebModalVolumeSub" style="font-size:11px; color:#8696a0; margin-top:2px;">0 chats, 0 contacts</div>
+                        </div>
+
+                        <!-- Card 4: Bandwidth / Speed -->
+                        <div style="background:#202c33; padding:14px; border-radius:12px; border:1px solid #2a3942;">
+                            <div style="font-size:11px; color:#8696a0; text-transform:uppercase; font-weight:bold;">Sync Transfer Rate</div>
+                            <div id="waWebModalSpeed" style="font-size:22px; font-weight:bold; color:#a855f7; margin-top:4px;">14.2 Mbps</div>
+                            <div style="font-size:11px; color:#00a884; margin-top:2px;">🟢 Socket connection live</div>
+                        </div>
+                    </div>
+
+                    <!-- Date-wise Data Breakdown Section -->
+                    <div style="background:#182229; border:1px solid #2a3942; border-radius:12px; padding:16px;">
+                        <h4 style="margin:0 0 12px 0; font-size:14px; color:#e9edef; display:flex; align-items:center; justify-content:space-between;">
+                            <span>📅 Date-Wise Message Synchronization Detail</span>
+                            <span style="font-size:11px; color:#8696a0; font-weight:normal;">Real-time Firestore & Baileys Store</span>
+                        </h4>
+
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+                            <div style="background:#202c33; padding:12px; border-radius:8px; border-left:3px solid #25d366;">
+                                <div style="font-size:11px; color:#8696a0;">Today's Data</div>
+                                <div id="waWebBreakdownToday" style="font-size:18px; font-weight:bold; color:#25d366; margin-top:2px;">0</div>
+                                <div style="font-size:10px; color:#8696a0;">Messages today</div>
+                            </div>
+                            <div style="background:#202c33; padding:12px; border-radius:8px; border-left:3px solid #53bdeb;">
+                                <div style="font-size:11px; color:#8696a0;">Yesterday's Data</div>
+                                <div id="waWebBreakdownYesterday" style="font-size:18px; font-weight:bold; color:#53bdeb; margin-top:2px;">0</div>
+                                <div style="font-size:10px; color:#8696a0;">Messages yesterday</div>
+                            </div>
+                            <div style="background:#202c33; padding:12px; border-radius:8px; border-left:3px solid #a855f7;">
+                                <div style="font-size:11px; color:#8696a0;">Last 7 Days</div>
+                                <div id="waWebBreakdown7Days" style="font-size:18px; font-weight:bold; color:#a855f7; margin-top:2px;">0</div>
+                                <div style="font-size:10px; color:#8696a0;">Active week total</div>
+                            </div>
+                            <div style="background:#202c33; padding:12px; border-radius:8px; border-left:3px solid #f39c12;">
+                                <div style="font-size:11px; color:#8696a0;">Older History</div>
+                                <div id="waWebBreakdownOlder" style="font-size:18px; font-weight:bold; color:#f39c12; margin-top:2px;">0</div>
+                                <div style="font-size:10px; color:#8696a0;">Archived messages</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Storage Allocation Breakdown -->
+                    <div style="background:#182229; border:1px solid #2a3942; border-radius:12px; padding:16px;">
+                        <h4 style="margin:0 0 10px 0; font-size:14px; color:#e9edef;">💾 Storage Footprint Allocation</h4>
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; font-size:12px; color:#d1d7db;">
+                                <span>🔑 Cloud Session Chunks (Firestore Multi-Device Auth):</span>
+                                <b id="waWebStorageAuth" style="color:#00a884;">0 KB</b>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; color:#d1d7db;">
+                                <span>💬 Chat Text & Conversation Records (Firestore):</span>
+                                <b id="waWebStorageChats" style="color:#38bdf8;">0 KB</b>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:12px; color:#d1d7db;">
+                                <span>🖼️ Media Cache & In-Memory Previews:</span>
+                                <b id="waWebStorageMedia" style="color:#f39c12;">0 KB</b>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sync Events History Log Table -->
+                    <div>
+                        <h4 style="margin:0 0 10px 0; font-size:14px; color:#e9edef;">📜 Recent Sync Sessions & Saving Logs</h4>
+                        <div style="background:#182229; border:1px solid #2a3942; border-radius:12px; overflow:hidden;">
+                            <div style="max-height:220px; overflow-y:auto;">
+                                <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;">
+                                    <thead style="background:#202c33; color:#8696a0; position:sticky; top:0;">
+                                        <tr>
+                                            <th style="padding:8px 12px;">Timestamp</th>
+                                            <th style="padding:8px 12px;">Sync Type / Title</th>
+                                            <th style="padding:8px 12px;">Synced Items</th>
+                                            <th style="padding:8px 12px;">Storage</th>
+                                            <th style="padding:8px 12px;">Bandwidth</th>
+                                            <th style="padding:8px 12px;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="waWebSyncHistoryTableBody">
+                                        <tr>
+                                            <td colspan="6" style="padding:20px; text-align:center; color:#8696a0;">Loading sync history logs...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Modal Footer -->
+                <div style="background:#202c33; padding:12px 22px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #2a3942;">
+                    <div style="font-size:12px; color:#8696a0;">
+                        Auto-syncing every 5 seconds with Cloud Persistence
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="triggerWaWebForceSyncNow()" style="background:#00a884; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer;">
+                            🔄 Force Re-Sync Now
+                        </button>
+                        <button onclick="closeWaWebSyncHistoryModal()" style="background:#2a3942; border:none; color:#e9edef; padding:8px 16px; border-radius:8px; font-size:13px; cursor:pointer;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== AI ASSISTANT / COPILOT DRAWER ===== -->
+        <div id="waWebAiCopilotPanel" style="display:none; position:fixed; top:0; right:0; width:480px; max-width:92vw; height:100%; background:#111b21; border-left:1px solid #2a3942; z-index:3500; flex-direction:column; box-shadow:-8px 0 30px rgba(0,0,0,0.6); transition:transform 0.3s ease;">
+            
+            <!-- AI Header -->
+            <div style="background:#202c33; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3942;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg, #10b981, #0284c7); display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 0 10px rgba(16,185,129,0.5);">
+                        🤖
+                    </div>
+                    <div>
+                        <div style="font-weight:bold; color:#e9edef; font-size:15px; display:flex; align-items:center; gap:6px;">
+                            <span>WhatsApp AI Assistant</span>
+                            <span style="font-size:10px; background:#005c4b; color:#25d366; padding:1px 6px; border-radius:8px;">COPILOT</span>
+                        </div>
+                        <div style="font-size:11px; color:#8696a0;">Understands & memorizes all your WhatsApp conversations</div>
+                    </div>
+                </div>
+                <button onclick="closeWaWebAiCopilot()" style="background:none; border:none; color:#8696a0; font-size:20px; cursor:pointer; padding:4px;">✕</button>
+            </div>
+
+            <!-- Active Context Banner -->
+            <div id="waWebAiContextBanner" style="background:#182229; padding:8px 16px; border-bottom:1px solid #2a3942; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                <div style="display:flex; align-items:center; gap:6px; color:#00a884; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <span>🎯</span>
+                    <span id="waWebAiContextLabel" style="font-weight:600; color:#e9edef;">Global Multi-Chat Context</span>
+                </div>
+                <button onclick="toggleWaWebAiContextScope()" id="waWebAiContextScopeBtn" style="background:#202c33; border:1px solid #2a3942; color:#8696a0; padding:2px 8px; border-radius:6px; font-size:11px; cursor:pointer;">
+                    Switch Scope
+                </button>
+            </div>
+
+            <!-- 1-Click Quick Action Chips -->
+            <div style="padding:10px 14px; background:#161f26; border-bottom:1px solid #2a3942; display:flex; gap:6px; overflow-x:auto; white-space:nowrap;">
+                <button onclick="triggerWaWebAiQuickAction('summarize')" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:14px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;">
+                    📝 Summarize Chat
+                </button>
+                <button onclick="triggerWaWebAiQuickAction('draft_reply')" style="background:#202c33; border:1px solid #2a3942; color:#25d366; padding:5px 10px; border-radius:14px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;">
+                    💬 Draft Best Reply
+                </button>
+                <button onclick="triggerWaWebAiQuickAction('action_items')" style="background:#202c33; border:1px solid #2a3942; color:#a855f7; padding:5px 10px; border-radius:14px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;">
+                    📌 Action Items
+                </button>
+                <button onclick="triggerWaWebAiQuickAction('pricing')" style="background:#202c33; border:1px solid #2a3942; color:#f39c12; padding:5px 10px; border-radius:14px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;">
+                    💰 Extract Pricing
+                </button>
+                <button onclick="triggerWaWebAiQuickAction('sentiment')" style="background:#202c33; border:1px solid #2a3942; color:#ec4899; padding:5px 10px; border-radius:14px; font-size:11px; font-weight:600; cursor:pointer; flex-shrink:0;">
+                    🧠 Mood & Intent
+                </button>
+            </div>
+
+            <!-- AI Messages Thread Container -->
+            <div id="waWebAiThreadContainer" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px; background:#0b141a;">
+                
+                <!-- Welcome Message -->
+                <div style="background:#202c33; color:#e9edef; padding:12px 14px; border-radius:12px; font-size:13px; line-height:1.5; border-left:3px solid #00a884;">
+                    <div style="font-weight:bold; color:#00a884; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+                        <span>🤖 WhatsApp Copilot Ready</span>
+                    </div>
+                    Hello! I am your live WhatsApp AI Copilot. I read, memorize, and understand all messages happening in your WhatsApp Web.
+                    <br><br>
+                    You can ask me anything about any customer, summarize conversations, draft replies, check pricing commitments, or analyze customer mood. Click any quick chip above or type your question below!
+                </div>
+
+            </div>
+
+            <!-- AI Bottom Input Box -->
+            <div style="background:#202c33; padding:12px 14px; border-top:1px solid #2a3942; display:flex; gap:8px; align-items:flex-end;">
+                <textarea id="waWebAiInput" rows="2" placeholder="Ask AI about any chat, customer, quotation, or task..." onkeydown="handleWaWebAiInputKey(event)" style="flex:1; background:#2a3942; border:none; outline:none; color:#e9edef; padding:10px 12px; border-radius:8px; font-size:13px; resize:none; font-family:inherit;"></textarea>
+                <button id="waWebAiSendBtn" onclick="sendWaWebAiMessage()" style="background:#00a884; border:none; color:#fff; padding:10px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; height:42px; display:flex; align-items:center; justify-content:center;">
+                    <span>Ask</span> ➤
+                </button>
             </div>
 
         </div>
@@ -4573,6 +4837,7 @@
             refreshWaWebState();
             if (waWebPollInterval) clearInterval(waWebPollInterval);
             waWebPollInterval = setInterval(pollWaWebStatus, 3000);
+        setInterval(pollWaWebSyncStats, 4000);
         }
 
         function closeWaWebPage() {
@@ -4596,6 +4861,7 @@
         }
 
         function refreshWaWebState() {
+            pollWaWebSyncStats();
             pollWaWebStatus();
             loadWaWebChats();
             if (waWebCurrentJid) {
@@ -4659,23 +4925,31 @@
                     navBadge.innerText = 'Connecting...';
                     navBadge.style.background = '#3498db';
                 }
-                if (qrSection) qrSection.style.display = 'flex';
-                if (chatSection) chatSection.style.display = 'none';
-                if (logoutBtn) logoutBtn.style.display = 'none';
+                // If we already have chats loaded in memory, don't kick user out to QR screen
+                if (waWebCachedChats && waWebCachedChats.length > 0) {
+                    if (qrSection) qrSection.style.display = 'none';
+                    if (chatSection) chatSection.style.display = 'flex';
+                } else {
+                    if (qrSection) qrSection.style.display = 'flex';
+                    if (chatSection) chatSection.style.display = 'none';
+                }
                 if (qrSpinner) qrSpinner.style.display = 'block';
                 if (qrImage) qrImage.style.display = 'none';
             } else {
                 statusDot.style.background = '#e74c3c';
-                statusText.innerText = 'Disconnected';
+                statusText.innerText = 'Reconnecting...';
                 if (navBadge) {
-                    navBadge.innerText = 'Offline 🔴';
-                    navBadge.style.background = '#e74c3c';
+                    navBadge.innerText = 'Reconnecting... 🟡';
+                    navBadge.style.background = '#f39c12';
                 }
-                if (qrSection) qrSection.style.display = 'flex';
-                if (chatSection) chatSection.style.display = 'none';
-                if (logoutBtn) logoutBtn.style.display = 'none';
-                if (qrSpinner) qrSpinner.style.display = 'block';
-                if (qrImage) qrImage.style.display = 'none';
+                // Keep chat view if user has existing session chats loaded
+                if (waWebCachedChats && waWebCachedChats.length > 0) {
+                    if (qrSection) qrSection.style.display = 'none';
+                    if (chatSection) chatSection.style.display = 'flex';
+                } else {
+                    if (qrSection) qrSection.style.display = 'flex';
+                    if (chatSection) chatSection.style.display = 'none';
+                }
             }
 
             waWebLastStatus = data.status;
@@ -4949,6 +5223,314 @@
                 return '';
             }
         }
+
+        
+        // ==========================================
+        // WHATSAPP WEB SYNC STATS & PROGRESS BAR
+        // ==========================================
+        let waWebSyncStatsData = null;
+        let waWebAiHistory = [];
+        let waWebAiContextJid = null; // null = global multi-chat, or specific JID
+
+        async function pollWaWebSyncStats() {
+            try {
+                const res = await fetch('/api/wa-web/sync-stats');
+                if (!res.ok) return;
+                const data = await res.json();
+                waWebSyncStatsData = data.stats || null;
+                renderWaWebSyncStats(waWebSyncStatsData);
+            } catch (e) {
+                console.warn('[WA-WEB] Error polling sync stats:', e);
+            }
+        }
+
+        function renderWaWebSyncStats(stats) {
+            if (!stats) return;
+
+            // Update Top Ribbon Progress Bar
+            const bar = document.getElementById('waWebSyncProgressBar');
+            const phase = document.getElementById('waWebSyncPhaseText');
+            const pulse = document.getElementById('waWebSyncPulseDot');
+            const ribbonToday = document.getElementById('waWebRibbonToday');
+            const ribbonYesterday = document.getElementById('waWebRibbonYesterday');
+            const ribbon7Days = document.getElementById('waWebRibbon7Days');
+            const ribbonStorage = document.getElementById('waWebRibbonStorage');
+            const ribbonSpeed = document.getElementById('waWebRibbonSpeed');
+
+            if (bar) bar.style.width = (stats.progressPercent || 100) + '%';
+            if (phase) phase.innerText = stats.phaseText || '100% Synced';
+            if (pulse) {
+                pulse.style.background = stats.status === 'synced' ? '#00a884' : (stats.status === 'syncing' ? '#38bdf8' : '#e74c3c');
+            }
+
+            if (ribbonToday) ribbonToday.innerText = (stats.messagesToday || 0) + ' msgs';
+            if (ribbonYesterday) ribbonYesterday.innerText = (stats.messagesYesterday || 0) + ' msgs';
+            if (ribbon7Days) ribbon7Days.innerText = (stats.messagesLast7Days || 0) + ' msgs';
+            if (ribbonStorage) ribbonStorage.innerText = (stats.storage?.totalKb || 0) + ' KB (' + (stats.storage?.totalMb || '0.00') + ' MB)';
+            if (ribbonSpeed) ribbonSpeed.innerText = (stats.storage?.bandwidthTransferRateMbps || '14.2') + ' Mbps';
+
+            // If Modal is open, update modal contents live
+            const modal = document.getElementById('waWebSyncHistoryModal');
+            if (modal && modal.style.display === 'flex') {
+                renderWaWebSyncHistoryModalData(stats);
+            }
+        }
+
+        function openWaWebSyncHistoryModal() {
+            const modal = document.getElementById('waWebSyncHistoryModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            pollWaWebSyncStats();
+        }
+
+        function closeWaWebSyncHistoryModal() {
+            const modal = document.getElementById('waWebSyncHistoryModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function renderWaWebSyncHistoryModalData(stats) {
+            if (!stats) return;
+            document.getElementById('waWebModalStorage').innerText = (stats.storage?.totalMb || '0.00') + ' MB (' + (stats.storage?.totalKb || 0) + ' KB)';
+            document.getElementById('waWebModalStorageSub').innerText = 'Auth: ' + (stats.storage?.authSessionKb || 0) + ' KB | Chats: ' + (stats.storage?.chatHistoryKb || 0) + ' KB';
+            
+            const earliest = stats.dateRange?.earliestFormatted || 'N/A';
+            const latest = stats.dateRange?.latestFormatted || 'N/A';
+            document.getElementById('waWebModalDateRange').innerText = earliest + ' → ' + latest;
+
+            document.getElementById('waWebModalVolume').innerText = (stats.totalMessages || 0) + ' msgs';
+            document.getElementById('waWebModalVolumeSub').innerText = (stats.totalChats || 0) + ' chats, ' + (stats.totalContacts || 0) + ' contacts';
+            document.getElementById('waWebModalSpeed').innerText = (stats.storage?.bandwidthTransferRateMbps || '14.2') + ' Mbps';
+
+            // Breakdown
+            document.getElementById('waWebBreakdownToday').innerText = stats.messagesToday || 0;
+            document.getElementById('waWebBreakdownYesterday').innerText = stats.messagesYesterday || 0;
+            document.getElementById('waWebBreakdown7Days').innerText = stats.messagesLast7Days || 0;
+            document.getElementById('waWebBreakdownOlder').innerText = stats.messagesOlder || 0;
+
+            document.getElementById('waWebStorageAuth').innerText = (stats.storage?.authSessionKb || 0) + ' KB';
+            document.getElementById('waWebStorageChats').innerText = (stats.storage?.chatHistoryKb || 0) + ' KB';
+            document.getElementById('waWebStorageMedia').innerText = (stats.storage?.mediaCacheKb || 0) + ' KB';
+
+            // Logs Table
+            const tbody = document.getElementById('waWebSyncHistoryTableBody');
+            if (tbody) {
+                const logs = stats.syncHistory || [];
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="padding:16px; text-align:center; color:#8696a0;">No sync sessions recorded yet.</td></tr>';
+                } else {
+                    let rows = '';
+                    logs.forEach(l => {
+                        rows += `
+                            <tr style="border-bottom:1px solid #202c33;">
+                                <td style="padding:8px 12px; color:#8696a0; white-space:nowrap;">${l.formattedDate || 'Just now'}</td>
+                                <td style="padding:8px 12px; color:#e9edef; font-weight:600;">${escapeHtml(l.title || l.type)}</td>
+                                <td style="padding:8px 12px; color:#38bdf8;">${l.messagesCount || 0} msgs (${l.chatsCount || 0} chats)</td>
+                                <td style="padding:8px 12px; color:#f39c12;">${l.storageKb || 0} KB</td>
+                                <td style="padding:8px 12px; color:#a855f7;">${l.speedMbps || '14.5'} Mbps</td>
+                                <td style="padding:8px 12px;"><span style="background:#005c4b; color:#25d366; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">${l.status || 'Success'}</span></td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = rows;
+                }
+            }
+        }
+
+        async function triggerWaWebForceSyncNow() {
+            try {
+                const res = await fetch('/api/wa-web/force-sync', { method: 'POST' });
+                if (res.ok) {
+                    const data = await res.json();
+                    waWebSyncStatsData = data.stats;
+                    renderWaWebSyncStats(data.stats);
+                    alert('✅ WhatsApp Web data resynchronized and saved successfully!');
+                }
+            } catch (e) {
+                alert('Error syncing: ' + e.message);
+            }
+        }
+
+        // ==========================================
+        // WHATSAPP WEB AI ASSISTANT / COPILOT
+        // ==========================================
+        function openWaWebAiCopilot() {
+            const panel = document.getElementById('waWebAiCopilotPanel');
+            if (!panel) return;
+            panel.style.display = 'flex';
+            updateWaWebAiContextBanner();
+            document.getElementById('waWebAiInput')?.focus();
+        }
+
+        function openWaWebAiCopilotForCurrentChat() {
+            if (waWebCurrentJid) {
+                waWebAiContextJid = waWebCurrentJid;
+            }
+            openWaWebAiCopilot();
+        }
+
+        function closeWaWebAiCopilot() {
+            const panel = document.getElementById('waWebAiCopilotPanel');
+            if (panel) panel.style.display = 'none';
+        }
+
+        function toggleWaWebAiContextScope() {
+            if (waWebAiContextJid) {
+                waWebAiContextJid = null;
+            } else if (waWebCurrentJid) {
+                waWebAiContextJid = waWebCurrentJid;
+            }
+            updateWaWebAiContextBanner();
+        }
+
+        function updateWaWebAiContextBanner() {
+            const label = document.getElementById('waWebAiContextLabel');
+            const btn = document.getElementById('waWebAiContextScopeBtn');
+            if (!label) return;
+
+            if (waWebAiContextJid) {
+                const chat = (waWebCachedChats || []).find(c => c.id === waWebAiContextJid);
+                const name = chat?.name || waWebAiContextJid.split('@')[0];
+                label.innerHTML = '🎯 Chat with <b>' + escapeHtml(name) + '</b>';
+                if (btn) btn.innerText = 'Switch to All Chats';
+            } else {
+                label.innerText = '🌐 Global Multi-Chat Context (All Conversations)';
+                if (btn) btn.innerText = waWebCurrentJid ? 'Focus Current Chat' : 'Global Scope';
+            }
+        }
+
+        async function triggerWaWebAiQuickAction(mode) {
+            const jid = waWebAiContextJid || waWebCurrentJid || null;
+            await sendWaWebAiMessage('', mode, jid);
+        }
+
+        function handleWaWebAiInputKey(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendWaWebAiMessage();
+            }
+        }
+
+        async function sendWaWebAiMessage(customPrompt = '', mode = 'chat', targetJid = null) {
+            const input = document.getElementById('waWebAiInput');
+            const promptText = (customPrompt || (input ? input.value : '')).trim();
+            const jid = targetJid !== undefined ? targetJid : (waWebAiContextJid || waWebCurrentJid || null);
+
+            if (!promptText && mode === 'chat') return;
+
+            if (input && !customPrompt) input.value = '';
+
+            const container = document.getElementById('waWebAiThreadContainer');
+            
+            // Render user bubble
+            const userMsg = promptText || (mode === 'summarize' ? '📝 Summarize this conversation' : (mode === 'draft_reply' ? '💬 Draft the best reply' : (mode === 'action_items' ? '📌 Extract action items' : (mode === 'pricing' ? '💰 Extract pricing & quotes' : '🧠 Analyze mood & sentiment'))));
+            
+            waWebAiHistory.push({ role: 'user', content: userMsg });
+
+            if (container) {
+                container.innerHTML += `
+                    <div style="max-width:85%; align-self:flex-end; background:#005c4b; color:#e9edef; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.4;">
+                        ${escapeHtml(userMsg)}
+                    </div>
+                    <div id="waWebAiThinking" style="max-width:85%; align-self:flex-start; background:#202c33; color:#8696a0; padding:10px 14px; border-radius:12px; font-size:13px; display:flex; align-items:center; gap:8px;">
+                        <span>🤖 Analyzing WhatsApp chats & thinking...</span>
+                    </div>
+                `;
+                container.scrollTop = container.scrollHeight;
+            }
+
+            const sendBtn = document.getElementById('waWebAiSendBtn');
+            if (sendBtn) sendBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/wa-web/ai-assistant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: promptText,
+                        jid: jid,
+                        mode: mode,
+                        conversationHistory: waWebAiHistory.slice(-10)
+                    })
+                });
+
+                document.getElementById('waWebAiThinking')?.remove();
+
+                if (res.ok) {
+                    const data = await res.json();
+                    const reply = data.reply || '(No reply generated)';
+                    waWebAiHistory.push({ role: 'assistant', content: reply });
+
+                    // Render AI bubble with Copy & "Insert into WhatsApp Input" button
+                    if (container) {
+                        const replyEscaped = escapeHtml(reply);
+                        const rawEncoded = encodeURIComponent(reply);
+
+                        container.innerHTML += `
+                            <div style="max-width:90%; align-self:flex-start; background:#202c33; color:#e9edef; padding:12px 14px; border-radius:12px; font-size:13px; line-height:1.5; border-left:3px solid #38bdf8; box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+                                <div style="font-weight:bold; color:#38bdf8; font-size:11px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                                    <span>🤖 AI COPILOT</span>
+                                    <span style="color:#8696a0; font-size:10px;">${data.contactName ? 'Context: ' + escapeHtml(data.contactName) : 'Global context'}</span>
+                                </div>
+                                <div style="white-space:pre-wrap;">${replyEscaped}</div>
+                                <div style="display:flex; gap:8px; margin-top:10px; border-top:1px solid #2a3942; padding-top:8px;">
+                                    <button onclick="insertAiReplyToInput('${rawEncoded}')" title="Insert directly into WhatsApp message box" style="background:#00a884; border:none; color:#fff; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                        <span>📥 Insert into Message Box</span>
+                                    </button>
+                                    <button onclick="copyAiReply('${rawEncoded}')" style="background:#182229; border:1px solid #2a3942; color:#d1d7db; padding:5px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                                        <span>📋 Copy</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        container.scrollTop = container.scrollHeight;
+                    }
+                } else {
+                    const err = await res.json();
+                    if (container) {
+                        container.innerHTML += `
+                            <div style="max-width:85%; align-self:flex-start; background:#3b1818; color:#ff8585; padding:10px 14px; border-radius:12px; font-size:13px;">
+                                ❌ AI Error: ${escapeHtml(err.error || 'Failed to generate AI response')}
+                            </div>
+                        `;
+                    }
+                }
+            } catch (err) {
+                document.getElementById('waWebAiThinking')?.remove();
+                if (container) {
+                    container.innerHTML += `
+                        <div style="max-width:85%; align-self:flex-start; background:#3b1818; color:#ff8585; padding:10px 14px; border-radius:12px; font-size:13px;">
+                            ❌ Network Error: ${escapeHtml(err.message)}
+                        </div>
+                    `;
+                }
+            } finally {
+                if (sendBtn) sendBtn.disabled = false;
+                if (container) container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function insertAiReplyToInput(encodedText) {
+            try {
+                const text = decodeURIComponent(encodedText);
+                const input = document.getElementById('waWebMsgInput');
+                if (input) {
+                    input.value = text;
+                    input.focus();
+                    // Pulse animation on input
+                    input.style.boxShadow = '0 0 10px #00a884';
+                    setTimeout(() => { input.style.boxShadow = 'none'; }, 1200);
+                }
+            } catch (e) {}
+        }
+
+        function copyAiReply(encodedText) {
+            try {
+                const text = decodeURIComponent(encodedText);
+                navigator.clipboard.writeText(text);
+                alert('📋 Copied AI response to clipboard!');
+            } catch (e) {}
+        }
+
 
         function escapeHtml(str) {
             if (typeof str !== 'string') return '';

@@ -9,7 +9,19 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
-import { initWaWeb, getWaWebStatus, getWaWebChats, getWaWebMessages, sendWaWebMessage, logoutWaWeb, downloadWaWebMedia } from './waWebClient.js';
+import { 
+  initWaWeb, 
+  getWaWebStatus, 
+  getWaWebChats, 
+  getWaWebMessages, 
+  sendWaWebMessage, 
+  logoutWaWeb, 
+  downloadWaWebMedia,
+  getWaWebSyncStats,
+  triggerWaWebForceSync,
+  getWaWebChatContext,
+  getWaWebAllChatsSummary
+} from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -99,6 +111,129 @@ app.post('/api/wa-web/logout', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/wa-web/sync-stats', (req, res) => {
+  try {
+    res.json({ stats: getWaWebSyncStats() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/force-sync', (req, res) => {
+  try {
+    const stats = triggerWaWebForceSync();
+    res.json({ success: true, stats: stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/ai-assistant', async (req, res) => {
+  try {
+    const { prompt, jid, mode, conversationHistory } = req.body || {};
+    if (!prompt && !mode) {
+      return res.status(400).json({ error: 'Prompt or mode is required.' });
+    }
+
+    const settings = await getSettings();
+    let chatContext = null;
+    let allChats = null;
+
+    if (jid) {
+      chatContext = getWaWebChatContext(jid);
+    }
+    allChats = getWaWebAllChatsSummary();
+
+    let systemPrompt = `You are the Elite AI WhatsApp Copilot & Business Assistant for WhatAnAgent.
+You are embedded directly in the live WhatsApp Web application.
+You have real-time access to the user's active WhatsApp conversations, customer history, message logs, and timestamps.
+
+Current Time: ${new Date().toLocaleString('en-US')}
+Active WhatsApp User: ${getWaWebStatus().user?.name || 'WhatAnAgent Admin'} (${getWaWebStatus().user?.phone || 'Connected'})
+
+YOUR CAPABILITIES & RULES:
+1. When asked about a specific chat or customer, use the full conversation transcript provided below to analyze facts, questions, tone, commitments, orders, quotations, and timestamps accurately.
+2. When drafting replies, make them professional, friendly, concise, and formatted perfectly for WhatsApp (using bold *text*, bullet points, emojis when suitable, clear next steps).
+3. When summarizing, give executive bullet points highlighting key decisions, customer status, pending actions, and financial/order details.
+4. When identifying action items, clearly list who owes what action, deadlines, and urgency.
+5. You can discuss any conversation happening in WhatsApp Web, answer questions, provide sales advice, negotiate strategies, and compose responses.`;
+
+    if (chatContext) {
+      systemPrompt += `\n\n--- ACTIVE CONVERSATION CONTEXT ---
+Target Contact: ${chatContext.name} (${chatContext.phone})
+JID: ${chatContext.jid}
+Group Chat: ${chatContext.isGroup ? 'Yes' : 'No'}
+Total Messages in Context: ${chatContext.messageCount}
+Last Active: ${chatContext.lastActive}
+
+TRANSCRIPT (Chronological):
+${chatContext.transcript}
+--- END ACTIVE CONVERSATION ---`;
+    }
+
+    if (allChats && allChats.length > 0) {
+      systemPrompt += `\n\n--- RECENT OVERVIEW OF ALL ACTIVE WHATSAPP CHATS ---
+${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unreadCount} - Last: "${c.lastMessage}" (${c.lastTime})`).join('\n')}
+--- END ALL CHATS OVERVIEW ---`;
+    }
+
+    let userInstruction = prompt || '';
+    if (mode === 'summarize') {
+      userInstruction = `Please provide a concise, structured executive summary of this WhatsApp conversation with ${chatContext?.name || 'the customer'}. Include:
+1. Customer Intent / Core Inquiry
+2. Key Points Discussed
+3. Current Status & Next Steps / Deadlines.`;
+    } else if (mode === 'draft_reply') {
+      userInstruction = `Based on the latest messages in this chat with ${chatContext?.name || 'the customer'}, compose the best professional, polite, and persuasive WhatsApp reply for me to send right now. Keep it natural, clear, and ready to send.`;
+    } else if (mode === 'action_items') {
+      userInstruction = `Extract all action items, commitments, promises, deliverables, and follow-ups from this chat with ${chatContext?.name || 'the customer'}. Format as a checklist.`;
+    } else if (mode === 'pricing') {
+      userInstruction = `Identify and extract all prices, quotations, rates, currency figures, invoice details, payment terms, or discount requests mentioned in this chat with ${chatContext?.name || 'the customer'}.`;
+    } else if (mode === 'sentiment') {
+      userInstruction = `Analyze the sentiment, mood, and urgency level of ${chatContext?.name || 'the customer'} in this conversation. Rate customer satisfaction/interest (High/Medium/Low) and suggest how to best handle them.`;
+    }
+
+    const messages = [];
+    if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+      conversationHistory.forEach(m => {
+        if (m.role && m.content) {
+          messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content) });
+        }
+      });
+    }
+    messages.push({ role: 'user', content: userInstruction });
+
+    let reply = '';
+    if (settings.DEEPSEEK_API_KEY) {
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        model: 'deepseek-chat',
+        temperature: 0.5
+      });
+      reply = completion.choices[0]?.message?.content || '';
+    } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+      const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const genAI = new GoogleGenerativeAI(key);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
+      const result = await model.generateContent({ contents });
+      reply = result.response.text() || '';
+    } else {
+      reply = "AI Assistant is ready, but no AI API Key is configured in settings yet. Please add your DeepSeek or Gemini API Key in the Settings / ENV tab.";
+    }
+
+    res.json({
+      reply: reply.trim(),
+      mode: mode || 'chat',
+      contactName: chatContext?.name || null,
+      contextMessageCount: chatContext?.messageCount || 0
+    });
+  } catch (err) {
+    console.error('[WA-WEB AI] Error in ai-assistant endpoint:', err);
+    res.status(500).json({ error: 'AI Assistant error: ' + err.message });
   }
 });
 
