@@ -194,11 +194,12 @@
                 document.getElementById('appContainer').style.display = 'block';
                 document.getElementById('profileEmail').innerText = user.email;
                 document.getElementById('profileUid').innerText = user.uid;
-                loadKnowledge();
-                loadContacts();
-                loadEnv();
-                loadFAQs();
-                loadProducts();
+                if (typeof loadKnowledge === 'function') loadKnowledge();
+                if (typeof loadContacts === 'function') loadContacts();
+                if (typeof loadEnv === 'function') loadEnv();
+                if (typeof loadFAQs === 'function') loadFAQs();
+                if (typeof loadProducts === 'function') loadProducts();
+                if (typeof loadWaWebKnowledgeBase === 'function') loadWaWebKnowledgeBase();
             } else {
                 document.getElementById('authContainer').style.display = 'flex';
                 document.getElementById('appContainer').style.display = 'none';
@@ -5390,7 +5391,7 @@
             }
         }
 
-        function selectWaWebChat(jid, name, phone) {
+        async function selectWaWebChat(jid, name, phone) {
             waWebCurrentJid = jid;
             
             document.getElementById('waWebEmptyPlaceholder').style.display = 'none';
