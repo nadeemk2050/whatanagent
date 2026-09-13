@@ -20,7 +20,11 @@ import {
   getWaWebSyncStats,
   triggerWaWebForceSync,
   getWaWebChatContext,
-  getWaWebAllChatsSummary
+  getWaWebAllChatsSummary,
+  deleteWaWebSingleMessage,
+  clearWaWebChat,
+  deleteWaWebChat,
+  updateWaWebContactName
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -552,6 +556,52 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     messages.slice(-50).forEach(m => {
       dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: sanitizeText(m.text) });
     });
+ 
+
+app.post('/api/wa-web/message/delete', async (req, res) => {
+  try {
+    const { jid, msgId } = req.body || {};
+    if (!jid || !msgId) return res.status(400).json({ error: 'Missing jid or msgId' });
+    const result = await deleteWaWebSingleMessage(jid, msgId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/chat/clear', async (req, res) => {
+  try {
+    const { jid } = req.body || {};
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    const result = await clearWaWebChat(jid);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/chat/delete', async (req, res) => {
+  try {
+    const { jid } = req.body || {};
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    const result = await deleteWaWebChat(jid);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/contact/update', async (req, res) => {
+  try {
+    const { jid, name } = req.body || {};
+    if (!jid || !name) return res.status(400).json({ error: 'Missing jid or name' });
+    const result = await updateWaWebContactName(jid, name);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
     let finalReply = "";
 

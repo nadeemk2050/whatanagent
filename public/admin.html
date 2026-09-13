@@ -434,11 +434,20 @@
                                     <div id="waWebChatPhone" style="font-size:12px; color:#8696a0;">+971...</div>
                                 </div>
                             </div>
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <button onclick="openWaWebAiCopilotForCurrentChat()" title="Open AI Assistant with this conversation loaded" style="background:linear-gradient(135deg, #059669, #0284c7); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
-                                    <span>🤖 Ask AI About This Chat</span>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <button onclick="promptEditWaWebContactName()" title="Edit Contact Name" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <span>✏️ Edit Name</span>
                                 </button>
-                                <div style="font-size:12px; color:#00a884; font-weight:bold;">
+                                <button onclick="confirmClearWaWebChat()" title="Clear all messages in this conversation (Instantly clears from Firebase & WhatsApp)" style="background:#202c33; border:1px solid #e74c3c; color:#e74c3c; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <span>🗑️ Clear Chat</span>
+                                </button>
+                                <button onclick="confirmDeleteWaWebChat()" title="Delete entire conversation permanently" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <span>❌ Delete Chat</span>
+                                </button>
+                                <button onclick="openWaWebAiCopilotForCurrentChat()" title="Open AI Assistant with this conversation loaded" style="background:linear-gradient(135deg, #059669, #0284c7); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
+                                    <span>🤖 Ask AI</span>
+                                </button>
+                                <div style="font-size:11px; color:#00a884; font-weight:bold; background:#182229; padding:4px 8px; border-radius:12px; border:1px solid #2a3942;">
                                     🟢 Direct WhatsApp
                                 </div>
                             </div>
@@ -5123,12 +5132,17 @@
                 }
 
                 html += `
-                    <div style="max-width:75%; align-self:${alignSelf}; background:${bubbleBg}; color:#e9edef; padding:8px 12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.2); word-break:break-word; position:relative; font-size:14px; line-height:1.4;">
+                    <div class="wa-msg-bubble" style="max-width:75%; align-self:${alignSelf}; background:${bubbleBg}; color:#e9edef; padding:8px 12px; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.2); word-break:break-word; position:relative; font-size:14px; line-height:1.4; group;">
                         ${mediaHtml}
                         <div style="white-space:pre-wrap;">${escapeHtml(m.text || '')}</div>
-                        <div style="display:flex; justify-content:flex-end; align-items:center; gap:4px; margin-top:4px; font-size:11px; color:#8696a0;">
-                            <span>${timeStr}</span>
-                            ${isMe ? '<span style="color:#53bdeb; font-weight:bold;">✓✓</span>' : ''}
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px; font-size:11px; color:#8696a0;">
+                            <button onclick="confirmDeleteWaWebMessage('${escapeHtml(m.id)}')" title="Delete this message" style="background:none; border:none; color:#8696a0; cursor:pointer; font-size:11px; padding:0 2px; opacity:0.6; transition:opacity 0.2s;" onmouseover="this.style.opacity='1'; this.style.color='#e74c3c';" onmouseout="this.style.opacity='0.6'; this.style.color='#8696a0';">
+                                🗑️
+                            </button>
+                            <div style="display:flex; align-items:center; gap:4px;">
+                                <span>${timeStr}</span>
+                                ${isMe ? '<span style="color:#53bdeb; font-weight:bold;">✓✓</span>' : ''}
+                            </div>
                         </div>
                     </div>
                 `;

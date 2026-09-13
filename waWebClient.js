@@ -869,7 +869,85 @@ export async function initWaWeb(db = null) {
     });
 
   } catch (err) {
-    console.error('[WA-WEB] Initialization error:', err);
+    console.error('[WA-WEB] Initialization error:', err); 
+
+    // 5. Real-time Live Deletion from Mobile WhatsApp (Sync mobile deletions instantly)
+    sock.ev.on('messages.delete', (item) => {
+      try {
+        console.log('[WA-WEB] Live message deletion received from WhatsApp:', item);
+        if (item.keys && Array.isArray(item.keys)) {
+          for (const k of item.keys) {
+            const jid = k.remoteJid;
+            const chat = waWebState.chats.get(jid);
+            if (chat && chat.messages) {
+              chat.messages = chat.messages.filter(m => m.id !== k.id);
+              if (chat.messages.length > 0) {
+                const last = chat.messages[chat.messages.length - 1];
+                chat.lastMessage = last.text || '';
+                chat.timestamp = last.timestamp || chat.timestamp;
+              } else {
+                chat.lastMessage = '';
+              }
+            }
+          }
+        } else if (item.all && item.jid) {
+          const chat = waWebState.chats.get(item.jid);
+          if (chat) {
+            chat.messages = [];
+            chat.lastMessage = '';
+          }
+        }
+        scheduleHistorySaveToFirestore();
+        calculateSyncStats();
+      } catch (err) {
+        console.error('[WA-WEB] Error handling messages.delete:', err);
+      }
+    });
+
+    // 6. Real-time Chat Deletion from Mobile WhatsApp
+    sock.ev.on('chats.delete', (deletedJids) => {
+      try {
+        console.log('[WA-WEB] Live chat deletion received from WhatsApp:', deletedJids);
+        if (Array.isArray(deletedJids)) {
+          for (const jid of deletedJids) {
+            waWebState.chats.delete(jid);
+            if (globalDb) {
+              const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+              deleteDoc(doc(globalDb, "waWebChatHistory", docId)).catch(() => {});
+            }
+          }
+          calculateSyncStats();
+        }
+      } catch (err) {
+        console.error('[WA-WEB] Error handling chats.delete:', err);
+      }
+    });
+
+    // 7. Real-time Chat Updates & Clears from Mobile WhatsApp
+    sock.ev.on('chats.update', (updates) => {
+      try {
+        if (Array.isArray(updates)) {
+          for (const u of updates) {
+            if (!u.id) continue;
+            const chat = waWebState.chats.get(u.id);
+            if (chat) {
+              if (u.unreadCount !== undefined) chat.unreadCount = u.unreadCount;
+              if (u.name) chat.name = u.name;
+              if (u.conversationTimestamp) chat.timestamp = Number(u.conversationTimestamp) * 1000;
+              if (u.clear) {
+                chat.messages = [];
+                chat.lastMessage = '';
+              }
+            }
+          }
+          scheduleHistorySaveToFirestore();
+          calculateSyncStats();
+        }
+      } catch (err) {
+        console.error('[WA-WEB] Error handling chats.update:', err);
+      }
+    });
+
     waWebState.status = 'disconnected';
     waWebState.error = err.message;
     isInitializing = false;
@@ -1114,4 +1192,126 @@ export function getWaWebAllChatsSummary() {
     lastTime: c.timestamp ? new Date(c.timestamp).toLocaleString('en-US') : 'N/A',
     totalMessages: (c.messages || []).length
   }));
+}
+
+// Helper: Delete a single message (In app + WhatsApp socket + Firestore)
+export async function deleteWaWebSingleMessage(jid, msgId) {
+  const chat = waWebState.chats.get(jid);
+  if (chat && chat.messages) {
+    const targetMsg = chat.messages.find(m => m.id === msgId);
+    chat.messages = chat.messages.filter(m => m.id !== msgId);
+    if (chat.messages.length > 0) {
+      const last = chat.messages[chat.messages.length - 1];
+      chat.lastMessage = last.text || '';
+    } else {
+      chat.lastMessage = '';
+    }
+
+    // Try sending revocation to WhatsApp socket if connected
+    if (sock && waWebState.status === 'connected') {
+      try {
+        await sock.sendMessage(jid, {
+          delete: {
+            remoteJid: jid,
+            fromMe: targetMsg ? targetMsg.fromMe : true,
+            id: msgId,
+            participant: undefined
+          }
+        });
+      } catch (e) {
+        console.warn('[WA-WEB] Could not revoke on socket:', e.message);
+      }
+    }
+
+    scheduleHistorySaveToFirestore();
+    calculateSyncStats();
+    return { success: true };
+  }
+  return { success: false, error: 'Message not found' };
+}
+
+// Helper: Clear all messages in a chat (In app + WhatsApp socket + Firestore)
+export async function clearWaWebChat(jid) {
+  const chat = waWebState.chats.get(jid);
+  if (chat) {
+    chat.messages = [];
+    chat.lastMessage = '';
+    
+    // Attempt WhatsApp socket chatModify clear
+    if (sock && waWebState.status === 'connected') {
+      try {
+        await sock.chatModify({
+          clear: {
+            messages: [{ id: 'all', fromMe: true, timestamp: Date.now() }]
+          }
+        }, jid);
+      } catch (e) {
+        console.warn('[WA-WEB] Socket clear chat note:', e.message);
+      }
+    }
+
+    if (globalDb) {
+      const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(globalDb, "waWebChatHistory", docId), {
+        id: jid,
+        messages: [],
+        lastMessage: '',
+        updatedAt: Date.now()
+      }, { merge: true });
+    }
+
+    scheduleHistorySaveToFirestore();
+    calculateSyncStats();
+    return { success: true };
+  }
+  return { success: false, error: 'Chat not found' };
+}
+
+// Helper: Delete entire conversation (In app + WhatsApp socket + Firestore)
+export async function deleteWaWebChat(jid) {
+  waWebState.chats.delete(jid);
+  
+  if (sock && waWebState.status === 'connected') {
+    try {
+      await sock.chatModify({ delete: true }, jid);
+    } catch (e) {
+      console.warn('[WA-WEB] Socket delete chat note:', e.message);
+    }
+  }
+
+  if (globalDb) {
+    const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+    await deleteDoc(doc(globalDb, "waWebChatHistory", docId)).catch(() => {});
+  }
+
+  scheduleHistorySaveToFirestore();
+  calculateSyncStats();
+  return { success: true };
+}
+
+// Helper: Update contact name (In app memory + Firestore appData/contacts)
+export async function updateWaWebContactName(jid, newName) {
+  if (!jid || !newName) return { success: false, error: 'Missing parameters' };
+  const cleanPhone = jid.split('@')[0].split(':')[0];
+  registerContact({ id: jid, name: newName });
+  
+  const chat = waWebState.chats.get(jid);
+  if (chat) chat.name = newName;
+
+  if (globalDb) {
+    try {
+      await setDoc(doc(globalDb, "appData", "contacts"), {
+        [cleanPhone]: {
+          manualName: newName,
+          phone: cleanPhone,
+          updatedAt: Date.now()
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[WA-WEB] Error persisting contact name to Firestore:', e.message);
+    }
+  }
+
+  scheduleHistorySaveToFirestore();
+  return { success: true, name: newName };
 }
