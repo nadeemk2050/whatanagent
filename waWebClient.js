@@ -57,6 +57,31 @@ export const waWebState = {
   }
 };
 
+
+// Dedicated WhatsApp Web AI Knowledge Base & Auto-Pilot State
+export let waWebKnowledgeBase = {
+  autoReplyEnabled: false,
+  autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
+  cooldownSeconds: 30,
+  humanHandoverKeywords: 'human, agent, urgent, owner, speak to person, call me',
+  systemPromptInstructions: `You are the Official WhatsApp AI Business Assistant for WhatAnAgent.
+Your job is to assist customers, answer product/service inquiries, clarify pricing/payment terms, and take orders professionally.
+Always keep messages concise, courteous, and styled for WhatsApp (using bold *text*, bullet points, and appropriate emojis).
+Strictly adhere to the business knowledge, FAQs, and product catalog below.`,
+  greetingTemplate: 'Hello! Thank you for contacting us on WhatsApp. How can we help you today?',
+  faqs: [
+    { question: 'What are your working / delivery hours?', answer: 'We are active from Monday to Saturday, 9:00 AM to 7:00 PM.' },
+    { question: 'How can I place an order or get an invoice?', answer: 'You can share your required items and quantities right here, and we will prepare your invoice immediately.' },
+    { question: 'What payment methods do you accept?', answer: 'We accept Bank Wire Transfer, Cash on Delivery, and Online Card Payments.' }
+  ],
+  productsCatalog: [
+    { name: 'Standard Wholesale Supply', price: 'Market quotation', description: 'Bulk delivery available with immediate dispatch.' }
+  ],
+  customKnowledgeText: 'Business Overview:\n- We provide prompt logistics, wholesale goods, and transparent invoicing.\n- Deliveries are dispatched within 24-48 hours upon confirmation.'
+};
+
+const waWebAutoReplyCooldown = new Map(); // jid -> timestamp
+
 // Store raw messages temporarily for on-demand media downloads
 const rawMessagesMap = new Map(); // `${jid}_${msgId}` -> msg
 
@@ -591,6 +616,22 @@ function scheduleHistorySaveToFirestore() {
   }, 5000);
 }
 
+
+// Restore dedicated WhatsApp Web Knowledge Base from Firestore
+async function restoreKnowledgeBaseFromFirestore(db) {
+  if (!db) return;
+  try {
+    const snap = await getDoc(doc(db, "appData", "waWebKnowledgeBase"));
+    if (snap.exists()) {
+      const data = snap.data();
+      waWebKnowledgeBase = { ...waWebKnowledgeBase, ...data };
+      console.log('[WA-WEB KB] Loaded dedicated WhatsApp Web AI Knowledge Base from Firestore');
+    }
+  } catch (err) {
+    console.warn('[WA-WEB KB] Error restoring knowledge base from Firestore:', err.message);
+  }
+}
+
 // Restore text-only chat history from Firestore on startup
 async function restoreHistoryFromFirestore(db) {
   if (!db) return;
@@ -641,6 +682,7 @@ export async function initWaWeb(db = null) {
     // 1. Restore previous session auth & text history from Firestore
     await restoreSessionFromFirestore(globalDb);
     await restoreHistoryFromFirestore(globalDb);
+    await restoreKnowledgeBaseFromFirestore(globalDb);
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     
@@ -863,6 +905,57 @@ export async function initWaWeb(db = null) {
       try {
         if (!m.messages || m.messages.length === 0) return;
         m.messages.forEach(msg => upsertMessageToChat(msg, false));
+
+        // Auto-Pilot AI Bot check for incoming customer messages
+        if (waWebKnowledgeBase.autoReplyEnabled && sock && waWebState.status === 'connected') {
+          m.messages.forEach(async (msg) => {
+            try {
+              if (msg.key.fromMe) return;
+              const remoteJid = msg.key.remoteJid;
+              if (!remoteJid || remoteJid === 'status@broadcast') return;
+
+              const isGroup = remoteJid.endsWith('@g.us');
+              if (waWebKnowledgeBase.autoReplyScope === 'direct_only' && isGroup) return;
+              if (waWebKnowledgeBase.autoReplyScope === 'groups_only' && !isGroup) return;
+
+              const { text } = parseMessageContent(msg);
+              if (!text || text.trim() === '') return;
+
+              // Check human handover
+              const lower = text.toLowerCase();
+              const handoverWords = (waWebKnowledgeBase.humanHandoverKeywords || '').toLowerCase().split(',').map(w => w.trim()).filter(Boolean);
+              const isHandover = handoverWords.some(w => lower.includes(w));
+              if (isHandover) {
+                console.log('[WA-WEB AUTO-REPLY] Human handover keyword detected from ' + remoteJid);
+                return;
+              }
+
+              // Check cooldown
+              const lastTime = waWebAutoReplyCooldown.get(remoteJid) || 0;
+              const cooldownMs = (waWebKnowledgeBase.cooldownSeconds || 30) * 1000;
+              if (Date.now() - lastTime < cooldownMs) {
+                console.log('[WA-WEB AUTO-REPLY] Skipping auto-reply due to cooldown (' + remoteJid + ')');
+                return;
+              }
+
+              waWebAutoReplyCooldown.set(remoteJid, Date.now());
+
+              // Trigger AI auto-reply in background after 2 second human-like delay
+              setTimeout(async () => {
+                try {
+                  const replyText = await generateWaWebAutoBotReply(remoteJid, text);
+                  if (replyText && replyText.trim()) {
+                    await sendWaWebMessage(remoteJid, replyText.trim());
+                    console.log('[WA-WEB AUTO-REPLY] 🤖 Auto-replied to ' + remoteJid);
+                  }
+                } catch (e) {
+                  console.warn('[WA-WEB AUTO-REPLY] Failed to auto-reply:', e.message);
+                }
+              }, 2000);
+            } catch (e) {}
+          });
+        }
+
       } catch (err) {
         console.error('[WA-WEB] Error in messages.upsert:', err);
       }
@@ -1314,4 +1407,97 @@ export async function updateWaWebContactName(jid, newName) {
 
   scheduleHistorySaveToFirestore();
   return { success: true, name: newName };
+}
+
+// Build complete system knowledge prompt
+export function buildWaWebKnowledgeSystemPrompt() {
+  const kb = waWebKnowledgeBase;
+  let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
+  
+  if (kb.customKnowledgeText && kb.customKnowledgeText.trim()) {
+    prompt += '--- BUSINESS BACKGROUND & POLICIES ---\n' + kb.customKnowledgeText.trim() + '\n\n';
+  }
+
+  if (Array.isArray(kb.faqs) && kb.faqs.length > 0) {
+    prompt += '--- FREQUENTLY ASKED QUESTIONS (FAQS) ---\n';
+    kb.faqs.forEach((f, i) => {
+      if (f.question && f.answer) {
+        prompt += 'Q' + (i + 1) + ': ' + f.question + '\nA: ' + f.answer + '\n\n';
+      }
+    });
+  }
+
+  if (Array.isArray(kb.productsCatalog) && kb.productsCatalog.length > 0) {
+    prompt += '--- PRODUCT & PRICING CATALOG ---\n';
+    kb.productsCatalog.forEach((p, i) => {
+      if (p.name) {
+        prompt += (i + 1) + '. ' + p.name + (p.price ? ' - Price: ' + p.price : '') + (p.description ? ' (' + p.description + ')' : '') + '\n';
+      }
+    });
+    prompt += '\n';
+  }
+
+  return prompt;
+}
+
+// Helper to generate auto-reply using database AI keys
+export async function generateWaWebAutoBotReply(jid, customerMessage) {
+  if (!globalDb) return null;
+  try {
+    const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
+    const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+    
+    const chatContext = getWaWebChatContext(jid);
+    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt();
+
+    const systemPrompt = knowledgePrompt + `\n--- CONVERSATION CONTEXT ---
+Customer Name: ${chatContext?.name || 'Customer'}
+Phone / JID: ${jid}
+Recent conversation transcript:
+${chatContext?.transcript || customerMessage}
+--- END CONTEXT ---
+Task: Compose a natural, professional WhatsApp auto-reply to the customer's message. Do not repeat greeting if already chatting.`;
+
+    if (settings.DEEPSEEK_API_KEY) {
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 45000 });
+      const comp = await openai.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: customerMessage }
+        ],
+        model: 'deepseek-chat',
+        temperature: 0.4
+      });
+      return comp.choices[0]?.message?.content || null;
+    } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
+      return res.response.text() || null;
+    }
+  } catch (err) {
+    console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);
+  }
+  return null;
+}
+
+// Get Knowledge Base
+export function getWaWebKnowledgeBase() {
+  return waWebKnowledgeBase;
+}
+
+// Save Knowledge Base
+export async function saveWaWebKnowledgeBase(newKnowledge) {
+  waWebKnowledgeBase = { ...waWebKnowledgeBase, ...newKnowledge };
+  if (globalDb) {
+    try {
+      await setDoc(doc(globalDb, "appData", "waWebKnowledgeBase"), waWebKnowledgeBase, { merge: true });
+      console.log('[WA-WEB KB] Successfully saved WhatsApp Web Knowledge Base to Firestore');
+    } catch (e) {
+      console.error('[WA-WEB KB] Error saving to Firestore:', e);
+    }
+  }
+  return waWebKnowledgeBase;
 }

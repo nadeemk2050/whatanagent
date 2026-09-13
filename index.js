@@ -24,7 +24,10 @@ import {
   deleteWaWebSingleMessage,
   clearWaWebChat,
   deleteWaWebChat,
-  updateWaWebContactName
+  updateWaWebContactName,
+  getWaWebKnowledgeBase,
+  saveWaWebKnowledgeBase,
+  buildWaWebKnowledgeSystemPrompt
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -117,6 +120,7 @@ app.post('/api/wa-web/logout', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get('/api/wa-web/sync-stats', (req, res) => {
   try {
     res.json({ stats: getWaWebSyncStats() });
@@ -129,6 +133,112 @@ app.post('/api/wa-web/force-sync', (req, res) => {
   try {
     const stats = triggerWaWebForceSync();
     res.json({ success: true, stats: stats });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/message/delete', async (req, res) => {
+  try {
+    const { jid, msgId } = req.body || {};
+    if (!jid || !msgId) return res.status(400).json({ error: 'Missing jid or msgId' });
+    const result = await deleteWaWebSingleMessage(jid, msgId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/chat/clear', async (req, res) => {
+  try {
+    const { jid } = req.body || {};
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    const result = await clearWaWebChat(jid);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/chat/delete', async (req, res) => {
+  try {
+    const { jid } = req.body || {};
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    const result = await deleteWaWebChat(jid);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/contact/update', async (req, res) => {
+  try {
+    const { jid, name } = req.body || {};
+    if (!jid || !name) return res.status(400).json({ error: 'Missing jid or name' });
+    const result = await updateWaWebContactName(jid, name);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Dedicated WhatsApp Web Knowledge Base Endpoints
+app.get('/api/wa-web/knowledge-base', (req, res) => {
+  try {
+    res.json({ knowledge: getWaWebKnowledgeBase() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/knowledge-base', async (req, res) => {
+  try {
+    const { knowledge } = req.body || {};
+    if (!knowledge) return res.status(400).json({ error: 'Missing knowledge payload' });
+    const saved = await saveWaWebKnowledgeBase(knowledge);
+    res.json({ success: true, knowledge: saved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
+  try {
+    const { message, knowledge } = req.body || {};
+    if (!message) return res.status(400).json({ error: 'Message is required for sandbox test' });
+    
+    const settings = await getSettings();
+    const tempKnowledge = knowledge || getWaWebKnowledgeBase();
+    
+    let prompt = (tempKnowledge.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
+    if (tempKnowledge.customKnowledgeText) prompt += '--- BUSINESS BACKGROUND ---\n' + tempKnowledge.customKnowledgeText + '\n\n';
+    if (Array.isArray(tempKnowledge.faqs)) {
+      prompt += '--- FAQS ---\n' + tempKnowledge.faqs.map(f => 'Q: ' + f.question + '\nA: ' + f.answer).join('\n') + '\n\n';
+    }
+    if (Array.isArray(tempKnowledge.productsCatalog)) {
+      prompt += '--- PRODUCTS ---\n' + tempKnowledge.productsCatalog.map(p => '- ' + p.name + ': ' + p.price + ' (' + p.description + ')').join('\n') + '\n\n';
+    }
+    prompt += '\nUser/Customer message: ' + message;
+
+    let reply = '';
+    if (settings.DEEPSEEK_API_KEY) {
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 30000 });
+      const comp = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
+        model: 'deepseek-chat',
+        temperature: 0.4
+      });
+      reply = comp.choices[0]?.message?.content || '';
+    } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      reply = r.response.text() || '';
+    } else {
+      reply = 'DeepSeek or Gemini API Key is required to test AI response.';
+    }
+
+    res.json({ reply: reply.trim() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -150,7 +260,8 @@ app.post('/api/wa-web/ai-assistant', async (req, res) => {
     }
     allChats = getWaWebAllChatsSummary();
 
-    let systemPrompt = `You are the Elite AI WhatsApp Copilot & Business Assistant for WhatAnAgent.
+    const kbPrompt = buildWaWebKnowledgeSystemPrompt();
+    let systemPrompt = kbPrompt + `\n\nYou are the Elite AI WhatsApp Copilot & Business Assistant for WhatAnAgent.
 You are embedded directly in the live WhatsApp Web application.
 You have real-time access to the user's active WhatsApp conversations, customer history, message logs, and timestamps.
 
@@ -3732,3 +3843,4 @@ app.listen(PORT, () => {
   console.log(`WhatsApp AI Agent running on port ${PORT}${STAGING_MODE ? ' [STAGING MODE - schedulers off]' : ''}${DRY_RUN ? ' [DRY RUN - outbound sends blocked]' : ''}`);
   startFollowUpScheduler();
 });
+ 

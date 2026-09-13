@@ -297,6 +297,10 @@
                     </button>
 
                     <!-- Button 2: AI Assistant (Copilot) -->
+                    <button onclick="openWaWebKnowledgeBaseModal()" title="Knowledge Base for WhatsApp Web AI Chat Bot (Instructions, FAQs, Auto-Pilot & Rules)" style="background:linear-gradient(135deg, #8b5cf6, #3b82f6); border:none; color:#fff; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(139,92,246,0.35);">
+                        <span>🧠 Knowledge Base for AI Chat Bot</span>
+                        <span id="waWebAutoReplyStatusBadge" style="background:#22c55e; color:#0f172a; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">WW-AI</span>
+                    </button>
                     <button onclick="openWaWebAiCopilot()" title="AI WhatsApp Assistant - Discuss any chat, summarize, draft replies" style="background:linear-gradient(135deg, #10b981, #0284c7); border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(16,185,129,0.35);">
                         <span>🤖 AI Assistant</span>
                         <span style="background:#ffffff; color:#0f172a; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">COPILOT</span>
@@ -474,6 +478,203 @@
         </div>
 
         
+        
+        <!-- ===== MODAL: DEDICATED WHATSAPP WEB AI KNOWLEDGE BASE & AUTO-PILOT ===== -->
+        <div id="waWebKnowledgeBaseModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3600; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(5px);">
+            <div style="background:#111b21; border:1px solid #2a3942; border-radius:16px; width:100%; max-width:880px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 16px 50px rgba(0,0,0,0.7); overflow:hidden;">
+                
+                <!-- Modal Header -->
+                <div style="background:#202c33; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2a3942;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:linear-gradient(135deg, #8b5cf6, #3b82f6); display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 0 12px rgba(139,92,246,0.4);">
+                            🧠
+                        </div>
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <h3 style="margin:0; color:#e9edef; font-size:17px; font-weight:bold;">WhatsApp Web AI Chat Bot — Knowledge Base</h3>
+                                <span style="background:#005c4b; color:#25d366; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:bold;">Dedicated for WhatsApp Web</span>
+                            </div>
+                            <div style="font-size:12px; color:#8696a0;">Custom instructions, business FAQs, catalog pricing, and 24/7 AI Auto-Pilot replies</div>
+                        </div>
+                    </div>
+                    <button onclick="closeWaWebKnowledgeBaseModal()" style="background:none; border:none; color:#8696a0; font-size:24px; cursor:pointer; padding:4px;">✕</button>
+                </div>
+
+                <!-- Modal Tabs -->
+                <div style="background:#182229; border-bottom:1px solid #2a3942; display:flex; gap:6px; padding:8px 20px; overflow-x:auto;">
+                    <button onclick="switchWaWebKbTab('instructions')" id="waWebKbTabBtn_instructions" class="wa-kb-tab-btn" style="background:#202c33; border:1px solid #00a884; color:#00a884; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
+                        📋 Instructions & Persona
+                    </button>
+                    <button onclick="switchWaWebKbTab('faqs')" id="waWebKbTabBtn_faqs" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        ❓ FAQs Q&A Bank
+                    </button>
+                    <button onclick="switchWaWebKbTab('catalog')" id="waWebKbTabBtn_catalog" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        📦 Products & Pricing
+                    </button>
+                    <button onclick="switchWaWebKbTab('autopilot')" id="waWebKbTabBtn_autopilot" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        ⚡ 24/7 Auto-Pilot Bot
+                    </button>
+                    <button onclick="switchWaWebKbTab('sandbox')" id="waWebKbTabBtn_sandbox" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        🧪 Test Sandbox
+                    </button>
+                </div>
+
+                <!-- Modal Body Scroll Container -->
+                <div style="flex:1; overflow-y:auto; padding:22px; background:#0b141a;">
+                    
+                    <!-- TAB 1: INSTRUCTIONS & PERSONA -->
+                    <div id="waWebKbTab_instructions" style="display:flex; flex-direction:column; gap:16px;">
+                        <div>
+                            <label style="display:block; font-size:13px; font-weight:600; color:#e9edef; margin-bottom:6px;">
+                                🎯 System Prompt & AI Behavior Instructions (WhatsApp Web Specific)
+                            </label>
+                            <div style="font-size:12px; color:#8696a0; margin-bottom:8px;">
+                                Define how your AI represents your business, what tone to use, how to handle negotiations, greetings, and rules.
+                            </div>
+                            <textarea id="waWebKbSystemPrompt" rows="6" style="width:100%; background:#202c33; border:1px solid #2a3942; border-radius:8px; color:#e9edef; padding:12px; font-size:13px; font-family:inherit; line-height:1.5; resize:vertical;" placeholder="E.g. You are the Official WhatsApp AI Business Assistant..."></textarea>
+                        </div>
+
+                        <div>
+                            <label style="display:block; font-size:13px; font-weight:600; color:#e9edef; margin-bottom:6px;">
+                                📖 Company Profile, Policies & Custom Knowledge Text
+                            </label>
+                            <div style="font-size:12px; color:#8696a0; margin-bottom:8px;">
+                                Provide your company story, payment accounts, return/refund terms, address, delivery radius, and warranty rules.
+                            </div>
+                            <textarea id="waWebKbCustomText" rows="6" style="width:100%; background:#202c33; border:1px solid #2a3942; border-radius:8px; color:#e9edef; padding:12px; font-size:13px; font-family:inherit; line-height:1.5; resize:vertical;" placeholder="Write your company background, policies, bank details, delivery terms..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: FAQS Q&A BANK -->
+                    <div id="waWebKbTab_faqs" style="display:none; flex-direction:column; gap:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 style="margin:0; font-size:14px; color:#e9edef;">❓ Instant Q&A Knowledge Pairs</h4>
+                                <div style="font-size:12px; color:#8696a0;">When a customer asks a question matching these topics, the AI accurately provides these answers.</div>
+                            </div>
+                            <button onclick="addWaWebKbFaqRow()" style="background:#00a884; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                + Add FAQ
+                            </button>
+                        </div>
+
+                        <div id="waWebKbFaqList" style="display:flex; flex-direction:column; gap:12px;">
+                            <!-- Dynamically loaded FAQ items -->
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: PRODUCTS & PRICING CATALOG -->
+                    <div id="waWebKbTab_catalog" style="display:none; flex-direction:column; gap:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 style="margin:0; font-size:14px; color:#e9edef;">📦 Products, Services & Pricing Catalog</h4>
+                                <div style="font-size:12px; color:#8696a0;">The AI will use these accurate product names, rates, and specifications when chatting with clients.</div>
+                            </div>
+                            <button onclick="addWaWebKbProductRow()" style="background:#00a884; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                + Add Product / Rate
+                            </button>
+                        </div>
+
+                        <div id="waWebKbProductList" style="display:flex; flex-direction:column; gap:12px;">
+                            <!-- Dynamically loaded product items -->
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: 24/7 AUTO-PILOT BOT -->
+                    <div id="waWebKbTab_autopilot" style="display:none; flex-direction:column; gap:18px;">
+                        
+                        <!-- Toggle Card -->
+                        <div style="background:#202c33; padding:16px 18px; border-radius:12px; border:1px solid #2a3942; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-size:15px; font-weight:bold; color:#e9edef; display:flex; align-items:center; gap:8px;">
+                                    <span>⚡ Enable 24/7 AI Auto-Pilot Bot for WhatsApp Web</span>
+                                    <span id="waWebKbAutoReplyTogglePill" style="font-size:10px; background:#e74c3c; color:#fff; padding:2px 8px; border-radius:10px;">OFF</span>
+                                </div>
+                                <div style="font-size:12px; color:#8696a0; margin-top:4px;">
+                                    When enabled, the AI bot automatically answers incoming WhatsApp Web messages on your behalf using this knowledge base.
+                                </div>
+                            </div>
+                            <label style="position:relative; display:inline-block; width:52px; height:28px; cursor:pointer;">
+                                <input type="checkbox" id="waWebKbAutoReplyCheckbox" onchange="toggleWaWebKbAutoReply(this.checked)" style="opacity:0; width:0; height:0;">
+                                <span id="waWebKbAutoReplySwitchSlider" style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#334155; transition:.3s; border-radius:28px;">
+                                    <span id="waWebKbAutoReplySwitchKnob" style="position:absolute; height:20px; width:20px; left:4px; bottom:4px; background:white; transition:.3s; border-radius:50%;"></span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <!-- Scope & Trigger Settings -->
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px;">
+                            <div style="background:#202c33; padding:14px; border-radius:10px; border:1px solid #2a3942;">
+                                <label style="display:block; font-size:12px; font-weight:bold; color:#e9edef; margin-bottom:6px;">
+                                    🎯 Auto-Reply Chat Scope
+                                </label>
+                                <select id="waWebKbAutoReplyScope" style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px;">
+                                    <option value="all">All Chats (Direct Customers & Groups)</option>
+                                    <option value="direct_only">Direct 1-on-1 Chats Only (Ignore Groups)</option>
+                                    <option value="groups_only">Group Chats Only</option>
+                                </select>
+                            </div>
+
+                            <div style="background:#202c33; padding:14px; border-radius:10px; border:1px solid #2a3942;">
+                                <label style="display:block; font-size:12px; font-weight:bold; color:#e9edef; margin-bottom:6px;">
+                                    ⏱️ Cooldown Between Auto-Replies (Seconds)
+                                </label>
+                                <input id="waWebKbCooldown" type="number" value="30" min="5" max="3600" style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px;">
+                                <div style="font-size:11px; color:#8696a0; margin-top:4px;">Avoids multiple rapid replies to the same customer.</div>
+                            </div>
+                        </div>
+
+                        <!-- Human Handover Keywords -->
+                        <div style="background:#202c33; padding:14px; border-radius:10px; border:1px solid #2a3942;">
+                            <label style="display:block; font-size:12px; font-weight:bold; color:#e9edef; margin-bottom:6px;">
+                                🛑 Human Handover Detection Keywords (Comma Separated)
+                            </label>
+                            <input id="waWebKbHandoverKeywords" type="text" value="human, agent, urgent, owner, speak to person, call me" style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px;">
+                            <div style="font-size:11px; color:#8696a0; margin-top:4px;">If a customer sends any of these words, the AI Bot pauses auto-replying so you can answer manually.</div>
+                        </div>
+
+                    </div>
+
+                    <!-- TAB 5: TEST SANDBOX -->
+                    <div id="waWebKbTab_sandbox" style="display:none; flex-direction:column; gap:16px;">
+                        <div style="background:#202c33; padding:14px; border-radius:10px; border:1px solid #2a3942;">
+                            <h4 style="margin:0 0 6px 0; font-size:14px; color:#e9edef;">🧪 Live AI Knowledge Base Simulator</h4>
+                            <div style="font-size:12px; color:#8696a0;">Type a sample customer question to test how the WhatsApp Web AI Bot answers before going live.</div>
+                            
+                            <div style="display:flex; gap:10px; margin-top:12px;">
+                                <input id="waWebKbSandboxInput" type="text" placeholder="E.g. What are your delivery charges and business hours?" onkeydown="if(event.key==='Enter') runWaWebKbSandboxTest()" style="flex:1; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:10px 14px; border-radius:8px; font-size:13px;">
+                                <button onclick="runWaWebKbSandboxTest()" id="waWebKbSandboxBtn" style="background:#00a884; border:none; color:#fff; padding:10px 18px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer;">
+                                    Test Reply ➤
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Sandbox AI Response Result -->
+                        <div id="waWebKbSandboxResultBox" style="display:none; background:#182229; border:1px solid #00a884; border-radius:10px; padding:16px;">
+                            <div style="font-size:11px; color:#00a884; font-weight:bold; margin-bottom:6px;">🤖 SIMULATED WHATSAPP AI BOT REPLY:</div>
+                            <div id="waWebKbSandboxReplyText" style="color:#e9edef; font-size:13px; line-height:1.5; white-space:pre-wrap;"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Modal Footer -->
+                <div style="background:#202c33; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #2a3942;">
+                    <div style="font-size:12px; color:#8696a0;">
+                        Saves to Google Firebase Firestore & applies live instantly to WhatsApp Web
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="saveWaWebKnowledgeBaseFromModal()" style="background:#00a884; border:none; color:#fff; padding:9px 20px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer; box-shadow:0 2px 8px rgba(0,168,132,0.4);">
+                            💾 Save Knowledge Base
+                        </button>
+                        <button onclick="closeWaWebKnowledgeBaseModal()" style="background:#2a3942; border:none; color:#e9edef; padding:9px 16px; border-radius:8px; font-size:13px; cursor:pointer;">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <!-- ===== MODAL: SAVING & SYNCING HISTORY ===== -->
         <div id="waWebSyncHistoryModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:3000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(4px);">
             <div style="background:#111b21; border:1px solid #2a3942; border-radius:16px; width:100%; max-width:820px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 12px 40px rgba(0,0,0,0.6); overflow:hidden;">
@@ -4870,6 +5071,7 @@
         }
 
         function refreshWaWebState() {
+            loadWaWebKnowledgeBase();
             pollWaWebSyncStats();
             pollWaWebStatus();
             loadWaWebChats();
