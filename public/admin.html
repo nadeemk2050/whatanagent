@@ -5813,6 +5813,331 @@
                 sidebarBtn.style.display = 'block';
             }
         }, 1000);
+    
+        // ==========================================
+        // WHATSAPP WEB AI KNOWLEDGE BASE & AUTO-PILOT
+        // ==========================================
+        let waWebKnowledgeBaseData = null;
+
+        async function openWaWebKnowledgeBaseModal() {
+            const modal = document.getElementById('waWebKnowledgeBaseModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            await loadWaWebKnowledgeBase();
+        }
+
+        function closeWaWebKnowledgeBaseModal() {
+            const modal = document.getElementById('waWebKnowledgeBaseModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function switchWaWebKbTab(tabName) {
+            ['instructions', 'faqs', 'catalog', 'autopilot', 'sandbox'].forEach(t => {
+                const el = document.getElementById('waWebKbTab_' + t);
+                const btn = document.getElementById('waWebKbTabBtn_' + t);
+                if (el) el.style.display = t === tabName ? 'flex' : 'none';
+                if (btn) {
+                    if (t === tabName) {
+                        btn.style.background = '#202c33';
+                        btn.style.borderColor = '#00a884';
+                        btn.style.color = '#00a884';
+                        btn.style.fontWeight = 'bold';
+                    } else {
+                        btn.style.background = 'none';
+                        btn.style.borderColor = '#2a3942';
+                        btn.style.color = '#8696a0';
+                        btn.style.fontWeight = '600';
+                    }
+                }
+            });
+        }
+
+        async function loadWaWebKnowledgeBase() {
+            try {
+                const res = await fetch('/api/wa-web/knowledge-base');
+                if (!res.ok) return;
+                const data = await res.json();
+                waWebKnowledgeBaseData = data.knowledge || {};
+                renderWaWebKnowledgeBaseData(waWebKnowledgeBaseData);
+            } catch (err) {
+                console.warn('[WA-WEB KB] Error loading knowledge base:', err);
+            }
+        }
+
+        function renderWaWebKnowledgeBaseData(kb) {
+            if (!kb) return;
+
+            // System instructions & custom text
+            const sysInput = document.getElementById('waWebKbSystemPrompt');
+            if (sysInput) sysInput.value = kb.systemPromptInstructions || '';
+
+            const customInput = document.getElementById('waWebKbCustomText');
+            if (customInput) customInput.value = kb.customKnowledgeText || '';
+
+            // FAQs
+            renderWaWebKbFaqs(kb.faqs || []);
+
+            // Catalog
+            renderWaWebKbProducts(kb.productsCatalog || []);
+
+            // Auto-Pilot Settings
+            const autoReplyCheck = document.getElementById('waWebKbAutoReplyCheckbox');
+            if (autoReplyCheck) {
+                autoReplyCheck.checked = Boolean(kb.autoReplyEnabled);
+                toggleWaWebKbAutoReply(autoReplyCheck.checked);
+            }
+
+            const scopeSelect = document.getElementById('waWebKbAutoReplyScope');
+            if (scopeSelect) scopeSelect.value = kb.autoReplyScope || 'all';
+
+            const cooldownInput = document.getElementById('waWebKbCooldown');
+            if (cooldownInput) cooldownInput.value = kb.cooldownSeconds || 30;
+
+            const handoverInput = document.getElementById('waWebKbHandoverKeywords');
+            if (handoverInput) handoverInput.value = kb.humanHandoverKeywords || 'human, agent, urgent, owner, speak to person, call me';
+
+            // Top Bar Badge update
+            const badge = document.getElementById('waWebAutoReplyStatusBadge');
+            if (badge) {
+                if (kb.autoReplyEnabled) {
+                    badge.innerText = 'BOT ACTIVE 🟢';
+                    badge.style.background = '#22c55e';
+                    badge.style.color = '#0f172a';
+                } else {
+                    badge.innerText = 'WW-AI';
+                    badge.style.background = '#3b82f6';
+                    badge.style.color = '#ffffff';
+                }
+            }
+        }
+
+        function toggleWaWebKbAutoReply(enabled) {
+            const pill = document.getElementById('waWebKbAutoReplyTogglePill');
+            const slider = document.getElementById('waWebKbAutoReplySwitchSlider');
+            const knob = document.getElementById('waWebKbAutoReplySwitchKnob');
+
+            if (enabled) {
+                if (pill) { pill.innerText = 'ACTIVE 🟢'; pill.style.background = '#22c55e'; }
+                if (slider) slider.style.background = '#00a884';
+                if (knob) knob.style.transform = 'translateX(24px)';
+            } else {
+                if (pill) { pill.innerText = 'OFF'; pill.style.background = '#e74c3c'; }
+                if (slider) slider.style.background = '#334155';
+                if (knob) knob.style.transform = 'translateX(0px)';
+            }
+        }
+
+        function renderWaWebKbFaqs(faqs) {
+            const container = document.getElementById('waWebKbFaqList');
+            if (!container) return;
+
+            if (faqs.length === 0) {
+                container.innerHTML = '<div style="color:#8696a0; font-size:13px; text-align:center; padding:20px;">No FAQs added yet. Click "+ Add FAQ" above.</div>';
+                return;
+            }
+
+            let html = '';
+            faqs.forEach((f, idx) => {
+                html += `
+                    <div class="wa-kb-faq-card" style="background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <input type="text" class="wa-kb-faq-q" value="${escapeHtml(f.question || '')}" placeholder="Question / Topic..." style="flex:1; background:#111b21; border:1px solid #2a3942; color:#38bdf8; font-weight:600; padding:8px 10px; border-radius:6px; font-size:13px;">
+                            <button onclick="this.closest('.wa-kb-faq-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                                🗑️ Remove
+                            </button>
+                        </div>
+                        <textarea class="wa-kb-faq-a" rows="2" placeholder="Answer / Details to reply with..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px; resize:vertical; font-family:inherit;">${escapeHtml(f.answer || '')}</textarea>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function addWaWebKbFaqRow() {
+            const container = document.getElementById('waWebKbFaqList');
+            if (!container) return;
+            const newCard = document.createElement('div');
+            newCard.className = 'wa-kb-faq-card';
+            newCard.style.cssText = 'background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;';
+            newCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <input type="text" class="wa-kb-faq-q" value="" placeholder="New Question / Inquiry topic..." style="flex:1; background:#111b21; border:1px solid #2a3942; color:#38bdf8; font-weight:600; padding:8px 10px; border-radius:6px; font-size:13px;">
+                    <button onclick="this.closest('.wa-kb-faq-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                        🗑️ Remove
+                    </button>
+                </div>
+                <textarea class="wa-kb-faq-a" rows="2" placeholder="Accurate answer for the AI to provide..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px; resize:vertical; font-family:inherit;"></textarea>
+            `;
+            container.appendChild(newCard);
+            newCard.querySelector('input')?.focus();
+        }
+
+        function renderWaWebKbProducts(products) {
+            const container = document.getElementById('waWebKbProductList');
+            if (!container) return;
+
+            if (products.length === 0) {
+                container.innerHTML = '<div style="color:#8696a0; font-size:13px; text-align:center; padding:20px;">No products added yet. Click "+ Add Product / Rate" above.</div>';
+                return;
+            }
+
+            let html = '';
+            products.forEach(p => {
+                html += `
+                    <div class="wa-kb-prod-card" style="background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:grid; grid-template-columns:2fr 1fr auto; gap:8px; align-items:center;">
+                            <input type="text" class="wa-kb-prod-name" value="${escapeHtml(p.name || '')}" placeholder="Product / Service Name..." style="background:#111b21; border:1px solid #2a3942; color:#25d366; font-weight:600; padding:8px 10px; border-radius:6px; font-size:13px;">
+                            <input type="text" class="wa-kb-prod-price" value="${escapeHtml(p.price || '')}" placeholder="Price / Rate (e.g. 500 AED)..." style="background:#111b21; border:1px solid #2a3942; color:#f39c12; font-weight:bold; padding:8px 10px; border-radius:6px; font-size:13px;">
+                            <button onclick="this.closest('.wa-kb-prod-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                                🗑️ Remove
+                            </button>
+                        </div>
+                        <input type="text" class="wa-kb-prod-desc" value="${escapeHtml(p.description || '')}" placeholder="Description / Specs / Unit (e.g. Per ton / Minimum 5 bags)..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px;">
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function addWaWebKbProductRow() {
+            const container = document.getElementById('waWebKbProductList');
+            if (!container) return;
+            const newCard = document.createElement('div');
+            newCard.className = 'wa-kb-prod-card';
+            newCard.style.cssText = 'background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;';
+            newCard.innerHTML = `
+                <div style="display:grid; grid-template-columns:2fr 1fr auto; gap:8px; align-items:center;">
+                    <input type="text" class="wa-kb-prod-name" value="" placeholder="New Item / Service Name..." style="background:#111b21; border:1px solid #2a3942; color:#25d366; font-weight:600; padding:8px 10px; border-radius:6px; font-size:13px;">
+                    <input type="text" class="wa-kb-prod-price" value="" placeholder="Price / Rate..." style="background:#111b21; border:1px solid #2a3942; color:#f39c12; font-weight:bold; padding:8px 10px; border-radius:6px; font-size:13px;">
+                    <button onclick="this.closest('.wa-kb-prod-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                        🗑️ Remove
+                    </button>
+                </div>
+                <input type="text" class="wa-kb-prod-desc" value="" placeholder="Specs / Delivery minimums / Notes..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:13px;">
+            `;
+            container.appendChild(newCard);
+            newCard.querySelector('.wa-kb-prod-name')?.focus();
+        }
+
+        async function saveWaWebKnowledgeBaseFromModal() {
+            const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
+            const custom = document.getElementById('waWebKbCustomText')?.value || '';
+            const autoEnabled = Boolean(document.getElementById('waWebKbAutoReplyCheckbox')?.checked);
+            const scope = document.getElementById('waWebKbAutoReplyScope')?.value || 'all';
+            const cooldown = parseInt(document.getElementById('waWebKbCooldown')?.value || '30', 10);
+            const handover = document.getElementById('waWebKbHandoverKeywords')?.value || '';
+
+            // Harvest FAQs
+            const faqs = [];
+            document.querySelectorAll('.wa-kb-faq-card').forEach(card => {
+                const q = card.querySelector('.wa-kb-faq-q')?.value.trim();
+                const a = card.querySelector('.wa-kb-faq-a')?.value.trim();
+                if (q && a) faqs.push({ question: q, answer: a });
+            });
+
+            // Harvest Products
+            const products = [];
+            document.querySelectorAll('.wa-kb-prod-card').forEach(card => {
+                const n = card.querySelector('.wa-kb-prod-name')?.value.trim();
+                const p = card.querySelector('.wa-kb-prod-price')?.value.trim();
+                const d = card.querySelector('.wa-kb-prod-desc')?.value.trim();
+                if (n) products.push({ name: n, price: p, description: d });
+            });
+
+            const payload = {
+                systemPromptInstructions: sys,
+                customKnowledgeText: custom,
+                autoReplyEnabled: autoEnabled,
+                autoReplyScope: scope,
+                cooldownSeconds: cooldown,
+                humanHandoverKeywords: handover,
+                faqs: faqs,
+                productsCatalog: products
+            };
+
+            try {
+                const res = await fetch('/api/wa-web/knowledge-base', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ knowledge: payload })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    waWebKnowledgeBaseData = data.knowledge;
+                    renderWaWebKnowledgeBaseData(waWebKnowledgeBaseData);
+                    alert('✅ WhatsApp Web AI Knowledge Base & Rules saved successfully!');
+                    closeWaWebKnowledgeBaseModal();
+                } else {
+                    const err = await res.json();
+                    alert('Error saving knowledge base: ' + (err.error || 'Failed'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+
+        async function runWaWebKbSandboxTest() {
+            const input = document.getElementById('waWebKbSandboxInput');
+            const msg = (input ? input.value : '').trim();
+            if (!msg) return;
+
+            const btn = document.getElementById('waWebKbSandboxBtn');
+            const resultBox = document.getElementById('waWebKbSandboxResultBox');
+            const replyEl = document.getElementById('waWebKbSandboxReplyText');
+
+            if (btn) btn.disabled = true;
+            if (resultBox) {
+                resultBox.style.display = 'block';
+                replyEl.innerText = '🤖 AI Knowledge Base is analyzing and formulating reply...';
+            }
+
+            // Gather current modal state to test without needing prior save
+            const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
+            const custom = document.getElementById('waWebKbCustomText')?.value || '';
+            const faqs = [];
+            document.querySelectorAll('.wa-kb-faq-card').forEach(card => {
+                const q = card.querySelector('.wa-kb-faq-q')?.value.trim();
+                const a = card.querySelector('.wa-kb-faq-a')?.value.trim();
+                if (q && a) faqs.push({ question: q, answer: a });
+            });
+            const products = [];
+            document.querySelectorAll('.wa-kb-prod-card').forEach(card => {
+                const n = card.querySelector('.wa-kb-prod-name')?.value.trim();
+                const p = card.querySelector('.wa-kb-prod-price')?.value.trim();
+                const d = card.querySelector('.wa-kb-prod-desc')?.value.trim();
+                if (n) products.push({ name: n, price: p, description: d });
+            });
+
+            try {
+                const res = await fetch('/api/wa-web/knowledge-base/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: msg,
+                        knowledge: {
+                            systemPromptInstructions: sys,
+                            customKnowledgeText: custom,
+                            faqs: faqs,
+                            productsCatalog: products
+                        }
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (replyEl) replyEl.innerText = data.reply || '(No reply generated)';
+                } else {
+                    const err = await res.json();
+                    if (replyEl) replyEl.innerText = '❌ Error: ' + (err.error || 'Failed to generate test reply');
+                }
+            } catch (e) {
+                if (replyEl) replyEl.innerText = '❌ Network Error: ' + e.message;
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
     </script>
 </body>
 </html>
