@@ -171,6 +171,19 @@ app.post('/api/wa-web/chat/delete', async (req, res) => {
   }
 });
 
+app.post('/api/wa-web/contact/link-phone', async (req, res) => {
+  try {
+    const { jid, phone, name } = req.body;
+    if (!jid || !phone) return res.status(400).json({ error: 'Missing JID or phone' });
+    const { linkLidToRealPhone } = await import('./waWebClient.js');
+    const result = await linkLidToRealPhone(jid, phone, name);
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error linking LID to phone:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/wa-web/contact/toggle-ai', async (req, res) => {
   try {
     const { jid, paused } = req.body;

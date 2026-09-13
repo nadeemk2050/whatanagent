@@ -361,12 +361,74 @@ function parseMessageContent(msg) {
 }
 
 // Helper to resolve contact name cleanly from contacts map and pushName
+
+// Persistent mapping for WhatsApp Multi-Device LIDs -> Real Country Phone Numbers
+export const lidToPhoneMap = new Map([
+  ['128046178803746', '966552683250'], // Boss (Mr. Nadeem KSA)
+  ['33827296669835', '971529244591']   // Md Ariful Islam Al Shaab (UAE)
+]);
+
+// Helper to resolve real country phone number from any JID or LID
+export function resolveRealPhoneNumber(jid) {
+  if (!jid) return '';
+  const clean = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  if (lidToPhoneMap.has(clean)) {
+    return lidToPhoneMap.get(clean);
+  }
+  const c = waWebState.contacts.get(jid) || waWebState.contacts.get(clean);
+  if (c && (c.phoneNumber || c.phone)) {
+    const p = (c.phoneNumber || c.phone).split('@')[0].replace(/[^0-9]/g, '');
+    if (p && p.length <= 13) return p;
+  }
+  return clean;
+}
+
+// Helper: Link LID to Real Phone Number & Name
+export async function linkLidToRealPhone(jid, realPhone, newName = null) {
+  if (!jid || !realPhone) return { success: false, error: 'Missing parameters' };
+  const cleanLid = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  const cleanPhone = realPhone.replace(/[^0-9]/g, '');
+
+  lidToPhoneMap.set(cleanLid, cleanPhone);
+  lidToPhoneMap.set(cleanPhone, cleanPhone);
+
+  const finalName = newName || (cleanPhone === '966552683250' ? '👑 Mr. Nadeem (Boss - KSA +966552683250)' : null);
+
+  const contactObj = {
+    id: jid,
+    phoneNumber: cleanPhone + '@s.whatsapp.net',
+    phone: cleanPhone,
+    name: finalName || resolveContactName(jid)
+  };
+  registerContact(contactObj);
+
+  const chat = waWebState.chats.get(jid);
+  if (chat) {
+    chat.phone = '+' + cleanPhone;
+    if (finalName) chat.name = finalName;
+  }
+
+  scheduleContactsSaveToFirestore();
+  return { success: true, jid, cleanLid, cleanPhone, name: finalName };
+}
+
 function resolveContactName(jid, pushName = '', fallbackName = '') {
   if (!jid) return fallbackName || 'WhatsApp User';
-  const cleanPhone = jid.split('@')[0].split(':')[0];
+  const cleanPhone = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  const realPhone = resolveRealPhoneNumber(jid);
+
+  // Special Boss check
+  if (cleanPhone === '128046178803746' || realPhone.endsWith('552683250') || realPhone === '966552683250') {
+    return '👑 Mr. Nadeem (Boss - KSA +966552683250)';
+  }
+
+  if (cleanPhone === '33827296669835' || realPhone === '971529244591') {
+    return 'Md Ariful Islam Al Shaab (UAE +971529244591)';
+  }
 
   const c = waWebState.contacts.get(jid) ||
-            waWebState.contacts.get(`${cleanPhone}@s.whatsapp.net`) ||
+            waWebState.contacts.get(realPhone) ||
+            waWebState.contacts.get(realPhone + '@s.whatsapp.net') ||
             waWebState.contacts.get(cleanPhone);
 
   if (c && (c.name || c.notify || c.verifiedName)) {
@@ -378,7 +440,7 @@ function resolveContactName(jid, pushName = '', fallbackName = '') {
   if (fallbackName && fallbackName.trim() && !/^\d+$/.test(fallbackName.trim())) {
     return fallbackName.trim();
   }
-  return `+${cleanPhone}`;
+  return realPhone ? '+' + realPhone : '+' + cleanPhone;
 }
 
 // Register contact into internal index (maps multiple formats: full JID, clean phone, LID)
@@ -709,8 +771,13 @@ async function saveContactsIndexToFirestore() {
         };
       }
     }
+    const lidMappingsObj = {};
+    for (const [k, v] of lidToPhoneMap.entries()) {
+      lidMappingsObj[k] = v;
+    }
     await setDoc(doc(globalDb, "appData", "waContactsIndex"), {
       contacts: JSON.stringify(contactsObj),
+      lidMappings: JSON.stringify(lidMappingsObj),
       count: Object.keys(contactsObj).length,
       updatedAt: Date.now()
     }, { merge: true });
@@ -734,7 +801,16 @@ async function restoreContactsIndexFromFirestore(db) {
     const snap = await getDoc(doc(db, "appData", "waContactsIndex"));
     if (snap.exists()) {
       const data = snap.data();
+      if (data && data.lidMappings) {
+        try {
+          const lmap = JSON.parse(data.lidMappings);
+          for (const [lk, lv] of Object.entries(lmap)) {
+            lidToPhoneMap.set(lk, lv);
+          }
+        } catch(e) {}
+      }
       if (data && data.contacts) {
+        
         const obj = JSON.parse(data.contacts);
         let count = 0;
         for (const [key, val] of Object.entries(obj)) {
@@ -1073,11 +1149,18 @@ export async function initWaWeb(db = null) {
 
               // Check if message is from Boss
               const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              const resolvedSenderPhone = resolveRealPhoneNumber(remoteJid).replace(/[^0-9]/g, '');
               const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+966552683250').replace(/[^0-9]/g, '');
-              const isBossNumber = configuredBossPhone && (
+
+              const isBossNumber = (
+                cleanSenderPhone === '128046178803746' ||
                 cleanSenderPhone.endsWith('552683250') ||
-                cleanSenderPhone.endsWith(configuredBossPhone) ||
-                configuredBossPhone.endsWith(cleanSenderPhone)
+                resolvedSenderPhone.endsWith('552683250') ||
+                (configuredBossPhone && (
+                  cleanSenderPhone.endsWith(configuredBossPhone) ||
+                  resolvedSenderPhone.endsWith(configuredBossPhone) ||
+                  configuredBossPhone.endsWith(cleanSenderPhone)
+                ))
               );
               const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
 
@@ -1328,15 +1411,34 @@ export function getWaWebStatus() {
 
 // Helper: Get chat list sorted by latest activity
 export function getWaWebChats() {
-  const list = Array.from(waWebState.chats.values()).map(c => ({
-    id: c.id,
-    name: c.name || resolveContactName(c.id, '', c.phone),
-    phone: c.phone || c.id.split('@')[0].split(':')[0],
-    isGroup: c.isGroup || false,
-    lastMessage: c.lastMessage || '',
-    timestamp: c.timestamp || Date.now(),
-    unreadCount: c.unreadCount || 0
-  }));
+  const list = Array.from(waWebState.chats.values()).map(c => {
+    const cleanLid = c.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    const realPhone = resolveRealPhoneNumber(c.id);
+    const isBoss = cleanLid === '128046178803746' || realPhone.endsWith('552683250');
+
+    let displayName = c.name || resolveContactName(c.id, '', c.phone);
+    if (isBoss) {
+      displayName = '👑 Mr. Nadeem (Boss - KSA +966552683250)';
+    }
+
+    let displayPhone = realPhone ? ('+' + realPhone) : ('+' + cleanLid);
+    if (isBoss) {
+      displayPhone = '+966 55 268 3250';
+    } else if (cleanLid === '33827296669835' || realPhone === '971529244591') {
+      displayPhone = '+971 52 924 4591';
+    }
+
+    return {
+      id: c.id,
+      name: displayName,
+      phone: displayPhone,
+      realPhone: realPhone || cleanLid,
+      isGroup: c.isGroup || false,
+      lastMessage: c.lastMessage || '',
+      timestamp: c.timestamp || Date.now(),
+      unreadCount: c.unreadCount || 0
+    };
+  });
 
   list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   return list;
