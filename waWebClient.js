@@ -69,7 +69,27 @@ export let waWebKnowledgeBase = {
   autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
   cooldownSeconds: 30,
   humanHandoverKeywords: 'human, agent, urgent, owner, speak to person, call me',
-  bossPhone: '00971529244592', // Also matches 971529244592, +971529244592, 0529244592
+  bossPhone: '+966552683250', // Saudi Boss Number
+  bossPasscode: '2831',
+  bossKnowledge: {
+    bossName: 'Mr. Nadeem',
+    bossPhone: '+966552683250',
+    bossPasscode: '2831',
+    powers: [
+      { title: '✉️ Direct Contact Messaging & Relay', description: 'Can command AI to send messages to any WhatsApp contact (e.g. "Send msg to 0501234567: Please confirm the invoice").' },
+      { title: '📊 Instant Business & Operations Intel', description: 'Can ask for real-time order summaries, client chat histories, delivery updates, and pending items.' },
+      { title: '⚙️ Administrative Overrides', description: 'Can override chatbot replies, pause/resume AI for specific chats, and issue executive orders.' },
+      { title: '🔒 High-Security Passcode Shield', description: 'Protected by 4-digit authentication code (2831) before any executive command is executed.' }
+    ],
+    rulesForBoss: `1. Always address the Boss respectfully as "Mr. Nadeem" or "Boss".
+2. Obey all commands with highest priority and immediate execution.
+3. Keep confirmations concise with clear bullet points and status emojis.
+4. Execute messaging relay commands directly to target contacts and confirm delivery.
+5. Provide truthful, up-to-date data without guessing.`,
+    customBossInstructions: `Executive Privileges:
+- Full access to all business operations, customer transcripts, and invoicing records.
+- Immediate execution of outbound customer dispatch messages.`
+  }, // Also matches 971552683250, +971552683250, 0552683250
   bossPasscode: '2831',
   pausedContacts: [], // List of JIDs/phones where AI auto-reply is paused
   rules: [
@@ -77,7 +97,7 @@ export let waWebKnowledgeBase = {
       id: 'rule_boss_protocol',
       title: '👑 Rule #0: Boss Verification & Executive Command Protocol',
       enabled: true,
-      description: 'When message arrives from Boss (00971529244592 / +971529244592 / 0529244592), recognize as Boss Mr. Nadeem. Ask security passcode "2831". Once code "2831" is entered, authenticate and strictly obey all instructions given by the boss (e.g. sending messages to contacts, retrieving records, taking actions).'
+      description: 'When message arrives from Boss (00971552683250 / +971552683250 / 0552683250), recognize as Boss Mr. Nadeem. Ask security passcode "2831". Once code "2831" is entered, authenticate and strictly obey all instructions given by the boss (e.g. sending messages to contacts, retrieving records, taking actions).'
     },
     {
       id: 'rule_personal_name_nadeem',
@@ -1053,13 +1073,13 @@ export async function initWaWeb(db = null) {
 
               // Check if message is from Boss
               const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || '00971529244592').replace(/[^0-9]/g, '');
+              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+966552683250').replace(/[^0-9]/g, '');
               const isBossNumber = configuredBossPhone && (
-                cleanSenderPhone.endsWith('529244592') ||
+                cleanSenderPhone.endsWith('552683250') ||
                 cleanSenderPhone.endsWith(configuredBossPhone) ||
                 configuredBossPhone.endsWith(cleanSenderPhone)
               );
-              const bossPasscode = (waWebKnowledgeBase.bossPasscode || '2831').trim();
+              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
 
               if (isBossNumber) {
                 console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + text + '"');

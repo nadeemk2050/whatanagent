@@ -301,6 +301,10 @@
                     </button>
 
                     <!-- Button 2: AI Assistant (Copilot) -->
+                    <button id="waWebBossKbBtn" onclick="openWaWebBossKbModal()" title="Boss Knowledge Base - Configure Boss Number (+966552683250), Passcode (2831), Executive Powers & Rules" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#111827; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:800; display:flex; align-items:center; gap:6px; box-shadow:0 0 14px rgba(245,158,11,0.45); transition:all 0.2s;">
+                        <span>👑 Boss KB</span>
+                        <span style="background:#111827; color:#fbbf24; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">EXECUTIVE</span>
+                    </button>
                     <button onclick="openWaWebKnowledgeBaseModal()" title="Knowledge Base for WhatsApp Web AI Chat Bot (Instructions, FAQs, Auto-Pilot & Rules)" style="background:linear-gradient(135deg, #8b5cf6, #3b82f6); border:none; color:#fff; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(139,92,246,0.35);">
                         <span>🧠 Knowledge Base for AI Chat Bot</span>
                         <span id="waWebAutoReplyStatusBadge" style="background:#22c55e; color:#0f172a; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">WW-AI</span>
@@ -488,6 +492,111 @@
         
         
         <!-- ===== MODAL: DEDICATED WHATSAPP WEB AI KNOWLEDGE BASE & AUTO-PILOT ===== -->
+        
+        <!-- ===== MODAL: BOSS KNOWLEDGE BASE (BOSS KB) ===== -->
+        <div id="waWebBossKbModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:3700; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:2px solid #f59e0b; border-radius:18px; width:100%; max-width:860px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(245,158,11,0.25); overflow:hidden;">
+                
+                <!-- Modal Header -->
+                <div style="background:linear-gradient(135deg, #1e293b, #0f172a); padding:16px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:42px; height:42px; border-radius:12px; background:linear-gradient(135deg, #f59e0b, #d97706); display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 0 16px rgba(245,158,11,0.5);">
+                            👑
+                        </div>
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <h3 style="margin:0; color:#fbbf24; font-size:18px; font-weight:bold;">Boss Knowledge Base & Executive Control</h3>
+                                <span style="background:#78350f; color:#fde68a; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:800; border:1px solid #d97706;">TOP LEVEL CLEARANCE</span>
+                            </div>
+                            <div style="font-size:12px; color:#94a3b8;">Manage Boss details (+966552683250), passcode (2831), executive powers, and AI obedience rules</div>
+                        </div>
+                    </div>
+                    <button onclick="closeWaWebBossKbModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; padding:4px;">✕</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div style="flex:1; overflow-y:auto; padding:22px; background:#0b141a; display:flex; flex-direction:column; gap:18px;">
+                    
+                    <!-- Section 1: Boss Contact & Authentication -->
+                    <div style="background:#1e293b; border:1px solid #475569; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="font-size:14px; font-weight:bold; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+                            <span>👤 Boss Identity & Security Credentials</span>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+                            <div>
+                                <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">Boss Name:</label>
+                                <input type="text" id="bossKbName" value="Mr. Nadeem" style="width:100%; background:#0f172a; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">👑 Boss WhatsApp Number:</label>
+                                <input type="text" id="bossKbPhone" value="+966552683250" placeholder="+966552683250" style="width:100%; background:#0f172a; border:1px solid #334155; color:#38bdf8; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">🔒 4-Digit Passcode:</label>
+                                <input type="text" id="bossKbPasscode" value="2831" placeholder="2831" style="width:100%; background:#0f172a; border:1px solid #334155; color:#fbbf24; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace; letter-spacing:2px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Executive Powers & Privileges -->
+                    <div style="background:#1e293b; border:1px solid #475569; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="font-size:14px; font-weight:bold; color:#f8fafc; display:flex; align-items:center; gap:8px;">
+                            <span>⚡ Boss Powers & Executive Commands</span>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                            <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px;">
+                                <div style="font-size:12px; font-weight:bold; color:#38bdf8; margin-bottom:3px;">✉️ Direct Message Relay</div>
+                                <div style="font-size:11px; color:#94a3b8; line-height:1.4;">Send commands like: <code style="color:#a7f3d0;">Send msg to 0501234567: Please send the invoice</code>. AI delivers it instantly and confirms back.</div>
+                            </div>
+                            <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px;">
+                                <div style="font-size:12px; font-weight:bold; color:#a7f3d0; margin-bottom:3px;">📊 Live Operational Intel</div>
+                                <div style="font-size:11px; color:#94a3b8; line-height:1.4;">Query chat transcripts, customer details, pending orders, or invoice totals on the fly.</div>
+                            </div>
+                            <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px;">
+                                <div style="font-size:12px; font-weight:bold; color:#fbbf24; margin-bottom:3px;">⚙️ AI Overrides & Auto-Pilot Controls</div>
+                                <div style="font-size:11px; color:#94a3b8; line-height:1.4;">Direct instructions to pause/resume AI on specific contacts or change pricing guidelines.</div>
+                            </div>
+                            <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px;">
+                                <div style="font-size:12px; font-weight:bold; color:#f43f5e; margin-bottom:3px;">🔒 Security Passcode Lock</div>
+                                <div style="font-size:11px; color:#94a3b8; line-height:1.4;">Requires code <b>2831</b> before unlocking command mode for total security against unauthorized use.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: AI Rules & Obedience Protocol for Boss -->
+                    <div>
+                        <label style="display:block; font-size:13px; font-weight:600; color:#e9edef; margin-bottom:6px;">
+                            ⚖️ Mandatory AI Rules & Behavior Protocol for Boss
+                        </label>
+                        <textarea id="bossKbRules" rows="5" style="width:100%; background:#202c33; border:1px solid #2a3942; border-radius:8px; color:#e9edef; padding:12px; font-size:13px; font-family:inherit; line-height:1.5; resize:vertical;" placeholder="Rules for how AI must obey the Boss..."></textarea>
+                    </div>
+
+                    <!-- Section 4: Custom Knowledge & Instructions for Boss -->
+                    <div>
+                        <label style="display:block; font-size:13px; font-weight:600; color:#e9edef; margin-bottom:6px;">
+                            📖 Custom Knowledge & Secret Directives (Boss Only)
+                        </label>
+                        <textarea id="bossKbCustom" rows="4" style="width:100%; background:#202c33; border:1px solid #2a3942; border-radius:8px; color:#e9edef; padding:12px; font-size:13px; font-family:inherit; line-height:1.5; resize:vertical;" placeholder="Secret business notes, executive policies, private bank accounts or directives accessible only by the Boss..."></textarea>
+                    </div>
+
+                </div>
+
+                <!-- Modal Footer -->
+                <div style="background:#1e293b; padding:14px 24px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #334155;">
+                    <div style="font-size:12px; color:#94a3b8;">
+                        Saves to Google Firebase Firestore & applies live instantly to WhatsApp Web
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="closeWaWebBossKbModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">Cancel</button>
+                        <button onclick="saveWaWebBossKbFromModal()" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#111827; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 0 12px rgba(245,158,11,0.4);">
+                            💾 Save Boss Knowledge Base
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <div id="waWebKnowledgeBaseModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3600; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(5px);">
             <div style="background:#111b21; border:1px solid #2a3942; border-radius:16px; width:100%; max-width:880px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 16px 50px rgba(0,0,0,0.7); overflow:hidden;">
                 
@@ -585,7 +694,7 @@
                             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#0b141a; padding:12px; border-radius:8px; border:1px solid #334155;">
                                 <div>
                                     <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">👑 Boss Phone Number (Mr. Nadeem):</label>
-                                    <input type="text" id="waWebKbBossPhone" value="00971529244592" placeholder="00971529244592 / 0529244592" style="width:100%; background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace;">
+                                    <input type="text" id="waWebKbBossPhone" value="+966552683250" placeholder="+966552683250 / 0552683250" style="width:100%; background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace;">
                                 </div>
                                 <div>
                                     <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">🔒 Secret Boss Verification Passcode:</label>
@@ -596,7 +705,7 @@
                             <div style="background:#1e293b; border-radius:8px; padding:10px; font-size:12px; color:#cbd5e1; line-height:1.5;">
                                 <b style="color:#fde68a;">How Boss Mode Works:</b>
                                 <ul style="margin:6px 0 0 16px; padding:0;">
-                                    <li>When a message arrives from <code style="color:#38bdf8;">00971529244592</code>, the AI recognizes the sender as <b>The Boss</b>.</li>
+                                    <li>When a message arrives from <code style="color:#38bdf8;">+966552683250</code>, the AI recognizes the sender as <b>The Boss</b>.</li>
                                     <li>The AI will ask for security passcode <code style="color:#38bdf8;">2831</code> to verify identity.</li>
                                     <li>Once verified, AI unlocks <b>Executive Command Mode</b> and will strictly obey all instructions (e.g. <i>"Send msg to 05... : Hello"</i>, checking invoices, fetching data, or running tasks).</li>
                                 </ul>
@@ -5962,7 +6071,100 @@
         // ==========================================
         let waWebKnowledgeBaseData = null;
 
-        async function openWaWebKnowledgeBaseModal() {
+        async 
+        async function openWaWebBossKbModal() {
+            const modal = document.getElementById('waWebBossKbModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            await loadWaWebKnowledgeBase();
+            populateBossKbModalFields();
+        }
+
+        function closeWaWebBossKbModal() {
+            const modal = document.getElementById('waWebBossKbModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function populateBossKbModalFields() {
+            const kb = waWebKnowledgeBaseData || {};
+            const boss = kb.bossKnowledge || {};
+
+            const nameInput = document.getElementById('bossKbName');
+            if (nameInput) nameInput.value = boss.bossName || 'Mr. Nadeem';
+
+            const phoneInput = document.getElementById('bossKbPhone');
+            if (phoneInput) phoneInput.value = boss.bossPhone || kb.bossPhone || '+966552683250';
+
+            const passInput = document.getElementById('bossKbPasscode');
+            if (passInput) passInput.value = boss.bossPasscode || kb.bossPasscode || '2831';
+
+            const rulesInput = document.getElementById('bossKbRules');
+            if (rulesInput) {
+                rulesInput.value = boss.rulesForBoss || `1. Always address the Boss respectfully as "Mr. Nadeem" or "Boss".
+2. Obey all commands with highest priority and immediate execution.
+3. Keep confirmations concise with clear bullet points and status emojis.
+4. Execute messaging relay commands directly to target contacts and confirm delivery.
+5. Provide truthful, up-to-date data without guessing.`;
+            }
+
+            const customInput = document.getElementById('bossKbCustom');
+            if (customInput) {
+                customInput.value = boss.customBossInstructions || `Executive Privileges:
+- Full access to all business operations, customer transcripts, and invoicing records.
+- Immediate execution of outbound customer dispatch messages.`;
+            }
+        }
+
+        async function saveWaWebBossKbFromModal() {
+            const name = document.getElementById('bossKbName')?.value.trim() || 'Mr. Nadeem';
+            const phone = document.getElementById('bossKbPhone')?.value.trim() || '+966552683250';
+            const passcode = document.getElementById('bossKbPasscode')?.value.trim() || '2831';
+            const rules = document.getElementById('bossKbRules')?.value || '';
+            const custom = document.getElementById('bossKbCustom')?.value || '';
+
+            const bossPayload = {
+                bossName: name,
+                bossPhone: phone,
+                bossPasscode: passcode,
+                rulesForBoss: rules,
+                customBossInstructions: custom,
+                powers: [
+                    { title: '✉️ Direct Contact Messaging & Relay', description: 'Can command AI to send messages to any WhatsApp contact.' },
+                    { title: '📊 Instant Business & Operations Intel', description: 'Can ask for real-time order summaries, client chat histories, delivery updates.' },
+                    { title: '⚙️ Administrative Overrides', description: 'Can override chatbot replies and pause/resume AI.' },
+                    { title: '🔒 High-Security Passcode Shield', description: 'Protected by 4-digit authentication code (2831).' }
+                ]
+            };
+
+            const payload = {
+                bossPhone: phone,
+                bossPasscode: passcode,
+                bossKnowledge: bossPayload
+            };
+
+            try {
+                const res = await fetch('/api/wa-web/knowledge-base', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ knowledge: payload })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    waWebKnowledgeBaseData = data.knowledge;
+                    renderWaWebKnowledgeBaseData(waWebKnowledgeBaseData);
+                    alert('👑 Boss Knowledge Base, Powers & Security Passcode saved successfully!');
+                    closeWaWebBossKbModal();
+                } else {
+                    const err = await res.json();
+                    alert('Error saving Boss KB: ' + (err.error || 'Failed'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+
+        function openWaWebKnowledgeBaseModal() {
             const modal = document.getElementById('waWebKnowledgeBaseModal');
             if (!modal) return;
             modal.style.display = 'flex';
@@ -6019,7 +6221,7 @@
 
             // Boss Protocol Config
             const bossPhoneInput = document.getElementById('waWebKbBossPhone');
-            if (bossPhoneInput) bossPhoneInput.value = kb.bossPhone || '00971529244592';
+            if (bossPhoneInput) bossPhoneInput.value = kb.bossPhone || '+966552683250';
 
             const bossPasscodeInput = document.getElementById('waWebKbBossPasscode');
             if (bossPasscodeInput) bossPasscodeInput.value = kb.bossPasscode || '2831';
@@ -6259,7 +6461,7 @@
         async function saveWaWebKnowledgeBaseFromModal() {
             const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
             const custom = document.getElementById('waWebKbCustomText')?.value || '';
-            const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '00971529244592';
+            const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '+966552683250';
             const bossPasscode = document.getElementById('waWebKbBossPasscode')?.value.trim() || '2831';
             const autoEnabled = Boolean(document.getElementById('waWebKbAutoReplyCheckbox')?.checked);
             const scope = document.getElementById('waWebKbAutoReplyScope')?.value || 'all';
