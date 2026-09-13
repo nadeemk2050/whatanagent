@@ -508,6 +508,9 @@
                     <button onclick="switchWaWebKbTab('instructions')" id="waWebKbTabBtn_instructions" class="wa-kb-tab-btn" style="background:#202c33; border:1px solid #00a884; color:#00a884; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
                         📋 Instructions & Persona
                     </button>
+                    <button onclick="switchWaWebKbTab('rules')" id="waWebKbTabBtn_rules" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        ⚖️ Strict AI Rules & Boss Mode
+                    </button>
                     <button onclick="switchWaWebKbTab('faqs')" id="waWebKbTabBtn_faqs" class="wa-kb-tab-btn" style="background:none; border:1px solid #2a3942; color:#8696a0; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
                         ❓ FAQs Q&A Bank
                     </button>
@@ -546,6 +549,61 @@
                             </div>
                             <textarea id="waWebKbCustomText" rows="6" style="width:100%; background:#202c33; border:1px solid #2a3942; border-radius:8px; color:#e9edef; padding:12px; font-size:13px; font-family:inherit; line-height:1.5; resize:vertical;" placeholder="Write your company background, policies, bank details, delivery terms..."></textarea>
                         </div>
+                    </div>
+
+                    <!-- TAB: RULES & BOSS PROTOCOL -->
+                    <div id="waWebKbTab_rules" style="display:none; flex-direction:column; gap:18px;">
+                        
+                        <!-- BOSS PROTOCOL SECTION -->
+                        <div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border:1px solid #f59e0b; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; box-shadow:0 4px 20px rgba(245,158,11,0.15);">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <span style="font-size:22px;">👑</span>
+                                    <div>
+                                        <div style="font-size:14px; font-weight:bold; color:#fbbf24;">Boss Verification & Executive Command Protocol</div>
+                                        <div style="font-size:11px; color:#cbd5e1;">Recognize the Boss (Mr. Nadeem), authenticate via passcode, and obey all instructions</div>
+                                    </div>
+                                </div>
+                                <span style="background:#78350f; color:#fde68a; font-size:10px; padding:3px 8px; border-radius:8px; font-weight:bold; border:1px solid #d97706;">HIGH PRIORITY</span>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#0b141a; padding:12px; border-radius:8px; border:1px solid #334155;">
+                                <div>
+                                    <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">👑 Boss Phone Number (Mr. Nadeem):</label>
+                                    <input type="text" id="waWebKbBossPhone" value="00971529244592" placeholder="00971529244592 / 0529244592" style="width:100%; background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace;">
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">🔒 Secret Boss Verification Passcode:</label>
+                                    <input type="text" id="waWebKbBossPasscode" value="2831" placeholder="2831" style="width:100%; background:#1e293b; border:1px solid #475569; color:#38bdf8; padding:8px 10px; border-radius:6px; font-size:13px; font-weight:bold; font-family:monospace; letter-spacing:2px;">
+                                </div>
+                            </div>
+
+                            <div style="background:#1e293b; border-radius:8px; padding:10px; font-size:12px; color:#cbd5e1; line-height:1.5;">
+                                <b style="color:#fde68a;">How Boss Mode Works:</b>
+                                <ul style="margin:6px 0 0 16px; padding:0;">
+                                    <li>When a message arrives from <code style="color:#38bdf8;">00971529244592</code>, the AI recognizes the sender as <b>The Boss</b>.</li>
+                                    <li>The AI will ask for security passcode <code style="color:#38bdf8;">2831</code> to verify identity.</li>
+                                    <li>Once verified, AI unlocks <b>Executive Command Mode</b> and will strictly obey all instructions (e.g. <i>"Send msg to 05... : Hello"</i>, checking invoices, fetching data, or running tasks).</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- RULES ENGINE HEADER -->
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h4 style="margin:0; font-size:14px; color:#e9edef;">⚖️ Strict Mandatory AI Behavioral Rules</h4>
+                                <div style="font-size:12px; color:#8696a0;">Rules that the AI WhatsApp Web Bot must strictly obey on every conversation</div>
+                            </div>
+                            <button onclick="addWaWebKbRuleRow()" style="background:#00a884; border:none; color:#fff; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                + Add New Rule
+                            </button>
+                        </div>
+
+                        <!-- DYNAMIC RULES LIST CONTAINER -->
+                        <div id="waWebKbRulesList" style="display:flex; flex-direction:column; gap:12px;">
+                            <!-- Populated dynamically by renderWaWebKbRules -->
+                        </div>
+
                     </div>
 
                     <!-- TAB 2: FAQS Q&A BANK -->
@@ -5835,7 +5893,7 @@
         }
 
         function switchWaWebKbTab(tabName) {
-            ['instructions', 'faqs', 'catalog', 'autopilot', 'sandbox'].forEach(t => {
+            ['instructions', 'rules', 'faqs', 'catalog', 'autopilot', 'sandbox'].forEach(t => {
                 const el = document.getElementById('waWebKbTab_' + t);
                 const btn = document.getElementById('waWebKbTabBtn_' + t);
                 if (el) el.style.display = t === tabName ? 'flex' : 'none';
@@ -5876,6 +5934,16 @@
 
             const customInput = document.getElementById('waWebKbCustomText');
             if (customInput) customInput.value = kb.customKnowledgeText || '';
+
+            // Boss Protocol Config
+            const bossPhoneInput = document.getElementById('waWebKbBossPhone');
+            if (bossPhoneInput) bossPhoneInput.value = kb.bossPhone || '00971529244592';
+
+            const bossPasscodeInput = document.getElementById('waWebKbBossPasscode');
+            if (bossPasscodeInput) bossPasscodeInput.value = kb.bossPasscode || '2831';
+
+            // Rules Engine
+            renderWaWebKbRules(kb.rules || []);
 
             // FAQs
             renderWaWebKbFaqs(kb.faqs || []);
@@ -5928,6 +5996,84 @@
                 if (slider) slider.style.background = '#334155';
                 if (knob) knob.style.transform = 'translateX(0px)';
             }
+        }
+
+        
+        function renderWaWebKbRules(rules) {
+            const container = document.getElementById('waWebKbRulesList');
+            if (!container) return;
+
+            if (!Array.isArray(rules) || rules.length === 0) {
+                // Default fallback rules
+                rules = [
+                    {
+                        id: 'rule_personal_name_nadeem',
+                        title: '👤 Rule #1: Personal Name Greeting & Mr. Nadeem Availability Timing',
+                        enabled: true,
+                        description: 'Always address the person by their actual name. If Mr. Nadeem has not replied within 2 minutes or is occupied, politely inform: "Dear [Name], Mr. Nadeem will reply to you as soon as he is available. In the meantime, I am here to help you with your inquiry, invoice, or order."'
+                    },
+                    {
+                        id: 'rule_unsaved_contacts',
+                        title: '📇 Rule #2: Unsaved / Unknown Contacts Polite Onboarding',
+                        enabled: true,
+                        description: 'If anyone messages from an unsaved number (no name in contact book / WhatsApp records), politely and gently ask for their details: Full Name, Company Name, Country, and Business Activity, and save them into the contact and data book.'
+                    },
+                    {
+                        id: 'rule_business_integrity',
+                        title: '💼 Rule #3: Business Focus & Professional Boundaries',
+                        enabled: true,
+                        description: 'Maintain strict business professionalism. Never make unauthorized commitments outside company wholesale catalog and verified logistics policies.'
+                    }
+                ];
+            }
+
+            let html = '';
+            rules.forEach((r, idx) => {
+                const isChecked = r.enabled !== false ? 'checked' : '';
+                html += `
+                    <div class="wa-kb-rule-card" style="background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                            <input type="text" class="wa-kb-rule-title" value="${escapeHtml(r.title || ('Rule #' + (idx + 1)))}" placeholder="Rule Title..." style="flex:1; background:#111b21; border:1px solid #2a3942; color:#38bdf8; font-weight:bold; padding:8px 12px; border-radius:6px; font-size:13px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1; cursor:pointer;">
+                                    <input type="checkbox" class="wa-kb-rule-enabled" ${isChecked} style="cursor:pointer; width:16px; height:16px; accent-color:#00a884;">
+                                    <span style="font-weight:600;">Active</span>
+                                </label>
+                                <button onclick="this.closest('.wa-kb-rule-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                                    🗑️ Remove
+                                </button>
+                            </div>
+                        </div>
+                        <textarea class="wa-kb-rule-desc" rows="3" placeholder="Explain the exact behavioral rule the AI must obey..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:10px 12px; border-radius:6px; font-size:13px; resize:vertical; font-family:inherit; line-height:1.4;">${escapeHtml(r.description || '')}</textarea>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function addWaWebKbRuleRow() {
+            const container = document.getElementById('waWebKbRulesList');
+            if (!container) return;
+            const count = container.querySelectorAll('.wa-kb-rule-card').length + 1;
+            const div = document.createElement('div');
+            div.className = 'wa-kb-rule-card';
+            div.style.cssText = 'background:#202c33; border:1px solid #2a3942; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px;';
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                    <input type="text" class="wa-kb-rule-title" value="📌 Rule #${count}: Custom AI Behavioral Instruction" placeholder="Rule Title..." style="flex:1; background:#111b21; border:1px solid #2a3942; color:#38bdf8; font-weight:bold; padding:8px 12px; border-radius:6px; font-size:13px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#cbd5e1; cursor:pointer;">
+                            <input type="checkbox" class="wa-kb-rule-enabled" checked style="cursor:pointer; width:16px; height:16px; accent-color:#00a884;">
+                            <span style="font-weight:600;">Active</span>
+                        </label>
+                        <button onclick="this.closest('.wa-kb-rule-card').remove()" style="background:#3b1818; border:1px solid #e74c3c; color:#ff8585; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                            🗑️ Remove
+                        </button>
+                    </div>
+                </div>
+                <textarea class="wa-kb-rule-desc" rows="3" placeholder="Explain what the AI must do or how it must respond..." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:10px 12px; border-radius:6px; font-size:13px; resize:vertical; font-family:inherit; line-height:1.4;"></textarea>
+            `;
+            container.appendChild(div);
         }
 
         function renderWaWebKbFaqs(faqs) {
@@ -6025,10 +6171,23 @@
         async function saveWaWebKnowledgeBaseFromModal() {
             const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
             const custom = document.getElementById('waWebKbCustomText')?.value || '';
+            const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '00971529244592';
+            const bossPasscode = document.getElementById('waWebKbBossPasscode')?.value.trim() || '2831';
             const autoEnabled = Boolean(document.getElementById('waWebKbAutoReplyCheckbox')?.checked);
             const scope = document.getElementById('waWebKbAutoReplyScope')?.value || 'all';
             const cooldown = parseInt(document.getElementById('waWebKbCooldown')?.value || '30', 10);
             const handover = document.getElementById('waWebKbHandoverKeywords')?.value || '';
+
+            // Harvest Rules
+            const rules = [];
+            document.querySelectorAll('.wa-kb-rule-card').forEach((card, idx) => {
+                const title = card.querySelector('.wa-kb-rule-title')?.value.trim() || ('Rule #' + (idx + 1));
+                const enabled = Boolean(card.querySelector('.wa-kb-rule-enabled')?.checked);
+                const desc = card.querySelector('.wa-kb-rule-desc')?.value.trim() || '';
+                if (title || desc) {
+                    rules.push({ title, enabled, description: desc });
+                }
+            });
 
             // Harvest FAQs
             const faqs = [];
@@ -6050,6 +6209,9 @@
             const payload = {
                 systemPromptInstructions: sys,
                 customKnowledgeText: custom,
+                bossPhone: bossPhone,
+                bossPasscode: bossPasscode,
+                rules: rules,
                 autoReplyEnabled: autoEnabled,
                 autoReplyScope: scope,
                 cooldownSeconds: cooldown,

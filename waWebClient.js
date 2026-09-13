@@ -59,11 +59,44 @@ export const waWebState = {
 
 
 // Dedicated WhatsApp Web AI Knowledge Base & Auto-Pilot State
+export const waWebBossSession = {
+  authenticated: false,
+  lastAuthTimestamp: 0
+};
+
 export let waWebKnowledgeBase = {
   autoReplyEnabled: false,
   autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
   cooldownSeconds: 30,
   humanHandoverKeywords: 'human, agent, urgent, owner, speak to person, call me',
+  bossPhone: '00971529244592', // Also matches 971529244592, +971529244592, 0529244592
+  bossPasscode: '2831',
+  rules: [
+    {
+      id: 'rule_boss_protocol',
+      title: '👑 Rule #0: Boss Verification & Executive Command Protocol',
+      enabled: true,
+      description: 'When message arrives from Boss (00971529244592 / +971529244592 / 0529244592), recognize as Boss Mr. Nadeem. Ask security passcode "2831". Once code "2831" is entered, authenticate and strictly obey all instructions given by the boss (e.g. sending messages to contacts, retrieving records, taking actions).'
+    },
+    {
+      id: 'rule_personal_name_nadeem',
+      title: '👤 Rule #1: Personal Name Greeting & Mr. Nadeem Availability Timing',
+      enabled: true,
+      description: 'Always address the person by their actual name. If Mr. Nadeem is unavailable or has not replied within 2 minutes, politely inform: "Dear [Name], Mr. Nadeem will reply to you as soon as he is available. In the meantime, I am here to help you with your inquiry, invoice, or order."'
+    },
+    {
+      id: 'rule_unsaved_contacts',
+      title: '📇 Rule #2: Unsaved / Unknown Contacts Polite Onboarding',
+      enabled: true,
+      description: 'If anyone messages from an unsaved number (no name in contact book / WhatsApp records), politely and gently ask for their details: Full Name, Company Name, Country, and Business Activity, and save them into the contact and data book.'
+    },
+    {
+      id: 'rule_business_integrity',
+      title: '💼 Rule #3: Business Focus & Professional Boundaries',
+      enabled: true,
+      description: 'Maintain strict business professionalism. Never make unauthorized commitments outside company wholesale catalog and verified logistics policies.'
+    }
+  ],
   systemPromptInstructions: `You are the Official WhatsApp AI Business Assistant for WhatAnAgent.
 Your job is to assist customers, answer product/service inquiries, clarify pricing/payment terms, and take orders professionally.
 Always keep messages concise, courteous, and styled for WhatsApp (using bold *text*, bullet points, and appropriate emojis).
@@ -1004,7 +1037,82 @@ export async function initWaWeb(db = null) {
 
               waWebAutoReplyCooldown.set(remoteJid, Date.now());
 
-              // Trigger AI auto-reply in background
+              // Check if message is from Boss
+              const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || '00971529244592').replace(/[^0-9]/g, '');
+              const isBossNumber = configuredBossPhone && (
+                cleanSenderPhone.endsWith('529244592') ||
+                cleanSenderPhone.endsWith(configuredBossPhone) ||
+                configuredBossPhone.endsWith(cleanSenderPhone)
+              );
+              const bossPasscode = (waWebKnowledgeBase.bossPasscode || '2831').trim();
+
+              if (isBossNumber) {
+                console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + text + '"');
+
+                // Case 1: Passcode entered
+                if (text.includes(bossPasscode)) {
+                  waWebBossSession.authenticated = true;
+                  waWebBossSession.lastAuthTimestamp = Date.now();
+                  const ackMsg = '👑 *Boss Verification Successful!* (Passcode ' + bossPasscode + ' Confirmed)\n\n' +
+                    'Welcome Mr. Nadeem! I am at your command.\n\n' +
+                    'You can give me any instructions: send a message to a contact, check invoices, or query data.\n' +
+                    'Example: *Send msg to 0501234567: Hello please confirm order*';
+                  await sendWaWebMessage(remoteJid, ackMsg);
+                  console.log('[WA-WEB BOSS] 🟢 Boss authenticated successfully.');
+                  return;
+                }
+
+                // Case 2: Already authenticated within last 12 hours
+                const isAuth = waWebBossSession.authenticated && (Date.now() - waWebBossSession.lastAuthTimestamp < 12 * 3600 * 1000);
+                if (isAuth) {
+                  // Check if boss wants to send a message to someone
+                  const cmdMatch = text.match(/(?:send\s+msg\s+to|send\s+message\s+to|msg|send\s+to)\s+([+0-9\s-]+)[:\s]+(.+)/i);
+                  if (cmdMatch) {
+                    const rawTarget = cmdMatch[1].replace(/[^0-9]/g, '');
+                    const targetText = cmdMatch[2].trim();
+                    if (rawTarget && targetText) {
+                      const targetJid = rawTarget.includes('@') ? rawTarget : (rawTarget + '@s.whatsapp.net');
+                      try {
+                        await sendWaWebMessage(targetJid, targetText);
+                        await sendWaWebMessage(remoteJid, '✅ *Command Executed, Boss!*\n\nMessage delivered to *' + rawTarget + '*:\n"' + targetText + '"');
+                        console.log('[WA-WEB BOSS] 🟢 Executed boss relay command to ' + targetJid);
+                      } catch (e) {
+                        await sendWaWebMessage(remoteJid, '⚠️ *Failed to execute command:* ' + e.message);
+                      }
+                      return;
+                    }
+                  }
+
+                  // Executive prompt for boss instructions
+                  const bossExecPrompt = 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem).\n' +
+                    'He is texting you directly from his verified personal phone number.\n' +
+                    'Obey his instructions with high priority, precision, and respectful tone.\n' +
+                    'Address him respectfully as "Mr. Nadeem" or "Boss".\n\n' +
+                    buildWaWebKnowledgeSystemPrompt();
+
+                  setTimeout(async () => {
+                    try {
+                      const replyText = await generateWaWebAutoBotReply(remoteJid, text, bossExecPrompt);
+                      if (replyText && replyText.trim()) {
+                        await sendWaWebMessage(remoteJid, replyText.trim());
+                      }
+                    } catch (e) {
+                      console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
+                    }
+                  }, 1200);
+                  return;
+                } else {
+                  // Boss challenge
+                  const challengeMsg = '🔒 *Boss Security Verification Required*\n\n' +
+                    'Hello Mr. Nadeem! For security authentication, please reply with your 4-digit Boss Passcode (e.g. *' + bossPasscode + '*) to unlock executive command mode.';
+                  await sendWaWebMessage(remoteJid, challengeMsg);
+                  console.log('[WA-WEB BOSS] Sent passcode verification challenge to Boss.');
+                  return;
+                }
+              }
+
+              // Normal Customer auto-reply
               setTimeout(async () => {
                 try {
                   console.log('[WA-WEB AUTO-REPLY] Generating AI reply for: ' + remoteJid + ' -> "' + text + '"');
@@ -1479,10 +1587,19 @@ export async function updateWaWebContactName(jid, newName) {
 }
 
 // Build complete system knowledge prompt
-export function buildWaWebKnowledgeSystemPrompt() {
+export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
   const kb = waWebKnowledgeBase;
   let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
-  
+
+  if (Array.isArray(kb.rules) && kb.rules.length > 0) {
+    prompt += '--- STRICT MANDATORY AI RULES (MUST BE STRICTLY OBEYED) ---\n';
+    kb.rules.forEach((r, i) => {
+      if (r && r.enabled !== false) {
+        prompt += (i + 1) + '. [' + (r.title || 'MANDATORY RULE') + ']:\n' + (r.description || '') + '\n\n';
+      }
+    });
+  }
+
   if (kb.customKnowledgeText && kb.customKnowledgeText.trim()) {
     prompt += '--- BUSINESS BACKGROUND & POLICIES ---\n' + kb.customKnowledgeText.trim() + '\n\n';
   }
@@ -1509,23 +1626,31 @@ export function buildWaWebKnowledgeSystemPrompt() {
   return prompt;
 }
 
-// Helper to generate auto-reply using database AI keys
-export async function generateWaWebAutoBotReply(jid, customerMessage) {
+export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null) {
   if (!globalDb) return null;
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
     const settings = settingsSnap.exists() ? settingsSnap.data() : {};
     
     const chatContext = getWaWebChatContext(jid);
-    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt();
+    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext);
 
-    const systemPrompt = knowledgePrompt + `\n--- CONVERSATION CONTEXT ---
-Customer Name: ${chatContext?.name || 'Customer'}
-Phone / JID: ${jid}
-Recent conversation transcript:
-${chatContext?.transcript || customerMessage}
---- END CONTEXT ---
-Task: Compose a natural, professional WhatsApp auto-reply to the customer's message. Do not repeat greeting if already chatting.`;
+    const cleanPhone = (jid || '').split('@')[0].split(':')[0];
+    const contactName = chatContext?.name || '';
+    const isUnsaved = !contactName || contactName.trim() === '' || contactName === 'Customer' || contactName === cleanPhone || /^[0-9+]+$/.test(contactName.trim());
+
+    let specialGuidance = '';
+    if (isUnsaved) {
+      specialGuidance += '\n⚠️ NOTE: This sender is an UNSAVED / NEW contact (' + cleanPhone + '). Per Rule #2, politely and gently ask for their Name, Company Name, Country, and Business Activity so we can register them in our records.';
+    }
+
+    const systemPrompt = overridePrompt || (knowledgePrompt + '\n--- CONVERSATION CONTEXT ---\n' +
+'Customer Name: ' + (chatContext?.name || 'Customer') + '\n' +
+'Phone / JID: ' + jid + specialGuidance + '\n' +
+'Recent conversation transcript:\n' +
+(chatContext?.transcript || customerMessage) + '\n' +
+'--- END CONTEXT ---\n' +
+'Task: Compose a natural, professional WhatsApp reply following all business rules. If greeting, address by their name. Do not repeat greeting if already in conversation.');
 
     if (settings.DEEPSEEK_API_KEY) {
       const { default: OpenAI } = await import('openai');
@@ -1552,7 +1677,6 @@ Task: Compose a natural, professional WhatsApp auto-reply to the customer's mess
   return null;
 }
 
-// Get Knowledge Base
 export function getWaWebKnowledgeBase() {
   return waWebKnowledgeBase;
 }
