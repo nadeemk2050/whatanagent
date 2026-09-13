@@ -71,6 +71,7 @@ export let waWebKnowledgeBase = {
   humanHandoverKeywords: 'human, agent, urgent, owner, speak to person, call me',
   bossPhone: '00971529244592', // Also matches 971529244592, +971529244592, 0529244592
   bossPasscode: '2831',
+  pausedContacts: [], // List of JIDs/phones where AI auto-reply is paused
   rules: [
     {
       id: 'rule_boss_protocol',
@@ -1015,8 +1016,15 @@ export async function initWaWeb(db = null) {
               if (waWebKnowledgeBase.autoReplyScope === 'direct_only' && isGroup) return;
               if (waWebKnowledgeBase.autoReplyScope === 'groups_only' && !isGroup) return;
 
-              const { text } = parseMessageContent(msg);
-              if (!text || text.trim() === '') return;
+              const { text, mediaType, mediaInfo } = parseMessageContent(msg);
+              const hasMedia = mediaType === 'audio' || mediaType === 'image' || mediaType === 'document';
+              if ((!text || text.trim() === '') && !hasMedia) return;
+
+              // Check if AI is paused for this specific contact
+              if (isContactAiPaused(remoteJid)) {
+                console.log('[WA-WEB AUTO-REPLY] ⏸️ Skipping auto-reply: AI is PAUSED for contact ' + remoteJid);
+                return;
+              }
 
               // Check human handover
               const lower = text.toLowerCase();
@@ -1112,11 +1120,36 @@ export async function initWaWeb(db = null) {
                 }
               }
 
+              // Download media buffer if audio, image, or document
+              let mediaData = null;
+              if (hasMedia) {
+                try {
+                  const buffer = await downloadMediaMessage(
+                    msg,
+                    'buffer',
+                    {},
+                    { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage }
+                  );
+                  if (buffer && buffer.length > 0) {
+                    mediaData = {
+                      buffer,
+                      mediaType,
+                      mimetype: mediaInfo?.mimetype || (mediaType === 'audio' ? 'audio/ogg; codecs=opus' : (mediaType === 'image' ? 'image/jpeg' : 'application/pdf')),
+                      fileName: mediaInfo?.fileName || `${mediaType}_file`,
+                      caption: mediaInfo?.caption || ''
+                    };
+                    console.log(`[WA-WEB MULTIMODAL] 📥 Downloaded ${mediaType} (${(buffer.length/1024).toFixed(1)} KB) for AI analysis`);
+                  }
+                } catch (mErr) {
+                  console.warn('[WA-WEB MULTIMODAL] Media download warning:', mErr.message);
+                }
+              }
+
               // Normal Customer auto-reply
               setTimeout(async () => {
                 try {
-                  console.log('[WA-WEB AUTO-REPLY] Generating AI reply for: ' + remoteJid + ' -> "' + text + '"');
-                  const replyText = await generateWaWebAutoBotReply(remoteJid, text);
+                  console.log('[WA-WEB AUTO-REPLY] Generating AI reply for: ' + remoteJid + ' -> "' + (text || mediaType) + '"');
+                  const replyText = await generateWaWebAutoBotReply(remoteJid, text, null, mediaData);
                   if (replyText && replyText.trim()) {
                     await sendWaWebMessage(remoteJid, replyText.trim());
                     console.log('[WA-WEB AUTO-REPLY] 🟢 Successfully Auto-replied to ' + remoteJid + ': ' + replyText.trim());
@@ -1587,6 +1620,56 @@ export async function updateWaWebContactName(jid, newName) {
 }
 
 // Build complete system knowledge prompt
+
+// Helper: Check if contact AI auto-reply is paused
+export function isContactAiPaused(jid) {
+  if (!jid) return false;
+  const cleanPhone = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  const pausedList = Array.isArray(waWebKnowledgeBase.pausedContacts) ? waWebKnowledgeBase.pausedContacts : [];
+  return pausedList.some(p => {
+    const cleanP = (p || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    return p === jid || (cleanPhone && cleanP && (cleanPhone === cleanP || cleanPhone.endsWith(cleanP) || cleanP.endsWith(cleanPhone)));
+  });
+}
+
+// Helper: Toggle pause state for a contact
+export async function toggleContactAiPause(jid, shouldPause = null) {
+  if (!jid) return { success: false, error: 'Missing JID' };
+  const cleanPhone = jid.split('@')[0].split(':')[0];
+  
+  if (!Array.isArray(waWebKnowledgeBase.pausedContacts)) {
+    waWebKnowledgeBase.pausedContacts = [];
+  }
+
+  const isCurrentlyPaused = isContactAiPaused(jid);
+  const targetPaused = shouldPause !== null ? Boolean(shouldPause) : !isCurrentlyPaused;
+
+  if (targetPaused) {
+    if (!waWebKnowledgeBase.pausedContacts.includes(jid)) waWebKnowledgeBase.pausedContacts.push(jid);
+    if (!waWebKnowledgeBase.pausedContacts.includes(cleanPhone)) waWebKnowledgeBase.pausedContacts.push(cleanPhone);
+  } else {
+    waWebKnowledgeBase.pausedContacts = waWebKnowledgeBase.pausedContacts.filter(x => {
+      const cleanX = (x || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+      const cleanTarget = cleanPhone.replace(/[^0-9]/g, '');
+      return x !== jid && x !== cleanPhone && cleanX !== cleanTarget;
+    });
+  }
+
+  if (globalDb) {
+    try {
+      await setDoc(doc(globalDb, "appData", "waWebKnowledgeBase"), {
+        pausedContacts: waWebKnowledgeBase.pausedContacts
+      }, { merge: true });
+      console.log(`[WA-WEB KB] Persisted paused contacts list (${waWebKnowledgeBase.pausedContacts.length} entries) to Firestore`);
+    } catch (e) {
+      console.warn('[WA-WEB KB] Error persisting paused contacts to Firestore:', e.message);
+    }
+  }
+
+  console.log(`[WA-WEB KB] Contact ${cleanPhone} AI auto-reply is now: ${targetPaused ? 'PAUSED ⏸️' : 'ACTIVE 🟢'}`);
+  return { success: true, jid, cleanPhone, isPaused: targetPaused, pausedContacts: waWebKnowledgeBase.pausedContacts };
+}
+
 export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
   const kb = waWebKnowledgeBase;
   let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
@@ -1626,7 +1709,7 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
   return prompt;
 }
 
-export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null) {
+export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null) {
   if (!globalDb) return null;
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
@@ -1652,9 +1735,99 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
 '--- END CONTEXT ---\n' +
 'Task: Compose a natural, professional WhatsApp reply following all business rules. If greeting, address by their name. Do not repeat greeting if already in conversation.');
 
-    if (settings.DEEPSEEK_API_KEY) {
+    const geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
+    const deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
+    const openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+
+    // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
+    if (mediaData && mediaData.buffer && mediaData.buffer.length > 0) {
+      const rawMime = (mediaData.mimetype || '').split(';')[0].trim().toLowerCase();
+      let normalizedMime = rawMime;
+      if (mediaData.mediaType === 'audio') {
+        normalizedMime = rawMime || 'audio/ogg';
+      } else if (mediaData.mediaType === 'image') {
+        normalizedMime = rawMime || 'image/jpeg';
+      } else if (mediaData.mediaType === 'document') {
+        normalizedMime = rawMime || 'application/pdf';
+      }
+
+      console.log(`[WA-WEB MULTIMODAL] 🧠 Processing ${mediaData.mediaType} with AI (${normalizedMime}, ${(mediaData.buffer.length/1024).toFixed(1)} KB)`);
+
+      // Try Gemini Multimodal (Gemini 1.5 Flash natively processes audio, images, and PDFs!)
+      if (geminiKey) {
+        try {
+          const { GoogleGenerativeAI } = await import('@google/generative-ai');
+          const genAI = new GoogleGenerativeAI(geminiKey);
+          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+          let mediaInstruction = 'Customer sent a ' + (mediaData.mediaType || 'file') + '.';
+          if (mediaData.mediaType === 'audio') {
+            mediaInstruction = 'Customer sent a VOICE NOTE / AUDIO MESSAGE. Listen carefully to their voice, transcribe/understand their question or order, and reply directly with helpful answers adhering to our business knowledge and rules.';
+          } else if (mediaData.mediaType === 'image') {
+            mediaInstruction = 'Customer sent an IMAGE' + (mediaData.caption ? ' (Caption: "' + mediaData.caption + '")' : '') + '. Inspect the image carefully (e.g. invoice, product list, payment receipt, document screenshot) and reply helpfully based on business rules.';
+          } else if (mediaData.mediaType === 'document') {
+            mediaInstruction = 'Customer sent a DOCUMENT' + (mediaData.fileName ? ' ("' + mediaData.fileName + '")' : '') + '. Read and analyze the document contents (e.g. PDF invoice, purchase order, packing list) and provide a professional, helpful response.';
+          }
+
+          const base64Data = mediaData.buffer.toString('base64');
+          const res = await model.generateContent({
+            contents: [{
+              role: 'user',
+              parts: [
+                { text: systemPrompt + '\n\n' + mediaInstruction + (customerMessage ? '\nCustomer note: ' + customerMessage : '') },
+                {
+                  inlineData: {
+                    mimeType: normalizedMime,
+                    data: base64Data
+                  }
+                }
+              ]
+            }]
+          });
+          const reply = res.response.text();
+          if (reply && reply.trim()) {
+            console.log('[WA-WEB MULTIMODAL] 🟢 Gemini generated reply for ' + mediaData.mediaType);
+            return reply.trim();
+          }
+        } catch (geminiErr) {
+          console.warn('[WA-WEB MULTIMODAL] Gemini multimodal error:', geminiErr.message);
+        }
+      }
+
+      // OpenAI Multimodal Fallback (GPT-4o Vision or Whisper)
+      if (openaiKey) {
+        try {
+          const { default: OpenAI } = await import('openai');
+          const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
+
+          if (mediaData.mediaType === 'image') {
+            const base64Data = mediaData.buffer.toString('base64');
+            const comp = await openai.chat.completions.create({
+              messages: [
+                { role: 'system', content: systemPrompt },
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: customerMessage || 'Please inspect this image and reply as per our business rules.' },
+                    { type: 'image_url', image_url: { url: `data:${normalizedMime};base64,${base64Data}` } }
+                  ]
+                }
+              ],
+              model: 'gpt-4o',
+              temperature: 0.4
+            });
+            return comp.choices[0]?.message?.content || null;
+          }
+        } catch (openaiErr) {
+          console.warn('[WA-WEB MULTIMODAL] OpenAI fallback error:', openaiErr.message);
+        }
+      }
+    }
+
+    // 2. TEXT-BASED AI AUTO-REPLY
+    if (deepseekKey) {
       const { default: OpenAI } = await import('openai');
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 45000 });
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
         messages: [
           { role: 'system', content: systemPrompt },
@@ -1664,12 +1837,24 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         temperature: 0.4
       });
       return comp.choices[0]?.message?.content || null;
-    } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
+    } else if (geminiKey) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+      const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       return res.response.text() || null;
+    } else if (openaiKey) {
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
+      const comp = await openai.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: customerMessage }
+        ],
+        model: 'gpt-4o-mini',
+        temperature: 0.4
+      });
+      return comp.choices[0]?.message?.content || null;
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);

@@ -442,6 +442,10 @@
                                 </div>
                             </div>
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <button id="waWebChatAiPauseBtn" onclick="toggleCurrentChatAiPause()" title="Toggle AI Auto-Reply for this specific contact" style="background:#202c33; border:1px solid #22c55e; color:#22c55e; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px; transition:0.2s;">
+                                    <span id="waWebChatAiPauseIcon">🤖</span>
+                                    <span id="waWebChatAiPauseText">AI: Active</span>
+                                </button>
                                 <button onclick="promptEditWaWebContactName()" title="Edit Contact Name" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>✏️ Edit Name</span>
                                 </button>
@@ -5309,7 +5313,74 @@
             renderWaWebChatList(filtered);
         }
 
-        async function selectWaWebChat(jid, name, phone) {
+        async 
+        function isPausedContact(jid, phone) {
+            const pausedList = (waWebKnowledgeBaseData && Array.isArray(waWebKnowledgeBaseData.pausedContacts)) ? waWebKnowledgeBaseData.pausedContacts : [];
+            const cleanPhone = (phone || (jid || '').split('@')[0].split(':')[0]).replace(/[^0-9]/g, '');
+            return pausedList.some(p => {
+                const cleanP = (p || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+                return p === jid || (cleanPhone && cleanP && (cleanPhone === cleanP || cleanPhone.endsWith(cleanP) || cleanP.endsWith(cleanPhone)));
+            });
+        }
+
+        function updateWaWebChatAiPauseButton(jid) {
+            const btn = document.getElementById('waWebChatAiPauseBtn');
+            const icon = document.getElementById('waWebChatAiPauseIcon');
+            const text = document.getElementById('waWebChatAiPauseText');
+            if (!btn || !jid) return;
+
+            const isPaused = isPausedContact(jid);
+            if (isPaused) {
+                btn.style.borderColor = '#f59e0b';
+                btn.style.color = '#fbbf24';
+                btn.style.background = '#3b2005';
+                if (icon) icon.innerText = '⏸️';
+                if (text) text.innerText = 'AI: Paused';
+                btn.title = 'AI Auto-reply is PAUSED for this contact. Click to resume.';
+            } else {
+                btn.style.borderColor = '#22c55e';
+                btn.style.color = '#22c55e';
+                btn.style.background = '#202c33';
+                if (icon) icon.innerText = '🤖';
+                if (text) text.innerText = 'AI: Active';
+                btn.title = 'AI Auto-reply is ACTIVE for this contact. Click to pause.';
+            }
+        }
+
+        async function toggleCurrentChatAiPause() {
+            if (!waWebCurrentJid) return;
+            const isPaused = isPausedContact(waWebCurrentJid);
+            const targetPaused = !isPaused;
+
+            const btn = document.getElementById('waWebChatAiPauseBtn');
+            if (btn) btn.style.opacity = '0.5';
+
+            try {
+                const res = await fetch('/api/wa-web/contact/toggle-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jid: waWebCurrentJid, paused: targetPaused })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!waWebKnowledgeBaseData) waWebKnowledgeBaseData = {};
+                    waWebKnowledgeBaseData.pausedContacts = data.pausedContacts || [];
+                    updateWaWebChatAiPauseButton(waWebCurrentJid);
+                    renderWaWebChatList(waWebCachedChats);
+                    const toastMsg = targetPaused ? '⏸️ AI Auto-reply PAUSED for this contact' : '🟢 AI Auto-reply ACTIVATED for this contact';
+                    console.log(toastMsg);
+                } else {
+                    alert('Failed to toggle AI state for contact');
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            } finally {
+                if (btn) btn.style.opacity = '1';
+            }
+        }
+
+        function selectWaWebChat(jid, name, phone) {
             waWebCurrentJid = jid;
             
             document.getElementById('waWebEmptyPlaceholder').style.display = 'none';
@@ -5319,6 +5390,7 @@
             document.getElementById('waWebChatName').innerText = name || phone || jid.split('@')[0];
             document.getElementById('waWebChatPhone').innerText = phone ? `+${phone}` : jid;
             document.getElementById('waWebChatAvatar').innerText = (name || 'U').charAt(0).toUpperCase();
+            updateWaWebChatAiPauseButton(jid);
 
             renderWaWebChatList(waWebCachedChats);
             await loadWaWebMessages(jid, true);

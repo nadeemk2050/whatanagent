@@ -171,6 +171,19 @@ app.post('/api/wa-web/chat/delete', async (req, res) => {
   }
 });
 
+app.post('/api/wa-web/contact/toggle-ai', async (req, res) => {
+  try {
+    const { jid, paused } = req.body;
+    if (!jid) return res.status(400).json({ error: 'Missing JID' });
+    const { toggleContactAiPause } = await import('./waWebClient.js');
+    const result = await toggleContactAiPause(jid, paused !== undefined ? paused : null);
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error toggling contact AI pause:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/wa-web/contact/update', async (req, res) => {
   try {
     const { jid, name } = req.body || {};
