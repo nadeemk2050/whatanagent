@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.14.1 (LID->phone resolution, group names, 8h boss session, boss full authority: [CONFIG]/[BUSINESS]/[TASK]/[CONTACT], real reminders) -->
+    <!-- APP VERSION: 2026.09.14.2 (perf: no background-tab polling, 6s/10s poll cadence, 300-row chat-list render cap, interval leak fixed, auth inputs in forms) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -218,18 +218,22 @@
         <div class="auth-card" id="loginCard">
             <h2>Admin Login</h2>
             <div id="loginError" class="error-msg"></div>
-            <input type="email" id="loginEmail" placeholder="Email Address">
-            <input type="password" id="loginPassword" placeholder="Password">
-            <button onclick="handleLogin()">Log In</button>
+            <form onsubmit="event.preventDefault(); handleLogin();" autocomplete="on">
+                <input type="email" id="loginEmail" placeholder="Email Address">
+                <input type="password" id="loginPassword" placeholder="Password">
+                <button type="submit">Log In</button>
+            </form>
             <div class="toggle-link" onclick="toggleAuth('signup')">Don't have an account? Sign Up</div>
         </div>
         
         <div class="auth-card" id="signupCard" style="display: none;">
             <h2>Create Account</h2>
             <div id="signupError" class="error-msg"></div>
-            <input type="email" id="signupEmail" placeholder="Email Address">
-            <input type="password" id="signupPassword" placeholder="Password (min 6 chars)">
-            <button onclick="handleSignup()">Sign Up</button>
+            <form onsubmit="event.preventDefault(); handleSignup();" autocomplete="on">
+                <input type="email" id="signupEmail" placeholder="Email Address">
+                <input type="password" id="signupPassword" placeholder="Password (min 6 chars)">
+                <button type="submit">Sign Up</button>
+            </form>
             <div class="toggle-link" onclick="toggleAuth('login')">Already have an account? Log In</div>
         </div>
     </div>
@@ -1700,7 +1704,7 @@
                             <label style="font-weight:bold;">📘 Facebook Auto-Posting</label>
                             <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:8px;">
                                 <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Facebook Page ID</label><input type="text" id="seoFbPageId" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
-                                <div style="flex:3; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Facebook Page Access Token</label><textarea id="seoFbPageToken" style="width:100%; height:70px; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px; resize:vertical;"></textarea></div>
+                                <div style="flex:3; min-width:240px;"><label style="font-size:13px; font-weight:normal;">Facebook Page Access Token</label><textarea id="seoFbPageToken" style="width:100%; height:70px; paddform onsubmit="event.preventDefault();" style="margin:0;"><input type="password" id="seoFbAppSecret" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></form
                             </div>
                             <div style="display:flex; gap:15px; flex-wrap:wrap; margin-top:10px;">
                                 <div style="flex:1; min-width:170px;"><label style="font-size:13px; font-weight:normal;">Facebook App ID <span style="color:#90a4ae;">(optional)</span></label><input type="text" id="seoFbAppId" placeholder="e.g. 1234567890" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; margin-top:4px;"></div>
@@ -2762,6 +2766,7 @@
 
         // Auto-refresh contact list in chat sidebar
         setInterval(async () => {
+            if (document.hidden) return;   // never burn CPU while the tab is in the background
             const listDiv = document.getElementById('chatSidebarList');
             if(document.getElementById('chatSection').classList.contains('active')) {
                 const res = await fetch('api/contacts');
@@ -2814,7 +2819,7 @@
                     listDiv.appendChild(d);
                 });
             }
-        }, 3000);
+        }, 15000);
 
         async function askAiSuggestion(field) {
             const promptInput = prompt("What specific topics or parameters should the AI include in this suggestion?");
@@ -5009,11 +5014,11 @@
 
         // Live countdown ticker + auto refresh while the Tasks section is open
         setInterval(function() {
-            updateTaskCountdowns();
+            if (document.hidden) return;   // countdowns only matter while the tab is visible
             const sec = document.getElementById('tasksSection');
-            if (sec && sec.classList.contains('active')) {
-                if (!window.__taskRefreshAt || Date.now() - window.__taskRefreshAt > 30000) { window.__taskRefreshAt = Date.now(); loadAiTasks(); }
-            }
+            if (!sec || !sec.classList.contains('active')) return;   // and only inside the Tasks section
+            updateTaskCountdowns();
+            if (!window.__taskRefreshAt || Date.now() - window.__taskRefreshAt > 30000) { window.__taskRefreshAt = Date.now(); loadAiTasks(); }
         }, 1000);
 
         // ===== CODE STUDIO (Monaco editor + AI + WordPress) =====
@@ -5284,6 +5289,7 @@
         // WHATSAPP WEB (EMBEDDED CLIENT) CONTROLLER
         // ==========================================
         let waWebPollInterval = null;
+        let waWebStatsInterval = null;
         let waWebCurrentJid = null;
         let waWebCachedChats = [];
         let waWebLastStatus = '';
@@ -5301,8 +5307,9 @@
 
             refreshWaWebState();
             if (waWebPollInterval) clearInterval(waWebPollInterval);
-            waWebPollInterval = setInterval(pollWaWebStatus, 2000);
-        setInterval(pollWaWebSyncStats, 4000);
+            waWebPollInterval = setInterval(() => { if (!document.hidden) pollWaWebStatus(); }, 6000);
+            if (waWebStatsInterval) clearInterval(waWebStatsInterval);
+            waWebStatsInterval = setInterval(() => { if (!document.hidden) pollWaWebSyncStats(); }, 10000);
         }
 
         function closeWaWebPage() {
@@ -5310,6 +5317,11 @@
             if (page) page.style.display = 'none';
             if (waWebPollInterval) {
                 clearInterval(waWebPollInterval);
+                waWebPollInterval = null;
+            }
+            if (waWebStatsInterval) {
+                clearInterval(waWebStatsInterval);
+                waWebStatsrval(waWebPollInterval);
                 waWebPollInterval = null;
             }
         }
@@ -5362,9 +5374,16 @@
                 if (chatSection) chatSection.style.display = 'flex';
                 if (logoutBtn) logoutBtn.style.display = 'block';
 
-                loadWaWebChats();
-                if (waWebCurrentJid) {
-                    loadWaWebMessages(waWebCurrentJid, false);
+                // PERF: never re-fetch the whole (4k+) chat list on every poll tick.
+                // Full refresh only when the connection state changes; list ~every 30s; open chat ~every 18s.
+                const stateChanged = (waWebLastStatus !== 'connected');
+                window.__waWebPollTick = (window.__waWebPollTick || 0) + 1;
+                if (stateChanged) {
+                    loadWaWebChats();
+                    if (waWebCurrentJid) loadWaWebMessages(waWebCurrentJid, false);
+                } else {
+                    if (window.__waWebPollTick % 5 === 0) loadWaWebChats();
+                    if (waWebCurrentJid && window.__waWebPollTick % 3 === 0) loadWaWebMessages(waWebCurrentJid, false);
                 }
             } else if (data.status === 'qr_ready' && data.qr) {
                 statusDot.style.background = '#f39c12';
@@ -5447,8 +5466,14 @@
                 return;
             }
 
+            // PERF: cap the number of DOM rows (the store can hold 4k+ chats).
+            // Search still covers the complete history - only the visible list is capped.
+            const WA_RENDER_CAP = 300;
+            const totalChats = chats.length;
+            const visibleChats = chats.slice(0, WA_RENDER_CAP);
+
             let html = '';
-            chats.forEach(c => {
+            visibleChats.forEach(c => {
                 const isSelected = waWebCurrentJid === c.id;
                 const realPhone = String(c.realPhone || '').replace(/\D/g, '');
                 const cleanPhone = realPhone;
@@ -5489,6 +5514,9 @@
                 `;
             });
 
+            if (totalChats > WA_RENDER_CAP) {
+                html += `<div style="padding:12px 16px; text-align:center; color:#8696a0; font-size:12px;">Showing first ${WA_RENDER_CAP} of ${totalChats} chats — use the search box above to find older conversations</div>`;
+            }
             listEl.innerHTML = html;
         }
 
