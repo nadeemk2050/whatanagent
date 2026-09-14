@@ -3819,6 +3819,7 @@ async function processAiTasks() {
 
     for (const t of tasks) {
       if (!t || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
+      if (t.taskType === 'waweb_message') continue;   // handled by the WhatsApp-Web node (boss's personal session)
       console.log(`[AI TASKS] Running task ${t.id} (${t.taskType}): "${String(t.title || t.message || t.instruction || '').substring(0, 60)}"`);
       t.status = 'running';
       t.startedAt = now;

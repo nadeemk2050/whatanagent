@@ -239,8 +239,8 @@ async function bossCreateTask(t) {
   const runAt = typeof t.runAt === 'number' ? t.runAt : Date.parse(String(t.runAt || ''));
   if (!runAt || Number.isNaN(runAt)) return { ok: false, error: 'I need a clear date & time for that task, Boss.' };
   if (runAt < Date.now() - 60000) return { ok: false, error: 'That time is already in the past.' };
-  const taskType = ['send_message', 'send_template', 'ai_task'].includes(t.taskType) ? t.taskType : 'ai_task';
-  if (taskType === 'send_message' && (!t.target || !String(t.message || '').trim())) return { ok: false, error: 'A send-message task needs a number (or a contact name) and a message.' };
+  const taskType = ['send_message', 'send_template', 'ai_task', 'waweb_message'].includes(t.taskType) ? t.taskType : 'ai_task';
+  if ((taskType === 'send_message' || taskType === 'waweb_message') && (!t.target || !String(t.message || '').trim())) return { ok: false, error: 'A send task needs a number (or a contact name) and a message.' };
   if (taskType === 'send_template' && (!t.target || !t.templateName)) return { ok: false, error: 'A template task needs a number and the template name.' };
   if (taskType === 'ai_task' && !String(t.instruction || '').trim()) return { ok: false, error: 'An AI task needs an instruction.' };
 
@@ -249,7 +249,7 @@ async function bossCreateTask(t) {
   let resolvedName = '';
   if (t.target) {
     const res = await bossResolveTarget(t.target);
-    if (res.error && (taskType === 'send_message' || taskType === 'send_template')) return { ok: false, error: res.error };
+    if (res.error && (taskType === 'send_message' || taskType === 'send_template' || taskType === 'waweb_message')) return { ok: false, error: res.error };
     resolvedTarget = res.phone || '';
     resolvedName = res.name || '';
   }
@@ -555,6 +555,41 @@ async function processBossRemindersAndNotifications() {
       nChanged = true;
     }
     if (nChanged) await setDoc(nRef, { items: notes.slice(-200) }, { merge: true });
+
+    // Boss orders to SEND a WhatsApp message - go out from the linked personal session
+    // (free, no 24-hour window, appears as the boss's own number)
+    const tRef = doc(globalDb, 'appData', 'aiTasks');
+    const tSnap = await getDoc(tRef);
+    const tasks = tSnap.exists() ? (tSnap.data().tasks || []) : [];
+    let tChanged = false;
+    for (const t of tasks) {
+      if (!t || t.taskType !== 'waweb_message' || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
+      try {
+        const jid = String(t.target || '').includes('@') ? t.target : (String(t.target || '') + '@s.whatsapp.net');
+        await sendWaWebMessage(jid, t.message || '');
+        t.status = 'done';
+        t.result = '✅ Sent from the linked personal WhatsApp to +' + t.target + (t.targetName ? ' (' + t.targetName + ')' : '');
+      } catch (e) {
+        t.status = 'failed';
+        t.result = '❌ ' + (e.message || 'send failed');
+      }
+      t.executedAt = Date.now();
+      tChanged = true;
+      try {
+        const n2Snap = await getDoc(nRef);
+        const items2 = n2Snap.exists() ? (n2Snap.data().items || []) : [];
+        items2.push({
+          id: 'ntf-' + Date.now() + '-w',
+          text: '📤 *Boss message ' + (t.status === 'done' ? 'sent ✅' : 'FAILED ❌') + ':* ' + (t.targetName || ('+' + t.target)) +
+                '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + t.result)),
+          createdAt: Date.now(),
+          status: 'pending'
+        });
+        await setDoc(nRef, { items: items2.slice(-200) }, { merge: true });
+      } catch (e) { /* ignore */ }
+      console.log('[WA-WEB BOSS SEND] ' + t.status + ' -> +' + t.target + ' : ' + String(t.message || '').substring(0, 60));
+    }
+    if (tChanged) await setDoc(tRef, { tasks: tasks.slice(-200) }, { merge: true });
   } catch (e) {
     console.warn('[WA-WEB BOSS DELIVERY] ' + e.message);
   }
@@ -2113,6 +2148,10 @@ export async function initWaWeb(db = null) {
                     '--- BOSS AUTHORITY: SCHEDULED TASKS, REMINDERS, CONTACT BOOK, WEBSITE ---\n' +
                     'Current Dubai date & time: ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (compute runAt with the +04:00 offset)\n' +
                     'Schedule anything for later:\n' +
+                    '  *** TO SEND A WHATSAPP MESSAGE on the boss\'s behalf ALWAYS use taskType "waweb_message" - it goes from the boss\'s OWN personal WhatsApp (free, no limits, shows as his number). To send right away, use a runAt a few seconds in the future. ***\n' +
+                    '  [TASK: {"taskType":"waweb_message","target":"Fazeelat","message":"...","runAt":"<ISO now+30s with +04:00>","title":"..."}]\n' +
+                    '  (target may be a CONTACT NAME from the Contact Book, or a full number)\n' +
+                    '  Use "send_message" ONLY if the boss explicitly wants it sent from the BUSINESS number:\n' +
                     '  [TASK: {"taskType":"send_message","target":"0501234567","message":"...","runAt":"2026-09-15T11:00:00+04:00","title":"..."}]\n' +
                     '  [TASK: {"taskType":"ai_task","instruction":"Publish a blog about X on the website","runAt":"2026-09-15T11:00:00+04:00"}]\n' +
                     '  [TASK: {"taskType":"send_template","target":"0501234567","templateName":"name","variables":["a","b"],"runAt":"..."}]\n' +
