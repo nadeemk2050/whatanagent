@@ -2264,6 +2264,23 @@
             if (sidebar && sidebar.classList.contains('open')) {
                 sidebar.classList.remove('open');
             }
+
+            // Immediately load data for the activated section
+            try {
+                if (id === 'chat') {
+                    if (typeof refreshChatSidebarList === 'function') refreshChatSidebarList();
+                } else if (id === 'seo') {
+                    if (typeof loadSeoAgent === 'function') loadSeoAgent();
+                } else if (id === 'contactbook') {
+                    if (typeof loadContactBook === 'function') loadContactBook();
+                } else if (id === 'leadsbook') {
+                    if (typeof loadLeadsBook === 'function') loadLeadsBook();
+                } else if (id === 'followup') {
+                    if (typeof loadFollowUps === 'function') loadFollowUps();
+                }
+            } catch(loaderErr) {
+                console.warn('[showSection] section loader error:', loaderErr);
+            }
         }
 
         // Data Fetching logic
@@ -2321,6 +2338,7 @@
 
             // Refresh Contact Book view (merges AI chat contacts automatically)
             renderContactBook();
+            if (typeof renderChatSidebarFromCache === 'function') renderChatSidebarFromCache();
         }
 
         async function loadEnv() {
@@ -2526,13 +2544,67 @@
         let activeAiPaused = false;
         let activeMessageListener = null;
 
+        function renderChatMessageList(messages) {
+            const msgList = document.getElementById('chatMessageList');
+            if (!msgList) return;
+            msgList.innerHTML = '';
+            if (!messages || !messages.length) {
+                msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">No messages yet.</div>';
+                updateChatWindowWarning(0);
+                return;
+            }
+            let lastUserTs = 0;
+            messages.forEach(m => {
+                if (m.sender === 'user' && m.timestamp && m.timestamp > lastUserTs) lastUserTs = m.timestamp;
+                const bubble = document.createElement('div');
+                bubble.className = `msg-bubble msg-${m.sender}`;
+                
+                let timeStr = "";
+                if (m.timestamp) {
+                    const date = new Date(m.timestamp);
+                    const day = date.getDate();
+                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    const month = months[date.getMonth()];
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    timeStr = `${day} ${month}, ${hours}:${minutes}`;
+                }
+
+                // Real delivery states from Meta: sent (accepted) -> delivered -> read / failed
+                let statusHtml = '';
+                if (m.sender === 'bot') {
+                    if (m.status === 'read') {
+                        statusHtml = `<span class="msg-status" title="Read by recipient" style="color:#2196f3; font-weight:bold;">✓✓</span>`;
+                    } else if (m.status === 'delivered') {
+                        statusHtml = `<span class="msg-status sent" title="Delivered to recipient's phone">✓✓</span>`;
+                    } else if (m.status === 'failed') {
+                        const why = m.error ? ((m.error.title || 'Delivery failed') + (m.error.code ? ' (' + m.error.code + ')' : '') + (m.error.details ? ' — ' + m.error.details : '')) : 'Delivery failed';
+                        statusHtml = `<span class="msg-status" title="${why.replace(/"/g, '&quot;')}" style="color:#c62828; font-weight:bold;">⚠ Not delivered</span>`;
+                    } else {
+                        statusHtml = `<span class="msg-status" title="Accepted by WhatsApp - delivery not confirmed yet">✓</span>`;
+                    }
+                }
+
+                bubble.innerHTML = `
+                    <div style="white-space: pre-wrap; word-break: break-word;">${esc(m.text || '')}</div>
+                    <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal; display: flex; justify-content: flex-end; align-items: center; gap: 3px;">${timeStr}${statusHtml}</div>
+                `;
+                msgList.appendChild(bubble);
+            });
+            updateChatWindowWarning(lastUserTs);
+            msgList.scrollTop = msgList.scrollHeight;
+        }
+
         async function openChat(number) {
             activeContact = number;
-            document.getElementById('chatActiveUser').innerText = `+${number}`;
+            const contactInfo = (chatContactsCache && chatContactsCache[number]) || {};
+            const label = contactInfo.leadName || contactInfo.manualName;
+            document.getElementById('chatActiveUser').innerText = label ? `+${number} (${label})` : `+${number}`;
             document.getElementById('chatInputBar').style.display = 'flex';
             document.getElementById('aiToggleContainer').style.display = 'flex';
             
             document.getElementById('chatContainerEl').classList.add('chat-open');
+            highlightActiveChatContact(number);
 
             if (activeMessageListener) {
                 activeMessageListener();
@@ -2542,68 +2614,52 @@
             const msgList = document.getElementById('chatMessageList');
             msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">⏳ Loading real-time messages...</div>';
             
-            const q = window.query(
-                window.collection(window.firebaseDb, "chats", number, "messages"),
-                window.orderBy("timestamp", "asc")
-            );
-
-            activeMessageListener = window.onSnapshot(q, (snapshot) => {
-                msgList.innerHTML = '';
-                if (snapshot.empty) {
-                    msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">No messages yet.</div>';
-                    updateChatWindowWarning(0);
-                    return;
+            // 1. FAST REST LOAD: load directly via server endpoint for zero-latency initial paint
+            try {
+                const res = await fetch(`api/chats/${encodeURIComponent(number)}/messages`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (activeContact === number && Array.isArray(data)) {
+                        renderChatMessageList(data);
+                    }
                 }
-                let lastUserTs = 0;
-                snapshot.forEach(docSnap => {
-                    const m = docSnap.data();
-                    if (m.sender === 'user' && m.timestamp && m.timestamp > lastUserTs) lastUserTs = m.timestamp;
-                    const bubble = document.createElement('div');
-                    bubble.className = `msg-bubble msg-${m.sender}`;
-                    
-                    let timeStr = "";
-                    if (m.timestamp) {
-                        const date = new Date(m.timestamp);
-                        const day = date.getDate();
-                        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                        const month = months[date.getMonth()];
-                        const hours = String(date.getHours()).padStart(2, '0');
-                        const minutes = String(date.getMinutes()).padStart(2, '0');
-                        timeStr = `${day} ${month}, ${hours}:${minutes}`;
-                    }
+            } catch(loadErr) {
+                console.warn('[LiveChat] REST message load error:', loadErr);
+            }
 
-                    // Real delivery states from Meta: sent (accepted) -> delivered -> read / failed
-                    let statusHtml = '';
-                    if (m.sender === 'bot') {
-                        if (m.status === 'read') {
-                            statusHtml = `<span class="msg-status" title="Read by recipient" style="color:#2196f3; font-weight:bold;">✓✓</span>`;
-                        } else if (m.status === 'delivered') {
-                            statusHtml = `<span class="msg-status sent" title="Delivered to recipient's phone">✓✓</span>`;
-                        } else if (m.status === 'failed') {
-                            const why = m.error ? ((m.error.title || 'Delivery failed') + (m.error.code ? ' (' + m.error.code + ')' : '') + (m.error.details ? ' — ' + m.error.details : '')) : 'Delivery failed';
-                            statusHtml = `<span class="msg-status" title="${why.replace(/"/g, '&quot;')}" style="color:#c62828; font-weight:bold;">⚠ Not delivered</span>`;
-                        } else {
-                            statusHtml = `<span class="msg-status" title="Accepted by WhatsApp - delivery not confirmed yet">✓</span>`;
-                        }
-                    }
+            // 2. REAL-TIME LISTENER: keep subscribed to Firestore for live new messages
+            try {
+                if (window.firebaseDb && typeof window.query === 'function' && typeof window.collection === 'function' && typeof window.onSnapshot === 'function') {
+                    const q = window.query(
+                        window.collection(window.firebaseDb, "chats", number, "messages"),
+                        window.orderBy("timestamp", "asc")
+                    );
 
-                    bubble.innerHTML = `
-                        <div style="white-space: pre-wrap; word-break: break-word;">${m.text}</div>
-                        <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal; display: flex; justify-content: flex-end; align-items: center; gap: 3px;">${timeStr}${statusHtml}</div>
-                    `;
-                    msgList.appendChild(bubble);
-                });
-                updateChatWindowWarning(lastUserTs);
-                msgList.scrollTop = msgList.scrollHeight;
-            }, (error) => {
-                console.error("Firestore real-time subscription error:", error);
-            });
+                    activeMessageListener = window.onSnapshot(q, (snapshot) => {
+                        if (activeContact !== number) return;
+                        const msgs = [];
+                        snapshot.forEach(docSnap => msgs.push(docSnap.data()));
+                        renderChatMessageList(msgs);
+                    }, (error) => {
+                        console.error("Firestore real-time subscription error:", error);
+                    });
+                }
+            } catch(snapErr) {
+                console.warn('[LiveChat] Real-time listener init error:', snapErr);
+            }
 
-            // Fetch AI status from contacts
-            const cres = await fetch('api/contacts');
-            const cdata = await cres.json();
-            activeAiPaused = cdata[number] ? cdata[number].aiPaused : false;
-            updateAiBtn();
+            // Fetch AI status from contacts cache or API
+            try {
+                if (chatContactsCache && chatContactsCache[number]) {
+                    activeAiPaused = !!chatContactsCache[number].aiPaused;
+                    updateAiBtn();
+                } else {
+                    const cres = await fetch('api/contacts');
+                    const cdata = await cres.json();
+                    activeAiPaused = cdata[number] ? cdata[number].aiPaused : false;
+                    updateAiBtn();
+                }
+            } catch(e) {}
         }
 
         function closeChatView() {
@@ -2779,62 +2835,114 @@
             updateAiBtn();
         }
 
-        // Auto-refresh contact list in chat sidebar
-        setInterval(async () => {
-            if (document.hidden) return;   // never burn CPU while the tab is in the background
+        // Auto-refresh & instant rendering of contact list in chat sidebar
+        async function refreshChatSidebarList() {
             const listDiv = document.getElementById('chatSidebarList');
-            if(document.getElementById('chatSection').classList.contains('active')) {
+            if (!listDiv) return;
+            try {
                 const res = await fetch('api/contacts');
                 const contacts = await res.json();
-                listDiv.innerHTML = '';
-                
-                const sortedKeys = Object.keys(contacts).sort((a, b) => {
-                    const timeA = contacts[a].lastInteraction || 0;
-                    const timeB = contacts[b].lastInteraction || 0;
-                    return timeB - timeA;
-                });
-
-                const query = (document.getElementById('chatSearchInput')?.value || '').toLowerCase().trim();
-
-                sortedKeys.forEach(num => {
-                    const info = contacts[num] || {};
-                    
-                    const matchesNum = num.toLowerCase().includes(query);
-                    const matchesLeadName = (info.leadName || '').toLowerCase().includes(query);
-                    const matchesLeadCompany = (info.leadCompany || '').toLowerCase().includes(query);
-                    const matchesLeadProducts = (info.leadProducts || '').toLowerCase().includes(query);
-                    const matchesLeadEmail = (info.leadEmail || '').toLowerCase().includes(query);
-                    const matchesLeadWebsite = (info.leadWebsite || '').toLowerCase().includes(query);
-                    
-                    const matchesManName = (info.manualName || '').toLowerCase().includes(query);
-                    const matchesManCountry = (info.manualCountry || '').toLowerCase().includes(query);
-                    const matchesManActivity = (info.manualActivity || '').toLowerCase().includes(query);
-                    const matchesManRemarks = (info.manualRemarks || '').toLowerCase().includes(query);
-
-                    if (query && !matchesNum && !matchesLeadName && !matchesLeadCompany && !matchesLeadProducts && !matchesLeadEmail && !matchesLeadWebsite && !matchesManName && !matchesManCountry && !matchesManActivity && !matchesManRemarks) {
-                        return;
-                    }
-
-                    const nameLabel = info.leadName ? ` (${info.leadName})` : '';
-                    const d = document.createElement('div');
-                    d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
-                    d.style.display = 'flex';
-                    d.style.justifyContent = 'space-between';
-                    d.style.alignItems = 'center';
-                    
-                    d.innerHTML = `
-                        <div style="flex:1; cursor:pointer;" onclick="openChat('${num}')">
-                            +${num}${nameLabel}
-                        </div>
-                        <div style="display:flex; gap:5px; margin-left:10px; align-items:center;">
-                            <button onclick="openManualDetailsModal('${num}')" title="Add details by us" style="border:none; background:none; font-size:16px; cursor:pointer; padding:2px;">📝</button>
-                            <button onclick="openAiFetchedModal('${num}')" title="AI fetched details" style="border:none; background:none; font-size:16px; cursor:pointer; padding:2px;">🤖</button>
-                        </div>
-                    `;
-                    listDiv.appendChild(d);
-                });
+                chatContactsCache = contacts || {};
+                renderChatSidebarFromCache();
+            } catch(err) {
+                console.warn('Failed to load chat contacts:', err);
+                renderChatSidebarFromCache();
             }
-        }, 15000);
+        }
+
+        function highlightActiveChatContact(num) {
+            document.querySelectorAll('#chatSidebarList .chat-contact').forEach(el => {
+                if (el.getAttribute('data-number') === String(num)) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function renderChatSidebarFromCache() {
+            const listDiv = document.getElementById('chatSidebarList');
+            if (!listDiv) return;
+            const contacts = chatContactsCache || {};
+            listDiv.innerHTML = '';
+            
+            const sortedKeys = Object.keys(contacts).sort((a, b) => {
+                const timeA = (contacts[a] && contacts[a].lastInteraction) || 0;
+                const timeB = (contacts[b] && contacts[b].lastInteraction) || 0;
+                return timeB - timeA;
+            });
+
+            if (!sortedKeys.length) {
+                listDiv.innerHTML = '<div style="padding:24px 16px; text-align:center; color:#667781; font-size:13px;">No Meta WhatsApp chats found yet.</div>';
+                return;
+            }
+
+            const searchInput = document.getElementById('chatSearchInput');
+            const query = (searchInput?.value || '').toLowerCase().trim();
+
+            let matchesCount = 0;
+            sortedKeys.forEach(num => {
+                const info = contacts[num] || {};
+                
+                const matchesNum = num.toLowerCase().includes(query);
+                const matchesLeadName = (info.leadName || '').toLowerCase().includes(query);
+                const matchesLeadCompany = (info.leadCompany || '').toLowerCase().includes(query);
+                const matchesLeadProducts = (info.leadProducts || '').toLowerCase().includes(query);
+                const matchesLeadEmail = (info.leadEmail || '').toLowerCase().includes(query);
+                const matchesLeadWebsite = (info.leadWebsite || '').toLowerCase().includes(query);
+                
+                const matchesManName = (info.manualName || '').toLowerCase().includes(query);
+                const matchesManCountry = (info.manualCountry || '').toLowerCase().includes(query);
+                const matchesManActivity = (info.manualActivity || '').toLowerCase().includes(query);
+                const matchesManRemarks = (info.manualRemarks || '').toLowerCase().includes(query);
+
+                if (query && !matchesNum && !matchesLeadName && !matchesLeadCompany && !matchesLeadProducts && !matchesLeadEmail && !matchesLeadWebsite && !matchesManName && !matchesManCountry && !matchesManActivity && !matchesManRemarks) {
+                    return;
+                }
+                matchesCount++;
+
+                const nameLabel = info.leadName ? ` (${esc(info.leadName)})` : (info.manualName ? ` (${esc(info.manualName)})` : '');
+                const d = document.createElement('div');
+                d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
+                d.setAttribute('data-number', num);
+                d.style.display = 'flex';
+                d.style.justifyContent = 'space-between';
+                d.style.alignItems = 'center';
+                d.style.padding = '12px 14px';
+                
+                d.innerHTML = `
+                    <div style="flex:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="openChat('${num}')">
+                        <b>+${esc(num)}</b><span style="font-weight:normal; color:#546e7a;">${nameLabel}</span>
+                    </div>
+                    <div style="display:flex; gap:5px; margin-left:8px; align-items:center;">
+                        <button onclick="openManualDetailsModal('${num}')" title="Add details by us" style="border:none; background:none; font-size:15px; cursor:pointer; padding:2px;">📝</button>
+                        <button onclick="openAiFetchedModal('${num}')" title="AI fetched details" style="border:none; background:none; font-size:15px; cursor:pointer; padding:2px;">🤖</button>
+                    </div>
+                `;
+                listDiv.appendChild(d);
+            });
+
+            if (matchesCount === 0 && query) {
+                listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#667781; font-size:13px;">No contacts match "' + esc(query) + '"</div>';
+            }
+        }
+
+        // Search input instant filtering
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchInput = document.getElementById('chatSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', () => renderChatSidebarFromCache());
+            }
+        });
+
+        // Periodic background poll (every 5 seconds when in chat section)
+        setInterval(async () => {
+            if (document.hidden) return;
+            const chatSec = document.getElementById('chatSection');
+            if (chatSec && chatSec.classList.contains('active')) {
+                await refreshChatSidebarList();
+            }
+        }, 5000);
 
         async function askAiSuggestion(field) {
             const promptInput = prompt("What specific topics or parameters should the AI include in this suggestion?");
@@ -4262,7 +4370,26 @@
                     btn.style.border = (k === tab) ? 'none' : '1px solid var(--border)';
                 }
             });
-            if (tab === 'codestudio') initCodeStudio();
+            if (tab === 'codestudio') {
+                if (typeof initCodeStudio === 'function') initCodeStudio();
+            }
+            if (tab === 'workspace') {
+                try {
+                    if (typeof wsLoad === 'function') wsLoad();
+                    if (typeof wsInitExtras === 'function') wsInitExtras();
+                    if (typeof wsRender === 'function') wsRender();
+                    const wsSiteSel = document.getElementById('aiWsSite');
+                    if (wsSiteSel && !wsSiteSel.children.length) {
+                        wsSiteSel.innerHTML = '<option value="' + (SEO_SITE_KEY || 'www.alshaabalwaseem.com') + '">' + (SEO_SITE_KEY || 'www.alshaabalwaseem.com') + '</option>';
+                    }
+                    setTimeout(() => {
+                        const inp = document.getElementById('aiWsInput');
+                        if (inp) inp.focus();
+                    }, 80);
+                } catch(wsErr) {
+                    console.warn('[SEO] Workspace tab activation error:', wsErr);
+                }
+            }
         }
 
         async function loadSeoAgent() {
