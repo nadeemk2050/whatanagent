@@ -59,6 +59,9 @@ export const waWebState = {
 
 
 // Dedicated WhatsApp Web AI Knowledge Base & Auto-Pilot State
+// Track outbound messages sent by bot to avoid echo in self-chat
+const botSentMessageIds = new Set();
+
 export const waWebBossSession = {
   authenticated: false,
   lastAuthTimestamp: 0
@@ -1179,9 +1182,19 @@ export async function initWaWeb(db = null) {
         if (waWebKnowledgeBase && waWebKnowledgeBase.autoReplyEnabled) {
           m.messages.forEach(async (msg) => {
             try {
-              if (msg.key && msg.key.fromMe) return;
               const remoteJid = msg.key ? msg.key.remoteJid : null;
               if (!remoteJid || remoteJid === 'status@broadcast') return;
+
+              const cleanRemotePhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              const ownPhone = sock?.user?.id ? sock.user.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '') : '971529244592';
+              const isSelfChat = cleanRemotePhone === ownPhone || cleanRemotePhone === '971529244592';
+
+              if (msg.key && msg.key.fromMe) {
+                // If not self-chat, skip outgoing sent messages
+                if (!isSelfChat) return;
+                // If in self-chat, skip messages sent by the bot itself to prevent infinite loop
+                if (msg.key.id && botSentMessageIds.has(msg.key.id)) return;
+              }
 
               const isGroup = remoteJid.endsWith('@g.us');
               if (waWebKnowledgeBase.autoReplyScope === 'direct_only' && isGroup) return;
@@ -1600,6 +1613,14 @@ export async function sendWaWebMessage(to, text) {
   } else {
     chat.lastMessage = text;
     chat.timestamp = timestamp;
+  }
+
+  if (result?.key?.id) {
+    botSentMessageIds.add(result.key.id);
+    if (botSentMessageIds.size > 2000) {
+      const first = botSentMessageIds.values().next().value;
+      botSentMessageIds.delete(first);
+    }
   }
 
   chat.messages.push({
