@@ -515,6 +515,7 @@ async function transcribeAudioBuffer(audioBuffer, mimeType) {
 
 function resolveContactName(jid, pushName = '', fallbackName = '') {
   if (!jid) return fallbackName || '';
+  if (String(jid).endsWith('@g.us')) return fallbackName || '';   // groups use their subject, not contact names
   const cleanPhone = jidUser(jid);
   const realPhone = resolveRealPhoneNumber(jid);
 
@@ -550,9 +551,17 @@ function resolveContactName(jid, pushName = '', fallbackName = '') {
   return realPhone ? '+' + realPhone : '';   // never return LID digits as a name
 }
 
-// Re-resolve every chat's name + phone from the (constantly improving) contact index
+// Re-resolve every chat's name + phone from the (constantly improving) contact index.
+// Group chats are SKIPPED here: their name always comes from the group subject.
 function refreshChatNamesAndPhones() {
   waWebState.chats.forEach(chat => {
+    if (chat.isGroup || String(chat.id).endsWith('@g.us')) {
+      chat.isGroup = true;
+      chat.phone = '';
+      if (chat.subject) chat.name = chat.subject;
+      else if (!chat.name) chat.name = 'Group';
+      return;
+    }
     const realPhone = resolveRealPhoneNumber(chat.id);
     if (realPhone) chat.phone = realPhone;
     const name = resolveContactName(chat.id, '', chat.name);
@@ -560,9 +569,42 @@ function refreshChatNamesAndPhones() {
   });
 }
 
+// Apply a group's REAL subject (from group metadata). Groups must show their name - not a member's.
+function applyGroupSubject(jid, subject) {
+  if (!jid || !subject) return false;
+  let chat = waWebState.chats.get(jid);
+  if (!chat) {
+    chat = { id: jid, name: subject, subject: subject, phone: '', isGroup: true, unreadCount: 0, lastMessage: '', timestamp: 0, messages: [] };
+    waWebState.chats.set(jid, chat);
+    return true;
+  }
+  chat.isGroup = true;
+  chat.subject = subject;
+  chat.name = subject;
+  chat.phone = '';
+  return true;
+}
+
+// Fetch EVERY group's subject once per session (single API call, no per-group request spam)
+async function fetchAllGroupSubjects() {
+  try {
+    if (!sock || waWebState.status !== 'connected') return;
+    const groups = await sock.groupFetchAllParticipating();
+    let n = 0;
+    for (const [jid, meta] of Object.entries(groups || {})) {
+      if (meta && meta.subject) { if (applyGroupSubject(jid, meta.subject)) n++; }
+    }
+    console.log('[WA-WEB GROUPS] Applied ' + n + ' group subjects (chat list now shows GROUP names)');
+    scheduleHistorySaveToFirestore();
+  } catch (e) {
+    console.warn('[WA-WEB GROUPS] Subject fetch error:', e.message);
+  }
+}
+
 // Register contact into internal index (maps multiple formats: full JID, clean phone, LID)
 function registerContact(c) {
   if (!c || !c.id) return;
+  if (String(c.id).endsWith('@g.us')) return;   // group chats are named by their SUBJECT, never by contacts
   const id = c.id;
   const cleanId = jidUser(id);
   const incomingName = String(c.name || c.notify || c.verifiedName || '').trim();
@@ -624,14 +666,21 @@ function upsertMessageToChat(msg, isHistorySync = false) {
 
   const fromMe = Boolean(msg.key.fromMe);
   const pushName = msg.pushName || '';
+  const isGroup = jid.endsWith('@g.us');
   if (pushName && !fromMe) {
-    registerContact({ id: jid, notify: pushName });
+    if (isGroup) {
+      // Group message: the pushName belongs to the PARTICIPANT, not the group.
+      // (Registering it against the group jid is what made groups display member names.)
+      const participant = (msg.key && msg.key.participant) ? msg.key.participant : '';
+      if (participant) registerContact({ id: participant, notify: pushName });
+    } else {
+      registerContact({ id: jid, notify: pushName });
+    }
   }
 
   const { text, mediaType, mediaInfo } = parseMessageContent(msg);
   const cleanPhone = jid.split('@')[0].split(':')[0];
   const name = resolveContactName(jid, pushName);
-  const isGroup = jid.endsWith('@g.us');
   const msgId = msg.key.id;
 
   // Store raw message for on-demand downloading
@@ -645,8 +694,8 @@ function upsertMessageToChat(msg, isHistorySync = false) {
   if (!chat) {
     chat = {
       id: jid,
-      name: name,
-      phone: resolveRealPhoneNumber(jid) || '',
+      name: isGroup ? (name || 'Group') : name,
+      phone: isGroup ? '' : (resolveRealPhoneNumber(jid) || ''),
       isGroup: isGroup,
       unreadCount: fromMe ? 0 : 1,
       lastMessage: text,
@@ -655,8 +704,8 @@ function upsertMessageToChat(msg, isHistorySync = false) {
     };
     waWebState.chats.set(jid, chat);
   } else {
-    if (!chat.name || chat.name.startsWith('+') || /^\d+$/.test(chat.name)) {
-      chat.name = name;
+    if (!isGroup && (!chat.name || chat.name.startsWith('+') || /^\d+$/.test(chat.name))) {
+      chat.name = name;   // groups are always named by their subject (see applyGroupSubject)
     }
     if (timestamp >= (chat.timestamp || 0)) {
       chat.lastMessage = text;
@@ -953,6 +1002,7 @@ async function saveContactsIndexToFirestore() {
   try {
     const contactsObj = {};
     for (const [key, val] of waWebState.contacts.entries()) {
+      if (String(key).endsWith('@g.us')) continue;   // never persist group jids in the contact index
       if (val && (val.name || val.notify || val.verifiedName)) {
         contactsObj[key] = {
           name: val.name || val.notify || val.verifiedName,
@@ -1023,16 +1073,15 @@ async function restoreContactsIndexFromFirestore(db) {
         const obj = JSON.parse(data.contacts);
         let count = 0;
         for (const [key, val] of Object.entries(obj)) {
+          if (String(key).endsWith('@g.us')) continue;   // skip legacy polluted group entries
           if (val && val.name) {
             waWebState.contacts.set(key, val);
             count++;
           }
         }
         console.log('[WA-WEB CONTACTS] Restored ' + count + ' contact names from Firestore index');
-        // Update all existing chats with newly loaded contact names
-        waWebState.chats.forEach(chat => {
-          chat.name = resolveContactName(chat.id, '', chat.name);
-        });
+        // Re-resolve names for direct chats only (group names come from their subjects)
+        refreshChatNamesAndPhones();
       }
     }
   } catch (e) {
@@ -1182,6 +1231,8 @@ export async function initWaWeb(db = null) {
         waWebState.user = sock.user || { id: 'unknown', name: 'WhatsApp User' };
         isInitializing = false;
         scheduleSessionSync(globalDb);
+        // Pull all group subjects shortly after connect so the chat list shows GROUP names
+        setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
       }
     });
 
@@ -1269,6 +1320,14 @@ export async function initWaWeb(db = null) {
           }
         }
       } catch (e) { /* ignore */ }
+    });
+
+    // Group subject updates (groups are ALWAYS displayed by their group name)
+    sock.ev.on('groups.upsert', (groups) => {
+      for (const g of (groups || [])) { if (g && g.id && g.subject) applyGroupSubject(g.id, g.subject); }
+    });
+    sock.ev.on('groups.update', (updates) => {
+      for (const g of (updates || [])) { if (g && g.id && g.subject) applyGroupSubject(g.id, g.subject); }
     });
 
     // 3. Chats events
@@ -1674,7 +1733,7 @@ export function getWaWebChats() {
     const isLid = isLidJid(c.id) && !realPhone;
     const isBossChat = cleanId === '128046178803746' || (realPhone && realPhone.endsWith('529244592'));
 
-    let displayName = resolveContactName(c.id, '', c.name) || '';
+    let displayName = c.isGroup ? (c.subject || c.name || 'Group') : (resolveContactName(c.id, '', c.name) || '');
     if (!displayName) {
       if (c.isGroup) displayName = 'Group';
       else if (isBossChat) displayName = '👑 Mr. Nadeem (Boss - UAE +971529244592)';
