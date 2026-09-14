@@ -551,10 +551,10 @@
                             <div>
                                 <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">⚡ Boss AI Executive Model:</label>
                                 <select id="bossKbModelSelect" style="width:100%; background:#0f172a; border:1px solid #f59e0b; color:#fbbf24; padding:8px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
-                                    <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash (Voice, Orders & Multimodal)</option>
-                                    <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash (Next-Gen Fast & Cheap)</option>
-                                    <option value="gemini-1.5-flash-8b">💡 Gemini 1.5 Flash-8B (Ultra-Lightweight)</option>
-                                    <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro (Deep Complex Reasoning)</option>
+                                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (Voice, Orders & Multimodal - Recommended)</option>
+                                    <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash (Newest Generation)</option>
+                                    <option value="gemini-3.5-flash">💡 Gemini 3.5 Flash (Fast & Balanced)</option>
+                                    <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro (Deep Complex Reasoning)</option>
                                     <option value="deepseek-chat">🌌 DeepSeek V3 / V4 Flash (Executive Chat)</option>
                                     <option value="deepseek-reasoner">🔬 DeepSeek R1 (Deep Analytical Reasoner)</option>
                                     <option value="gpt-4o-mini">⚡ OpenAI GPT-4o Mini (Budget Fast)</option>
@@ -686,10 +686,10 @@
                                 </div>
                             </div>
                             <select id="waWebKbModelSelect" style="background:#0f172a; border:1px solid #3b82f6; color:#93c5fd; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:bold; outline:none; cursor:pointer; min-width:280px;">
-                                <option value="gemini-1.5-flash">⚡ Google Gemini 1.5 Flash (Fast Multimodal Audio/Images - Recommended)</option>
-                                <option value="gemini-2.0-flash">🚀 Google Gemini 2.0 Flash (Next-Gen Ultra Low Latency & Cheap)</option>
-                                <option value="gemini-1.5-flash-8b">💡 Google Gemini 1.5 Flash-8B (Ultra-Lightweight & Budget Friendly)</option>
-                                <option value="gemini-1.5-pro">🧠 Google Gemini 1.5 Pro (Deep Context & Complex Reasoning)</option>
+                                <option value="gemini-2.5-flash">⚡ Google Gemini 2.5 Flash (Fast Multimodal Audio/Images - Recommended)</option>
+                                <option value="gemini-3.6-flash">🚀 Google Gemini 3.6 Flash (Newest Generation, Ultra Low Latency)</option>
+                                <option value="gemini-3.5-flash">💡 Google Gemini 3.5 Flash (Fast & Balanced)</option>
+                                <option value="gemini-2.5-pro">🧠 Google Gemini 2.5 Pro (Deep Context & Complex Reasoning)</option>
                                 <option value="deepseek-chat">🌌 DeepSeek V3 / V4 Flash (Super Smart Multilingual & Cheap)</option>
                                 <option value="deepseek-reasoner">🔬 DeepSeek R1 (Deep Analytical Reasoner)</option>
                                 <option value="gpt-4o-mini">⚡ OpenAI GPT-4o Mini (Ultra Fast & Cheap)</option>
@@ -1086,10 +1086,10 @@
                     <b style="color:#e9edef;">Copilot AI Model:</b>
                 </div>
                 <select id="waWebCopilotModelSelect" onchange="changeWaWebCopilotModel(this.value)" style="background:#0f172a; border:1px solid #00a884; color:#34d399; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; outline:none;">
-                    <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash</option>
-                    <option value="gemini-2.0-flash">🚀 Gemini 2.0 Flash</option>
-                    <option value="gemini-1.5-flash-8b">💡 Gemini 1.5 Flash-8B</option>
-                    <option value="gemini-1.5-pro">🧠 Gemini 1.5 Pro</option>
+                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
+                    <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash</option>
+                    <option value="gemini-3.5-flash">💡 Gemini 3.5 Flash</option>
+                    <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro</option>
                     <option value="deepseek-chat">🌌 DeepSeek V3/V4 Flash</option>
                     <option value="deepseek-reasoner">🔬 DeepSeek R1</option>
                     <option value="gpt-4o-mini">⚡ GPT-4o Mini</option>
@@ -6084,7 +6084,7 @@
                         prompt: promptText,
                         jid: jid,
                         mode: mode,
-                        model: document.getElementById('waWebCopilotModelSelect')?.value || localStorage.getItem('waWebCopilotModel') || 'gemini-1.5-flash',
+                        model: document.getElementById('waWebCopilotModelSelect')?.value || localStorage.getItem('waWebCopilotModel') || 'gemini-2.5-flash',
                         conversationHistory: waWebAiHistory.slice(-10)
                     })
                 });
@@ -6257,7 +6257,7 @@
             const boss = kb.bossKnowledge || {};
 
             const modelInput = document.getElementById('bossKbModelSelect');
-            if (modelInput) modelInput.value = boss.aiModel || kb.bossAiModel || 'gemini-1.5-flash';
+            if (modelInput) modelInput.value = boss.aiModel || kb.bossAiModel || 'gemini-2.5-flash';
 
             const nameInput = document.getElementById('bossKbName');
             if (nameInput) nameInput.value = boss.bossName || 'Mr. Nadeem';
@@ -6286,7 +6286,7 @@
         }
 
         async function saveWaWebBossKbFromModal() {
-            const chosenModel = document.getElementById('bossKbModelSelect')?.value || 'gemini-1.5-flash';
+            const chosenModel = document.getElementById('bossKbModelSelect')?.value || 'gemini-2.5-flash';
             const name = document.getElementById('bossKbName')?.value.trim() || 'Mr. Nadeem';
             const phone = document.getElementById('bossKbPhone')?.value.trim() || '+971529244592';
             const passcode = document.getElementById('bossKbPasscode')?.value.trim() || '2831';
@@ -6632,7 +6632,7 @@
         }
 
         async function saveWaWebKnowledgeBaseFromModal() {
-            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'gemini-1.5-flash';
+            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'gemini-2.5-flash';
             const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
             const custom = document.getElementById('waWebKbCustomText')?.value || '';
             const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '+971529244592';

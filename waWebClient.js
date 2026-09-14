@@ -466,14 +466,31 @@ export async function linkLidToRealPhone(jid, realPhone, newName = null) {
 }
 
 
-// Helper to transcribe audio note to text via Gemini 1.5 Flash
+// --- Gemini key resolver (env first, then Firestore settings - cached 5 min) ---
+let cachedGeminiKey = null, cachedGeminiKeyAt = 0;
+async function getGeminiKey() {
+  const envKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (envKey) return envKey;
+  if (cachedGeminiKey && (Date.now() - cachedGeminiKeyAt) < 300000) return cachedGeminiKey;
+  try {
+    if (globalDb) {
+      const snap = await getDoc(doc(globalDb, 'appData', 'settings'));
+      const d = snap.exists() ? snap.data() : {};
+      cachedGeminiKey = d.GEMINI_API_KEY || d.geminiApiKey || '';
+      cachedGeminiKeyAt = Date.now();
+    }
+  } catch (e) { /* ignore */ }
+  return cachedGeminiKey || '';
+}
+
+// Helper to transcribe audio note to text via Gemini (multimodal)
 async function transcribeAudioBuffer(audioBuffer, mimeType) {
   try {
-    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+    const geminiKey = await getGeminiKey();
     if (geminiKey && audioBuffer) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const res = await model.generateContent({
         contents: [{
           role: 'user',
@@ -2120,7 +2137,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     const deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
     const openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'gemini-1.5-flash';
+    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'gemini-2.5-flash';
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
@@ -2142,7 +2159,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         try {
           const { GoogleGenerativeAI } = await import('@google/generative-ai');
           const genAI = new GoogleGenerativeAI(geminiKey);
-          const geminiModelName = chosenModel.startsWith('gemini') ? chosenModel : 'gemini-1.5-flash';
+          const geminiModelName = chosenModel.startsWith('gemini') ? chosenModel : 'gemini-2.5-flash';
           const model = genAI.getGenerativeModel({ model: geminiModelName });
 
           let mediaInstruction = 'Customer sent a ' + (mediaData.mediaType || 'file') + '.';
@@ -2225,7 +2242,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     } else if (chosenModel.startsWith('gemini') && geminiKey) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const geminiModel = chosenModel || 'gemini-1.5-flash';
+      const geminiModel = chosenModel || 'gemini-2.5-flash';
       const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       return res.response.text() || null;
@@ -2255,7 +2272,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       // Automatic Fallback 2: Gemini
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       return res.response.text() || null;
     }

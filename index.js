@@ -269,7 +269,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       reply = comp.choices[0]?.message?.content || '';
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       reply = r.response.text() || '';
     } else {
@@ -358,7 +358,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     }
     messages.push({ role: 'user', content: userInstruction });
 
-    const chosenModel = model || 'gemini-1.5-flash';
+    const chosenModel = model || 'gemini-2.5-flash';
     let reply = '';
 
     if (chosenModel.startsWith('deepseek') && settings.DEEPSEEK_API_KEY) {
@@ -372,7 +372,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (chosenModel.startsWith('gemini') && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const gemModel = chosenModel || 'gemini-1.5-flash';
+      const gemModel = chosenModel || 'gemini-2.5-flash';
       const m = genAI.getGenerativeModel({ model: gemModel });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
@@ -397,7 +397,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const m = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const m = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
