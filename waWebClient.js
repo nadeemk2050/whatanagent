@@ -69,11 +69,11 @@ export let waWebKnowledgeBase = {
   autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
   cooldownSeconds: 30,
   humanHandoverKeywords: 'human, agent, urgent, owner, speak to person, call me',
-  bossPhone: '+966552683250', // Saudi Boss Number
+  bossPhone: '+971529244592', // UAE Boss Number (Mr. Nadeem)
   bossPasscode: '2831',
   bossKnowledge: {
     bossName: 'Mr. Nadeem',
-    bossPhone: '+966552683250',
+    bossPhone: '+971529244592',
     bossPasscode: '2831',
     powers: [
       { title: '✉️ Direct Contact Messaging & Relay', description: 'Can command AI to send messages to any WhatsApp contact (e.g. "Send msg to 0501234567: Please confirm the invoice").' },
@@ -89,7 +89,7 @@ export let waWebKnowledgeBase = {
     customBossInstructions: `Executive Privileges:
 - Full access to all business operations, customer transcripts, and invoicing records.
 - Immediate execution of outbound customer dispatch messages.`
-  }, // Also matches 971552683250, +971552683250, 0552683250
+  }, // Also matches 971529244592, +971529244592, 0529244592
   bossPasscode: '2831',
   pausedContacts: [], // List of JIDs/phones where AI auto-reply is paused
   rules: [
@@ -97,7 +97,7 @@ export let waWebKnowledgeBase = {
       id: 'rule_boss_protocol',
       title: '👑 Rule #0: Boss Verification & Executive Command Protocol',
       enabled: true,
-      description: 'When message arrives from Boss (00971552683250 / +971552683250 / 0552683250), recognize as Boss Mr. Nadeem. Ask security passcode "2831". Once code "2831" is entered, authenticate and strictly obey all instructions given by the boss (e.g. sending messages to contacts, retrieving records, taking actions).'
+      description: 'When message arrives from Boss (00971529244592 / +971529244592 / 0529244592), recognize as Boss Mr. Nadeem. Ask security passcode "2831". Once code "2831" is entered, authenticate and strictly obey all instructions given by the boss (e.g. sending messages to contacts, retrieving records, taking actions).'
     },
     {
       id: 'rule_personal_name_nadeem',
@@ -361,7 +361,7 @@ function parseMessageContent(msg) {
 
 // Persistent mapping for WhatsApp Multi-Device LIDs -> Real Country Phone Numbers
 export const lidToPhoneMap = new Map([
-  ['128046178803746', '966552683250'], // Boss (Mr. Nadeem KSA)
+  ['128046178803746', '971529244592'], // Boss (Mr. Nadeem KSA)
   ['33827296669835', '971529244591']   // Md Ariful Islam Al Shaab (UAE)
 ]);
 
@@ -389,7 +389,7 @@ export async function linkLidToRealPhone(jid, realPhone, newName = null) {
   lidToPhoneMap.set(cleanLid, cleanPhone);
   lidToPhoneMap.set(cleanPhone, cleanPhone);
 
-  const finalName = newName || (cleanPhone === '966552683250' ? '👑 Mr. Nadeem (Boss - KSA +966552683250)' : null);
+  const finalName = newName || (cleanPhone === '971529244592' ? '👑 Mr. Nadeem (Boss - UAE +971529244592)' : null);
 
   const contactObj = {
     id: jid,
@@ -409,14 +409,45 @@ export async function linkLidToRealPhone(jid, realPhone, newName = null) {
   return { success: true, jid, cleanLid, cleanPhone, name: finalName };
 }
 
+
+// Helper to transcribe audio note to text via Gemini 1.5 Flash
+async function transcribeAudioBuffer(audioBuffer, mimeType) {
+  try {
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+    if (geminiKey && audioBuffer) {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const res = await model.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: 'Transcribe this voice note / audio accurately into text in its original spoken language (Urdu, Arabic, Hindi, English, etc.). Output only the plain transcribed words.' },
+            {
+              inlineData: {
+                mimeType: mimeType || 'audio/ogg; codecs=opus',
+                data: audioBuffer.toString('base64')
+              }
+            }
+          ]
+        }]
+      });
+      return res.response.text()?.trim() || '';
+    }
+  } catch (err) {
+    console.warn('[WA-WEB AUDIO TRANSCRIBE] Error:', err.message);
+  }
+  return '';
+}
+
 function resolveContactName(jid, pushName = '', fallbackName = '') {
   if (!jid) return fallbackName || 'WhatsApp User';
   const cleanPhone = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
   const realPhone = resolveRealPhoneNumber(jid);
 
   // Special Boss check
-  if (cleanPhone === '128046178803746' || realPhone.endsWith('552683250') || realPhone === '966552683250') {
-    return '👑 Mr. Nadeem (Boss - KSA +966552683250)';
+  if (cleanPhone === '128046178803746' || realPhone.endsWith('529244592') || realPhone === '971529244592') {
+    return '👑 Mr. Nadeem (Boss - UAE +971529244592)';
   }
 
   if (cleanPhone === '33827296669835' || realPhone === '971529244591') {
@@ -1185,90 +1216,9 @@ export async function initWaWeb(db = null) {
 
               waWebAutoReplyCooldown.set(remoteJid, Date.now());
 
-              // Check if message is from Boss
-              const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-              const resolvedSenderPhone = resolveRealPhoneNumber(remoteJid).replace(/[^0-9]/g, '');
-              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+966552683250').replace(/[^0-9]/g, '');
-
-              const isBossNumber = (
-                cleanSenderPhone === '128046178803746' ||
-                cleanSenderPhone.endsWith('552683250') ||
-                resolvedSenderPhone.endsWith('552683250') ||
-                (configuredBossPhone && (
-                  cleanSenderPhone.endsWith(configuredBossPhone) ||
-                  resolvedSenderPhone.endsWith(configuredBossPhone) ||
-                  configuredBossPhone.endsWith(cleanSenderPhone)
-                ))
-              );
-              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
-
-              if (isBossNumber) {
-                console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + text + '"');
-
-                // Case 1: Passcode entered
-                if (text.includes(bossPasscode)) {
-                  waWebBossSession.authenticated = true;
-                  waWebBossSession.lastAuthTimestamp = Date.now();
-                  const ackMsg = '👑 *Boss Verification Successful!* (Passcode ' + bossPasscode + ' Confirmed)\n\n' +
-                    'Welcome Mr. Nadeem! I am at your command.\n\n' +
-                    'You can give me any instructions: send a message to a contact, check invoices, or query data.\n' +
-                    'Example: *Send msg to 0501234567: Hello please confirm order*';
-                  await sendWaWebMessage(remoteJid, ackMsg);
-                  console.log('[WA-WEB BOSS] 🟢 Boss authenticated successfully.');
-                  return;
-                }
-
-                // Case 2: Already authenticated within last 12 hours
-                const isAuth = waWebBossSession.authenticated && (Date.now() - waWebBossSession.lastAuthTimestamp < 12 * 3600 * 1000);
-                if (isAuth) {
-                  // Check if boss wants to send a message to someone
-                  const cmdMatch = text.match(/(?:send\s+msg\s+to|send\s+message\s+to|msg|send\s+to)\s+([+0-9\s-]+)[:\s]+(.+)/i);
-                  if (cmdMatch) {
-                    const rawTarget = cmdMatch[1].replace(/[^0-9]/g, '');
-                    const targetText = cmdMatch[2].trim();
-                    if (rawTarget && targetText) {
-                      const targetJid = rawTarget.includes('@') ? rawTarget : (rawTarget + '@s.whatsapp.net');
-                      try {
-                        await sendWaWebMessage(targetJid, targetText);
-                        await sendWaWebMessage(remoteJid, '✅ *Command Executed, Boss!*\n\nMessage delivered to *' + rawTarget + '*:\n"' + targetText + '"');
-                        console.log('[WA-WEB BOSS] 🟢 Executed boss relay command to ' + targetJid);
-                      } catch (e) {
-                        await sendWaWebMessage(remoteJid, '⚠️ *Failed to execute command:* ' + e.message);
-                      }
-                      return;
-                    }
-                  }
-
-                  // Executive prompt for boss instructions
-                  const bossExecPrompt = 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem).\n' +
-                    'He is texting you directly from his verified personal phone number.\n' +
-                    'Obey his instructions with high priority, precision, and respectful tone.\n' +
-                    'Address him respectfully as "Mr. Nadeem" or "Boss".\n\n' +
-                    buildWaWebKnowledgeSystemPrompt();
-
-                  setTimeout(async () => {
-                    try {
-                      const replyText = await generateWaWebAutoBotReply(remoteJid, text, bossExecPrompt);
-                      if (replyText && replyText.trim()) {
-                        await sendWaWebMessage(remoteJid, replyText.trim());
-                      }
-                    } catch (e) {
-                      console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
-                    }
-                  }, 1200);
-                  return;
-                } else {
-                  // Boss challenge
-                  const challengeMsg = '🔒 *Boss Security Verification Required*\n\n' +
-                    'Hello Mr. Nadeem! For security authentication, please reply with your 4-digit Boss Passcode (e.g. *' + bossPasscode + '*) to unlock executive command mode.';
-                  await sendWaWebMessage(remoteJid, challengeMsg);
-                  console.log('[WA-WEB BOSS] Sent passcode verification challenge to Boss.');
-                  return;
-                }
-              }
-
               // Download media buffer if audio, image, or document
               let mediaData = null;
+              let transcribedAudioText = '';
               if (hasMedia) {
                 try {
                   const buffer = await downloadMediaMessage(
@@ -1282,13 +1232,119 @@ export async function initWaWeb(db = null) {
                       buffer,
                       mediaType,
                       mimetype: mediaInfo?.mimetype || (mediaType === 'audio' ? 'audio/ogg; codecs=opus' : (mediaType === 'image' ? 'image/jpeg' : 'application/pdf')),
-                      fileName: mediaInfo?.fileName || `${mediaType}_file`,
+                      fileName: mediaInfo?.fileName || (mediaType + '_file'),
                       caption: mediaInfo?.caption || ''
                     };
-                    console.log(`[WA-WEB MULTIMODAL] 📥 Downloaded ${mediaType} (${(buffer.length/1024).toFixed(1)} KB) for AI analysis`);
+                    console.log(`[WA-WEB MULTIMODAL] 📥 Downloaded ${mediaType} (${(buffer.length/1024).toFixed(1)} KB) for AI processing`);
+
+                    if (mediaType === 'audio') {
+                      transcribedAudioText = await transcribeAudioBuffer(buffer, mediaData.mimetype);
+                      if (transcribedAudioText) {
+                        console.log('[WA-WEB MULTIMODAL] 🎙️ Transcribed Audio:', transcribedAudioText);
+                      }
+                    }
                   }
                 } catch (mErr) {
                   console.warn('[WA-WEB MULTIMODAL] Media download warning:', mErr.message);
+                }
+              }
+
+              const effectiveText = (transcribedAudioText || text || '').trim();
+
+              // Check if message is from Boss (Mr. Nadeem UAE +971529244592)
+              const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              const resolvedSenderPhone = resolveRealPhoneNumber(remoteJid).replace(/[^0-9]/g, '');
+              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592').replace(/[^0-9]/g, '');
+
+              const isBossNumber = (
+                cleanSenderPhone === '128046178803746' ||
+                cleanSenderPhone.endsWith('529244592') ||
+                resolvedSenderPhone.endsWith('529244592') ||
+                (configuredBossPhone && (
+                  cleanSenderPhone.endsWith(configuredBossPhone) ||
+                  resolvedSenderPhone.endsWith(configuredBossPhone) ||
+                  configuredBossPhone.endsWith(cleanSenderPhone)
+                ))
+              );
+              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
+
+              if (isBossNumber) {
+                console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + (effectiveText || mediaType) + '"');
+
+                // Case 1: Passcode entered (via text or spoken in voice note)
+                if (effectiveText.includes(bossPasscode)) {
+                  waWebBossSession.authenticated = true;
+                  waWebBossSession.lastAuthTimestamp = Date.now();
+                  const ackMsg = '👑 *Boss Verification Successful!* (Passcode ' + bossPasscode + ' Confirmed)\n\n' +
+                    'Welcome Mr. Nadeem! I am at your command.\n\n' +
+                    'You can give me any Voice Note or Text instructions:\n' +
+                    '• *Send msg to 0501234567: Please confirm the order*\n' +
+                    '• *Set reminder: Call supplier at 4 PM*\n' +
+                    '• *Check invoice status / search website data*';
+                  await sendWaWebMessage(remoteJid, ackMsg);
+                  console.log('[WA-WEB BOSS] 🟢 Boss authenticated successfully.');
+                  return;
+                }
+
+                // Case 2: Already authenticated within last 12 hours
+                const isAuth = waWebBossSession.authenticated && (Date.now() - waWebBossSession.lastAuthTimestamp < 12 * 3600 * 1000);
+                if (isAuth) {
+                  // A. Check if boss wants to send a message to someone
+                  const cmdMatch = effectiveText.match(/(?:send\s+msg\s+to|send\s+message\s+to|msg|send\s+to)\s+([+0-9\s-]+)[:\s]+(.+)/i);
+                  if (cmdMatch) {
+                    const rawTarget = cmdMatch[1].replace(/[^0-9]/g, '');
+                    const targetText = cmdMatch[2].trim();
+                    if (rawTarget && targetText) {
+                      const targetJid = rawTarget.includes('@') ? rawTarget : (rawTarget + '@s.whatsapp.net');
+                      try {
+                        await sendWaWebMessage(targetJid, targetText);
+                        const voiceBadge = transcribedAudioText ? '🎙️ *(Voice Order Transcribed)*\n' : '';
+                        await sendWaWebMessage(remoteJid, '✅ *Command Executed, Boss!*\n\n' + voiceBadge + 'Message delivered to *+' + rawTarget + '*:\n"' + targetText + '"');
+                        console.log('[WA-WEB BOSS] 🟢 Executed boss relay command to ' + targetJid);
+                      } catch (e) {
+                        await sendWaWebMessage(remoteJid, '⚠️ *Failed to execute command:* ' + e.message);
+                      }
+                      return;
+                    }
+                  }
+
+                  // B. Check if boss wants to set a reminder
+                  const reminderMatch = effectiveText.match(/(?:set\s+reminder|remind\s+me|reminder)[:\s]+(.+)/i);
+                  if (reminderMatch) {
+                    const reminderTask = reminderMatch[1].trim();
+                    const voiceBadge = transcribedAudioText ? '🎙️ *(Voice Order Transcribed)*\n' : '';
+                    await sendWaWebMessage(remoteJid, '⏰ *Reminder Scheduled, Boss!*\n\n' + voiceBadge + 'Task: "' + reminderTask + '"\nRecorded at ' + new Date().toLocaleTimeString('en-US') + '. I will alert you.');
+                    console.log('[WA-WEB BOSS] 🟢 Reminder noted for boss: ' + reminderTask);
+                    return;
+                  }
+
+                  // C. Executive prompt for general instructions / website work / inquiries
+                  const bossExecPrompt = 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem UAE +971529244592).\n' +
+                    'He is commanding you directly from his verified personal phone number via Voice Note or Text.\n' +
+                    'Obey his instructions with highest priority, precision, and respectful tone.\n' +
+                    'Address him respectfully as "Mr. Nadeem" or "Boss".\n\n' +
+                    buildWaWebKnowledgeSystemPrompt();
+
+                  setTimeout(async () => {
+                    try {
+                      const promptInput = effectiveText || ('Please process this ' + (mediaData?.mediaType || 'message') + ' and assist me.');
+                      const replyText = await generateWaWebAutoBotReply(remoteJid, promptInput, bossExecPrompt, mediaData);
+                      if (replyText && replyText.trim()) {
+                        const voiceHeader = transcribedAudioText ? '🎙️ *[Voice Note Understood]*\n\n' : '';
+                        await sendWaWebMessage(remoteJid, voiceHeader + replyText.trim());
+                      }
+                    } catch (e) {
+                      console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
+                    }
+                  }, 1200);
+                  return;
+                } else {
+                  // Boss challenge
+                  const challengeMsg = '🔒 *Boss Security Verification Required*\n\n' +
+                    'Hello Mr. Nadeem! For security authentication, please reply with your 4-digit Boss Passcode (e.g. *' + bossPasscode + '*) to unlock executive voice and text commands.';
+                  await sendWaWebMessage(remoteJid, challengeMsg);
+                  console.log('[WA-WEB BOSS] Sent passcode verification challenge to Boss.');
+                  return;
                 }
               }
 
@@ -1452,11 +1508,11 @@ export function getWaWebChats() {
   const list = Array.from(waWebState.chats.values()).map(c => {
     const cleanLid = c.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
     const realPhone = resolveRealPhoneNumber(c.id);
-    const isBoss = cleanLid === '128046178803746' || realPhone.endsWith('552683250');
+    const isBoss = cleanLid === '128046178803746' || realPhone.endsWith('529244592');
 
     let displayName = c.name || resolveContactName(c.id, '', c.phone);
     if (isBoss) {
-      displayName = '👑 Mr. Nadeem (Boss - KSA +966552683250)';
+      displayName = '👑 Mr. Nadeem (Boss - UAE +971529244592)';
     }
 
     let displayPhone = realPhone ? ('+' + realPhone) : ('+' + cleanLid);
