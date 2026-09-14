@@ -404,6 +404,7 @@ async function syncWaWebContactsToBook(limit = 200) {
 
     let added = 0;
     for (const c of chats) {
+      if (added >= 15) break;   // cap per run to avoid Firestore write bursts (RESOURCE_EXHAUSTED)
       const phone = resolveRealPhoneNumber(c.id);
       if (!phone || phone.length < 8 || known.has(phone)) continue;
       const nm = (c.name && !/^\+?\d+$/.test(c.name)) ? c.name : '';
@@ -419,6 +420,7 @@ async function syncWaWebContactsToBook(limit = 200) {
         }, { merge: true });
         known.add(phone);
         added++;
+        await new Promise(r => setTimeout(r, 250));
       } catch (e) { /* ignore single failures */ }
     }
     if (added) console.log('[WA-WEB CONTACTS→BOOK] Saved ' + added + ' WhatsApp Web numbers into the universal Contact Book');
@@ -517,6 +519,7 @@ function getSelfChatJid() {
 // socket is actually connected - so exactly ONE node ever sends them)
 let bossDeliveryTimer = null;
 let waWebContactsBookTimer = null;
+let geminiQuotaBlockedUntil = 0;   // circuit breaker: set when Gemini answers 429 (quota exhausted)
 async function processBossRemindersAndNotifications() {
   try {
     if (!globalDb || waWebState.status !== 'connected') return;
@@ -2846,9 +2849,16 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
 
 export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null) {
   if (!globalDb) return null;
+  // Declared OUTSIDE the try so the catch-block provider fallback can still reach them
+  let settings = {};
+  let systemPrompt = '';
+  let geminiKey = '';
+  let deepseekKey = '';
+  let openaiKey = '';
+  let chosenModel = 'deepseek-chat';
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
-    const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+    settings = settingsSnap.exists() ? settingsSnap.data() : {};
     
     const chatContext = getWaWebChatContext(jid);
     const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext);
@@ -2862,7 +2872,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       specialGuidance += '\n⚠️ NOTE: This sender is an UNSAVED / NEW contact (' + cleanPhone + '). Per Rule #2, politely and gently ask for their Name, Company Name, Country, and Business Activity so we can register them in our records.';
     }
 
-    const systemPrompt = overridePrompt || (knowledgePrompt + '\n--- CONVERSATION CONTEXT ---\n' +
+    systemPrompt = overridePrompt || (knowledgePrompt + '\n--- CONVERSATION CONTEXT ---\n' +
 'Customer Name: ' + (chatContext?.name || 'Customer') + '\n' +
 'Phone / JID: ' + jid + specialGuidance + '\n' +
 'Recent conversation transcript:\n' +
@@ -2870,11 +2880,16 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
 '--- END CONTEXT ---\n' +
 'Task: Compose a natural, professional WhatsApp reply following all business rules. If greeting, address by their name. Do not repeat greeting if already in conversation.');
 
-    const geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
-    const deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
-    const openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
+    deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
+    openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
+    chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
+    // Circuit breaker: if Gemini is out of quota, use DeepSeek for TEXT instantly (media still tries Gemini)
+    if (chosenModel.startsWith('gemini') && geminiQuotaBlockedUntil > Date.now()) {
+      console.log('[WA-WEB AI] Gemini quota exhausted (circuit breaker active) - using DeepSeek for text replies');
+      chosenModel = 'deepseek-chat';
+    }
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
@@ -3015,6 +3030,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);
+    // Circuit breaker: remember Gemini quota exhaustion so text replies skip it for the next 30 minutes
+    if (/429|quota|RESOURCE_EXHAUSTED/i.test(err.message || '')) geminiQuotaBlockedUntil = Date.now() + 30 * 60 * 1000;
     // A dead / quota-limited provider must NEVER silence the bot: fall back to any other working key.
     const txtIn = (customerMessage || '').trim();
     if (!txtIn) {
