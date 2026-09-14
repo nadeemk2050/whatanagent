@@ -670,12 +670,10 @@ function safeTruncate(s, n) {
 async function generateAIResponse(userPrompt, senderNumber, settings) {
   const provider = settings.ACTIVE_AI_PROVIDER || 'deepseek';
 
-  if (provider === 'deepseek' && !settings.DEEPSEEK_API_KEY) {
-    return "I'm sorry, my DeepSeek AI backend is not fully configured yet. Please configure the DEEPSEEK_API_KEY.";
-  }
-  if (provider === 'gemini' && !settings.GEMINI_API_KEY) {
-    return "I'm sorry, my Gemini AI backend is not fully configured yet. Please configure the GEMINI_API_KEY.";
-  }
+  // A missing key for the SELECTED provider is no longer fatal: the automatic provider switch below
+  // completes the reply with any other configured engine (Qwen / Gemini / DeepSeek).
+  if (provider === 'deepseek' && !settings.DEEPSEEK_API_KEY) console.warn('[AI] DeepSeek key missing - auto-switching provider');
+  if (provider === 'gemini' && !settings.GEMINI_API_KEY) console.warn('[AI] Gemini key missing - auto-switching provider');
 
   try {
     // Dynamically load knowledge
@@ -876,26 +874,54 @@ app.post('/api/wa-web/contact/update', async (req, res) => {
 
     let finalReply = "";
 
-    if (provider === 'gemini') {
-      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({
-         model: "gemini-2.5-flash",
-         systemInstruction: sanitizeText(systemInstruction),
-      });
-      const result = await model.generateContent({ contents: geminiContents });
-      finalReply = result.response.text();
-    } else {
-      const openai = new OpenAI({
-        baseURL: 'https://api.deepseek.com',
-        apiKey: settings.DEEPSEEK_API_KEY
-      });
-      const completion = await openai.chat.completions.create({
-        messages: dsMessages,
-        model: "deepseek-v4-flash",
-        temperature: 0.7,
-      });
-      finalReply = completion.choices[0].message.content;
+    // AUTOMATIC PROVIDER SWITCH: if the selected engine fails, the next configured one completes the reply
+    // (Gemini 3.6 Flash is the first fallback, then Qwen, then DeepSeek) so a dead quota never silences the bot.
+    const custHasKey = {
+      gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+      qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
+      deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
+    };
+    const custOrder = [provider, 'gemini', 'qwen', 'deepseek'].filter((p, i, arr) => arr.indexOf(p) === i && custHasKey[p]);
+    let custErr = null;
+    for (const p of custOrder) {
+      try {
+        if (p === 'gemini') {
+          const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+          const gModel = genAI.getGenerativeModel({ model: "gemini-3.6-flash", systemInstruction: sanitizeText(systemInstruction) });
+          const result = await gModel.generateContent({ contents: geminiContents });
+          finalReply = (result.response.text() || '').trim();
+        } else if (p === 'qwen') {
+          const qKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+          const qBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+          const openai = new OpenAI({ baseURL: qBase, apiKey: qKey, timeout: 60000 });
+          const completion = await openai.chat.completions.create({
+            messages: dsMessages,
+            model: settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash',
+            temperature: 0.7,
+          });
+          finalReply = (completion.choices[0].message.content || '').trim();
+        } else {
+          const openai = new OpenAI({
+            baseURL: 'https://api.deepseek.com',
+            apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY
+          });
+          const completion = await openai.chat.completions.create({
+            messages: dsMessages,
+            model: "deepseek-v4-flash",
+            temperature: 0.7,
+          });
+          finalReply = (completion.choices[0].message.content || '').trim();
+        }
+        if (finalReply) {
+          if (p !== provider) console.log('[AI] ⛑️ Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          break;
+        }
+      } catch (e) {
+        custErr = e;
+        console.warn('[AI] Provider ' + p + ' failed: ' + (e.message || '').substring(0, 120) + ' - trying next');
+      }
     }
+    if (!finalReply) throw custErr || new Error('No AI provider could generate a reply');
 
     // Parse Lead Tag
     const leadMatch = finalReply.match(/\[LEAD:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]/i);
@@ -1242,41 +1268,72 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
       extraMessages.forEach(m => messages.push({ sender: m.role === 'assistant' ? 'bot' : 'user', text: m.content }));
     }
 
-    let finalReply = "";
+    // Build both message shapes once so ANY provider can answer
+    const geminiContents = [];
+    let lastRole = "";
+    messages.forEach(m => {
+      const role = m.sender === "user" ? "user" : "model";
+      const t = sanitizeText(m.text);
+      if (role === lastRole) {
+        geminiContents[geminiContents.length - 1].parts[0].text += "\n" + t;
+      } else {
+        geminiContents.push({ role: role, parts: [{ text: t }] });
+        lastRole = role;
+      }
+    });
+    if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{ text: sanitizeText(userPrompt) }] });
 
-    if (provider === 'gemini') {
-      if (!settings.GEMINI_API_KEY) return "Boss, the Gemini API key is not configured.";
-      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction: sanitizeText(systemInstruction) });
-      const geminiContents = [];
-      let lastRole = "";
-      messages.forEach(m => {
-        const role = m.sender === "user" ? "user" : "model";
-        const t = sanitizeText(m.text);
-        if (role === lastRole) {
-          geminiContents[geminiContents.length - 1].parts[0].text += "\n" + t;
+    const chatMessages = [{ role: "system", content: sanitizeText(systemInstruction) }];
+    messages.slice(-30).forEach(m => {
+      chatMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: sanitizeText(m.text) });
+    });
+
+    // AUTOMATIC PROVIDER SWITCH: Gemini 3.6 Flash first, then Qwen, then DeepSeek -
+    // whichever key works completes the boss's task (a dead quota must never leave him unanswered).
+    const bossHasKey = {
+      gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+      qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
+      deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
+    };
+    const bossOrder = [provider, 'gemini', 'qwen', 'deepseek'].filter((p, i, arr) => arr.indexOf(p) === i && bossHasKey[p]);
+    let finalReply = "";
+    let bossErr = null;
+    for (const p of bossOrder) {
+      try {
+        if (p === 'gemini') {
+          const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+          const gModel = genAI.getGenerativeModel({ model: "gemini-3.6-flash", systemInstruction: sanitizeText(systemInstruction) });
+          const result = await gModel.generateContent({ contents: geminiContents });
+          finalReply = (result.response.text() || '').trim();
+        } else if (p === 'qwen') {
+          const qKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+          const qBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+          const openai = new OpenAI({ baseURL: qBase, apiKey: qKey });
+          const completion = await openai.chat.completions.create({
+            messages: chatMessages,
+            model: settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash',
+            temperature: 0.3,
+          });
+          finalReply = (completion.choices[0].message.content || '').trim();
         } else {
-          geminiContents.push({ role: role, parts: [{ text: t }] });
-          lastRole = role;
+          const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY });
+          const completion = await openai.chat.completions.create({
+            messages: chatMessages,
+            model: "deepseek-v4-flash",
+            temperature: 0.3,
+          });
+          finalReply = (completion.choices[0].message.content || '').trim();
         }
-      });
-      if (geminiContents.length === 0) geminiContents.push({ role: "user", parts: [{ text: sanitizeText(userPrompt) }] });
-      const result = await model.generateContent({ contents: geminiContents });
-      finalReply = result.response.text();
-    } else {
-      if (!settings.DEEPSEEK_API_KEY) return "Boss, the DeepSeek API key is not configured.";
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY });
-      const dsMessages = [{ role: "system", content: sanitizeText(systemInstruction) }];
-      messages.slice(-30).forEach(m => {
-        dsMessages.push({ role: m.sender === "user" ? "user" : "assistant", content: sanitizeText(m.text) });
-      });
-      const completion = await openai.chat.completions.create({
-        messages: dsMessages,
-        model: "deepseek-v4-flash",
-        temperature: 0.3,
-      });
-      finalReply = completion.choices[0].message.content;
+        if (finalReply) {
+          if (p !== provider) console.log('[BOSS AI] ⛑️ Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          break;
+        }
+      } catch (e) {
+        bossErr = e;
+        console.warn('[BOSS AI] Provider ' + p + ' failed: ' + (e.message || '').substring(0, 120) + ' - trying next');
+      }
     }
+    if (!finalReply) throw bossErr || new Error('No AI provider could answer');
 
     return (finalReply || "").trim();
   } catch (error) {
@@ -2912,7 +2969,36 @@ function stripSeoActionBlocks(text) {
     .trim();
 }
 
+// Automatic provider switch: if the selected engine fails, another configured engine completes the task
 async function workspaceModelReply(systemPrompt, messages, model, settings) {
+  const order = [model || 'deepseek', 'gemini', 'qwen', 'deepseek'].filter((p, i, a) => a.indexOf(p) === i);
+  let lastErr = null;
+  for (const p of order) {
+    try {
+      return await workspaceModelReplyOnce(systemPrompt, messages, p, settings);
+    } catch (e) {
+      lastErr = e;
+      console.warn('[AI WORKSPACE] ' + p + ' failed: ' + (e.message || '').substring(0, 120) + ' - trying next provider');
+    }
+  }
+  throw lastErr || new Error('No AI provider could answer');
+}
+
+async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) {
+  if (model === 'qwen') {
+    const qKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+    if (!qKey) throw new Error('Qwen API key is not configured.');
+    const qBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+    const openai = new OpenAI({ baseURL: qBase, apiKey: qKey, timeout: 120000, maxRetries: 1 });
+    const t0 = Date.now();
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: 'system', content: sanitizeText(systemPrompt) }].concat(messages.map(m => ({ role: m.role, content: sanitizeText(m.content) }))),
+      model: settings.QWEN_MODEL || 'qwen3.8-flash',
+      temperature: 0.4
+    });
+    console.log('[AI WORKSPACE] qwen reply in ' + (Date.now() - t0) + 'ms');
+    return (completion.choices[0].message.content || '').trim();
+  }
   if (model === 'gemini') {
     if (!settings.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.');
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
@@ -3477,7 +3563,31 @@ async function downloadWhatsAppMedia(mediaId, settings) {
   };
 }
 
-// Transcribe Audio: Qwen3-ASR-Flash (Alibaba, DashScope sync API) first, Gemini multimodal as fallback
+// Gemini media chain - the automatic fallback when Qwen cannot handle the media
+// (Gemini 3.6 Flash first: it is the most reliable Gemini model for audio/images right now)
+const GEMINI_MEDIA_CHAIN = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'];
+async function geminiMediaAnalyze(buffer, mimeType, prompt, settings) {
+  const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('Gemini API key is not configured.');
+  const genAI = new GoogleGenerativeAI(key);
+  let lastErr = null;
+  for (const mediaModel of GEMINI_MEDIA_CHAIN) {
+    try {
+      const model = genAI.getGenerativeModel({ model: mediaModel });
+      const r = await generateContentWithRetry(model, {
+        contents: [{ role: 'user', parts: [{ inlineData: { data: Buffer.from(buffer).toString('base64'), mimeType: mimeType } }, { text: prompt }] }]
+      });
+      const t = (r.response.text() || '').trim();
+      if (t) { console.log('[MEDIA] 🧠 Analyzed with ' + mediaModel); return t; }
+    } catch (e) {
+      lastErr = e;
+      console.warn('[MEDIA] ' + mediaModel + ' failed: ' + (e.message || '').substring(0, 110));
+    }
+  }
+  throw lastErr || new Error('All Gemini media models failed');
+}
+
+// Transcribe Audio: Qwen3-ASR-Flash (Alibaba, DashScope sync API) first, Gemini chain (3.6 Flash first) as fallback
 async function transcribeAudio(audioBuffer, mimeType, settings) {
   const qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
   if (qwenKey && audioBuffer && audioBuffer.length) {
@@ -3501,26 +3611,7 @@ async function transcribeAudio(audioBuffer, mimeType, settings) {
       console.warn('[AUDIO] Qwen ASR failed (' + (e.response ? e.response.status : e.message) + ') - falling back to Gemini');
     }
   }
-  const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  
-  const response = await generateContentWithRetry(model, {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              data: Buffer.from(audioBuffer).toString("base64"),
-              mimeType: mimeType
-            }
-          },
-          { text: "Transcribe the audio accurately. If the language spoken is Hindi or Urdu, transcribe it into clean Roman Urdu (Urdu written in English alphabets, e.g. 'Mujhe ye poochna tha...') or clean Urdu script. If it is Arabic, transcribe in Arabic script. If it is English, transcribe in English. Respond ONLY with the final transcription text, without any additional explanations or intro." }
-        ]
-      }
-    ]
-  });
-  return response.response.text().trim();
+  return await geminiMediaAnalyze(audioBuffer, mimeType, "Transcribe the audio accurately. If the language spoken is Hindi or Urdu, transcribe it into clean Roman Urdu (Urdu written in English alphabets, e.g. 'Mujhe ye poochna tha...') or clean Urdu script. If it is Arabic, transcribe in Arabic script. If it is English, transcribe in English. Respond ONLY with the final transcription text, without any additional explanations or intro.", settings);
 }
 // Analyze Image: Qwen vision (Alibaba) first, Gemini multimodal as fallback
 async function analyzeImage(imageBuffer, mimeType, settings) {
@@ -3551,26 +3642,7 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
       console.warn('[IMAGE] Qwen vision failed (' + (e.response ? e.response.status : e.message) + ') - falling back to Gemini');
     }
   }
-  const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  
-  const response = await generateContentWithRetry(model, {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            inlineData: {
-              data: Buffer.from(imageBuffer).toString("base64"),
-              mimeType: mimeType
-            }
-          },
-          { text: prompt }
-        ]
-      }
-    ]
-  });
-  return response.response.text().trim();
+  return await geminiMediaAnalyze(imageBuffer, mimeType, prompt, settings);
 }
 
 async function processIncomingMessage(message) {

@@ -1018,7 +1018,7 @@ async function getGeminiKey() {
 // 1) Qwen3-ASR-Flash (Alibaba Model Studio, synchronous DashScope API) - runs on the Qwen key and is
 //    NOT limited by Gemini's free-tier AUDIO quota (Gemini returns 429 for audio while text still works).
 // 2) Gemini chain fallback - used only if Qwen ASR is unavailable or fails.
-const AUDIO_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-2.5-pro'];
+const AUDIO_MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
 const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
 
 // https://dashscope-intl.aliyuncs.com/compatible-mode/v1 -> https://dashscope-intl.aliyuncs.com/api/v1
@@ -3032,12 +3032,15 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         }
       }
 
-      // Try Gemini Multimodal
+      // Try Gemini Multimodal - automatic fallback chain (Gemini 3.6 Flash first: most reliable Gemini media model right now)
       if (geminiKey) {
+        const geminiCandidates = chosenModel.startsWith('gemini')
+          ? [chosenModel, 'gemini-3.6-flash', 'gemini-2.5-flash']
+          : ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+        for (const geminiModelName of geminiCandidates) {
         try {
           const { GoogleGenerativeAI } = await import('@google/generative-ai');
           const genAI = new GoogleGenerativeAI(geminiKey);
-          const geminiModelName = chosenModel.startsWith('gemini') ? chosenModel : 'gemini-2.5-flash';
           const model = genAI.getGenerativeModel({ model: geminiModelName });
 
           let mediaInstruction = 'Customer sent a ' + (mediaData.mediaType || 'file') + '.';
@@ -3066,11 +3069,12 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           });
           const reply = res.response.text();
           if (reply && reply.trim()) {
-            console.log('[WA-WEB MULTIMODAL] 🟢 Gemini generated reply for ' + mediaData.mediaType);
+            console.log('[WA-WEB MULTIMODAL] 🟢 Gemini ' + geminiModelName + ' generated reply for ' + mediaData.mediaType);
             return reply.trim();
           }
         } catch (geminiErr) {
-          console.warn('[WA-WEB MULTIMODAL] Gemini multimodal error:', geminiErr.message);
+          console.warn('[WA-WEB MULTIMODAL] Gemini ' + geminiModelName + ' error: ' + (geminiErr.message || '').substring(0, 120));
+        }
         }
       }
 
@@ -3123,7 +3127,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       const geminiModel = chosenModel || 'gemini-2.5-flash';
       const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
-      return res.response.text() || null;
+      const gtxt = (res.response.text() || '').trim();
+      if (gtxt) return gtxt;
+      throw new Error('Gemini returned an empty reply');
     } else if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && qwenKey) {
       // Qwen3.8-Flash (Alibaba Model Studio, OpenAI-compatible) - smart multilingual text engine
       const { default: OpenAI } = await import('openai');
@@ -3136,7 +3142,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         model: chosenModel === 'qwen' ? qwenModelId : chosenModel,
         temperature: 0.4
       });
-      return comp.choices[0]?.message?.content || null;
+      const qtxt = (comp.choices[0]?.message?.content || '').trim();
+      if (qtxt) return qtxt;
+      throw new Error('Qwen returned an empty reply');
     } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey) {
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
@@ -3176,6 +3184,19 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     if (!txtIn) {
       // Media could not be processed (e.g. Gemini quota) - say so instead of staying silent
       return 'Sorry, I could not process that media right now. Please resend it or type your message.';
+    }
+    // AUTOMATIC SWITCH 1: Gemini 3.6 Flash (when the requested engine was NOT Gemini)
+    if (!chosenModel.startsWith('gemini') && geminiKey) {
+      for (const geminiModelName of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+        try {
+          const { GoogleGenerativeAI } = await import('@google/generative-ai');
+          const genAI = new GoogleGenerativeAI(geminiKey);
+          const model = genAI.getGenerativeModel({ model: geminiModelName });
+          const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + txtIn }] }] });
+          const t = (res.response.text() || '').trim();
+          if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via ' + geminiModelName + ' fallback'); return t; }
+        } catch (geminiFbErr) { console.warn('[WA-WEB AI] ' + geminiModelName + ' fallback failed: ' + (geminiFbErr.message || '').substring(0, 120)); }
+      }
     }
     if (deepseekKey) {
       try {
