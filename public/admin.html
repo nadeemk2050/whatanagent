@@ -5450,20 +5450,14 @@
             let html = '';
             chats.forEach(c => {
                 const isSelected = waWebCurrentJid === c.id;
-                const rawPhone = (c.phone || c.id.split('@')[0].split(':')[0]).replace(/\D/g, '');
-                const cleanPhone = (c.realPhone || (rawPhone.length <= 13 ? rawPhone : '')).replace(/\D/g, '');
+                const realPhone = String(c.realPhone || '').replace(/\D/g, '');
+                const cleanPhone = realPhone;
                 const rawName = (c.name || '').trim();
-                const isPhoneAsName = !rawName || rawName === rawPhone || rawName === '+' + rawPhone || rawName === cleanPhone || /^\d+$/.test(rawName);
-                const displayName = isPhoneAsName ? (cleanPhone ? ('+' + cleanPhone) : 'WhatsApp Contact') : rawName;
-                const isLid = rawPhone.length > 13;
-                let displaySubPhone = '';
-                if (!isPhoneAsName && !c.isGroup) {
-                    if (cleanPhone) {
-                        displaySubPhone = '+' + cleanPhone;
-                    } else if (isLid) {
-                        displaySubPhone = '📱 WhatsApp Chat';
-                    }
-                }
+                const isPhoneAsName = !rawName || /^\d+$/.test(rawName) || (realPhone && (rawName === '+' + realPhone || rawName === realPhone));
+                const displayName = isPhoneAsName
+                    ? (realPhone ? ('+' + realPhone) : (c.isLid ? 'Unsaved WhatsApp contact' : 'WhatsApp Contact'))
+                    : rawName;
+                const displaySubPhone = (!isPhoneAsName && !c.isGroup && realPhone) ? ('+' + realPhone) : '';
 
                 const initial = displayName.charAt(0).toUpperCase();
                 const timeStr = c.timestamp ? formatWaWebTime(c.timestamp) : '';
@@ -5647,8 +5641,8 @@
             const activeBox = document.getElementById('waWebActiveChatBox');
             activeBox.style.display = 'flex';
 
-            document.getElementById('waWebChatName').innerText = name || phone || jid.split('@')[0];
-            document.getElementById('waWebChatPhone').innerText = phone ? `+${phone}` : jid;
+            document.getElementById('waWebChatName').innerText = name || (phone ? '+' + phone : 'Unsaved WhatsApp contact');
+            document.getElementById('waWebChatPhone').innerText = phone ? `+${phone}` : '📱 Phone number hidden by contact (LID chat)';
             document.getElementById('waWebChatAvatar').innerText = (name || 'U').charAt(0).toUpperCase();
             updateWaWebChatAiPauseButton(jid);
 

@@ -363,53 +363,106 @@ function parseMessageContent(msg) {
 // Helper to resolve contact name cleanly from contacts map and pushName
 
 // Persistent mapping for WhatsApp Multi-Device LIDs -> Real Country Phone Numbers
+// (known pairs are seeded here; the rest are learned automatically and persisted to Firestore)
 export const lidToPhoneMap = new Map([
-  ['128046178803746', '971529244592'], // Boss (Mr. Nadeem KSA)
+  ['128046178803746', '971529244592'], // Boss (Mr. Nadeem)
   ['33827296669835', '971529244591']   // Md Ariful Islam Al Shaab (UAE)
 ]);
 
-// Helper to resolve real country phone number from any JID or LID
-export function resolveRealPhoneNumber(jid) {
-  if (!jid) return '';
-  const clean = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-  if (lidToPhoneMap.has(clean)) {
-    return lidToPhoneMap.get(clean);
-  }
-  const c = waWebState.contacts.get(jid) || waWebState.contacts.get(clean);
-  if (c && (c.phoneNumber || c.phone)) {
-    const p = (c.phoneNumber || c.phone).split('@')[0].replace(/[^0-9]/g, '');
-    if (p && p.length <= 13) return p;
-  }
-  return clean;
+// --- LID (Linked ID) helpers ---
+// WhatsApp Multi-Device sends many chats/contacts as "@lid" IDs.
+// A LID is NOT a phone number - it must never be displayed as one.
+function jidUser(jid) {
+  return String(jid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+}
+function isLidJid(jid) {
+  return String(jid || '').endsWith('@lid');
 }
 
-// Helper: Link LID to Real Phone Number & Name
+// Baileys v7 signal repository can map LIDs <-> phone numbers when available
+function pnFromSignalRepository(jid) {
+  try {
+    if (!sock || !sock.signalRepository || !sock.signalRepository.lidMapping) return '';
+    const repo = sock.signalRepository.lidMapping;
+    const lidJid = isLidJid(jid) ? jid : (jidUser(jid) + '@lid');
+    let out = null;
+    if (typeof repo.getPNForLID === 'function') out = repo.getPNForLID(lidJid);
+    if (!out && typeof repo.getPNFromLID === 'function') out = repo.getPNFromLID(lidJid);
+    if (out && typeof out.then === 'function') return ''; // async variant - the learned map covers it
+    const pn = jidUser(out);
+    if (pn && pn.length <= 15) return pn;
+  } catch (e) { /* mapping store unavailable - ignore */ }
+  return '';
+}
+
+// Learn & remember a LID -> real phone-number mapping (persisted to Firestore)
+export function learnLidMapping(lidOrJid, realPhone) {
+  const lid = jidUser(lidOrJid);
+  const pn = String(realPhone || '').replace(/[^0-9]/g, '');
+  if (!lid || !pn || lid === pn) return false;
+  if (lid.length < 13) return false;                 // only plausible LIDs (phones are <= 15 digits)
+  if (lidToPhoneMap.get(lid) === pn) return false;   // already known
+  lidToPhoneMap.set(lid, pn);
+  lidToPhoneMap.set(pn, pn);
+  scheduleContactsSaveToFirestore();
+  return true;
+}
+
+// Resolve a REAL phone number from any JID/LID. Returns '' when unknown
+// (never returns LID digits - that was why contacts showed fake numbers).
+export function resolveRealPhoneNumber(jid) {
+  if (!jid) return '';
+  const clean = jidUser(jid);
+
+  // 1. Known mapping (seeded, manually linked, or learned from any sync source)
+  if (lidToPhoneMap.has(clean)) return lidToPhoneMap.get(clean);
+
+  // 2. Contact record - Baileys v7 exposes phoneNumber on LID contacts
+  const c = waWebState.contacts.get(jid) ||
+            waWebState.contacts.get(clean) ||
+            waWebState.contacts.get(clean + '@s.whatsapp.net') ||
+            waWebState.contacts.get(clean + '@lid');
+  if (c) {
+    const p = jidUser(c.phoneNumber || c.phone || '');
+    if (p && p !== clean && p.length <= 15) { learnLidMapping(clean, p); return p; }
+  }
+
+  // 3. Signal repository LID mapping (when available synchronously)
+  const pn = pnFromSignalRepository(jid);
+  if (pn && pn !== clean) { learnLidMapping(clean, pn); return pn; }
+
+  // 4. Plain phone-number JIDs are already real numbers
+  if (!isLidJid(jid) && clean.length <= 15) return clean;
+
+  return ''; // Unknown LID
+}
+
+// Helper: Link LID to Real Phone Number & Name (manual tool + API endpoint)
 export async function linkLidToRealPhone(jid, realPhone, newName = null) {
   if (!jid || !realPhone) return { success: false, error: 'Missing parameters' };
-  const cleanLid = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-  const cleanPhone = realPhone.replace(/[^0-9]/g, '');
+  const cleanLid = jidUser(jid);
+  const cleanPhone = String(realPhone).replace(/[^0-9]/g, '');
+  if (!cleanPhone) return { success: false, error: 'Invalid phone number' };
 
   lidToPhoneMap.set(cleanLid, cleanPhone);
   lidToPhoneMap.set(cleanPhone, cleanPhone);
 
-  const finalName = newName || (cleanPhone === '971529244592' ? '👑 Mr. Nadeem (Boss - UAE +971529244592)' : null);
+  const finalName = newName || (cleanPhone === '971529244592' ? '👑 Mr. Nadeem (Boss - UAE +971529244592)' : '');
 
-  const contactObj = {
-    id: jid,
-    phoneNumber: cleanPhone + '@s.whatsapp.net',
-    phone: cleanPhone,
-    name: finalName || resolveContactName(jid)
-  };
-  registerContact(contactObj);
+  // Register the contact under BOTH the LID jid and the real phone-number jid so every
+  // lookup path (name + number) resolves from now on
+  registerContact({ id: jid, phoneNumber: cleanPhone + '@s.whatsapp.net', phone: cleanPhone, name: finalName || undefined });
+  registerContact({ id: cleanPhone + '@s.whatsapp.net', phoneNumber: cleanPhone + '@s.whatsapp.net', phone: cleanPhone, name: finalName || undefined });
 
-  const chat = waWebState.chats.get(jid);
+  const chat = waWebState.chats.get(jid) || waWebState.chats.get(cleanPhone + '@s.whatsapp.net');
   if (chat) {
-    chat.phone = '+' + cleanPhone;
-    if (finalName) chat.name = finalName;
+    chat.phone = cleanPhone;
+    const resolved = finalName || resolveContactName(jid);
+    if (resolved) chat.name = resolved;
   }
 
   scheduleContactsSaveToFirestore();
-  return { success: true, jid, cleanLid, cleanPhone, name: finalName };
+  return { success: true, jid, cleanLid, cleanPhone, name: finalName || resolveContactName(jid) };
 }
 
 
@@ -444,12 +497,12 @@ async function transcribeAudioBuffer(audioBuffer, mimeType) {
 }
 
 function resolveContactName(jid, pushName = '', fallbackName = '') {
-  if (!jid) return fallbackName || 'WhatsApp User';
-  const cleanPhone = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  if (!jid) return fallbackName || '';
+  const cleanPhone = jidUser(jid);
   const realPhone = resolveRealPhoneNumber(jid);
 
-  // Special Boss check
-  if (cleanPhone === '128046178803746' || realPhone.endsWith('529244592') || realPhone === '971529244592') {
+  // Special Boss check (boss LID + boss numbers)
+  if (cleanPhone === '128046178803746' || (realPhone && realPhone.endsWith('529244592'))) {
     return '👑 Mr. Nadeem (Boss - UAE +971529244592)';
   }
 
@@ -457,13 +510,19 @@ function resolveContactName(jid, pushName = '', fallbackName = '') {
     return 'Md Ariful Islam Al Shaab (UAE +971529244591)';
   }
 
-  const c = waWebState.contacts.get(jid) ||
-            waWebState.contacts.get(realPhone) ||
-            waWebState.contacts.get(realPhone + '@s.whatsapp.net') ||
-            waWebState.contacts.get(cleanPhone);
+  // Look up the contact record under every key format, including the RESOLVED phone
+  // (the address-book name is usually stored against the phone-number jid)
+  const keys = [jid, cleanPhone, cleanPhone + '@s.whatsapp.net', cleanPhone + '@lid'];
+  if (realPhone) keys.push(realPhone, realPhone + '@s.whatsapp.net', realPhone + '@lid');
+  let c = null;
+  for (const k of keys) {
+    const hit = waWebState.contacts.get(k);
+    if (hit && (hit.name || hit.verifiedName || hit.notify)) { c = hit; break; }
+  }
 
-  if (c && (c.name || c.notify || c.verifiedName)) {
-    return c.name || c.notify || c.verifiedName;
+  // Saved address-book name > verified business name > WhatsApp profile (push) name
+  if (c && (c.name || c.verifiedName || c.notify)) {
+    return String(c.name || c.verifiedName || c.notify).trim();
   }
   if (pushName && pushName.trim() && !/^\d+$/.test(pushName.trim())) {
     return pushName.trim();
@@ -471,27 +530,63 @@ function resolveContactName(jid, pushName = '', fallbackName = '') {
   if (fallbackName && fallbackName.trim() && !/^\d+$/.test(fallbackName.trim())) {
     return fallbackName.trim();
   }
-  return realPhone ? '+' + realPhone : '+' + cleanPhone;
+  return realPhone ? '+' + realPhone : '';   // never return LID digits as a name
+}
+
+// Re-resolve every chat's name + phone from the (constantly improving) contact index
+function refreshChatNamesAndPhones() {
+  waWebState.chats.forEach(chat => {
+    const realPhone = resolveRealPhoneNumber(chat.id);
+    if (realPhone) chat.phone = realPhone;
+    const name = resolveContactName(chat.id, '', chat.name);
+    if (name) chat.name = name;
+  });
 }
 
 // Register contact into internal index (maps multiple formats: full JID, clean phone, LID)
 function registerContact(c) {
   if (!c || !c.id) return;
   const id = c.id;
-  const name = c.name || c.notify || c.verifiedName || '';
-  if (!name) return;
+  const cleanId = jidUser(id);
+  const incomingName = String(c.name || c.notify || c.verifiedName || '').trim();
 
-  waWebState.contacts.set(id, c);
-  const cleanPhone = id.split('@')[0].split(':')[0];
-  waWebState.contacts.set(cleanPhone, c);
-  waWebState.contacts.set(`${cleanPhone}@s.whatsapp.net`, c);
-  if (c.lid) waWebState.contacts.set(c.lid, c);
+  // Learn LID -> phone mapping whenever Baileys exposes a real phoneNumber on the contact
+  if (c.phoneNumber || c.phone) {
+    const p = jidUser(c.phoneNumber || c.phone);
+    if (p && p !== cleanId) learnLidMapping(cleanId, p);
+  }
+
+  // IMPORTANT: index the record even when it has no name yet.
+  // (The old code dropped nameless contacts, which is why LIDs never resolved.)
+  const prev = waWebState.contacts.get(id) || {};
+  const record = {
+    ...prev,
+    ...c,
+    name: incomingName || prev.name || '',
+    notify: c.notify || prev.notify || '',
+    verifiedName: c.verifiedName || prev.verifiedName || ''
+  };
+
+  waWebState.contacts.set(id, record);
+  waWebState.contacts.set(cleanId, record);
+  waWebState.contacts.set(`${cleanId}@s.whatsapp.net`, record);
+  waWebState.contacts.set(`${cleanId}@lid`, record);
+  if (record.lid) waWebState.contacts.set(record.lid, record);
+  if (record.phoneNumber) {
+    const p = jidUser(record.phoneNumber);
+    if (p) {
+      waWebState.contacts.set(p, record);
+      waWebState.contacts.set(`${p}@s.whatsapp.net`, record);
+    }
+  }
   scheduleContactsSaveToFirestore();
 
   // Update existing chat name if it was just showing numbers
-  const chat = waWebState.chats.get(id) || waWebState.chats.get(`${cleanPhone}@s.whatsapp.net`);
-  if (chat && (!chat.name || chat.name.startsWith('+') || /^\d+$/.test(chat.name))) {
-    chat.name = name;
+  if (incomingName) {
+    const chat = waWebState.chats.get(id) || waWebState.chats.get(`${cleanId}@s.whatsapp.net`);
+    if (chat && (!chat.name || chat.name.startsWith('+') || /^\d+$/.test(chat.name))) {
+      chat.name = incomingName;
+    }
   }
 }
 
@@ -500,6 +595,12 @@ function upsertMessageToChat(msg, isHistorySync = false) {
   if (!msg || !msg.key || !msg.message) return;
   const jid = msg.key.remoteJid;
   if (!jid || jid === 'status@broadcast') return;
+
+  // Learn LID -> real phone mapping from the message key (Baileys v7 exposes senderPn/participantPn)
+  try {
+    if (jid.endsWith('@lid') && msg.key.senderPn) learnLidMapping(jid, msg.key.senderPn);
+    if (msg.key.participant && msg.key.participant.endsWith('@lid') && msg.key.participantPn) learnLidMapping(msg.key.participant, msg.key.participantPn);
+  } catch (e) { /* ignore */ }
 
   const timestamp = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now();
   // Full Permanent History Sync: No 7-day limit. All past messages (1-5+ years) are saved and indexed.
@@ -528,7 +629,7 @@ function upsertMessageToChat(msg, isHistorySync = false) {
     chat = {
       id: jid,
       name: name,
-      phone: cleanPhone,
+      phone: resolveRealPhoneNumber(jid) || '',
       isGroup: isGroup,
       unreadCount: fromMe ? 0 : 1,
       lastMessage: text,
@@ -746,11 +847,11 @@ async function saveHistoryToFirestore() {
       await setDoc(doc(globalDb, "waWebChatHistory", docId), {
         id: c.id,
         name: c.name || resolveContactName(c.id),
-        phone: c.phone || resolveRealPhoneNumber(c.id),
-        realPhone: resolveRealPhoneNumber(c.id),
+        phone: resolveRealPhoneNumber(c.id) || '',
+        realPhone: resolveRealPhoneNumber(c.id) || '',
         isGroup: c.isGroup || false,
         lastMessage: c.lastMessage || '',
-        timestamp: c.timestamp || Date.now(),
+        timestamp: c.timestamp || 0,
         unreadCount: c.unreadCount || 0,
         messagesCount: allMsgs.length,
         messages: allMsgs,
@@ -772,7 +873,7 @@ export async function searchWaWebHistory(query) {
   // Search in-memory chats
   for (const chat of waWebState.chats.values()) {
     const contactName = chat.name || resolveContactName(chat.id);
-    const phone = chat.phone || resolveRealPhoneNumber(chat.id);
+    const phone = resolveRealPhoneNumber(chat.id) || '';
     const msgs = chat.messages || [];
 
     for (const m of msgs) {
@@ -1067,11 +1168,11 @@ export async function initWaWeb(db = null) {
                 existing = {
                   id: ch.id,
                   name: name,
-                  phone: cleanPhone,
+                  phone: resolveRealPhoneNumber(ch.id) || '',
                   isGroup: ch.id.endsWith('@g.us'),
                   unreadCount: ch.unreadCount || 0,
                   lastMessage: '',
-                  timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : Date.now(),
+                  timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : 0,
                   messages: []
                 };
                 waWebState.chats.set(ch.id, existing);
@@ -1086,10 +1187,8 @@ export async function initWaWeb(db = null) {
           messages.forEach(m => upsertMessageToChat(m, true));
         }
 
-        // Re-resolve chat names across all chats
-        waWebState.chats.forEach(chat => {
-          chat.name = resolveContactName(chat.id, '', chat.name);
-        });
+        // Re-resolve chat names + phone numbers across all chats (LID mappings may have grown)
+        refreshChatNamesAndPhones();
 
         scheduleHistorySaveToFirestore();
 
@@ -1119,6 +1218,20 @@ export async function initWaWeb(db = null) {
           registerContact(merged);
         }
       });
+      refreshChatNamesAndPhones();
+    });
+
+    // A contact shared their phone number with the linked device - use it to resolve the LID
+    sock.ev.on('chats.phoneNumberShare', ({ lid, jid: pnJid }) => {
+      try {
+        if (lid && pnJid) {
+          const learned = learnLidMapping(lid, pnJid);
+          if (learned) {
+            console.log('[WA-WEB LID] Phone number learned: ' + jidUser(lid) + ' -> +' + jidUser(pnJid));
+            refreshChatNamesAndPhones();
+          }
+        }
+      } catch (e) { /* ignore */ }
     });
 
     // 3. Chats events
@@ -1126,24 +1239,24 @@ export async function initWaWeb(db = null) {
       if (chats && Array.isArray(chats)) {
         chats.forEach(ch => {
           if (ch.id && ch.id !== 'status@broadcast') {
-            const cleanPhone = ch.id.split('@')[0].split(':')[0];
             const name = ch.name || resolveContactName(ch.id);
             let existing = waWebState.chats.get(ch.id);
             if (!existing) {
               existing = {
                 id: ch.id,
                 name: name,
-                phone: cleanPhone,
+                phone: resolveRealPhoneNumber(ch.id) || '',
                 isGroup: ch.id.endsWith('@g.us'),
                 unreadCount: ch.unreadCount || 0,
                 lastMessage: '',
-                timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : Date.now(),
+                timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : 0,
                 messages: []
               };
               waWebState.chats.set(ch.id, existing);
             }
           }
         });
+        refreshChatNamesAndPhones();
       }
     });
 
@@ -1151,24 +1264,24 @@ export async function initWaWeb(db = null) {
       if (chats && Array.isArray(chats)) {
         chats.forEach(ch => {
           if (ch.id && ch.id !== 'status@broadcast') {
-            const cleanPhone = ch.id.split('@')[0].split(':')[0];
             const name = ch.name || resolveContactName(ch.id);
             let existing = waWebState.chats.get(ch.id);
             if (!existing) {
               existing = {
                 id: ch.id,
                 name: name,
-                phone: cleanPhone,
+                phone: resolveRealPhoneNumber(ch.id) || '',
                 isGroup: ch.id.endsWith('@g.us'),
                 unreadCount: ch.unreadCount || 0,
                 lastMessage: '',
-                timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : Date.now(),
+                timestamp: ch.conversationTimestamp ? Number(ch.conversationTimestamp) * 1000 : 0,
                 messages: []
               };
               waWebState.chats.set(ch.id, existing);
             }
           }
         });
+        refreshChatNamesAndPhones();
       }
     });
 
@@ -1266,7 +1379,7 @@ export async function initWaWeb(db = null) {
 
               // Check if message is from Boss (Mr. Nadeem UAE +971529244592)
               const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-              const resolvedSenderPhone = resolveRealPhoneNumber(remoteJid).replace(/[^0-9]/g, '');
+              const resolvedSenderPhone = (resolveRealPhoneNumber(remoteJid) || cleanSenderPhone).replace(/[^0-9]/g, '');
               const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592').replace(/[^0-9]/g, '');
 
               const isBossNumber = (
@@ -1516,38 +1629,38 @@ export function getWaWebStatus() {
   };
 }
 
-// Helper: Get chat list sorted by latest activity
+// Helper: Get chat list sorted by latest activity (STABLE - rows never jump around)
 export function getWaWebChats() {
   const list = Array.from(waWebState.chats.values()).map(c => {
-    const cleanLid = c.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    const cleanId = jidUser(c.id);
     const realPhone = resolveRealPhoneNumber(c.id);
-    const isBoss = cleanLid === '128046178803746' || realPhone.endsWith('529244592');
+    const isLid = isLidJid(c.id) && !realPhone;
+    const isBossChat = cleanId === '128046178803746' || (realPhone && realPhone.endsWith('529244592'));
 
-    let displayName = c.name || resolveContactName(c.id, '', c.phone);
-    if (isBoss) {
-      displayName = '👑 Mr. Nadeem (Boss - UAE +971529244592)';
-    }
-
-    let displayPhone = realPhone ? ('+' + realPhone) : ('+' + cleanLid);
-    if (isBoss) {
-      displayPhone = '+966 55 268 3250';
-    } else if (cleanLid === '33827296669835' || realPhone === '971529244591') {
-      displayPhone = '+971 52 924 4591';
+    let displayName = resolveContactName(c.id, '', c.name) || '';
+    if (!displayName) {
+      if (c.isGroup) displayName = 'Group';
+      else if (isBossChat) displayName = '👑 Mr. Nadeem (Boss - UAE +971529244592)';
+      else if (realPhone) displayName = '+' + realPhone;
+      else displayName = isLid ? 'Unsaved WhatsApp contact' : '+' + cleanId;
     }
 
     return {
       id: c.id,
       name: displayName,
-      phone: displayPhone,
-      realPhone: realPhone || cleanLid,
+      phone: realPhone ? ('+' + realPhone) : '',
+      realPhone: realPhone,
+      isLid: isLid,
+      lid: isLid ? cleanId : '',
       isGroup: c.isGroup || false,
       lastMessage: c.lastMessage || '',
-      timestamp: c.timestamp || Date.now(),
+      timestamp: c.timestamp || 0,   // STABLE: never Date.now() (that made rows jump on every sync)
       unreadCount: c.unreadCount || 0
     };
   });
 
-  list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  // Newest conversation first; deterministic tiebreak (name) so identical timestamps never swap places
+  list.sort((a, b) => (b.timestamp - a.timestamp) || String(a.name).localeCompare(String(b.name)));
   return list;
 }
 
@@ -1715,7 +1828,7 @@ export function getWaWebChatContext(jid) {
   return {
     jid: chat.id,
     name: chat.name || resolveContactName(chat.id),
-    phone: chat.phone || chat.id.split('@')[0],
+    phone: resolveRealPhoneNumber(chat.id) || '',
     isGroup: chat.isGroup || false,
     messageCount: msgs.length,
     lastActive: chat.timestamp ? new Date(chat.timestamp).toLocaleString('en-US') : 'N/A',
@@ -1732,7 +1845,7 @@ export function getWaWebAllChatsSummary() {
   return chats.map(c => ({
     jid: c.id,
     name: c.name || resolveContactName(c.id),
-    phone: c.phone || c.id.split('@')[0],
+    phone: resolveRealPhoneNumber(c.id) || '',
     unreadCount: c.unreadCount || 0,
     lastMessage: c.lastMessage || '(no messages)',
     lastTime: c.timestamp ? new Date(c.timestamp).toLocaleString('en-US') : 'N/A',
