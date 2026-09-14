@@ -3004,6 +3004,34 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
 
       console.log(`[WA-WEB MULTIMODAL] 🧠 Processing ${mediaData.mediaType} with AI (${normalizedMime}, ${(mediaData.buffer.length/1024).toFixed(1)} KB)`);
 
+      // Try Qwen vision FIRST for images (Qwen key has quota; Gemini's free vision/audio quota is easily exhausted)
+      if (mediaData.mediaType === 'image' && qwenKey) {
+        try {
+          const { default: OpenAI } = await import('openai');
+          const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 60000 });
+          const qwenVisionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+          const imgInstruction = 'Customer sent an IMAGE' + (mediaData.caption ? ' (Caption: "' + mediaData.caption + '")' : '') + '. Inspect the image carefully (invoice, product list, payment receipt, business card, document screenshot, etc.) and reply helpfully following our business knowledge and rules. If it contains contact details, list every phone number you can see.';
+          const comp = await openai.chat.completions.create({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: [
+                { type: 'text', text: imgInstruction + (customerMessage ? '\nCustomer note: ' + customerMessage : '') },
+                { type: 'image_url', image_url: { url: 'data:' + normalizedMime + ';base64,' + mediaData.buffer.toString('base64') } }
+              ] }
+            ],
+            model: qwenVisionModel,
+            temperature: 0.4
+          });
+          const qReply = comp.choices[0]?.message?.content;
+          if (qReply && qReply.trim()) {
+            console.log('[WA-WEB MULTIMODAL] 🟣 Qwen vision (' + qwenVisionModel + ') replied for image');
+            return qReply.trim();
+          }
+        } catch (qErr) {
+          console.warn('[WA-WEB MULTIMODAL] Qwen vision failed: ' + (qErr.message || '').substring(0, 140));
+        }
+      }
+
       // Try Gemini Multimodal
       if (geminiKey) {
         try {

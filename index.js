@@ -492,6 +492,23 @@ app.post('/api/wa-web/asr/test', async (req, res) => {
   }
 });
 
+// Analyze an image with the app's vision engine (Qwen vision first, Gemini fallback) - nothing is sent on WhatsApp.
+// Safe diagnostic endpoint.
+app.post('/api/wa-web/image/test', async (req, res) => {
+  try {
+    const { imageBase64, mimeType } = req.body || {};
+    if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+    const buf = Buffer.from(String(imageBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'imageBase64 could not be decoded' });
+    const settings = await getSettings();
+    const t0 = Date.now();
+    const description = await analyzeImage(buf, mimeType || 'image/jpeg', settings);
+    res.json({ ok: !!description, tookMs: Date.now() - t0, bytes: buf.length, description: description || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Settings Management ---
 async function getSettings() {
   try {
@@ -3505,8 +3522,35 @@ async function transcribeAudio(audioBuffer, mimeType, settings) {
   });
   return response.response.text().trim();
 }
-// Analyze Image using Gemini Multimodal native input
+// Analyze Image: Qwen vision (Alibaba) first, Gemini multimodal as fallback
 async function analyzeImage(imageBuffer, mimeType, settings) {
+  const prompt = "Describe what is in this image or GIF in one short paragraph. If it is a greeting message (Good Morning, Good Night, Hello, Jumma Mubarak, Eid Mubarak, Thank You, etc.), just say e.g. 'A Good Morning greeting image'. IMPORTANT: If the image contains contact details (business card, invoice, letterhead, shop sign, screenshot or any document), you MUST extract and list ALL visible details with labels: Name:, Company:, Phone:, Email:, Address:, Website:, Amount:, Date:. List every phone number you can see, even partial ones. Do not add commentary.";
+  const qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+  if (qwenKey && imageBuffer && imageBuffer.length) {
+    try {
+      const compatBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim().replace(/\/+$/, '');
+      const visionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+      const mime = (String(mimeType || 'image/jpeg').split(';')[0] || 'image/jpeg').trim().toLowerCase();
+      const r = await axios.post(compatBase + '/chat/completions', {
+        model: visionModel,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + Buffer.from(imageBuffer).toString('base64') } },
+            { type: 'text', text: prompt }
+          ]
+        }],
+        max_tokens: 900
+      }, { headers: { Authorization: 'Bearer ' + qwenKey, 'Content-Type': 'application/json' }, timeout: 60000 });
+      const t = String((r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && r.data.choices[0].message.content) || '').trim();
+      if (t) {
+        console.log('[IMAGE] 👁️ Analyzed with ' + visionModel);
+        return t;
+      }
+    } catch (e) {
+      console.warn('[IMAGE] Qwen vision failed (' + (e.response ? e.response.status : e.message) + ') - falling back to Gemini');
+    }
+  }
   const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   
@@ -3521,7 +3565,7 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
               mimeType: mimeType
             }
           },
-          { text: "Describe what is in this image or GIF in one short paragraph. If it is a greeting message (Good Morning, Good Night, Hello, Jumma Mubarak, Eid Mubarak, Thank You, etc.), just say e.g. 'A Good Morning greeting image'. IMPORTANT: If the image contains contact details (business card, invoice, letterhead, shop sign, screenshot or any document), you MUST extract and list ALL visible details with labels: Name:, Company:, Phone:, Email:, Address:, Website:, Amount:, Date:. List every phone number you can see, even partial ones. Do not add commentary." }
+          { text: prompt }
         ]
       }
     ]
