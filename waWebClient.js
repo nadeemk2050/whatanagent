@@ -967,6 +967,25 @@ function scheduleContactsSaveToFirestore() {
   }, 6000);
 }
 
+// Restore a large pre-built LID -> phone mapping seed, harvested from Baileys' own persisted
+// mapping store (lid-mapping-*.json files). Kept in its OWN document so the app's normal
+// contact-index saves can never overwrite it. Existing (manually linked / learned) entries win.
+async function restoreLidMapSeedFromFirestore(db) {
+  if (!db) return;
+  try {
+    const snap = await getDoc(doc(db, "appData", "waLidMapSeed"));
+    if (!snap.exists()) return;
+    const seed = JSON.parse((snap.data() || {}).lidMappings || '{}');
+    let added = 0;
+    for (const [lid, pn] of Object.entries(seed)) {
+      if (!lidToPhoneMap.has(lid)) { lidToPhoneMap.set(lid, pn); added++; }
+    }
+    console.log('[WA-WEB LID] Restored ' + added + ' LID->phone mappings from seed');
+  } catch (e) {
+    console.warn('[WA-WEB LID] Seed restore error:', e.message);
+  }
+}
+
 // Restore contacts index from Firestore
 async function restoreContactsIndexFromFirestore(db) {
   if (!db) return;
@@ -1055,6 +1074,7 @@ export async function initWaWeb(db = null) {
     await restoreSessionFromFirestore(globalDb);
     await restoreHistoryFromFirestore(globalDb);
     await restoreKnowledgeBaseFromFirestore(globalDb);
+    await restoreLidMapSeedFromFirestore(globalDb);
     await restoreContactsIndexFromFirestore(globalDb);
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
