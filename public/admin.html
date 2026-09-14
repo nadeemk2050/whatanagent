@@ -337,7 +337,7 @@
                 <div style="display:flex; align-items:center; gap:8px; font-size:11px; flex-wrap:wrap;">
                     <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 Today: <b id="waWebRibbonToday" style="color:#25d366;">0</b></span>
                     <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 Yesterday: <b id="waWebRibbonYesterday" style="color:#53bdeb;">0</b></span>
-                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">📅 7 Days: <b id="waWebRibbon7Days" style="color:#a855f7;">0</b></span>
+                    <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">🗄️ All-Time History: <b id="waWebRibbonTotalHistory" style="color:#a855f7;">0 msgs</b></span>
                     <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">💾 Storage: <b id="waWebRibbonStorage" style="color:#f39c12;">0 KB</b></span>
                     <span style="background:#202c33; padding:3px 8px; border-radius:12px; border:1px solid #2a3942; color:#e9edef;">⚡ <b id="waWebRibbonSpeed" style="color:#38bdf8;">14.2 Mbps</b></span>
                 </div>
@@ -5393,11 +5393,20 @@
             let html = '';
             chats.forEach(c => {
                 const isSelected = waWebCurrentJid === c.id;
-                const cleanPhone = (c.phone || c.id.split('@')[0].split(':')[0]).replace(/\D/g, '');
+                const rawPhone = (c.phone || c.id.split('@')[0].split(':')[0]).replace(/\D/g, '');
+                const cleanPhone = (c.realPhone || (rawPhone.length <= 13 ? rawPhone : '')).replace(/\D/g, '');
                 const rawName = (c.name || '').trim();
-                const isPhoneAsName = !rawName || rawName === cleanPhone || rawName === `+${cleanPhone}` || /^\d+$/.test(rawName);
-                const displayName = isPhoneAsName ? (cleanPhone ? `+${cleanPhone}` : c.id) : rawName;
-                const showSubPhone = !isPhoneAsName && cleanPhone && !c.isGroup;
+                const isPhoneAsName = !rawName || rawName === rawPhone || rawName === '+' + rawPhone || rawName === cleanPhone || /^\d+$/.test(rawName);
+                const displayName = isPhoneAsName ? (cleanPhone ? ('+' + cleanPhone) : 'WhatsApp Contact') : rawName;
+                const isLid = rawPhone.length > 13;
+                let displaySubPhone = '';
+                if (!isPhoneAsName && !c.isGroup) {
+                    if (cleanPhone) {
+                        displaySubPhone = '+' + cleanPhone;
+                    } else if (isLid) {
+                        displaySubPhone = '📱 WhatsApp Chat';
+                    }
+                }
 
                 const initial = displayName.charAt(0).toUpperCase();
                 const timeStr = c.timestamp ? formatWaWebTime(c.timestamp) : '';
@@ -5417,7 +5426,7 @@
                                     ${timeStr}
                                 </div>
                             </div>
-                            ${showSubPhone ? `<div style="font-size:11px; color:#00a884; margin-bottom:2px;">+${escapeHtml(cleanPhone)}</div>` : ''}
+                            ${displaySubPhone ? `<div style="font-size:11px; color:#00a884; margin-bottom:2px;">${escapeHtml(displaySubPhone)}</div>` : ''}
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <div style="font-size:13px; color:#8696a0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                     ${lastMsgSnippet}
@@ -5615,7 +5624,24 @@
                 return;
             }
 
-            let html = '';
+            // Calculate Earliest Message / Chat Inception Date
+            const sorted = [...messages].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            const earliestMsg = sorted.find(m => m && m.timestamp);
+            const earliestDateStr = earliestMsg?.timestamp ? new Date(earliestMsg.timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'All-time Archive';
+
+            let html = `
+                <!-- CHAT INCEPTION & PERMANENT VAULT RIBBON -->
+                <div style="margin:4px auto 16px auto; text-align:center; max-width:520px; width:92%;">
+                    <div style="background:linear-gradient(135deg, #182229 0%, #111b21 100%); border:1px solid #2a3942; padding:8px 18px; border-radius:14px; font-size:12px; color:#38bdf8; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 14px rgba(0,0,0,0.35); flex-wrap:wrap;">
+                        <span style="font-size:14px;">📅</span>
+                        <span><b>Chat Inception:</b> ${earliestDateStr}</span>
+                        <span style="color:#64748b;">•</span>
+                        <span style="color:#a7f3d0; font-weight:bold;">${messages.length} Total Messages Saved</span>
+                        <span style="color:#64748b;">•</span>
+                        <span style="background:#064e3b; color:#34d399; font-size:10px; padding:1px 6px; border-radius:6px; font-weight:bold;">Permanent Cloud Vault</span>
+                    </div>
+                </div>
+            `;
             messages.forEach(m => {
                 const isMe = m.fromMe;
                 const bubbleBg = isMe ? '#005c4b' : '#202c33';
