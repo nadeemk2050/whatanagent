@@ -28,7 +28,8 @@ import {
   getWaWebKnowledgeBase,
   saveWaWebKnowledgeBase,
   buildWaWebKnowledgeSystemPrompt,
-  generateWaWebAutoBotReply
+  generateWaWebAutoBotReply,
+  transcribeAudioBuffer
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -470,6 +471,22 @@ app.post('/api/wa-web/ai-bot/test', async (req, res) => {
       return res.json({ ok: false, tookMs: Date.now() - t0, model: model || null, note: 'No reply generated - this node does not own the WhatsApp Web session (standby/staging) or no AI key is configured.' });
     }
     res.json({ ok: true, tookMs: Date.now() - t0, model: model || null, reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transcribe an audio buffer (voice note) with the app's audio engine - Qwen ASR first, Gemini fallback.
+// Nothing is sent on WhatsApp; safe diagnostic endpoint.
+app.post('/api/wa-web/asr/test', async (req, res) => {
+  try {
+    const { audioBase64, mimeType } = req.body || {};
+    if (!audioBase64) return res.status(400).json({ error: 'audioBase64 is required' });
+    const buf = Buffer.from(String(audioBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'audioBase64 could not be decoded' });
+    const t0 = Date.now();
+    const transcript = await transcribeAudioBuffer(buf, mimeType || 'audio/ogg');
+    res.json({ ok: !!transcript, tookMs: Date.now() - t0, bytes: buf.length, mimeType: mimeType || 'audio/ogg', transcript: transcript || null });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3443,8 +3460,30 @@ async function downloadWhatsAppMedia(mediaId, settings) {
   };
 }
 
-// Transcribe Audio using Gemini Multimodal native input
+// Transcribe Audio: Qwen3-ASR-Flash (Alibaba, DashScope sync API) first, Gemini multimodal as fallback
 async function transcribeAudio(audioBuffer, mimeType, settings) {
+  const qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+  if (qwenKey && audioBuffer && audioBuffer.length) {
+    try {
+      const compatBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+      const cut = compatBase.indexOf('/compatible-mode');
+      const nativeBase = (cut > 0 ? compatBase.slice(0, cut) : compatBase).replace(/\/+$/, '') + '/api/v1';
+      const asrModel = settings.QWEN_ASR_MODEL || process.env.QWEN_ASR_MODEL || 'qwen3-asr-flash';
+      const mime = (String(mimeType || 'audio/ogg').split(';')[0] || 'audio/ogg').trim().toLowerCase();
+      const r = await axios.post(nativeBase + '/services/aigc/multimodal-generation/generation', {
+        model: asrModel,
+        input: { messages: [{ role: 'user', content: [{ audio: 'data:' + mime + ';base64,' + Buffer.from(audioBuffer).toString('base64') }] }] }
+      }, { headers: { Authorization: 'Bearer ' + qwenKey, 'Content-Type': 'application/json' }, timeout: 60000 });
+      const c = r.data && r.data.output && r.data.output.choices && r.data.output.choices[0] && r.data.output.choices[0].message && r.data.output.choices[0].message.content;
+      const t = (Array.isArray(c) ? c.map(x => x.text || '').join(' ') : String(c || '')).trim();
+      if (t) {
+        console.log('[AUDIO] 🎙️ Transcribed with ' + asrModel + ': "' + t.substring(0, 90) + '"');
+        return t;
+      }
+    } catch (e) {
+      console.warn('[AUDIO] Qwen ASR failed (' + (e.response ? e.response.status : e.message) + ') - falling back to Gemini');
+    }
+  }
   const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   

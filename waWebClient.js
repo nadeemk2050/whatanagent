@@ -1015,13 +1015,78 @@ async function getGeminiKey() {
 }
 
 // ================= DEDICATED AUDIO ENGINE =================
-// Gemini is the multimodal provider (the only configured one that can hear voice notes / see images / read PDFs).
-// Text replies go to DeepSeek, so Gemini's quota stays reserved for MEDIA.
-// Several Gemini models are tried in order, so one model running out of quota does not break audio.
+// 1) Qwen3-ASR-Flash (Alibaba Model Studio, synchronous DashScope API) - runs on the Qwen key and is
+//    NOT limited by Gemini's free-tier AUDIO quota (Gemini returns 429 for audio while text still works).
+// 2) Gemini chain fallback - used only if Qwen ASR is unavailable or fails.
 const AUDIO_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-2.5-pro'];
-async function transcribeAudioBuffer(audioBuffer, mimeType) {
+const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
+
+// https://dashscope-intl.aliyuncs.com/compatible-mode/v1 -> https://dashscope-intl.aliyuncs.com/api/v1
+function qwenNativeBaseFrom(compatBase) {
+  const b = String(compatBase || '').replace(/\/+$/, '');
+  const cut = b.indexOf('/compatible-mode');
+  return (cut > 0 ? b.slice(0, cut) : b) + '/api/v1';
+}
+
+// --- Qwen settings resolver (env first, then Firestore settings - cached 5 min) ---
+let cachedQwenCfg = null, cachedQwenCfgAt = 0;
+async function getQwenCfg() {
+  if (cachedQwenCfg && (Date.now() - cachedQwenCfgAt) < 300000) return cachedQwenCfg;
+  let key = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || '';
+  let base = process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+  let asr = process.env.QWEN_ASR_MODEL || QWEN_ASR_DEFAULT_MODEL;
+  try {
+    if (globalDb) {
+      const snap = await getDoc(doc(globalDb, 'appData', 'settings'));
+      const d = snap.exists() ? snap.data() : {};
+      key = d.QWEN_API_KEY || key;
+      base = d.QWEN_BASE_URL || base;
+      asr = d.QWEN_ASR_MODEL || asr;
+    }
+  } catch (e) { /* ignore */ }
+  cachedQwenCfg = { key, base, asr, nativeBase: qwenNativeBaseFrom(base) };
+  cachedQwenCfgAt = Date.now();
+  return cachedQwenCfg;
+}
+
+// Qwen3-ASR-Flash (sync DashScope): base64 audio in -> plain transcript out
+async function transcribeWithQwenAsr(audioBuffer, mimeType) {
+  const q = await getQwenCfg();
+  if (!q.key || !audioBuffer || !audioBuffer.length) return '';
+  const mime = (String(mimeType || 'audio/ogg').split(';')[0] || 'audio/ogg').trim().toLowerCase();
+  const dataUri = 'data:' + mime + ';base64,' + Buffer.from(audioBuffer).toString('base64');
+  const r = await fetch(q.nativeBase + '/services/aigc/multimodal-generation/generation', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + q.key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: q.asr, input: { messages: [{ role: 'user', content: [{ audio: dataUri }] }] } })
+  });
+  const raw = await r.text();
+  if (!r.ok) {
+    console.warn('[WA-WEB AUDIO] Qwen ASR HTTP ' + r.status + ': ' + String(raw).substring(0, 160));
+    return '';
+  }
+  let j = {};
+  try { j = JSON.parse(raw); } catch (e) { }
+  const c = j && j.output && j.output.choices && j.output.choices[0] && j.output.choices[0].message && j.output.choices[0].message.content;
+  const t = Array.isArray(c) ? c.map(x => x.text || '').join(' ') : String(c || '');
+  return t.trim();
+}
+
+export async function transcribeAudioBuffer(audioBuffer, mimeType) {
+  if (!audioBuffer || !audioBuffer.length) return '';
+  // 1) Qwen3-ASR-Flash first (independent of Gemini's audio quota)
+  try {
+    const t = await transcribeWithQwenAsr(audioBuffer, mimeType);
+    if (t) {
+      console.log('[WA-WEB AUDIO] 🎙️ Transcribed with Qwen ASR: "' + t.substring(0, 90) + '"');
+      return t;
+    }
+  } catch (e) {
+    console.warn('[WA-WEB AUDIO] Qwen ASR error: ' + (e.message || '').substring(0, 140));
+  }
+  // 2) Gemini fallback chain
   const geminiKey = await getGeminiKey();
-  if (!geminiKey || !audioBuffer) {
+  if (!geminiKey) {
     console.warn('[WA-WEB AUDIO] No Gemini key available - cannot transcribe voice notes');
     return '';
   }
