@@ -846,7 +846,7 @@ app.post('/api/wa-web/contact/update', async (req, res) => {
 // ==========================================================
 const DEFAULT_BOSS_NUMBER = '971529244592';   // Boss phone number (without +)
 const DEFAULT_BOSS_CODE = '2831';             // Secret access code
-const BOSS_SESSION_HOURS = 12;                // Boss stays verified for this long (refreshed on every message)
+const BOSS_SESSION_HOURS = 8;                 // Boss verifies ONCE; session expires after 8h of INACTIVITY (sliding, refreshed on every boss message)
 const BOSS_MAX_ATTEMPTS = 5;                  // Wrong code attempts before temporary lockout
 const BOSS_LOCK_MINUTES = 30;                 // Lockout duration after too many wrong attempts
 
