@@ -48,8 +48,8 @@ const db = getFirestore(firebaseApp);
 
 dotenv.config();
 
-// Initialize WhatsApp Web (Baileys Multi-Device Client with Firestore Cloud Persistence)
-initWaWeb(db);
+// (WhatsApp Web / Baileys is initialized further below - ONLY on the node that owns the
+//  linked-device session; the standby Render node must not attempt a second connection.)
 
 // --- STAGING REPLICA ISOLATION (Railway replica running alongside production Render) ---
 // STAGING_MODE=1 -> this instance NEVER runs the 60s schedulers (follow-ups / scheduled AI tasks),
@@ -62,6 +62,23 @@ const DRY_RUN = /^(1|true|yes|on)$/i.test(String(process.env.DRY_RUN || ''));
 const IS_RENDER = String(process.env.RENDER || '').toLowerCase() === 'true' || !!process.env.RENDER_SERVICE_ID || !!process.env.RENDER_EXTERNAL_URL;
 const NODE_ROLE = IS_RENDER ? 'render' : (process.env.RAILWAY_ENVIRONMENT ? 'railway' : 'local');
 let schedulerState = 'starting';
+
+// --- WhatsApp Web (Baileys) session ownership ---
+// One linked-device session can only be held by ONE node. The standby Render node and any
+// staging/dry-run instance must never connect (otherwise they fight the active session).
+(async () => {
+  let standby = true;
+  try {
+    const rt = await getDoc(doc(db, 'appData', 'runtimeConfig'));
+    standby = (rt.exists() ? rt.data() : {}).renderStandby !== false;
+  } catch (e) { standby = true; }
+  const isStandbyNode = IS_RENDER && standby;
+  if (isStandbyNode || STAGING_MODE) {
+    console.log('[WA-WEB] Skipped on this ' + (isStandbyNode ? 'STANDBY' : 'STAGING') + ' node - the active node owns the linked-device session');
+    return;
+  }
+  initWaWeb(db);
+})();
 
 const app = express();
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
@@ -3854,6 +3871,24 @@ async function processAiTasks() {
       }
       t.executedAt = Date.now();
       changed = true;
+
+      // Boss-created tasks report their result back to the boss's WhatsApp
+      // (delivered through the linked session by the WA-Web node, which polls appData/bossNotifications)
+      if (t.createdBy === 'boss-waweb') {
+        try {
+          const nref = doc(db, 'appData', 'bossNotifications');
+          const nsnap = await getDoc(nref);
+          const items = nsnap.exists() ? (nsnap.data().items || []) : [];
+          items.push({
+            id: 'ntf-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            text: '🗓️ *Task ' + (t.status === 'done' ? 'completed ✅' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) +
+                  (t.result ? '\n' + String(t.result).substring(0, 600) : ''),
+            createdAt: Date.now(),
+            status: 'pending'
+          });
+          await setDoc(nref, { items: items.slice(-200) }, { merge: true });
+        } catch (e) { /* ignore */ }
+      }
     }
 
     if (changed) {

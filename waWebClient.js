@@ -220,6 +220,219 @@ function stripBossBusinessActions(text) {
   return String(text || '').replace(/\[BUSINESS:\s*\{[\s\S]*?\}\s*\]/gi, '').trim();
 }
 
+// ================= BOSS AUTHORITY: EVERY OTHER SECTION =================
+// Scheduled tasks (send at a time / run AI website jobs), reminders, task list & cancel,
+// the Contact Book - all controllable by the boss from WhatsApp. Voice or text.
+
+// Phone normaliser (UAE-centric: 0501234567 -> 971501234567)
+function bossNormalizePhone(p) {
+  let d = String(p || '').replace(/[^0-9]/g, '');
+  if (d.startsWith('00')) d = d.substring(2);
+  if (d.startsWith('0') && d.length >= 9) d = '971' + d.substring(1);
+  return d;
+}
+
+// Create a REAL task in the shared scheduler (appData/aiTasks) - executed by the 60s task runner
+async function bossCreateTask(t) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  if (!t || typeof t !== 'object') return { ok: false, error: 'Invalid task' };
+  const runAt = typeof t.runAt === 'number' ? t.runAt : Date.parse(String(t.runAt || ''));
+  if (!runAt || Number.isNaN(runAt)) return { ok: false, error: 'I need a clear date & time for that task, Boss.' };
+  if (runAt < Date.now() - 60000) return { ok: false, error: 'That time is already in the past.' };
+  const taskType = ['send_message', 'send_template', 'ai_task'].includes(t.taskType) ? t.taskType : 'ai_task';
+  if (taskType === 'send_message' && (!t.target || !String(t.message || '').trim())) return { ok: false, error: 'A send-message task needs a number and a message.' };
+  if (taskType === 'send_template' && (!t.target || !t.templateName)) return { ok: false, error: 'A template task needs a number and the template name.' };
+  if (taskType === 'ai_task' && !String(t.instruction || '').trim()) return { ok: false, error: 'An AI task needs an instruction.' };
+
+  const task = {
+    id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+    taskType: taskType,
+    title: String(t.title || t.message || t.instruction || t.templateName || 'Boss task').substring(0, 60),
+    target: t.target ? bossNormalizePhone(t.target) : '',
+    message: String(t.message || ''),
+    instruction: String(t.instruction || ''),
+    templateName: t.templateName || '',
+    language: t.language || 'en_US',
+    variables: Array.isArray(t.variables) ? t.variables : [],
+    siteKey: t.siteKey || '',
+    model: t.model || '',
+    runAt: runAt,
+    status: 'pending',
+    createdBy: 'boss-waweb',
+    createdAt: Date.now()
+  };
+  const ref = doc(globalDb, 'appData', 'aiTasks');
+  const snap = await getDoc(ref);
+  const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+  tasks.push(task);
+  await setDoc(ref, { tasks }, { merge: true });
+  console.log('[WA-WEB BOSS TASK] Scheduled ' + task.id + ' (' + taskType + ') at ' + new Date(runAt).toISOString());
+  return { ok: true, task };
+}
+
+async function bossListTasks() {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const snap = await getDoc(doc(globalDb, 'appData', 'aiTasks'));
+  const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+  const pending = tasks.filter(t => t && t.status === 'pending').sort((a, b) => (a.runAt || 0) - (b.runAt || 0));
+  const recent = tasks.filter(t => t && t.status !== 'pending').sort((a, b) => (b.executedAt || 0) - (a.executedAt || 0)).slice(0, 5);
+  return { ok: true, pending, recent };
+}
+
+async function bossCancelTask(q) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const id = String((q && (q.id || q.taskId)) || '').trim();
+  const title = String((q && (q.title || q.match)) || '').trim().toLowerCase();
+  if (!id && !title) return { ok: false, error: 'Give me the task id or a few words from its title.' };
+  const ref = doc(globalDb, 'appData', 'aiTasks');
+  const snap = await getDoc(ref);
+  const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+  let cancelled = null;
+  for (const t of tasks) {
+    if (!t || t.status !== 'pending') continue;
+    if ((id && t.id === id) || (title && String(t.title || '').toLowerCase().includes(title))) { t.status = 'cancelled'; t.executedAt = Date.now(); cancelled = t; break; }
+  }
+  if (!cancelled) return { ok: false, error: 'No pending task matched that.' };
+  await setDoc(ref, { tasks }, { merge: true });
+  console.log('[WA-WEB BOSS TASK] Cancelled ' + cancelled.id);
+  return { ok: true, task: cancelled };
+}
+
+// Contact Book upsert / delete
+async function bossUpsertContact(c) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const phone = bossNormalizePhone(c && (c.phone || c.number));
+  if (!phone || phone.length < 8) return { ok: false, error: 'Give me the contact phone number.' };
+  const ref = doc(globalDb, 'contactBook', phone);
+  if (c.delete === true || String(c.delete).toLowerCase() === 'true') {
+    try { await deleteDoc(ref); } catch (e) { /* ignore */ }
+    console.log('[WA-WEB BOSS CONTACT] Deleted ' + phone);
+    return { ok: true, deleted: phone };
+  }
+  const data = { phone: phone, phoneRaw: String(c.phone || c.number), source: 'Boss (WhatsApp)', updatedAt: Date.now() };
+  for (const k of ['name', 'phone2', 'company', 'email', 'city', 'website', 'leadStatus', 'notes']) {
+    if (c[k] !== undefined && c[k] !== null && String(c[k]).trim() !== '') data[k] = String(c[k]).trim();
+  }
+  await setDoc(ref, data, { merge: true });
+  console.log('[WA-WEB BOSS CONTACT] Saved ' + phone + ' (' + (data.name || 'no name') + ')');
+  return { ok: true, contact: data };
+}
+
+// Boss reminders: delivered through the LINKED session (free, no 24h window)
+async function bossAddReminder(text, runAt) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  if (!runAt || Number.isNaN(runAt)) return { ok: false, error: 'When should I remind you, Boss?' };
+  const ref = doc(globalDb, 'appData', 'bossReminders');
+  const snap = await getDoc(ref);
+  const items = snap.exists() ? (snap.data().items || []) : [];
+  const r = { id: 'rem-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6), text: String(text || '').substring(0, 300), runAt, status: 'pending', createdAt: Date.now() };
+  items.push(r);
+  await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+  console.log('[WA-WEB BOSS REMINDER] Set for ' + new Date(runAt).toISOString() + ': ' + r.text.substring(0, 60));
+  return { ok: true, reminder: r };
+}
+
+// Simple natural-time parser for reminders ("in 30 minutes", "at 4 pm", "tomorrow")
+function parseBossWhen(text) {
+  const t = String(text || '').toLowerCase();
+  const now = Date.now();
+  const inM = t.match(/in\s+(\d+)\s*(min|mins|minute|minutes)/);
+  if (inM) return now + parseInt(inM[1], 10) * 60000;
+  const inH = t.match(/in\s+(\d+)\s*(hour|hours|hr|hrs)/);
+  if (inH) return now + parseInt(inH[1], 10) * 3600000;
+  if (/\btomorrow\b/.test(t)) {
+    const d = new Date(Date.now() + 4 * 3600000 + 86400000);
+    const hm = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    let h = 9, m = 0;
+    if (hm) { h = parseInt(hm[1], 10); m = hm[2] ? parseInt(hm[2], 10) : 0; if (hm[3] === 'pm' && h < 12) h += 12; if (hm[3] === 'am' && h === 12) h = 0; }
+    d.setUTCHours(h, m, 0, 0);
+    return d.getTime() - 4 * 3600000;
+  }
+  const at = t.match(/(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (at) {
+    let h = parseInt(at[1], 10); const m = at[2] ? parseInt(at[2], 10) : 0; const ap = at[3];
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    const d = new Date(Date.now() + 4 * 3600000);
+    d.setUTCHours(h, m, 0, 0);
+    let ms = d.getTime() - 4 * 3600000;
+    if (ms < now) ms += 86400000;
+    return ms;
+  }
+  return 0;
+}
+
+// Generic action block helpers
+function extractBossActionBlocks(text, name) {
+  const out = [];
+  const re = new RegExp('\\[' + name + ':\\s*(\\{[\\s\\S]*?\\})\\s*\\]', 'gi');
+  let m;
+  while ((m = re.exec(text || '')) !== null) {
+    try { out.push(JSON.parse(m[1])); } catch (e) { console.warn('[WA-WEB BOSS] Bad JSON in ' + name + ' block'); }
+  }
+  return out;
+}
+function stripBossActionBlocks(text) {
+  return String(text || '')
+    .replace(/\[TASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .replace(/\[TASKCANCEL:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .replace(/\[TASKLIST\]/gi, '')
+    .replace(/\[CONTACT:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .trim();
+}
+
+function getSelfChatJid() {
+  const own = waWebState.user && waWebState.user.id ? waWebState.user.id.split(':')[0].split('@')[0] : '';
+  const pn = own ? own.replace(/[^0-9]/g, '') : '971529244592';
+  return pn + '@s.whatsapp.net';
+}
+
+// Deliver due reminders + task-result notifications to the boss's own chat (60s tick, only while the
+// socket is actually connected - so exactly ONE node ever sends them)
+let bossDeliveryTimer = null;
+async function processBossRemindersAndNotifications() {
+  try {
+    if (!globalDb || waWebState.status !== 'connected') return;
+    const target = getSelfChatJid();
+    // Send to the boss's own chat (fall back to the LID form if the PN jid is rejected)
+    const sendToBoss = async (txt) => {
+      try { return await sendWaWebMessage(target, txt); }
+      catch (e) { return await sendWaWebMessage('128046178803746@lid', txt); }
+    };
+
+    const rRef = doc(globalDb, 'appData', 'bossReminders');
+    const rSnap = await getDoc(rRef);
+    const reminders = rSnap.exists() ? (rSnap.data().items || []) : [];
+    const now = Date.now();
+    let rChanged = false;
+    for (const r of reminders) {
+      if (!r || r.status !== 'pending' || !r.runAt || r.runAt > now) continue;
+      try {
+        await sendToBoss('⏰ *Reminder, Boss:* ' + (r.text || ''));
+        r.status = 'done';
+      } catch (e) { r.status = 'failed'; r.error = e.message; }
+      r.sentAt = Date.now();
+      rChanged = true;
+    }
+    if (rChanged) await setDoc(rRef, { items: reminders.slice(-200) }, { merge: true });
+
+    const nRef = doc(globalDb, 'appData', 'bossNotifications');
+    const nSnap = await getDoc(nRef);
+    const notes = nSnap.exists() ? (nSnap.data().items || []) : [];
+    let nChanged = false;
+    for (const n of notes) {
+      if (!n || n.status !== 'pending') continue;
+      try { await sendToBoss(n.text || 'Task update'); n.status = 'done'; }
+      catch (e) { n.status = 'failed'; n.error = e.message; }
+      n.sentAt = Date.now();
+      nChanged = true;
+    }
+    if (nChanged) await setDoc(nRef, { items: notes.slice(-200) }, { merge: true });
+  } catch (e) {
+    console.warn('[WA-WEB BOSS DELIVERY] ' + e.message);
+  }
+}
+
 export let waWebKnowledgeBase = {
   autoReplyEnabled: false,
   autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
@@ -1387,6 +1600,8 @@ export async function initWaWeb(db = null) {
         scheduleSessionSync(globalDb);
         // Pull all group subjects shortly after connect so the chat list shows GROUP names
         setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
+        // Deliver boss reminders + task-result notifications through this (only) live socket
+        if (!bossDeliveryTimer) bossDeliveryTimer = setInterval(processBossRemindersAndNotifications, 60000);
       }
     });
 
@@ -1700,13 +1915,21 @@ export async function initWaWeb(db = null) {
                     }
                   }
 
-                  // B. Check if boss wants to set a reminder
+                  // B. Check if boss wants to set a reminder (REAL reminder - delivered through this session)
                   const reminderMatch = effectiveText.match(/(?:set\s+reminder|remind\s+me|reminder)[:\s]+(.+)/i);
                   if (reminderMatch) {
-                    const reminderTask = reminderMatch[1].trim();
-                    const voiceBadge = transcribedAudioText ? '🎙️ *(Voice Order Transcribed)*\n' : '';
-                    await sendWaWebMessage(remoteJid, '⏰ *Reminder Scheduled, Boss!*\n\n' + voiceBadge + 'Task: "' + reminderTask + '"\nRecorded at ' + new Date().toLocaleTimeString('en-US') + '. I will alert you.');
-                    console.log('[WA-WEB BOSS] 🟢 Reminder noted for boss: ' + reminderTask);
+                    const reminderBody = reminderMatch[1].trim();
+                    const when = parseBossWhen(reminderBody);
+                    if (!when) {
+                      await sendWaWebMessage(remoteJid, '⏰ When should I remind you, Boss?\n\nExamples:\n• *remind me in 30 minutes: call the supplier*\n• *remind me at 4 pm: check the payment*');
+                      return;
+                    }
+                    const res = await bossAddReminder(reminderBody, when);
+                    const dubaiStr = new Date(when).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' });
+                    const voiceBadge2 = transcribedAudioText ? '🎙️ *(Voice Order Transcribed)*\n\n' : '';
+                    await sendWaWebMessage(remoteJid, res.ok
+                      ? ('⏰ *Reminder set, Boss!* ' + voiceBadge2 + 'I will alert you on ' + dubaiStr + ' (Dubai).\nTask: "' + reminderBody.substring(0, 120) + '"')
+                      : ('⚠️ ' + res.error));
                     return;
                   }
 
@@ -1735,6 +1958,18 @@ export async function initWaWeb(db = null) {
                     'To change the BUSINESS bot knowledge, output: [BUSINESS: {"key": value}]\n' +
                     'Allowed keys: systemPromptInstructions, customKnowledgeText, companyProfile, timings, locationAndBranches, products, logistics, customRules, onboardingPrompt, brandVoice, fallbackAction, googleMapsLink, bossCode, bossNumber, bossKnowledge, bossDataRules, bossAddress, bossLanguage, bossTone\n' +
                     'Example: Boss: "business bot should always mention free delivery" -> [BUSINESS: {"customKnowledgeText": "Always mention: free delivery."}]\n\n' +
+                    '--- BOSS AUTHORITY: SCHEDULED TASKS, REMINDERS, CONTACT BOOK, WEBSITE ---\n' +
+                    'Current Dubai date & time: ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (compute runAt with the +04:00 offset)\n' +
+                    'Schedule anything for later:\n' +
+                    '  [TASK: {"taskType":"send_message","target":"0501234567","message":"...","runAt":"2026-09-15T11:00:00+04:00","title":"..."}]\n' +
+                    '  [TASK: {"taskType":"ai_task","instruction":"Publish a blog about X on the website","runAt":"2026-09-15T11:00:00+04:00"}]\n' +
+                    '  [TASK: {"taskType":"send_template","target":"0501234567","templateName":"name","variables":["a","b"],"runAt":"..."}]\n' +
+                    '  [TASKLIST] -> list pending tasks\n' +
+                    '  [TASKCANCEL: {"id":"task-..."}] or {"title":"a few words from the title"} -> cancel a task\n' +
+                    'Contact Book:\n' +
+                    '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +
+                    '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
+                    'After any action block, confirm briefly what you did.\n\n' +
                     buildWaWebKnowledgeSystemPrompt();
 
                   setTimeout(async () => {
@@ -1762,8 +1997,39 @@ export async function initWaWeb(db = null) {
                         replyText = stripBossBusinessActions(stripBossConfigActions(replyText || ''));
                       }
 
+                      // Sections: scheduled tasks / task list & cancel / contact book
+                      let sectionSummary = '';
+                      const dubaiTime = (ms) => new Date(ms).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' });
+                      for (const t of extractBossActionBlocks(replyText, 'TASK')) {
+                        const res = await bossCreateTask(t);
+                        sectionSummary += res.ok
+                          ? ('🗓️ *Task scheduled:* ' + dubaiTime(res.task.runAt) + ' (Dubai) — ' + String(res.task.title || '').substring(0, 50) + '\n')
+                          : ('⚠️ ' + res.error + '\n');
+                      }
+                      if (/\[TASKLIST\]/i.test(replyText || '')) {
+                        const res = await bossListTasks();
+                        if (res.ok) {
+                          sectionSummary += res.pending.length
+                            ? ('🗓️ *Pending tasks:*\n' + res.pending.slice(0, 10).map(x => '• ' + dubaiTime(x.runAt) + ' — ' + (x.title || x.taskType) + ' [id: ' + x.id + ']').join('\n') + '\n')
+                            : '🗓️ No pending tasks.\n';
+                        } else sectionSummary += '⚠️ ' + res.error + '\n';
+                      }
+                      for (const q of extractBossActionBlocks(replyText, 'TASKCANCEL')) {
+                        const res = await bossCancelTask(q);
+                        sectionSummary += res.ok
+                          ? ('❌ *Cancelled:* ' + (res.task.title || res.task.id) + '\n')
+                          : ('⚠️ ' + res.error + '\n');
+                      }
+                      for (const c of extractBossActionBlocks(replyText, 'CONTACT')) {
+                        const res = await bossUpsertContact(c);
+                        sectionSummary += res.ok
+                          ? (res.deleted ? ('📇 *Contact removed:* +' + res.deleted + '\n') : ('📇 *Contact saved:* ' + (res.contact.name || '(no name)') + ' — +' + res.contact.phone + '\n'))
+                          : ('⚠️ ' + res.error + '\n');
+                      }
+                      if (sectionSummary) replyText = stripBossActionBlocks(replyText || '');
+
                       const voiceHeader = transcribedAudioText ? '🎙️ *[Voice Note Understood]*\n\n' : '';
-                      const finalMsg = (voiceHeader + cfgSummary + (replyText ? replyText.trim() : '')).trim();
+                      const finalMsg = (voiceHeader + cfgSummary + sectionSummary + (replyText ? replyText.trim() : '')).trim();
                       if (finalMsg) await sendWaWebMessage(remoteJid, finalMsg);
                     } catch (e) {
                       console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
