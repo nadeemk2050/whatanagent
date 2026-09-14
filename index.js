@@ -85,7 +85,15 @@ let schedulerState = 'starting';
 const app = express();
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
-app.use(express.static('public'));
+app.use(express.static('public', {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {

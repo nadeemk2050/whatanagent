@@ -1,4 +1,4 @@
-const CACHE_NAME = 'whatanagent-v4';
+const CACHE_NAME = 'whatanagent-v5';
 const ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -33,13 +33,22 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Network-first: always try to serve FRESH content from the server,
-// and only fall back to the cache when the user is offline.
+// Network-only for HTML and API: always ensure admin dashboard HTML is live and fresh
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Never intercept API calls, Firestore or external CDNs
-  if (url.pathname.startsWith('/api') || url.hostname.includes('firestore') || url.hostname.includes('googleapis') || url.hostname.includes('gstatic') || url.hostname.includes('unpkg') || url.hostname.includes('jsdelivr')) {
+  // Never intercept API calls, Firestore, external CDNs, or HTML pages
+  if (
+    url.pathname.startsWith('/api') || 
+    url.pathname.endsWith('.html') || 
+    url.pathname === '/' ||
+    e.request.mode === 'navigate' ||
+    url.hostname.includes('firestore') || 
+    url.hostname.includes('googleapis') || 
+    url.hostname.includes('gstatic') || 
+    url.hostname.includes('unpkg') || 
+    url.hostname.includes('jsdelivr')
+  ) {
     return;
   }
 
