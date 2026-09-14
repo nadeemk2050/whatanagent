@@ -1220,9 +1220,14 @@ async function syncSessionToFirestore(db) {
   }
 }
 
-function scheduleSessionSync(db) {
+// Throttled: writing 21k auth files to Firestore on every creds event was hammering the DB.
+// Sync at most once every 5 minutes (plus a forced sync right after connect).
+let lastSessionSyncAt = 0;
+function scheduleSessionSync(db, force = false) {
+  if (!force && lastSessionSyncAt && (Date.now() - lastSessionSyncAt) < 5 * 60 * 1000) return;
   if (syncSessionTimeout) clearTimeout(syncSessionTimeout);
   syncSessionTimeout = setTimeout(() => {
+    lastSessionSyncAt = Date.now();
     syncSessionToFirestore(db);
   }, 4000);
 }
@@ -1393,9 +1398,13 @@ async function saveContactsIndexToFirestore() {
   }
 }
 
-function scheduleContactsSaveToFirestore() {
+// Throttled: the contacts index was being rewritten every few seconds during history sync.
+let lastContactsSaveAt = 0;
+function scheduleContactsSaveToFirestore(force = false) {
+  if (!force && lastContactsSaveAt && (Date.now() - lastContactsSaveAt) < 60000) return;
   if (contactsSaveTimeout) clearTimeout(contactsSaveTimeout);
   contactsSaveTimeout = setTimeout(() => {
+    lastContactsSaveAt = Date.now();
     saveContactsIndexToFirestore();
   }, 6000);
 }
@@ -1593,7 +1602,7 @@ export async function initWaWeb(db = null) {
       } else if (connection === 'open') {
         console.log('[WA-WEB] 🟢 WhatsApp Web connected successfully!');
         waWebState.status = 'connected';
-        waWebState.qrCodeDataUrl = null;
+        waWebState.qrCodeDataUrl = n, trueull;
         waWebState.rawQr = null;
         waWebState.user = sock.user || { id: 'unknown', name: 'WhatsApp User' };
         isInitializing = false;
@@ -2031,6 +2040,7 @@ export async function initWaWeb(db = null) {
                       const voiceHeader = transcribedAudioText ? '🎙️ *[Voice Note Understood]*\n\n' : '';
                       const finalMsg = (voiceHeader + cfgSummary + sectionSummary + (replyText ? replyText.trim() : '')).trim();
                       if (finalMsg) await sendWaWebMessage(remoteJid, finalMsg);
+                      else await sendWaWebMessage(remoteJid, '⚠️ Boss, the AI could not generate a reply right now (provider quota / temporary error). Please try again in a moment.');
                     } catch (e) {
                       console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
                     }
@@ -2672,7 +2682,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     const deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
     const openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'gemini-2.5-flash';
+    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
@@ -2813,6 +2823,38 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);
+    // A dead / quota-limited provider must NEVER silence the bot: fall back to any other working key.
+    const txtIn = (customerMessage || '').trim();
+    if (!txtIn) {
+      // Media could not be processed (e.g. Gemini quota) - say so instead of staying silent
+      return 'Sorry, I could not process that media right now. Please resend it or type your message.';
+    }
+    if (deepseekKey) {
+      try {
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+        const comp = await openai.chat.completions.create({
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
+          model: 'deepseek-chat',
+          temperature: 0.4
+        });
+        const t = comp.choices[0]?.message?.content || null;
+        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek fallback'); return t; }
+      } catch (e2) { console.warn('[WA-WEB AI] DeepSeek fallback failed:', (e2.message || '').substring(0, 140)); }
+    }
+    if (openaiKey) {
+      try {
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
+        const comp = await openai.chat.completions.create({
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
+          model: 'gpt-4o-mini',
+          temperature: 0.4
+        });
+        const t = comp.choices[0]?.message?.content || null;
+        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via OpenAI fallback'); return t; }
+      } catch (e3) { console.warn('[WA-WEB AI] OpenAI fallback failed:', (e3.message || '').substring(0, 140)); }
+    }
   }
   return null;
 }
