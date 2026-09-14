@@ -1602,11 +1602,11 @@ export async function initWaWeb(db = null) {
       } else if (connection === 'open') {
         console.log('[WA-WEB] 🟢 WhatsApp Web connected successfully!');
         waWebState.status = 'connected';
-        waWebState.qrCodeDataUrl = n, trueull;
+        waWebState.qrCodeDataUrl = null;
         waWebState.rawQr = null;
         waWebState.user = sock.user || { id: 'unknown', name: 'WhatsApp User' };
         isInitializing = false;
-        scheduleSessionSync(globalDb);
+        scheduleSessionSync(globalDb, true);
         // Pull all group subjects shortly after connect so the chat list shows GROUP names
         setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
         // Deliver boss reminders + task-result notifications through this (only) live socket
