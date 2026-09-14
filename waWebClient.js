@@ -67,6 +67,27 @@ export const waWebBossSession = {
   lastAuthTimestamp: 0
 };
 
+// Persist boss verification to Firestore so a deploy / restart never forces re-verification
+async function setBossWebAuth(data) {
+  try {
+    if (globalDb) await setDoc(doc(globalDb, 'appData', 'waWebBossAuth'), { ...data, updatedAt: Date.now() }, { merge: true });
+  } catch (e) { console.warn('[WA-WEB BOSS] auth save error:', e.message); }
+}
+
+async function restoreBossWebAuth() {
+  try {
+    if (!globalDb) return;
+    const snap = await getDoc(doc(globalDb, 'appData', 'waWebBossAuth'));
+    if (!snap.exists()) return;
+    const d = snap.data() || {};
+    if (d.authenticated && d.lastAuthTimestamp && (Date.now() - d.lastAuthTimestamp) < 12 * 3600 * 1000) {
+      waWebBossSession.authenticated = true;
+      waWebBossSession.lastAuthTimestamp = d.lastAuthTimestamp;
+      console.log('[WA-WEB BOSS] Restored boss verification from Firestore (still valid)');
+    }
+  } catch (e) { /* ignore */ }
+}
+
 export let waWebKnowledgeBase = {
   autoReplyEnabled: false,
   autoReplyScope: 'all', // 'all' | 'direct_only' | 'groups_only'
@@ -1142,6 +1163,7 @@ export async function initWaWeb(db = null) {
     await restoreKnowledgeBaseFromFirestore(globalDb);
     await restoreLidMapSeedFromFirestore(globalDb);
     await restoreContactsIndexFromFirestore(globalDb);
+    await restoreBossWebAuth();
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     
@@ -1396,7 +1418,11 @@ export async function initWaWeb(db = null) {
 
               const cleanRemotePhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
               const ownPhone = sock?.user?.id ? sock.user.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '') : '971529244592';
-              const isSelfChat = cleanRemotePhone === ownPhone || cleanRemotePhone === '971529244592';
+              const resolvedRemotePhone = (resolveRealPhoneNumber(remoteJid) || '').replace(/[^0-9]/g, '');
+              // Self-chat detection MUST be LID-aware: "message yourself" / boss self-chat arrives as
+              // <ownLid>@lid - comparing only the phone number is why the boss's own messages were ignored.
+              const isSelfChat = (cleanRemotePhone && (cleanRemotePhone === ownPhone || cleanRemotePhone === '971529244592')) ||
+                                 (resolvedRemotePhone && (resolvedRemotePhone === ownPhone || resolvedRemotePhone === '971529244592'));
 
               if (msg.key && msg.key.fromMe) {
                 // If not self-chat, skip outgoing sent messages
@@ -1413,25 +1439,41 @@ export async function initWaWeb(db = null) {
               const hasMedia = mediaType === 'audio' || mediaType === 'image' || mediaType === 'document';
               if ((!text || text.trim() === '') && !hasMedia) return;
 
+              // --- Boss identification (jid-only, computed EARLY so boss messages are never skipped) ---
+              const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+              const resolvedSenderPhone = (resolveRealPhoneNumber(remoteJid) || cleanSenderPhone).replace(/[^0-9]/g, '');
+              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592').replace(/[^0-9]/g, '');
+              const isBossNumber = (
+                cleanSenderPhone === '128046178803746' ||
+                cleanSenderPhone.endsWith('529244592') ||
+                resolvedSenderPhone.endsWith('529244592') ||
+                (configuredBossPhone && (
+                  cleanSenderPhone.endsWith(configuredBossPhone) ||
+                  resolvedSenderPhone.endsWith(configuredBossPhone) ||
+                  configuredBossPhone.endsWith(cleanSenderPhone)
+                ))
+              );
+              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
+
               // Check if AI is paused for this specific contact
-              if (isContactAiPaused(remoteJid)) {
+              if (!isBossNumber && isContactAiPaused(remoteJid)) {
                 console.log('[WA-WEB AUTO-REPLY] ⏸️ Skipping auto-reply: AI is PAUSED for contact ' + remoteJid);
                 return;
               }
 
-              // Check human handover
+              // Check human handover (boss commands are never re-routed to a human)
               const lower = text.toLowerCase();
               const handoverWords = (waWebKnowledgeBase.humanHandoverKeywords || '').toLowerCase().split(',').map(w => w.trim()).filter(Boolean);
-              const isHandover = handoverWords.some(w => lower.includes(w));
+              const isHandover = !isBossNumber && handoverWords.some(w => lower.includes(w));
               if (isHandover) {
                 console.log('[WA-WEB AUTO-REPLY] Human handover keyword detected from ' + remoteJid);
                 return;
               }
 
-              // Check cooldown
+              // Check cooldown (NEVER applies to the Boss - he must be answered instantly, every message)
               const lastTime = waWebAutoReplyCooldown.get(remoteJid) || 0;
               const cooldownMs = (waWebKnowledgeBase.cooldownSeconds || 30) * 1000;
-              if (Date.now() - lastTime < cooldownMs) {
+              if (!isBossNumber && (Date.now() - lastTime < cooldownMs)) {
                 console.log('[WA-WEB AUTO-REPLY] Skipping auto-reply due to cooldown (' + remoteJid + ')');
                 return;
               }
@@ -1473,36 +1515,28 @@ export async function initWaWeb(db = null) {
 
               const effectiveText = (transcribedAudioText || text || '').trim();
 
-              // Check if message is from Boss (Mr. Nadeem UAE +971529244592)
-              const cleanSenderPhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-              const resolvedSenderPhone = (resolveRealPhoneNumber(remoteJid) || cleanSenderPhone).replace(/[^0-9]/g, '');
-              const configuredBossPhone = (waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592').replace(/[^0-9]/g, '');
-
-              const isBossNumber = (
-                cleanSenderPhone === '128046178803746' ||
-                cleanSenderPhone.endsWith('529244592') ||
-                resolvedSenderPhone.endsWith('529244592') ||
-                (configuredBossPhone && (
-                  cleanSenderPhone.endsWith(configuredBossPhone) ||
-                  resolvedSenderPhone.endsWith(configuredBossPhone) ||
-                  configuredBossPhone.endsWith(cleanSenderPhone)
-                ))
-              );
-              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
-
+              // (Boss identity + passcode were already computed above, before the cooldown checks)
               if (isBossNumber) {
                 console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + (effectiveText || mediaType) + '"');
 
-                // Case 1: Passcode entered (via text or spoken in voice note)
-                if (effectiveText.includes(bossPasscode)) {
+                // Case 1: Secret access token entered (typed, or spoken inside a voice note)
+                const tokenDigits = (effectiveText || '').replace(/[^0-9]/g, '');
+                const bareText = (effectiveText || '').trim();
+                const tokenGiven = !!bossPasscode && (
+                  bareText === bossPasscode ||
+                  (tokenDigits === bossPasscode.replace(/[^0-9]/g, '') && tokenDigits.length > 0) ||
+                  new RegExp('(^|\\D)' + bossPasscode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\D|$)', 'i').test(effectiveText || '')
+                );
+                if (tokenGiven) {
                   waWebBossSession.authenticated = true;
                   waWebBossSession.lastAuthTimestamp = Date.now();
-                  const ackMsg = '👑 *Boss Verification Successful!* (Passcode ' + bossPasscode + ' Confirmed)\n\n' +
-                    'Welcome Mr. Nadeem! I am at your command.\n\n' +
-                    'You can give me any Voice Note or Text instructions:\n' +
-                    '• *Send msg to 0501234567: Please confirm the order*\n' +
-                    '• *Set reminder: Call supplier at 4 PM*\n' +
-                    '• *Check invoice status / search website data*';
+                  setBossWebAuth({ authenticated: true, lastAuthTimestamp: waWebBossSession.lastAuthTimestamp });
+                  const ackMsg = '✅ *Boss Verified — Welcome, Mr. Nadeem!* 👑\n\n' +
+                    'What would you like me to do, Boss?\n\n' +
+                    '🔊 Send a *voice note* with your order, or type it:\n' +
+                    '• *send msg to <number>: <your message>*\n' +
+                    '• *set reminder: <task>*\n' +
+                    '• Or ask me anything about the business';
                   await sendWaWebMessage(remoteJid, ackMsg);
                   console.log('[WA-WEB BOSS] 🟢 Boss authenticated successfully.');
                   return;
@@ -1561,11 +1595,11 @@ export async function initWaWeb(db = null) {
                   }, 1200);
                   return;
                 } else {
-                  // Boss challenge
+                  // Boss challenge - NEVER reveal the token (no example, no length hint, no echo)
                   const challengeMsg = '🔒 *Boss Security Verification Required*\n\n' +
-                    'Hello Mr. Nadeem! For security authentication, please reply with your 4-digit Boss Passcode (e.g. *' + bossPasscode + '*) to unlock executive voice and text commands.';
+                    'If you are the Boss, please verify with your *secret access token* to unlock executive voice & text commands.';
                   await sendWaWebMessage(remoteJid, challengeMsg);
-                  console.log('[WA-WEB BOSS] Sent passcode verification challenge to Boss.');
+                  console.log('[WA-WEB BOSS] Sent access-token verification challenge to Boss.');
                   return;
                 }
               }
