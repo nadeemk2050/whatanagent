@@ -2244,19 +2244,25 @@
         }
 
         function showSection(id) {
-            if (typeof closeWaWebPage === 'function') closeWaWebPage();
-            if (typeof closeNewsPage === 'function') closeNewsPage();
+            try { if (typeof closeWaWebPage === 'function') closeWaWebPage(); } catch(e) { console.warn('[showSection] closeWaWebPage error:', e); }
+            try { if (typeof closeNewsPage === 'function') closeNewsPage(); } catch(e) { console.warn('[showSection] closeNewsPage error:', e); }
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
-            document.getElementById(id + 'Section').classList.add('active');
+            const sec = document.getElementById(id + 'Section');
+            if (sec) sec.classList.add('active');
             
             const container = document.querySelector('.container');
-            if (id === 'chat') {
-                container.classList.add('chat-mode');
-            } else {
-                container.classList.remove('chat-mode');
+            if (container) {
+                if (id === 'chat') {
+                    container.classList.add('chat-mode');
+                } else {
+                    container.classList.remove('chat-mode');
+                }
             }
             
-            toggleSidebar();
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar && sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+            }
         }
 
         // Data Fetching logic
@@ -5321,15 +5327,21 @@
         }
 
         function closeWaWebPage() {
-            const page = document.getElementById('waWebPage');
-            if (page) page.style.display = 'none';
-            if (waWebPollInterval) {
-                clearInterval(waWebPollInterval);
-                waWebPollInterval = null;
-            }
-            if (waWebStatsInterval) {
-                clearInterval(waWebStatsInterval);
-                waWebStatsInterval = null;
+            try {
+                const page = document.getElementById('waWebPage');
+                if (page) page.style.display = 'none';
+                if (typeof waWebPollInterval !== 'undefined' && waWebPollInterval) {
+                    clearInterval(waWebPollInterval);
+                    waWebPollInterval = null;
+                }
+                if (typeof waWebStatsInterval !== 'undefined' && waWebStatsInterval) {
+                    clearInterval(waWebStatsInterval);
+                    waWebStatsInterval = null;
+                }
+            } catch (err) {
+                console.error('[WA-WEB] closeWaWebPage error:', err);
+                const page = document.getElementById('waWebPage');
+                if (page) page.style.display = 'none';
             }
         }
 
