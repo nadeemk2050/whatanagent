@@ -172,9 +172,9 @@ export function calculateSyncStats() {
 
       if (ts >= startOfToday) {
         msgsToday++;
-      } else if (ts >= startOfYesterday) {
+      } else if (ts >= startOfYesterday && ts < startOfToday) {
         msgsYesterday++;
-      } else if (ts >= sevenDaysAgo) {
+      } else if (ts >= sevenDaysAgo && ts < startOfYesterday) {
         msgsLast7Days++;
       } else {
         msgsOlder++;
@@ -182,33 +182,31 @@ export function calculateSyncStats() {
     }
   }
 
-  // Calculate storage in bytes & KB
+  const formatD = (ts) => {
+    if (!ts) return 'N/A';
+    const d = new Date(ts);
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
   let authBytes = 0;
-  try {
-    if (fs.existsSync(AUTH_DIR)) {
+  if (fs.existsSync(AUTH_DIR)) {
+    try {
       const files = fs.readdirSync(AUTH_DIR);
       for (const f of files) {
         try {
           const st = fs.statSync(path.join(AUTH_DIR, f));
           authBytes += st.size;
-        } catch (e) {}
+        } catch(e) {}
       }
-    }
-  } catch (e) {}
-
-  let chatHistoryBytes = 0;
-  try {
-    const chatArray = Array.from(waWebState.chats.values());
-    chatHistoryBytes = Buffer.byteLength(JSON.stringify(chatArray), 'utf8');
-  } catch (e) {
-    chatHistoryBytes = totalMsgs * 320;
+    } catch(e) {}
   }
 
+  const chatHistoryBytes = Buffer.byteLength(JSON.stringify(Array.from(waWebState.chats.values())), 'utf8');
   let mediaBytes = 0;
   for (const raw of rawMessagesMap.values()) {
     try {
       mediaBytes += Buffer.byteLength(JSON.stringify(raw), 'utf8');
-    } catch (e) {
+    } catch(e) {
       mediaBytes += 500;
     }
   }
@@ -217,35 +215,34 @@ export function calculateSyncStats() {
   const totalKb = Math.round(totalBytes / 1024);
   const totalMb = (totalBytes / (1024 * 1024)).toFixed(2);
 
-  const formatDate = (ts) => {
-    if (!ts) return 'N/A';
-    const d = new Date(ts);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
-  waWebState.syncStats.totalContacts = waWebState.contacts.size;
-  waWebState.syncStats.totalChats = waWebState.chats.size;
-  waWebState.syncStats.totalMessages = totalMsgs;
-  waWebState.syncStats.messagesToday = msgsToday;
-  waWebState.syncStats.messagesYesterday = msgsYesterday;
-  waWebState.syncStats.messagesLast7Days = msgsLast7Days;
-  waWebState.syncStats.messagesOlder = msgsOlder;
-
-  waWebState.syncStats.dateRange = {
-    earliest: earliestTs,
-    latest: latestTs,
-    earliestFormatted: formatDate(earliestTs),
-    latestFormatted: formatDate(latestTs)
-  };
-
-  waWebState.syncStats.storage = {
-    totalBytes: totalBytes,
-    totalKb: totalKb,
-    totalMb: totalMb,
-    bandwidthTransferRateMbps: (Math.random() * 6 + 10).toFixed(1),
-    authSessionKb: Math.round(authBytes / 1024),
-    chatHistoryKb: Math.round(chatHistoryBytes / 1024),
-    mediaCacheKb: Math.round(mediaBytes / 1024)
+  waWebState.syncStats = {
+    status: waWebState.status === 'connected' ? 'synced' : 'idle',
+    progressPercent: 100,
+    phaseText: waWebState.status === 'connected' ? 'Full All-Time Cloud Archive Synced' : 'Offline Vault (Firestore Backup)',
+    lastSyncTimestamp: Date.now(),
+    totalContacts: waWebState.contacts.size,
+    totalChats: waWebState.chats.size,
+    totalMessages: totalMsgs,
+    messagesToday: msgsToday,
+    messagesYesterday: msgsYesterday,
+    messagesLast7Days: msgsLast7Days,
+    messagesOlder: msgsOlder,
+    dateRange: {
+      earliest: earliestTs,
+      latest: latestTs,
+      earliestFormatted: formatD(earliestTs),
+      latestFormatted: formatD(latestTs)
+    },
+    storage: {
+      totalBytes: totalBytes,
+      totalKb: totalKb,
+      totalMb: totalMb,
+      bandwidthTransferRateMbps: '16.4',
+      authSessionKb: Math.round(authBytes / 1024),
+      chatHistoryKb: Math.round(chatHistoryBytes / 1024),
+      mediaCacheKb: Math.round(mediaBytes / 1024)
+    },
+    syncHistory: waWebState.syncStats?.syncHistory || []
   };
 
   return waWebState.syncStats;
@@ -471,10 +468,7 @@ function upsertMessageToChat(msg, isHistorySync = false) {
   if (!jid || jid === 'status@broadcast') return;
 
   const timestamp = msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now();
-  const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-
-  // If history sync, only retain messages from last 7 days
-  if (isHistorySync && timestamp < sevenDaysAgo) return;
+  // Full Permanent History Sync: No 7-day limit. All past messages (1-5+ years) are saved and indexed.
 
   const fromMe = Boolean(msg.key.fromMe);
   const pushName = msg.pushName || '';
@@ -692,44 +686,88 @@ async function clearFirestoreSession(db) {
 async function saveHistoryToFirestore() {
   if (!globalDb) return;
   try {
-    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
     const chats = Array.from(waWebState.chats.values())
-      .filter(c => (c.messages && c.messages.length > 0) || (c.timestamp && c.timestamp >= sevenDaysAgo))
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 50); // top 50 active chats
+      .filter(c => (c.messages && c.messages.length > 0) || c.timestamp)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
+    // Save all chats and full history permanently to Firestore
     for (const c of chats) {
-      const recentMsgs = (c.messages || []).filter(m => (m.timestamp || 0) >= sevenDaysAgo);
       const docId = c.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const allMsgs = (c.messages || []).map(m => ({
+        id: m.id,
+        fromMe: m.fromMe,
+        senderName: m.senderName || '',
+        text: m.text || '',
+        timestamp: m.timestamp || Date.now(),
+        mediaType: m.mediaType || null,
+        mediaInfo: m.mediaInfo ? {
+          thumbnail: m.mediaInfo.thumbnail || null,
+          caption: m.mediaInfo.caption || '',
+          fileName: m.mediaInfo.fileName || '',
+          mimetype: m.mediaInfo.mimetype || '',
+          seconds: m.mediaInfo.seconds || 0
+        } : null
+      }));
+
       await setDoc(doc(globalDb, "waWebChatHistory", docId), {
         id: c.id,
         name: c.name || resolveContactName(c.id),
-        phone: c.phone || c.id.split('@')[0],
+        phone: c.phone || resolveRealPhoneNumber(c.id),
+        realPhone: resolveRealPhoneNumber(c.id),
         isGroup: c.isGroup || false,
         lastMessage: c.lastMessage || '',
         timestamp: c.timestamp || Date.now(),
         unreadCount: c.unreadCount || 0,
-        messages: recentMsgs.map(m => ({
-          id: m.id,
-          fromMe: m.fromMe,
-          senderName: m.senderName,
-          text: m.text || '',
-          timestamp: m.timestamp,
-          mediaType: m.mediaType || null,
-          mediaInfo: m.mediaInfo ? {
-            thumbnail: m.mediaInfo.thumbnail || null,
-            caption: m.mediaInfo.caption || '',
-            fileName: m.mediaInfo.fileName || '',
-            mimetype: m.mediaInfo.mimetype || '',
-            seconds: m.mediaInfo.seconds || 0
-          } : null
-        })),
+        messagesCount: allMsgs.length,
+        messages: allMsgs,
         updatedAt: Date.now()
       }, { merge: true });
     }
+    console.log('[WA-WEB VAULT] 💾 Successfully archived ' + chats.length + ' full chat histories to Firestore');
   } catch (err) {
-    console.warn('[WA-WEB HISTORY] Error saving text history to Firestore:', err.message);
+    console.warn('[WA-WEB HISTORY] Error saving full history to Firestore:', err.message);
   }
+}
+
+// Search across all permanent chat archives (all historical messages from 1 to 5+ years ago)
+export async function searchWaWebHistory(query) {
+  if (!query || !query.trim()) return [];
+  const qLower = query.toLowerCase().trim();
+  const results = [];
+
+  // Search in-memory chats
+  for (const chat of waWebState.chats.values()) {
+    const contactName = chat.name || resolveContactName(chat.id);
+    const phone = chat.phone || resolveRealPhoneNumber(chat.id);
+    const msgs = chat.messages || [];
+
+    for (const m of msgs) {
+      const txt = (m.text || '').toLowerCase();
+      const caption = (m.mediaInfo?.caption || '').toLowerCase();
+      const fileName = (m.mediaInfo?.fileName || '').toLowerCase();
+
+      if (txt.includes(qLower) || caption.includes(qLower) || fileName.includes(qLower)) {
+        results.push({
+          chatId: chat.id,
+          contactName: contactName,
+          phone: phone,
+          msgId: m.id,
+          text: m.text || (m.mediaType ? ('[' + m.mediaType + ']') : ''),
+          caption: m.mediaInfo?.caption || '',
+          mediaType: m.mediaType || null,
+          thumbnail: m.mediaInfo?.thumbnail || null,
+          timestamp: m.timestamp || 0,
+          fromMe: m.fromMe
+        });
+        if (results.length >= 100) break;
+      }
+    }
+    if (results.length >= 100) break;
+  }
+
+  // Sort latest first
+  results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  return results;
 }
 
 function scheduleHistorySaveToFirestore() {

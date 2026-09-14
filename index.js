@@ -78,6 +78,18 @@ app.get('/api/wa-web/status', (req, res) => {
   res.json(getWaWebStatus());
 });
 
+app.get('/api/wa-web/archive/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const { searchWaWebHistory } = await import('./waWebClient.js');
+    const results = await searchWaWebHistory(q);
+    res.json({ results });
+  } catch (err) {
+    console.error('[API] Error searching archive:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/wa-web/chats', (req, res) => {
   res.json({ chats: getWaWebChats() });
 });
