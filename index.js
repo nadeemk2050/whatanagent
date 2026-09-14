@@ -463,10 +463,22 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
 // WITHOUT sending anything - safe way to test the bot model (DeepSeek / Gemini / Qwen...) any time.
 app.post('/api/wa-web/ai-bot/test', async (req, res) => {
   try {
-    const { message, model } = req.body || {};
-    if (!message || !String(message).trim()) return res.status(400).json({ error: 'message is required' });
+    const { message, model, mediaBase64, mediaType, mediaMime } = req.body || {};
+    if (!message && !mediaBase64) return res.status(400).json({ error: 'message (or mediaBase64) is required' });
+    let mediaData = null;
+    if (mediaBase64) {
+      const buf = Buffer.from(String(mediaBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+      if (!buf.length) return res.status(400).json({ error: 'mediaBase64 could not be decoded' });
+      mediaData = {
+        buffer: buf,
+        mediaType: mediaType || 'image',
+        mimetype: mediaMime || (mediaType === 'audio' ? 'audio/ogg; codecs=opus' : (mediaType === 'document' ? 'application/pdf' : 'image/jpeg')),
+        fileName: '',
+        caption: ''
+      };
+    }
     const t0 = Date.now();
-    const reply = await generateWaWebAutoBotReply('test@s.whatsapp.net', String(message).trim(), null, null, model || null);
+    const reply = await generateWaWebAutoBotReply('test@s.whatsapp.net', String(message || '').trim(), null, mediaData, model || null);
     if (!reply) {
       return res.json({ ok: false, tookMs: Date.now() - t0, model: model || null, note: 'No reply generated - this node does not own the WhatsApp Web session (standby/staging) or no AI key is configured.' });
     }
@@ -540,6 +552,18 @@ async function migrateEnvToDb() {
 migrateEnvToDb();
 
 // --- Core Helper Functions ---
+
+// Fallback rotation: the FIRST fallback alternates between Gemini 3.6 Flash and DeepSeek v4 Flash
+// on successive calls (sometimes Gemini is 1st fallback, sometimes DeepSeek is 1st and Gemini 2nd),
+// then the remaining provider follows. Keeps one provider from always being hit first.
+let aiFallbackRotation = 0;
+function orderedProviders(preferred, available) {
+  const base = ['gemini', 'deepseek', 'qwen'].filter(p => p !== preferred && available[p]);
+  const order = available[preferred] ? [preferred] : [];
+  if (!base.length) return order;
+  const k = (aiFallbackRotation++) % base.length;
+  return order.concat(base.slice(k), base.slice(0, k));
+}
 async function sendWhatsAppMessage(to, text, settings) {
   if (DRY_RUN) {
     console.log('[DRY-RUN] Outbound text BLOCKED -> ' + to + ' | ' + safeTruncate(text, 140));
@@ -881,7 +905,7 @@ app.post('/api/wa-web/contact/update', async (req, res) => {
       qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
       deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
     };
-    const custOrder = [provider, 'gemini', 'qwen', 'deepseek'].filter((p, i, arr) => arr.indexOf(p) === i && custHasKey[p]);
+    const custOrder = orderedProviders(provider, custHasKey);
     let custErr = null;
     for (const p of custOrder) {
       try {
@@ -1295,7 +1319,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
       qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
       deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
     };
-    const bossOrder = [provider, 'gemini', 'qwen', 'deepseek'].filter((p, i, arr) => arr.indexOf(p) === i && bossHasKey[p]);
+    const bossOrder = orderedProviders(provider, bossHasKey);
     let finalReply = "";
     let bossErr = null;
     for (const p of bossOrder) {
@@ -2971,7 +2995,13 @@ function stripSeoActionBlocks(text) {
 
 // Automatic provider switch: if the selected engine fails, another configured engine completes the task
 async function workspaceModelReply(systemPrompt, messages, model, settings) {
-  const order = [model || 'deepseek', 'gemini', 'qwen', 'deepseek'].filter((p, i, a) => a.indexOf(p) === i);
+  const wsAvailable = {
+    gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+    deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY),
+    qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY)
+  };
+  const order = orderedProviders(model || 'deepseek', wsAvailable);
+  if (!order.length) throw new Error('No AI provider key is configured.');
   let lastErr = null;
   for (const p of order) {
     try {

@@ -1021,6 +1021,11 @@ async function getGeminiKey() {
 const AUDIO_MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
 const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
 
+// Rotation counters: share the load between providers - the FIRST fallback alternates
+// between Gemini 3.6 Flash and DeepSeek v4 Flash on every call.
+let textRotationCounter = 0;
+let mediaStrategyCounter = 0;
+
 // https://dashscope-intl.aliyuncs.com/compatible-mode/v1 -> https://dashscope-intl.aliyuncs.com/api/v1
 function qwenNativeBaseFrom(compatBase) {
   const b = String(compatBase || '').replace(/\/+$/, '');
@@ -2944,6 +2949,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
   let qwenKey = '';
   let qwenBase = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
   let qwenModelId = 'qwen3.8-flash';
+  // Declared here so the catch-block fallback can use them too (block scope!)
+  let cheapOrder = null;
+  let tryTextProvider = null;
   let chosenModel = 'deepseek-chat';
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
@@ -2984,6 +2992,57 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     }
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
+    // ---- Fallback helpers: every engine backs up every other one ----
+    // The FIRST fallback rotates (Gemini 3.6 Flash -> DeepSeek v4 Flash -> Qwen on successive calls),
+    // so sometimes Gemini is the 1st fallback and sometimes DeepSeek is 1st with Gemini 2nd.
+    cheapOrder = (exclude) => {
+      const base = ['gemini', 'deepseek', 'qwen'].filter(p => p !== exclude);
+      if (!base.length) return [];
+      const k = (textRotationCounter++) % base.length;
+      return [...base.slice(k), ...base.slice(0, k)];
+    };
+    tryTextProvider = async (p, userText) => {
+      try {
+        if (p === 'gemini' && geminiKey) {
+          for (const gm of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+            try {
+              const { GoogleGenerativeAI } = await import('@google/generative-ai');
+              const genAI = new GoogleGenerativeAI(geminiKey);
+              const model = genAI.getGenerativeModel({ model: gm });
+              const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + userText }] }] });
+              const t = (res.response.text() || '').trim();
+              if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via ' + gm + ' fallback'); return t; }
+            } catch (e) { console.warn('[WA-WEB AI] ' + gm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+          }
+        } else if (p === 'deepseek' && deepseekKey) {
+          for (const dm of ['deepseek-v4-flash', 'deepseek-chat']) {
+            try {
+              const { default: OpenAI } = await import('openai');
+              const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+              const comp = await openai.chat.completions.create({
+                messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+                model: dm,
+                temperature: 0.4
+              });
+              const t = (comp.choices[0]?.message?.content || '').trim();
+              if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek ' + dm + ' fallback'); return t; }
+            } catch (e) { console.warn('[WA-WEB AI] DeepSeek ' + dm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+          }
+        } else if (p === 'qwen' && qwenKey) {
+          const { default: OpenAI } = await import('openai');
+          const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+          const comp = await openai.chat.completions.create({
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+            model: qwenModelId,
+            temperature: 0.4
+          });
+          const t = (comp.choices[0]?.message?.content || '').trim();
+          if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen fallback'); return t; }
+        }
+      } catch (e) { console.warn('[WA-WEB AI] ' + p + ' fallback failed: ' + (e.message || '').substring(0, 120)); }
+      return '';
+    };
+
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
     // If a voice note was ALREADY transcribed, use that transcript as text (DeepSeek answers)
     // so Gemini's quota is spent only on media understanding, never on composing replies.
@@ -3003,6 +3062,69 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       }
 
       console.log(`[WA-WEB MULTIMODAL] 🧠 Processing ${mediaData.mediaType} with AI (${normalizedMime}, ${(mediaData.buffer.length/1024).toFixed(1)} KB)`);
+
+      // Images/PDF can also be handled by a TEXT-ONLY engine (DeepSeek v4 Flash) like this:
+      // the vision engine EXTRACTS the text, then a text engine COMPOSES the customer reply.
+      // This alternates per message so Gemini and DeepSeek share the media work.
+      const isVisualMedia = mediaData.mediaType === 'image' || mediaData.mediaType === 'document';
+      const splitStrategy = isVisualMedia && (mediaStrategyCounter++ % 2) === 1;
+
+      const extractMediaText = async () => {
+        const extractPrompt = 'Extract ALL information from this attachment as plain text. For invoices/documents list every field (names, companies, phones, emails, amounts, dates, items). If it is just a greeting image, output exactly: GREETING IMAGE. No commentary.';
+        if (mediaData.mediaType === 'image' && qwenKey) {
+          try {
+            const { default: OpenAI } = await import('openai');
+            const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 60000 });
+            const vModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+            const comp = await openai.chat.completions.create({
+              messages: [{ role: 'user', content: [
+                { type: 'image_url', image_url: { url: 'data:' + normalizedMime + ';base64,' + mediaData.buffer.toString('base64') } },
+                { type: 'text', text: extractPrompt }
+              ] }],
+              model: vModel, max_tokens: 900
+            });
+            const t = (comp.choices[0]?.message?.content || '').trim();
+            if (t) { console.log('[WA-WEB MULTIMODAL] 🔎 Extracted text with ' + vModel); return t; }
+          } catch (e) { console.warn('[WA-WEB MULTIMODAL] Qwen extract failed: ' + (e.message || '').substring(0, 120)); }
+        }
+        if (geminiKey) {
+          for (const gm of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+            try {
+              const { GoogleGenerativeAI } = await import('@google/generative-ai');
+              const genAI = new GoogleGenerativeAI(geminiKey);
+              const model = genAI.getGenerativeModel({ model: gm });
+              const res = await model.generateContent({ contents: [{ role: 'user', parts: [
+                { text: extractPrompt },
+                { inlineData: { mimeType: normalizedMime, data: mediaData.buffer.toString('base64') } }
+              ] }] });
+              const t = (res.response.text() || '').trim();
+              if (t) { console.log('[WA-WEB MULTIMODAL] 🔎 Extracted text with ' + gm); return t; }
+            } catch (e) { console.warn('[WA-WEB MULTIMODAL] ' + gm + ' extract failed: ' + (e.message || '').substring(0, 120)); }
+          }
+        }
+        return '';
+      };
+
+      const composeFromExtracted = async (extracted) => {
+        const ask = 'The customer sent a ' + mediaData.mediaType + (mediaData.fileName ? ' ("' + mediaData.fileName + '")' : '') + '.' +
+          (mediaData.caption ? ' Caption: "' + mediaData.caption + '".' : '') +
+          (customerMessage ? ' Customer note: ' + customerMessage : '') +
+          '\n--- CONTENT OF THE ATTACHMENT ---\n' + String(extracted).substring(0, 4000) + '\n--- END CONTENT ---\n' +
+          'Now write the reply to the customer following all business rules. If the content is just a greeting image, send a short warm greeting back.';
+        for (const p of cheapOrder('')) {
+          const t = await tryTextProvider(p, ask);
+          if (t) { console.log('[WA-WEB MULTIMODAL] ✍️ Reply composed by ' + p + ' from the extracted ' + mediaData.mediaType); return t; }
+        }
+        return '';
+      };
+
+      if (splitStrategy) {
+        const extracted = await extractMediaText();
+        if (extracted) {
+          const composed = await composeFromExtracted(extracted);
+          if (composed) return composed;
+        }
+      }
 
       // Try Qwen vision FIRST for images (Qwen key has quota; Gemini's free vision/audio quota is easily exhausted)
       if (mediaData.mediaType === 'image' && qwenKey) {
@@ -3185,44 +3307,14 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       // Media could not be processed (e.g. Gemini quota) - say so instead of staying silent
       return 'Sorry, I could not process that media right now. Please resend it or type your message.';
     }
-    // AUTOMATIC SWITCH 1: Gemini 3.6 Flash (when the requested engine was NOT Gemini)
-    if (!chosenModel.startsWith('gemini') && geminiKey) {
-      for (const geminiModelName of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
-        try {
-          const { GoogleGenerativeAI } = await import('@google/generative-ai');
-          const genAI = new GoogleGenerativeAI(geminiKey);
-          const model = genAI.getGenerativeModel({ model: geminiModelName });
-          const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + txtIn }] }] });
-          const t = (res.response.text() || '').trim();
-          if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via ' + geminiModelName + ' fallback'); return t; }
-        } catch (geminiFbErr) { console.warn('[WA-WEB AI] ' + geminiModelName + ' fallback failed: ' + (geminiFbErr.message || '').substring(0, 120)); }
+    // AUTOMATIC SWITCH (rotating order): the FIRST fallback alternates between Gemini 3.6 Flash and
+    // DeepSeek v4 Flash, then the remaining engines follow - no provider is always tried first.
+    const failedFamily = /^gemini/i.test(chosenModel) ? 'gemini' : (/^deepseek/i.test(chosenModel) ? 'deepseek' : (/^qwen/i.test(chosenModel) ? 'qwen' : ''));
+    if (tryTextProvider && cheapOrder) {
+      for (const p of cheapOrder(failedFamily)) {
+        const t = await tryTextProvider(p, txtIn);
+        if (t) return t;
       }
-    }
-    if (deepseekKey) {
-      try {
-        const { default: OpenAI } = await import('openai');
-        const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
-        const comp = await openai.chat.completions.create({
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
-          model: 'deepseek-chat',
-          temperature: 0.4
-        });
-        const t = comp.choices[0]?.message?.content || null;
-        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek fallback'); return t; }
-      } catch (e2) { console.warn('[WA-WEB AI] DeepSeek fallback failed:', (e2.message || '').substring(0, 140)); }
-    }
-    if (qwenKey) {
-      try {
-        const { default: OpenAI } = await import('openai');
-        const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
-        const comp = await openai.chat.completions.create({
-          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
-          model: qwenModelId,
-          temperature: 0.4
-        });
-        const t = comp.choices[0]?.message?.content || null;
-        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen fallback'); return t; }
-      } catch (e2b) { console.warn('[WA-WEB AI] Qwen fallback failed:', (e2b.message || '').substring(0, 140)); }
     }
     if (openaiKey) {
       try {
