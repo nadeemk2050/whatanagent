@@ -240,15 +240,26 @@ async function bossCreateTask(t) {
   if (!runAt || Number.isNaN(runAt)) return { ok: false, error: 'I need a clear date & time for that task, Boss.' };
   if (runAt < Date.now() - 60000) return { ok: false, error: 'That time is already in the past.' };
   const taskType = ['send_message', 'send_template', 'ai_task'].includes(t.taskType) ? t.taskType : 'ai_task';
-  if (taskType === 'send_message' && (!t.target || !String(t.message || '').trim())) return { ok: false, error: 'A send-message task needs a number and a message.' };
+  if (taskType === 'send_message' && (!t.target || !String(t.message || '').trim())) return { ok: false, error: 'A send-message task needs a number (or a contact name) and a message.' };
   if (taskType === 'send_template' && (!t.target || !t.templateName)) return { ok: false, error: 'A template task needs a number and the template name.' };
   if (taskType === 'ai_task' && !String(t.instruction || '').trim()) return { ok: false, error: 'An AI task needs an instruction.' };
+
+  // Resolve the target: a plain number, OR a CONTACT NAME from the universal Contact Book
+  let resolvedTarget = '';
+  let resolvedName = '';
+  if (t.target) {
+    const res = await bossResolveTarget(t.target);
+    if (res.error && (taskType === 'send_message' || taskType === 'send_template')) return { ok: false, error: res.error };
+    resolvedTarget = res.phone || '';
+    resolvedName = res.name || '';
+  }
 
   const task = {
     id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
     taskType: taskType,
     title: String(t.title || t.message || t.instruction || t.templateName || 'Boss task').substring(0, 60),
-    target: t.target ? bossNormalizePhone(t.target) : '',
+    target: resolvedTarget,
+    targetName: resolvedName || '',
     message: String(t.message || ''),
     instruction: String(t.instruction || ''),
     templateName: t.templateName || '',
@@ -298,9 +309,124 @@ async function bossCancelTask(q) {
   return { ok: true, task: cancelled };
 }
 
+// ================= UNIVERSAL CONTACT BOOK (shared by every AI) =================
+// Read the whole book once (cheap) and return rows sorted by recency.
+async function bossContactDirectory(limit = 500) {
+  try {
+    if (!globalDb) return [];
+    const snap = await getDocs(collection(globalDb, 'contactBook'));
+    const rows = [];
+    snap.forEach(d => {
+      const c = d.data() || {};
+      const phone = String(c.phone || d.id || '').replace(/[^0-9]/g, '');
+      if (!phone || phone.length < 8) return;
+      rows.push({
+        name: String(c.name || c.company || '').trim(),
+        company: String(c.company || '').trim(),
+        phone: phone,
+        ts: Number(c.updatedAt || 0)
+      });
+    });
+    rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    return rows.slice(0, limit);
+  } catch (e) { return []; }
+}
+
+// Resolve an order target: a phone number OR a contact name (from the Contact Book / live chats)
+async function bossResolveTarget(raw) {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return { error: 'No target number or name was given.' };
+  const digits = s.replace(/[^0-9]/g, '');
+  if (digits.length >= 8 && !/[A-Za-z]/.test(s)) return { phone: bossNormalizePhone(digits) };
+  const q = s.toLowerCase();
+  const matches = [];
+  const dir = await bossContactDirectory(2000);
+  for (const r of dir) {
+    if ((r.name && r.name.toLowerCase().includes(q)) || (r.company && r.company.toLowerCase().includes(q))) {
+      matches.push({ name: r.name || r.company, phone: r.phone });
+    }
+  }
+  // also live WhatsApp Web chats (in case the contact is not in the book yet)
+  waWebState.chats.forEach(c => {
+    const nm = String(c.name || '').toLowerCase();
+    if (nm && nm.includes(q)) {
+      const p = resolveRealPhoneNumber(c.id);
+      if (p) matches.push({ name: c.name, phone: p });
+    }
+  });
+  const uniq = [];
+  for (const m of matches) if (m.phone && !uniq.some(u => u.phone === m.phone)) uniq.push(m);
+  if (uniq.length === 1) return { phone: uniq[0].phone, name: uniq[0].name };
+  if (uniq.length > 1) {
+    return { error: 'Multiple contacts match "' + s + '": ' + uniq.slice(0, 5).map(u => (u.name || '(no name)') + ' +' + u.phone).join(', ') + ' — which one, Boss?' };
+  }
+  return { error: 'No contact named "' + s + '" was found in the Contact Book. Give me the number, or save the contact first.' };
+}
+
+// ================= BOSS BRAIN: persistent memory of every boss <-> AI exchange =================
+// Stored in Firestore, so the AI keeps understanding the boss's orders/needs across restarts
+// ("even when the app sleeps").
+async function appendBossBrain(role, text, meta = {}) {
+  try {
+    const t = String(text || '').trim();
+    if (!globalDb || !t) return;
+    const ref = doc(globalDb, 'appData', 'bossBrain');
+    const snap = await getDoc(ref);
+    const entries = snap.exists() ? (snap.data().entries || []) : [];
+    entries.push({ ts: Date.now(), role: role, text: t.substring(0, 1200), ...meta });
+    await setDoc(ref, { entries: entries.slice(-500), updatedAt: Date.now() }, { merge: true });
+  } catch (e) { /* ignore */ }
+}
+
+async function getBossBrainContext(limit = 16) {
+  try {
+    if (!globalDb) return '';
+    const snap = await getDoc(doc(globalDb, 'appData', 'bossBrain'));
+    const entries = snap.exists() ? (snap.data().entries || []) : [];
+    const recent = entries.slice(-limit);
+    if (!recent.length) return '';
+    return recent.map(e => (e.role === 'boss' ? 'BOSS: ' : 'AI: ') + String(e.text || '').replace(/\n/g, ' ').substring(0, 260)).join('\n');
+  } catch (e) { return ''; }
+}
+
+// Auto-populate the UNIVERSAL contact book from WhatsApp Web activity (numbers the agent touched)
+async function syncWaWebContactsToBook(limit = 200) {
+  try {
+    if (!globalDb || waWebState.status !== 'connected') return;
+    const known = new Set();
+    const snap = await getDocs(collection(globalDb, 'contactBook'));
+    snap.forEach(d => { const p = String((d.data() || {}).phone || d.id || '').replace(/[^0-9]/g, ''); if (p) known.add(p); });
+
+    const chats = Array.from(waWebState.chats.values())
+      .filter(c => !c.isGroup && c.timestamp)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, limit);
+
+    let added = 0;
+    for (const c of chats) {
+      const phone = resolveRealPhoneNumber(c.id);
+      if (!phone || phone.length < 8 || known.has(phone)) continue;
+      const nm = (c.name && !/^\+?\d+$/.test(c.name)) ? c.name : '';
+      try {
+        await setDoc(doc(globalDb, 'contactBook', phone), {
+          phone: phone,
+          phoneRaw: String(c.id || '').split('@')[0],
+          name: nm,
+          source: 'WhatsApp Web (auto)',
+          inChat: true,
+          lastMessageTs: c.timestamp || 0,
+          updatedAt: Date.now()
+        }, { merge: true });
+        known.add(phone);
+        added++;
+      } catch (e) { /* ignore single failures */ }
+    }
+    if (added) console.log('[WA-WEB CONTACTS→BOOK] Saved ' + added + ' WhatsApp Web numbers into the universal Contact Book');
+  } catch (e) { console.warn('[WA-WEB CONTACTS→BOOK] ' + e.message); }
+}
+
 // Contact Book upsert / delete
-async function bossUpsertContact(c) {
-  if (!globalDb) return { ok: false, error: 'No database connection' };
+async function bossUpsertContact(c) {  if (!globalDb) return { ok: false, error: 'No database connection' };
   const phone = bossNormalizePhone(c && (c.phone || c.number));
   if (!phone || phone.length < 8) return { ok: false, error: 'Give me the contact phone number.' };
   const ref = doc(globalDb, 'contactBook', phone);
@@ -390,6 +516,7 @@ function getSelfChatJid() {
 // Deliver due reminders + task-result notifications to the boss's own chat (60s tick, only while the
 // socket is actually connected - so exactly ONE node ever sends them)
 let bossDeliveryTimer = null;
+let waWebContactsBookTimer = null;
 async function processBossRemindersAndNotifications() {
   try {
     if (!globalDb || waWebState.status !== 'connected') return;
@@ -1611,6 +1738,11 @@ export async function initWaWeb(db = null) {
         setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
         // Deliver boss reminders + task-result notifications through this (only) live socket
         if (!bossDeliveryTimer) bossDeliveryTimer = setInterval(processBossRemindersAndNotifications, 60000);
+        // Keep the UNIVERSAL Contact Book fed with WhatsApp Web numbers (throttled, every 15 min)
+        if (!waWebContactsBookTimer) {
+          waWebContactsBookTimer = setInterval(syncWaWebContactsToBook, 15 * 60 * 1000);
+          setTimeout(() => { syncWaWebContactsToBook(); }, 45000);
+        }
       }
     });
 
@@ -1874,6 +2006,8 @@ export async function initWaWeb(db = null) {
               // (Boss identity + passcode were already computed above, before the cooldown checks)
               if (isBossNumber) {
                 console.log('[WA-WEB BOSS] Message from Boss (' + remoteJid + '): "' + (effectiveText || mediaType) + '"');
+                // Boss Brain: remember what the boss said (persists across restarts)
+                appendBossBrain('boss', effectiveText || ('[' + (mediaData?.mediaType || mediaType || 'media') + ']'));
 
                 // Case 1: Secret access token entered (typed, or spoken inside a voice note)
                 const tokenDigits = (effectiveText || '').replace(/[^0-9]/g, '');
@@ -1906,17 +2040,23 @@ export async function initWaWeb(db = null) {
                   waWebBossSession.lastAuthTimestamp = Date.now();
                   setBossWebAuth({ authenticated: true, lastAuthTimestamp: waWebBossSession.lastAuthTimestamp });
                   // A. Check if boss wants to send a message to someone
-                  const cmdMatch = effectiveText.match(/(?:send\s+msg\s+to|send\s+message\s+to|msg|send\s+to)\s+([+0-9\s-]+)[:\s]+(.+)/i);
+                  const cmdMatch = effectiveText.match(/(?:send\s+msg\s+to|send\s+message\s+to|msg|send\s+to)\s+([A-Za-z0-9+][A-Za-z0-9+\-.\s]{2,40}?)[:\s]+(.+)/i);
                   if (cmdMatch) {
-                    const rawTarget = cmdMatch[1].replace(/[^0-9]/g, '');
+                    const rawTarget = cmdMatch[1].trim();
                     const targetText = cmdMatch[2].trim();
                     if (rawTarget && targetText) {
-                      const targetJid = rawTarget.includes('@') ? rawTarget : (rawTarget + '@s.whatsapp.net');
+                      const resolved = await bossResolveTarget(rawTarget);
+                      if (resolved.error) {
+                        await sendWaWebMessage(remoteJid, '⚠️ ' + resolved.error);
+                        return;
+                      }
+                      const targetJid = resolved.phone.includes('@') ? resolved.phone : (resolved.phone + '@s.whatsapp.net');
                       try {
                         await sendWaWebMessage(targetJid, targetText);
                         const voiceBadge = transcribedAudioText ? '🎙️ *(Voice Order Transcribed)*\n' : '';
-                        await sendWaWebMessage(remoteJid, '✅ *Command Executed, Boss!*\n\n' + voiceBadge + 'Message delivered to *+' + rawTarget + '*:\n"' + targetText + '"');
+                        await sendWaWebMessage(remoteJid, '✅ *Command Executed, Boss!*\n\n' + voiceBadge + 'Message delivered to *' + (resolved.name ? resolved.name + ' (+' + resolved.phone + ')' : '+' + resolved.phone) + '*:\n"' + targetText + '"');
                         console.log('[WA-WEB BOSS] 🟢 Executed boss relay command to ' + targetJid);
+                        appendBossBrain('ai', 'Sent WhatsApp message to ' + (resolved.name || ('+' + resolved.phone)) + ': ' + targetText);
                       } catch (e) {
                         await sendWaWebMessage(remoteJid, '⚠️ *Failed to execute command:* ' + e.message);
                       }
@@ -1943,6 +2083,9 @@ export async function initWaWeb(db = null) {
                   }
 
                   // C. Executive prompt for general instructions / website work / inquiries
+                  const contactDir = await bossContactDirectory(120);
+                  const contactLines = contactDir.filter(x => x.name).map(x => '• ' + x.name + (x.company && x.company !== x.name ? ' (' + x.company + ')' : '') + ' → +' + x.phone).join('\n');
+                  const brainCtx = await getBossBrainContext(16);
                   const bossExecPrompt = 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem UAE +971529244592).\n' +
                     'He is commanding you directly from his verified personal phone number via Voice Note or Text.\n' +
                     'Obey his instructions with highest priority, precision, and respectful tone.\n' +
@@ -1978,6 +2121,11 @@ export async function initWaWeb(db = null) {
                     'Contact Book:\n' +
                     '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +
                     '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
+                    '--- UNIVERSAL CONTACT BOOK (ALWAYS use these numbers when the boss names a person) ---\n' +
+                    (contactLines ? (contactLines + '\n') : '(no saved contacts yet)\n') +
+                    'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the Contact Book automatically. If the name is NOT in the list above, ask the boss for the number (or save it with [CONTACT]). NEVER invent a number.\n' +
+                    'NEVER claim a message was sent unless the app confirmed it in the action result.\n\n' +
+                    (brainCtx ? ('--- BOSS BRAIN (memory of your previous exchanges with the boss) ---\n' + brainCtx + '\n\n') : '') +
                     'After any action block, confirm briefly what you did.\n\n' +
                     buildWaWebKnowledgeSystemPrompt();
 
@@ -2039,8 +2187,12 @@ export async function initWaWeb(db = null) {
 
                       const voiceHeader = transcribedAudioText ? '🎙️ *[Voice Note Understood]*\n\n' : '';
                       const finalMsg = (voiceHeader + cfgSummary + sectionSummary + (replyText ? replyText.trim() : '')).trim();
-                      if (finalMsg) await sendWaWebMessage(remoteJid, finalMsg);
-                      else await sendWaWebMessage(remoteJid, '⚠️ Boss, the AI could not generate a reply right now (provider quota / temporary error). Please try again in a moment.');
+                      if (finalMsg) {
+                        await sendWaWebMessage(remoteJid, finalMsg);
+                        appendBossBrain('ai', finalMsg);
+                      } else {
+                        await sendWaWebMessage(remoteJid, '⚠️ Boss, the AI could not generate a reply right now (provider quota / temporary error). Please try again in a moment.');
+                      }
                     } catch (e) {
                       console.warn('[WA-WEB BOSS] Error executing boss command:', e.message);
                     }
@@ -2052,6 +2204,7 @@ export async function initWaWeb(db = null) {
                     'If you are the Boss, please verify with your *secret access token* to unlock executive voice & text commands.';
                   await sendWaWebMessage(remoteJid, challengeMsg);
                   console.log('[WA-WEB BOSS] Sent access-token verification challenge to Boss.');
+                  appendBossBrain('ai', challengeMsg);
                   return;
                 }
               }
