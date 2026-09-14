@@ -1014,14 +1014,28 @@ async function getGeminiKey() {
   return cachedGeminiKey || '';
 }
 
-// Helper to transcribe audio note to text via Gemini (multimodal)
+// ================= DEDICATED AUDIO ENGINE =================
+// Gemini is the multimodal provider (the only configured one that can hear voice notes / see images / read PDFs).
+// Text replies go to DeepSeek, so Gemini's quota stays reserved for MEDIA.
+// Several Gemini models are tried in order, so one model running out of quota does not break audio.
+const AUDIO_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-2.5-pro'];
 async function transcribeAudioBuffer(audioBuffer, mimeType) {
+  const geminiKey = await getGeminiKey();
+  if (!geminiKey || !audioBuffer) {
+    console.warn('[WA-WEB AUDIO] No Gemini key available - cannot transcribe voice notes');
+    return '';
+  }
+  let genAI;
   try {
-    const geminiKey = await getGeminiKey();
-    if (geminiKey && audioBuffer) {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const mod = await import('@google/generative-ai');
+    genAI = new mod.GoogleGenerativeAI(geminiKey);
+  } catch (e) {
+    console.warn('[WA-WEB AUDIO] SDK load failed:', e.message);
+    return '';
+  }
+  for (const modelName of AUDIO_MODEL_CHAIN) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
       const res = await model.generateContent({
         contents: [{
           role: 'user',
@@ -1036,11 +1050,18 @@ async function transcribeAudioBuffer(audioBuffer, mimeType) {
           ]
         }]
       });
-      return res.response.text()?.trim() || '';
+      const t = (res.response.text() || '').trim();
+      if (t) {
+        console.log('[WA-WEB AUDIO] 🎙️ Transcribed with ' + modelName + ': "' + t.substring(0, 90) + '"');
+        return t;
+      }
+    } catch (err) {
+      const m = (err.message || '').substring(0, 110);
+      console.warn('[WA-WEB AUDIO] ' + modelName + ' failed: ' + m);
+      if (/429|quota/i.test(m)) geminiQuotaBlockedUntil = Date.now() + 30 * 60 * 1000;
     }
-  } catch (err) {
-    console.warn('[WA-WEB AUDIO TRANSCRIBE] Error:', err.message);
   }
+  console.warn('[WA-WEB AUDIO] ❌ All audio models failed (quota?) - voice note could not be transcribed');
   return '';
 }
 
@@ -2255,7 +2276,7 @@ export async function initWaWeb(db = null) {
               setTimeout(async () => {
                 try {
                   console.log('[WA-WEB AUTO-REPLY] Generating AI reply for: ' + remoteJid + ' -> "' + (text || mediaType) + '"');
-                  const replyText = await generateWaWebAutoBotReply(remoteJid, text, null, mediaData);
+                  const replyText = await generateWaWebAutoBotReply(remoteJid, (transcribedAudioText || text || '').trim(), null, mediaData);
                   if (replyText && replyText.trim()) {
                     await sendWaWebMessage(remoteJid, replyText.trim());
                     console.log('[WA-WEB AUTO-REPLY] 🟢 Successfully Auto-replied to ' + remoteJid + ': ' + replyText.trim());
@@ -2893,7 +2914,13 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
-    if (mediaData && mediaData.buffer && mediaData.buffer.length > 0) {
+    // If a voice note was ALREADY transcribed, use that transcript as text (DeepSeek answers)
+    // so Gemini's quota is spent only on media understanding, never on composing replies.
+    const audioAlreadyTranscribed = !!(mediaData && mediaData.mediaType === 'audio' && String(customerMessage || '').trim());
+    if (audioAlreadyTranscribed) {
+      console.log('[WA-WEB AUDIO] Using the transcript as text (audio quota reserved for voice only)');
+    }
+    if (mediaData && mediaData.buffer && mediaData.buffer.length > 0 && !audioAlreadyTranscribed) {
       const rawMime = (mediaData.mimetype || '').split(';')[0].trim().toLowerCase();
       let normalizedMime = rawMime;
       if (mediaData.mediaType === 'audio') {
