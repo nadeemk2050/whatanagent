@@ -2876,6 +2876,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
   let geminiKey = '';
   let deepseekKey = '';
   let openaiKey = '';
+  let qwenKey = '';
+  let qwenBase = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+  let qwenModelId = 'qwen3.8-flash';
   let chosenModel = 'deepseek-chat';
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
@@ -2904,6 +2907,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
     deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
     openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || settings.DASHSCOPE_API_KEY || '';
+    qwenBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+    qwenModelId = settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
 
     chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
     // Circuit breaker: if Gemini is out of quota, use DeepSeek for TEXT instantly (media still tries Gemini)
@@ -3025,6 +3031,19 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       return res.response.text() || null;
+    } else if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && qwenKey) {
+      // Qwen3.8-Flash (Alibaba Model Studio, OpenAI-compatible) - smart multilingual text engine
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+      const comp = await openai.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: customerMessage }
+        ],
+        model: chosenModel === 'qwen' ? qwenModelId : chosenModel,
+        temperature: 0.4
+      });
+      return comp.choices[0]?.message?.content || null;
     } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey) {
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
@@ -3077,6 +3096,19 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         const t = comp.choices[0]?.message?.content || null;
         if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek fallback'); return t; }
       } catch (e2) { console.warn('[WA-WEB AI] DeepSeek fallback failed:', (e2.message || '').substring(0, 140)); }
+    }
+    if (qwenKey) {
+      try {
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+        const comp = await openai.chat.completions.create({
+          messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
+          model: qwenModelId,
+          temperature: 0.4
+        });
+        const t = comp.choices[0]?.message?.content || null;
+        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen fallback'); return t; }
+      } catch (e2b) { console.warn('[WA-WEB AI] Qwen fallback failed:', (e2b.message || '').substring(0, 140)); }
     }
     if (openaiKey) {
       try {

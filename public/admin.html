@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.14.2 (perf: no background-tab polling, 6s/10s poll cadence, 300-row chat-list render cap, interval leak fixed, auth inputs in forms) -->
+    <!-- APP VERSION: 2026.09.14.3 (Qwen3.8-Flash AI engine: WhatsApp Web auto-pilot bot + Copilot model selector, Qwen key fields in Environment Variables) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -694,6 +694,7 @@
                                 <option value="gemini-2.5-pro">🧠 Google Gemini 2.5 Pro (Deep Context & Complex Reasoning)</option>
                                 <option value="deepseek-chat">⚡ DeepSeek Chat (recommended for TEXT replies - working key)</option>
                                 <option value="deepseek-reasoner">🔬 DeepSeek R1 (Deep Analytical Reasoner)</option>
+                                <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (Alibaba · smart multilingual · 1M context · new)</option>
                             </select>
                         </div>
                         <div>
@@ -1094,6 +1095,7 @@
                     <option value="deepseek-reasoner">🔬 DeepSeek R1</option>
                     <option value="gpt-4o-mini">⚡ GPT-4o Mini</option>
                     <option value="gpt-4o">🤖 GPT-4o</option>
+                    <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (Alibaba · 1M context)</option>
                 
             <div id="waWebAiContextBanner" style="background:#182229; padding:8px 16px; border-bottom:1px solid #2a3942; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
                 <div style="display:flex; align-items:center; gap:6px; color:#00a884; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
@@ -1402,6 +1404,14 @@
                         <div class="form-group">
                             <label>Google Gemini API Key</label>
                             <input type="text" id="envGemini" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>Qwen API Key (Alibaba Cloud Model Studio)</label>
+                            <input type="text" id="envQwen" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                        </div>
+                        <div class="form-group">
+                            <label>Qwen Base URL (optional — default: Singapore / international)</label>
+                            <input type="text" id="envQwenBase" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
                         </div>
                         <div class="form-group">
                             <label>WhatsApp System User Token</label>
@@ -2312,6 +2322,8 @@
             document.getElementById('envProvider').value = data.ACTIVE_AI_PROVIDER || 'deepseek';
             document.getElementById('envDeepseek').value = data.DEEPSEEK_API_KEY || '';
             document.getElementById('envGemini').value = data.GEMINI_API_KEY || '';
+            const envQwenEl = document.getElementById('envQwen'); if (envQwenEl) envQwenEl.value = data.QWEN_API_KEY || '';
+            const envQwenBaseEl = document.getElementById('envQwenBase'); if (envQwenBaseEl) envQwenBaseEl.value = data.QWEN_BASE_URL || '';
             document.getElementById('envWhatsappToken').value = data.WHATSAPP_TOKEN || '';
             document.getElementById('envPhoneId').value = data.PHONE_NUMBER_ID || '';
             document.getElementById('envVerifyToken').value = data.VERIFY_TOKEN || '';
@@ -2381,6 +2393,8 @@
                 ACTIVE_AI_PROVIDER: document.getElementById('envProvider').value,
                 DEEPSEEK_API_KEY: document.getElementById('envDeepseek').value,
                 GEMINI_API_KEY: document.getElementById('envGemini').value,
+                QWEN_API_KEY: document.getElementById('envQwen')?.value || '',
+                QWEN_BASE_URL: document.getElementById('envQwenBase')?.value || '',
                 WHATSAPP_TOKEN: document.getElementById('envWhatsappToken').value,
                 PHONE_NUMBER_ID: document.getElementById('envPhoneId').value,
                 VERIFY_TOKEN: document.getElementById('envVerifyToken').value,
@@ -6410,6 +6424,12 @@
             // System instructions & custom text
             const sysInput = document.getElementById('waWebKbSystemPrompt');
             if (sysInput) sysInput.value = kb.systemPromptInstructions || '';
+
+            // Selected AI engine model (keeps the Qwen / DeepSeek / Gemini choice visible)
+            const modelSel = document.getElementById('waWebKbModelSelect');
+            if (modelSel && kb.aiModel && Array.from(modelSel.options).some(o => o.value === kb.aiModel)) {
+                modelSel.value = kb.aiModel;
+            }
 
             const customInput = document.getElementById('waWebKbCustomText');
             if (customInput) customInput.value = kb.customKnowledgeText || '';

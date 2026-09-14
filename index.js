@@ -27,7 +27,8 @@ import {
   updateWaWebContactName,
   getWaWebKnowledgeBase,
   saveWaWebKnowledgeBase,
-  buildWaWebKnowledgeSystemPrompt
+  buildWaWebKnowledgeSystemPrompt,
+  generateWaWebAutoBotReply
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -276,7 +277,19 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     prompt += '\nUser/Customer message: ' + message;
 
     let reply = '';
-    if (settings.DEEPSEEK_API_KEY) {
+    const kbModel = (tempKnowledge && tempKnowledge.aiModel) || '';
+    if ((kbModel.startsWith('qwen') || kbModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
+      const qwenKeyT = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
+      const qwenBaseT = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+      const qwenModelT = kbModel === 'qwen' ? (settings.QWEN_MODEL || 'qwen3.8-flash') : kbModel;
+      const openai = new OpenAI({ baseURL: qwenBaseT, apiKey: qwenKeyT, timeout: 30000 });
+      const comp = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
+        model: qwenModelT,
+        temperature: 0.4
+      });
+      reply = comp.choices[0]?.message?.content || '';
+    } else if (settings.DEEPSEEK_API_KEY) {
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 30000 });
       const comp = await openai.chat.completions.create({
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
@@ -378,7 +391,18 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     const chosenModel = model || 'gemini-2.5-flash';
     let reply = '';
 
-    if (chosenModel.startsWith('deepseek') && settings.DEEPSEEK_API_KEY) {
+    if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
+      const qwenKeyC = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
+      const qwenBaseC = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
+      const qwenModelC = chosenModel === 'qwen' ? (settings.QWEN_MODEL || 'qwen3.8-flash') : chosenModel;
+      const openai = new OpenAI({ baseURL: qwenBaseC, apiKey: qwenKeyC, timeout: 60000 });
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        model: qwenModelC,
+        temperature: 0.5
+      });
+      reply = completion.choices[0]?.message?.content || '';
+    } else if (chosenModel.startsWith('deepseek') && settings.DEEPSEEK_API_KEY) {
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
@@ -434,6 +458,23 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
   }
 });
 
+// Generate a REAL Auto-Pilot bot reply (same engine + knowledge base as live customer replies)
+// WITHOUT sending anything - safe way to test the bot model (DeepSeek / Gemini / Qwen...) any time.
+app.post('/api/wa-web/ai-bot/test', async (req, res) => {
+  try {
+    const { message, model } = req.body || {};
+    if (!message || !String(message).trim()) return res.status(400).json({ error: 'message is required' });
+    const t0 = Date.now();
+    const reply = await generateWaWebAutoBotReply('test@s.whatsapp.net', String(message).trim(), null, null, model || null);
+    if (!reply) {
+      return res.json({ ok: false, tookMs: Date.now() - t0, model: model || null, note: 'No reply generated - this node does not own the WhatsApp Web session (standby/staging) or no AI key is configured.' });
+    }
+    res.json({ ok: true, tookMs: Date.now() - t0, model: model || null, reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Settings Management ---
 async function getSettings() {
   try {
@@ -450,6 +491,9 @@ async function migrateEnvToDb() {
     if (!docSnap.exists() && process.env.WHATSAPP_TOKEN) {
        await setDoc(doc(db, "appData", "settings"), {
           DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
+          QWEN_API_KEY: process.env.QWEN_API_KEY || '',
+          QWEN_BASE_URL: process.env.QWEN_BASE_URL || '',
+          QWEN_MODEL: process.env.QWEN_MODEL || 'qwen3.8-flash',
           WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN || '',
           PHONE_NUMBER_ID: process.env.PHONE_NUMBER_ID || '',
           VERIFY_TOKEN: process.env.VERIFY_TOKEN || '',
@@ -1472,6 +1516,9 @@ app.get('/api/env', async (req, res) => {
     ACTIVE_AI_PROVIDER: settings.ACTIVE_AI_PROVIDER || 'deepseek',
     DEEPSEEK_API_KEY: settings.DEEPSEEK_API_KEY || '',
     GEMINI_API_KEY: settings.GEMINI_API_KEY || '',
+    QWEN_API_KEY: settings.QWEN_API_KEY || '',
+    QWEN_BASE_URL: settings.QWEN_BASE_URL || '',
+    QWEN_MODEL: settings.QWEN_MODEL || '',
     WHATSAPP_TOKEN: settings.WHATSAPP_TOKEN || '',
     PHONE_NUMBER_ID: settings.PHONE_NUMBER_ID || '',
     VERIFY_TOKEN: settings.VERIFY_TOKEN || '',
@@ -1484,14 +1531,21 @@ app.get('/api/env', async (req, res) => {
 app.post('/api/env', async (req, res) => {
   try {
     const data = req.body;
+    // Fields missing from the request keep their stored value (an old cached dashboard posting
+    // a partial payload must never wipe keys such as QWEN_API_KEY / DEEPSEEK_API_KEY).
+    const prev = await getSettings();
+    const keep = (v, old) => (v !== undefined && v !== null ? v : (old || ''));
     await setDoc(doc(db, "appData", "settings"), {
-      ACTIVE_AI_PROVIDER: data.ACTIVE_AI_PROVIDER || 'deepseek',
-      DEEPSEEK_API_KEY: data.DEEPSEEK_API_KEY || '',
-      GEMINI_API_KEY: data.GEMINI_API_KEY || '',
-      WHATSAPP_TOKEN: data.WHATSAPP_TOKEN || '',
-      PHONE_NUMBER_ID: data.PHONE_NUMBER_ID || '',
-      VERIFY_TOKEN: data.VERIFY_TOKEN || '',
-      OWNER_PHONE_NUMBER: data.OWNER_PHONE_NUMBER || '',
+      ACTIVE_AI_PROVIDER: keep(data.ACTIVE_AI_PROVIDER, prev.ACTIVE_AI_PROVIDER) || 'deepseek',
+      DEEPSEEK_API_KEY: keep(data.DEEPSEEK_API_KEY, prev.DEEPSEEK_API_KEY),
+      GEMINI_API_KEY: keep(data.GEMINI_API_KEY, prev.GEMINI_API_KEY),
+      QWEN_API_KEY: keep(data.QWEN_API_KEY, prev.QWEN_API_KEY),
+      QWEN_BASE_URL: keep(data.QWEN_BASE_URL, prev.QWEN_BASE_URL),
+      QWEN_MODEL: keep(data.QWEN_MODEL, prev.QWEN_MODEL) || 'qwen3.8-flash',
+      WHATSAPP_TOKEN: keep(data.WHATSAPP_TOKEN, prev.WHATSAPP_TOKEN),
+      PHONE_NUMBER_ID: keep(data.PHONE_NUMBER_ID, prev.PHONE_NUMBER_ID),
+      VERIFY_TOKEN: keep(data.VERIFY_TOKEN, prev.VERIFY_TOKEN),
+      OWNER_PHONE_NUMBER: keep(data.OWNER_PHONE_NUMBER, prev.OWNER_PHONE_NUMBER),
       RESTRICT_PRICING: data.RESTRICT_PRICING === true,
       BLOCK_COMPETITORS: data.BLOCK_COMPETITORS === true
     }, { merge: true });
