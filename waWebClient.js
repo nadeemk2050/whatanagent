@@ -1936,7 +1936,7 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
   return prompt;
 }
 
-export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null) {
+export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null) {
   if (!globalDb) return null;
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
@@ -1966,6 +1966,9 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     const deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
     const openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
+    const chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'gemini-1.5-flash';
+    console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
+
     // 1. MULTIMODAL HANDLING: Audio Voice Notes, Images & PDF Documents
     if (mediaData && mediaData.buffer && mediaData.buffer.length > 0) {
       const rawMime = (mediaData.mimetype || '').split(';')[0].trim().toLowerCase();
@@ -1980,12 +1983,13 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
 
       console.log(`[WA-WEB MULTIMODAL] 🧠 Processing ${mediaData.mediaType} with AI (${normalizedMime}, ${(mediaData.buffer.length/1024).toFixed(1)} KB)`);
 
-      // Try Gemini Multimodal (Gemini 1.5 Flash natively processes audio, images, and PDFs!)
+      // Try Gemini Multimodal
       if (geminiKey) {
         try {
           const { GoogleGenerativeAI } = await import('@google/generative-ai');
           const genAI = new GoogleGenerativeAI(geminiKey);
-          const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+          const geminiModelName = chosenModel.startsWith('gemini') ? chosenModel : 'gemini-1.5-flash';
+          const model = genAI.getGenerativeModel({ model: geminiModelName });
 
           let mediaInstruction = 'Customer sent a ' + (mediaData.mediaType || 'file') + '.';
           if (mediaData.mediaType === 'audio') {
@@ -2021,7 +2025,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         }
       }
 
-      // OpenAI Multimodal Fallback (GPT-4o Vision or Whisper)
+      // OpenAI Multimodal Fallback
       if (openaiKey) {
         try {
           const { default: OpenAI } = await import('openai');
@@ -2040,7 +2044,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
                   ]
                 }
               ],
-              model: 'gpt-4o',
+              model: chosenModel.startsWith('gpt') ? chosenModel : 'gpt-4o',
               temperature: 0.4
             });
             return comp.choices[0]?.message?.content || null;
@@ -2051,8 +2055,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       }
     }
 
-    // 2. TEXT-BASED AI AUTO-REPLY
-    if (deepseekKey) {
+    // 2. TEXT-BASED AI AUTO-REPLY (Dynamic Model Selection)
+    if (chosenModel.startsWith('deepseek') && deepseekKey) {
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
@@ -2060,17 +2064,18 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: 'deepseek-chat',
+        model: chosenModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat',
         temperature: 0.4
       });
       return comp.choices[0]?.message?.content || null;
-    } else if (geminiKey) {
+    } else if (chosenModel.startsWith('gemini') && geminiKey) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const geminiModel = chosenModel || 'gemini-1.5-flash';
+      const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       return res.response.text() || null;
-    } else if (openaiKey) {
+    } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey) {
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
@@ -2078,10 +2083,27 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: 'gpt-4o-mini',
+        model: chosenModel || 'gpt-4o-mini',
         temperature: 0.4
       });
       return comp.choices[0]?.message?.content || null;
+    } else if (deepseekKey) {
+      // Automatic Fallback 1: DeepSeek
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+      const comp = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
+        model: 'deepseek-chat',
+        temperature: 0.4
+      });
+      return comp.choices[0]?.message?.content || null;
+    } else if (geminiKey) {
+      // Automatic Fallback 2: Gemini
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
+      return res.response.text() || null;
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);

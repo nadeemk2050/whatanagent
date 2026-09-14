@@ -284,7 +284,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
 
 app.post('/api/wa-web/ai-assistant', async (req, res) => {
   try {
-    const { prompt, jid, mode, conversationHistory } = req.body || {};
+    const { prompt, jid, mode, conversationHistory, model } = req.body || {};
     if (!prompt && !mode) {
       return res.status(400).json({ error: 'Prompt or mode is required.' });
     }
@@ -358,8 +358,35 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     }
     messages.push({ role: 'user', content: userInstruction });
 
+    const chosenModel = model || 'gemini-1.5-flash';
     let reply = '';
-    if (settings.DEEPSEEK_API_KEY) {
+
+    if (chosenModel.startsWith('deepseek') && settings.DEEPSEEK_API_KEY) {
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        model: chosenModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat',
+        temperature: 0.5
+      });
+      reply = completion.choices[0]?.message?.content || '';
+    } else if (chosenModel.startsWith('gemini') && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
+      const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const genAI = new GoogleGenerativeAI(key);
+      const gemModel = chosenModel || 'gemini-1.5-flash';
+      const m = genAI.getGenerativeModel({ model: gemModel });
+      const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
+      const result = await m.generateContent({ contents });
+      reply = result.response.text() || '';
+    } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && (settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY)) {
+      const key = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const openai = new OpenAI({ apiKey: key, timeout: 60000 });
+      const completion = await openai.chat.completions.create({
+        messages: [{ role: 'system', content: systemPrompt }, ...messages],
+        model: chosenModel || 'gpt-4o-mini',
+        temperature: 0.5
+      });
+      reply = completion.choices[0]?.message?.content || '';
+    } else if (settings.DEEPSEEK_API_KEY) {
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
@@ -370,12 +397,12 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const m = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
-      const result = await model.generateContent({ contents });
+      const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
     } else {
-      reply = "AI Assistant is ready, but no AI API Key is configured in settings yet. Please add your DeepSeek or Gemini API Key in the Settings / ENV tab.";
+      reply = "AI Assistant is ready, but no AI API Key is configured in settings yet. Please add your Gemini or DeepSeek API Key.";
     }
 
     res.json({
