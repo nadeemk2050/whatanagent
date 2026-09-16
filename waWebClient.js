@@ -3015,7 +3015,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
             } catch (e) { console.warn('[WA-WEB AI] ' + gm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
           }
         } else if (p === 'deepseek' && deepseekKey) {
-          for (const dm of ['deepseek-v4-flash', 'deepseek-chat']) {
+          for (const dm of ['deepseek-chat']) {
             try {
               const { default: OpenAI } = await import('openai');
               const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
@@ -3239,7 +3239,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: chosenModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat',
+        model: 'deepseek-chat',
         temperature: 0.4
       });
       return comp.choices[0]?.message?.content || null;

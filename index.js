@@ -415,7 +415,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        model: chosenModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat',
+        model: 'deepseek-chat',
         temperature: 0.5
       });
       reply = completion.choices[0]?.message?.content || '';
@@ -802,7 +802,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
           });
           const completion = await openai.chat.completions.create({
             messages: dsMessages,
-            model: "deepseek-v4-flash",
+            model: "deepseek-chat",
             temperature: 0.7,
           });
           finalReply = (completion.choices[0].message.content || '').trim();
@@ -1214,7 +1214,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
           const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY });
           const completion = await openai.chat.completions.create({
             messages: chatMessages,
-            model: "deepseek-v4-flash",
+            model: "deepseek-chat",
             temperature: 0.3,
           });
           finalReply = (completion.choices[0].message.content || '').trim();
@@ -2897,7 +2897,7 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
   const t0 = Date.now();
   const completion = await openai.chat.completions.create({
     messages: [{ role: 'system', content: sanitizeText(systemPrompt) }].concat(messages.map(m => ({ role: m.role, content: sanitizeText(m.content) }))),
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-chat',
     temperature: 0.4
   });
   console.log('[AI WORKSPACE] deepseek reply in ' + (Date.now() - t0) + 'ms (' + ((completion.usage && completion.usage.total_tokens) || '?') + ' tokens)');
