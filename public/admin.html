@@ -268,7 +268,6 @@
                 <span>🟢 WhatsApp Web</span>
                 <span id="waWebNavBadge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
             </div>
-            <div class="menu-item" onclick="showSection('chat')">💬 Live Chat</div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('tasks'); loadAiTasks();">⏰ Tasks for AI</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
@@ -1421,18 +1420,7 @@
                             <label>Qwen Base URL (optional — default: Singapore / international)</label>
                             <input type="text" id="envQwenBase" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
                         </div>
-                        <div class="form-group">
-                            <label>WhatsApp System User Token</label>
-                            <input type="text" id="envWhatsappToken" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
-                        </div>
-                        <div class="form-group">
-                            <label>WhatsApp Phone Number ID</label>
-                            <input type="text" id="envPhoneId" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
-                        </div>
-                        <div class="form-group">
-                            <label>Webhook Verify Token</label>
-                            <input type="text" id="envVerifyToken" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
-                        </div>
+
                         <div class="form-group">
                             <label>Owner's Personal Phone Number (For Proxy Control)</label>
                             <input type="text" id="envOwnerPhone" placeholder="e.g. 971554779331" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
@@ -1901,65 +1889,13 @@
                 </div>
             </div>
 
-            <!-- Live Chat Section -->
-            <div id="chatSection" class="app-section">
-                <div class="card" style="padding: 0; border: none; box-shadow: none;">
-                    <div class="chat-container" id="chatContainerEl">
-                        <div class="chat-sidebar" style="display: flex; flex-direction: column;">
-                            <div style="padding: 10px; border-bottom: 1px solid var(--border);">
-                                <input type="text" id="chatSearchInput" placeholder="🔍 Search name, number, details..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 20px; box-sizing: border-box; font-size: 14px; outline: none;">
-                            </div>
-                            <div id="chatSidebarList" style="flex: 1; overflow-y: auto;">
-                                <!-- Contact list injects here -->
-                            </div>
-                        </div>
-                        <div class="chat-main">
-                            <div class="chat-header">
-                                <div style="display: flex; align-items: center;">
-                                    <button class="chat-back-btn" onclick="closeChatView()">←</button>
-                                    <h3 id="chatActiveUser" style="margin:0;">Select a Contact</h3>
-                                </div>
-                                <div id="aiToggleContainer" style="display:none; align-items:center;">
-                                    <span style="margin-right:10px; font-size:14px; font-weight:bold;">AI Status:</span>
-                                    <button id="aiToggleBtn" onclick="toggleAI()" style="padding: 5px 10px; border:none; border-radius:5px; cursor:pointer;">ON</button>
-                                </div>
-                            </div>
-                            <div class="chat-messages" id="chatMessageList">
-                                <div style="text-align:center; color:#667781; margin-top:50px;">Select a contact to view chat history.</div>
-                            </div>
-                            <div id="chatWindowWarning" style="display:none; padding:10px 14px; background:#fff8e1; border-top:1px solid #ffe082; color:#8d6e00; font-size:12px; font-weight:bold; line-height:1.55;"></div>
-                            <div class="chat-input" id="chatInputBar" style="display:none;">
-                                <input type="text" id="chatMsgInput" placeholder="Type a manual reply...">
-                                <button onclick="suggestChatReply()" style="background: #ef6c00; margin-right: 5px; padding: 12px 20px; border: none; border-radius: 8px; color: white; font-weight: bold; cursor: pointer;" id="suggestReplyBtn">💡 Suggest Reply</button>
-                                <button onclick="openWaTemplateModal()" title="Send an approved WhatsApp template - delivered even outside the 24h window" style="background:#1565c0; margin-right:5px; padding:12px 16px; border:none; border-radius:8px; color:white; font-weight:bold; cursor:pointer;">📨 Template</button>
-                                <button onclick="sendManualReply()">Send</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
         </div>
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
 
-    <!-- WhatsApp Template Modal -->
-    <div id="waTemplateModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
-        <div class="card" style="width:100%; max-width:560px; max-height:90vh; overflow-y:auto; padding:25px; box-sizing:border-box; margin:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="margin-top:0;">📨 Send WhatsApp Template</h3>
-                <button onclick="closeWaTemplateModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#667781;">✕</button>
-            </div>
-            <p class="subtitle" style="margin-top:0;">Templates are approved by WhatsApp and are <b>delivered even when the customer has not messaged in the last 24 hours</b>.</p>
-            <div class="form-group"><label>To</label><input type="text" id="waTplTo" readonly style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box; background:#f0f2f5;"></div>
-            <div class="form-group"><label>Template</label><select id="waTplSelect" onchange="waTplChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></select></div>
-            <div id="waTplBody" style="display:none; margin-bottom:12px; padding:10px 12px; background:#f7f9fa; border-radius:8px; white-space:pre-wrap; font-size:13px; color:#546e7a;"></div>
-            <div id="waTplVars"></div>
-            <button class="btn-save" onclick="sendWaTemplate()" id="waTplSendBtn">📨 Send Template</button>
-            <div id="waTplResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
-        </div>
-    </div>
+
 
     <!-- Import Contacts Modal -->
     <div id="importModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
@@ -2260,11 +2196,7 @@
             
             const container = document.querySelector('.container');
             if (container) {
-                if (id === 'chat') {
-                    container.classList.add('chat-mode');
-                } else {
-                    container.classList.remove('chat-mode');
-                }
+                container.classList.remove('chat-mode');
             }
             
             const sidebar = document.getElementById('sidebar');
@@ -2274,9 +2206,7 @@
 
             // Immediately load data for the activated section
             try {
-                if (id === 'chat') {
-                    if (typeof refreshChatSidebarList === 'function') refreshChatSidebarList();
-                } else if (id === 'seo') {
+                if (id === 'seo') {
                     if (typeof loadSeoAgent === 'function') loadSeoAgent();
                 } else if (id === 'contactbook') {
                     if (typeof loadContactBook === 'function') loadContactBook();
@@ -2356,9 +2286,6 @@
             document.getElementById('envGemini').value = data.GEMINI_API_KEY || '';
             const envQwenEl = document.getElementById('envQwen'); if (envQwenEl) envQwenEl.value = data.QWEN_API_KEY || '';
             const envQwenBaseEl = document.getElementById('envQwenBase'); if (envQwenBaseEl) envQwenBaseEl.value = data.QWEN_BASE_URL || '';
-            document.getElementById('envWhatsappToken').value = data.WHATSAPP_TOKEN || '';
-            document.getElementById('envPhoneId').value = data.PHONE_NUMBER_ID || '';
-            document.getElementById('envVerifyToken').value = data.VERIFY_TOKEN || '';
             document.getElementById('envOwnerPhone').value = data.OWNER_PHONE_NUMBER || '';
             document.getElementById('guardRestrictPricing').checked = data.RESTRICT_PRICING === true;
             document.getElementById('guardBlockCompetitors').checked = data.BLOCK_COMPETITORS === true;
@@ -2427,9 +2354,6 @@
                 GEMINI_API_KEY: document.getElementById('envGemini').value,
                 QWEN_API_KEY: document.getElementById('envQwen')?.value || '',
                 QWEN_BASE_URL: document.getElementById('envQwenBase')?.value || '',
-                WHATSAPP_TOKEN: document.getElementById('envWhatsappToken').value,
-                PHONE_NUMBER_ID: document.getElementById('envPhoneId').value,
-                VERIFY_TOKEN: document.getElementById('envVerifyToken').value,
                 OWNER_PHONE_NUMBER: document.getElementById('envOwnerPhone').value,
                 RESTRICT_PRICING: document.getElementById('guardRestrictPricing').checked,
                 BLOCK_COMPETITORS: document.getElementById('guardBlockCompetitors').checked
@@ -2546,410 +2470,6 @@
             await loadFAQs();
         }
 
-        // Live Chat Logic
-        let activeContact = null;
-        let activeAiPaused = false;
-        let activeMessageListener = null;
-
-        function renderChatMessageList(messages) {
-            const msgList = document.getElementById('chatMessageList');
-            if (!msgList) return;
-            msgList.innerHTML = '';
-            if (!messages || !messages.length) {
-                msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">No messages yet.</div>';
-                updateChatWindowWarning(0);
-                return;
-            }
-            let lastUserTs = 0;
-            messages.forEach(m => {
-                if (m.sender === 'user' && m.timestamp && m.timestamp > lastUserTs) lastUserTs = m.timestamp;
-                const bubble = document.createElement('div');
-                bubble.className = `msg-bubble msg-${m.sender}`;
-                
-                let timeStr = "";
-                if (m.timestamp) {
-                    const date = new Date(m.timestamp);
-                    const day = date.getDate();
-                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                    const month = months[date.getMonth()];
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    timeStr = `${day} ${month}, ${hours}:${minutes}`;
-                }
-
-                // Real delivery states from Meta: sent (accepted) -> delivered -> read / failed
-                let statusHtml = '';
-                if (m.sender === 'bot') {
-                    if (m.status === 'read') {
-                        statusHtml = `<span class="msg-status" title="Read by recipient" style="color:#2196f3; font-weight:bold;">✓✓</span>`;
-                    } else if (m.status === 'delivered') {
-                        statusHtml = `<span class="msg-status sent" title="Delivered to recipient's phone">✓✓</span>`;
-                    } else if (m.status === 'failed') {
-                        const why = m.error ? ((m.error.title || 'Delivery failed') + (m.error.code ? ' (' + m.error.code + ')' : '') + (m.error.details ? ' — ' + m.error.details : '')) : 'Delivery failed';
-                        statusHtml = `<span class="msg-status" title="${why.replace(/"/g, '&quot;')}" style="color:#c62828; font-weight:bold;">⚠ Not delivered</span>`;
-                    } else {
-                        statusHtml = `<span class="msg-status" title="Accepted by WhatsApp - delivery not confirmed yet">✓</span>`;
-                    }
-                }
-
-                bubble.innerHTML = `
-                    <div style="white-space: pre-wrap; word-break: break-word;">${esc(m.text || '')}</div>
-                    <div style="font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 5px; font-weight: normal; display: flex; justify-content: flex-end; align-items: center; gap: 3px;">${timeStr}${statusHtml}</div>
-                `;
-                msgList.appendChild(bubble);
-            });
-            updateChatWindowWarning(lastUserTs);
-            msgList.scrollTop = msgList.scrollHeight;
-        }
-
-        async function openChat(number) {
-            activeContact = number;
-            const contactInfo = (chatContactsCache && chatContactsCache[number]) || {};
-            const label = contactInfo.leadName || contactInfo.manualName;
-            document.getElementById('chatActiveUser').innerText = label ? `+${number} (${label})` : `+${number}`;
-            document.getElementById('chatInputBar').style.display = 'flex';
-            document.getElementById('aiToggleContainer').style.display = 'flex';
-            
-            document.getElementById('chatContainerEl').classList.add('chat-open');
-            highlightActiveChatContact(number);
-
-            if (activeMessageListener) {
-                activeMessageListener();
-                activeMessageListener = null;
-            }
-            
-            const msgList = document.getElementById('chatMessageList');
-            msgList.innerHTML = '<div style="text-align:center; color:#667781; margin-top:50px;">⏳ Loading real-time messages...</div>';
-            
-            // 1. FAST REST LOAD: load directly via server endpoint for zero-latency initial paint
-            try {
-                const res = await fetch(`api/chats/${encodeURIComponent(number)}/messages`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (activeContact === number && Array.isArray(data)) {
-                        renderChatMessageList(data);
-                    }
-                }
-            } catch(loadErr) {
-                console.warn('[LiveChat] REST message load error:', loadErr);
-            }
-
-            // 2. REAL-TIME LISTENER: keep subscribed to Firestore for live new messages
-            try {
-                if (window.firebaseDb && typeof window.query === 'function' && typeof window.collection === 'function' && typeof window.onSnapshot === 'function') {
-                    const q = window.query(
-                        window.collection(window.firebaseDb, "chats", number, "messages"),
-                        window.orderBy("timestamp", "asc")
-                    );
-
-                    activeMessageListener = window.onSnapshot(q, (snapshot) => {
-                        if (activeContact !== number) return;
-                        const msgs = [];
-                        snapshot.forEach(docSnap => msgs.push(docSnap.data()));
-                        renderChatMessageList(msgs);
-                    }, (error) => {
-                        console.error("Firestore real-time subscription error:", error);
-                    });
-                }
-            } catch(snapErr) {
-                console.warn('[LiveChat] Real-time listener init error:', snapErr);
-            }
-
-            // Fetch AI status from contacts cache or API
-            try {
-                if (chatContactsCache && chatContactsCache[number]) {
-                    activeAiPaused = !!chatContactsCache[number].aiPaused;
-                    updateAiBtn();
-                } else {
-                    const cres = await fetch('api/contacts');
-                    const cdata = await cres.json();
-                    activeAiPaused = cdata[number] ? cdata[number].aiPaused : false;
-                    updateAiBtn();
-                }
-            } catch(e) {}
-        }
-
-        function closeChatView() {
-            document.getElementById('chatContainerEl').classList.remove('chat-open');
-            activeContact = null;
-            const warm = document.getElementById('chatWindowWarning');
-            if (warm) warm.style.display = 'none';
-            if (activeMessageListener) {
-                activeMessageListener();
-                activeMessageListener = null;
-            }
-        }
-
-        // WhatsApp window status per chat (the 24h rule applies to EVERY business - set by WhatsApp, not this app)
-        function updateChatWindowWarning(lastUserTs) {
-            const el = document.getElementById('chatWindowWarning');
-            if (!el) return;
-            if (!lastUserTs) {
-                el.style.display = 'block';
-                el.style.background = '#fff8e1'; el.style.borderTopColor = '#ffe082'; el.style.color = '#8d6e00';
-                el.innerHTML = '🚫 <b>WhatsApp is blocking normal messages to this customer</b> — they have never messaged you. The WhatsApp rule (same for every business, not this app): normal messages are delivered only within 24 hours of the customer last message. 👉 Use the 📨 <b>Template</b> button — templates are delivered anytime.';
-                return;
-            }
-            const hours = (Date.now() - lastUserTs) / 3600000;
-            if (hours > 24) {
-                const ago = hours >= 48 ? Math.floor(hours / 24) + ' day(s)' : Math.floor(hours) + ' hour(s)';
-                el.style.display = 'block';
-                el.style.background = '#fff8e1'; el.style.borderTopColor = '#ffe082'; el.style.color = '#8d6e00';
-                el.innerHTML = '🚫 <b>WhatsApp is blocking normal messages to this customer</b> — their last message was <b>' + ago + ' ago</b>. The WhatsApp rule (same for every business, not this app): normal messages are delivered only within 24 hours of the customer last message. 👉 Use the 📨 <b>Template</b> button (delivered anytime), or wait for the customer to message you — then normal chat works again for 24 hours.';
-            } else {
-                const ago2 = hours >= 1 ? Math.floor(hours) + ' hour(s)' : Math.max(1, Math.floor(hours * 60)) + ' minute(s)';
-                el.style.display = 'block';
-                el.style.background = '#e8f5e9'; el.style.borderTopColor = '#a5d6a7'; el.style.color = '#1b5e20';
-                el.innerHTML = '✅ <b>WhatsApp window is open</b> — this customer messaged you ' + ago2 + ' ago, so <b>normal messages to them WILL be delivered</b>. (Window closes 24 hours after their last message.)';
-            }
-        }
-
-        // ===== WhatsApp template sending (delivered even outside the 24h window) =====
-        var waTemplatesCache = [];
-
-        async function loadWaTemplateOptions() {
-            const sel = document.getElementById('waTplSelect');
-            if (!sel) return;
-            sel.innerHTML = '<option value="">Loading templates...</option>';
-            try {
-                const r = await fetch('api/wa-templates');
-                const d = await r.json();
-                if (!r.ok) throw new Error(d.error || 'Failed to load templates');
-                waTemplatesCache = (d.templates || []).filter(t => t.status === 'APPROVED');
-                if (!waTemplatesCache.length) { sel.innerHTML = '<option value="">(no approved templates yet)</option>'; return; }
-                sel.innerHTML = waTemplatesCache.map((t, i) => '<option value="' + i + '">' + wsEsc(t.name) + ' · ' + wsEsc(t.language) + ' · ' + wsEsc(t.category) + '</option>').join('');
-                waTplChanged();
-            } catch (e) { sel.innerHTML = '<option value="">❌ ' + wsEsc(e.message) + '</option>'; }
-        }
-
-        function openWaTemplateModal() {
-            if (!activeContact) { toastMsg('Open a chat first'); return; }
-            document.getElementById('waTplTo').value = '+' + activeContact;
-            document.getElementById('waTplResult').style.display = 'none';
-            document.getElementById('waTemplateModal').style.display = 'flex';
-            loadWaTemplateOptions();
-        }
-        function closeWaTemplateModal() { document.getElementById('waTemplateModal').style.display = 'none'; }
-
-        function waTplChanged() {
-            const t = waTemplatesCache[parseInt(document.getElementById('waTplSelect').value)];
-            const bodyEl = document.getElementById('waTplBody');
-            const varsEl = document.getElementById('waTplVars');
-            varsEl.innerHTML = '';
-            if (!t) { bodyEl.style.display = 'none'; return; }
-            bodyEl.style.display = 'block';
-            bodyEl.innerText = t.body || '(no body text)';
-            for (let i = 1; i <= (t.varCount || 0); i++) {
-                const div = document.createElement('div');
-                div.className = 'form-group';
-                div.innerHTML = '<label>Variable {{' + i + '}}</label><input type="text" id="waTplVar' + i + '" placeholder="{{' + i + '}}" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">';
-                varsEl.appendChild(div);
-            }
-        }
-
-        // Friendly translations for common WhatsApp API errors
-        function waFriendlyError(msg) {
-            const m = String(msg || '');
-            if (m.indexOf('132000') !== -1) return 'All template variables must be filled with a value ({{1}}, {{2}}...).';
-            if (m.indexOf('132001') !== -1) return 'That template is not approved (yet) on your WhatsApp account.';
-            if (m.indexOf('131047') !== -1) return 'This customer has not messaged in the last 24 hours - WhatsApp blocks normal messages. Use a template instead.';
-            if (m.indexOf('131026') !== -1) return 'This number cannot receive WhatsApp messages (not on WhatsApp or blocked by the user).';
-            return m;
-        }
-
-        async function sendWaTemplate() {
-            const t = waTemplatesCache[parseInt(document.getElementById('waTplSelect').value)];
-            const box = document.getElementById('waTplResult');
-            if (!t) { toastMsg('Pick a template first'); return; }
-            const variables = [];
-            const missing = [];
-            for (let i = 1; i <= (t.varCount || 0); i++) {
-                const el = document.getElementById('waTplVar' + i);
-                const v = el ? el.value.trim() : '';
-                variables.push(v);
-                if (!v) missing.push(i);
-            }
-            if (missing.length) {
-                box.style.display = 'block'; box.style.background = '#fff8e1'; box.style.color = '#8d6e00';
-                box.innerHTML = '⚠️ Please fill all template variables first: ' + missing.map(n => '<b>{{' + n + '}}</b>').join(', ') + '<br>(WhatsApp requires a value for every variable, e.g. the customer name and the amount.)';
-                const first = document.getElementById('waTplVar' + missing[0]);
-                if (first) first.focus();
-                return;
-            }
-            const btn = document.getElementById('waTplSendBtn');
-            btn.disabled = true; btn.innerText = '⏳ Sending...';
-            try {
-                const r = await fetch('api/chats/send-template', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number: activeContact, templateName: t.name, language: t.language, variables: variables }) });
-                const d = await r.json();
-                if (!r.ok) throw new Error(d.error || 'Failed');
-                box.style.display = 'block'; box.style.background = '#e8f5e9'; box.style.color = '#1b5e20';
-                box.innerHTML = '✅ Template sent! The chat shows the message — ✓ = accepted, ✓✓ = delivered, ⚠ = not delivered.';
-                toastMsg('📨 Template sent');
-            } catch (e) {
-                box.style.display = 'block'; box.style.background = '#fbe9e7'; box.style.color = '#c62828';
-                box.innerText = '❌ ' + waFriendlyError(e.message);
-            }
-            btn.disabled = false; btn.innerText = '📨 Send Template';
-        }
-
-        function updateAiBtn() {
-            const btn = document.getElementById('aiToggleBtn');
-            if (activeAiPaused) {
-                btn.innerText = "OFF (Paused)";
-                btn.style.backgroundColor = "red";
-                btn.style.color = "white";
-            } else {
-                btn.innerText = "ON (Active)";
-                btn.style.backgroundColor = "var(--primary)";
-                btn.style.color = "white";
-            }
-        }
-
-        async function toggleAI() {
-            if (!activeContact) return;
-            activeAiPaused = !activeAiPaused;
-            updateAiBtn();
-            await fetch('api/chats/toggleAI', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ number: activeContact, aiPaused: activeAiPaused })
-            });
-        }
-
-        async function sendManualReply() {
-            if (!activeContact) return;
-            const input = document.getElementById('chatMsgInput');
-            const text = input.value.trim();
-            if (!text) return;
-            
-            input.value = '';
-            
-            // Append instantly to UI
-            const msgList = document.getElementById('chatMessageList');
-            const bubble = document.createElement('div');
-            bubble.className = 'msg-bubble msg-bot';
-            bubble.innerText = text;
-            msgList.appendChild(bubble);
-            msgList.scrollTop = msgList.scrollHeight;
-
-            // Sends to API - AI stays ACTIVE (manual chatting never pauses the AI)
-            await fetch('api/chats/reply', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ number: activeContact, text })
-            });
-            // Keep the current AI status as-is (only the toggle button changes it)
-            updateAiBtn();
-        }
-
-        // Auto-refresh & instant rendering of contact list in chat sidebar
-        async function refreshChatSidebarList() {
-            const listDiv = document.getElementById('chatSidebarList');
-            if (!listDiv) return;
-            try {
-                const res = await fetch('api/contacts');
-                const contacts = await res.json();
-                chatContactsCache = contacts || {};
-                renderChatSidebarFromCache();
-            } catch(err) {
-                console.warn('Failed to load chat contacts:', err);
-                renderChatSidebarFromCache();
-            }
-        }
-
-        function highlightActiveChatContact(num) {
-            document.querySelectorAll('#chatSidebarList .chat-contact').forEach(el => {
-                if (el.getAttribute('data-number') === String(num)) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
-        }
-
-        function renderChatSidebarFromCache() {
-            const listDiv = document.getElementById('chatSidebarList');
-            if (!listDiv) return;
-            const contacts = chatContactsCache || {};
-            listDiv.innerHTML = '';
-            
-            const sortedKeys = Object.keys(contacts).sort((a, b) => {
-                const timeA = (contacts[a] && contacts[a].lastInteraction) || 0;
-                const timeB = (contacts[b] && contacts[b].lastInteraction) || 0;
-                return timeB - timeA;
-            });
-
-            if (!sortedKeys.length) {
-                listDiv.innerHTML = '<div style="padding:24px 16px; text-align:center; color:#667781; font-size:13px;">No Meta WhatsApp chats found yet.</div>';
-                return;
-            }
-
-            const searchInput = document.getElementById('chatSearchInput');
-            const query = (searchInput?.value || '').toLowerCase().trim();
-
-            let matchesCount = 0;
-            sortedKeys.forEach(num => {
-                const info = contacts[num] || {};
-                
-                const matchesNum = num.toLowerCase().includes(query);
-                const matchesLeadName = (info.leadName || '').toLowerCase().includes(query);
-                const matchesLeadCompany = (info.leadCompany || '').toLowerCase().includes(query);
-                const matchesLeadProducts = (info.leadProducts || '').toLowerCase().includes(query);
-                const matchesLeadEmail = (info.leadEmail || '').toLowerCase().includes(query);
-                const matchesLeadWebsite = (info.leadWebsite || '').toLowerCase().includes(query);
-                
-                const matchesManName = (info.manualName || '').toLowerCase().includes(query);
-                const matchesManCountry = (info.manualCountry || '').toLowerCase().includes(query);
-                const matchesManActivity = (info.manualActivity || '').toLowerCase().includes(query);
-                const matchesManRemarks = (info.manualRemarks || '').toLowerCase().includes(query);
-
-                if (query && !matchesNum && !matchesLeadName && !matchesLeadCompany && !matchesLeadProducts && !matchesLeadEmail && !matchesLeadWebsite && !matchesManName && !matchesManCountry && !matchesManActivity && !matchesManRemarks) {
-                    return;
-                }
-                matchesCount++;
-
-                const nameLabel = info.leadName ? ` (${esc(info.leadName)})` : (info.manualName ? ` (${esc(info.manualName)})` : '');
-                const d = document.createElement('div');
-                d.className = `chat-contact ${activeContact === num ? 'active' : ''}`;
-                d.setAttribute('data-number', num);
-                d.style.display = 'flex';
-                d.style.justifyContent = 'space-between';
-                d.style.alignItems = 'center';
-                d.style.padding = '12px 14px';
-                
-                d.innerHTML = `
-                    <div style="flex:1; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="openChat('${num}')">
-                        <b>+${esc(num)}</b><span style="font-weight:normal; color:#546e7a;">${nameLabel}</span>
-                    </div>
-                    <div style="display:flex; gap:5px; margin-left:8px; align-items:center;">
-                        <button onclick="openManualDetailsModal('${num}')" title="Add details by us" style="border:none; background:none; font-size:15px; cursor:pointer; padding:2px;">📝</button>
-                        <button onclick="openAiFetchedModal('${num}')" title="AI fetched details" style="border:none; background:none; font-size:15px; cursor:pointer; padding:2px;">🤖</button>
-                    </div>
-                `;
-                listDiv.appendChild(d);
-            });
-
-            if (matchesCount === 0 && query) {
-                listDiv.innerHTML = '<div style="padding:20px; text-align:center; color:#667781; font-size:13px;">No contacts match "' + esc(query) + '"</div>';
-            }
-        }
-
-        // Search input instant filtering
-        document.addEventListener('DOMContentLoaded', () => {
-            const searchInput = document.getElementById('chatSearchInput');
-            if (searchInput) {
-                searchInput.addEventListener('input', () => renderChatSidebarFromCache());
-            }
-        });
-
-        // Periodic background poll (every 5 seconds when in chat section)
-        setInterval(async () => {
-            if (document.hidden) return;
-            const chatSec = document.getElementById('chatSection');
-            if (chatSec && chatSec.classList.contains('active')) {
-                await refreshChatSidebarList();
-            }
-        }, 5000);
 
         async function askAiSuggestion(field) {
             const promptInput = prompt("What specific topics or parameters should the AI include in this suggestion?");
@@ -3842,7 +3362,7 @@
                         ${c.lastChatAt ? '<div style="color:#667781; font-size:12px;">🕒 Last chat: ' + new Date(c.lastChatAt).toLocaleString() + '</div>' : ''}
                     </div>
                     <div style="display:flex; gap:6px; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:10px;">
-                        ${c.fromChat ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
+                        ${c.phone ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
                         ${(!c.fromBook && c.fromChat) ? `<button onclick="saveChatContactToBook('${c.phone}')" style="${BTN_ROW}">💾 Save to Book</button>` : ''}
                         <button onclick="openContactModal('${c.phone}')" style="${BTN_ROW}">✏️ Edit</button>
                         ${c.fromBook ? `<button onclick="deleteBookContact('${c.phone}')" style="${BTN_ROW} color:#c62828;">🗑️</button>` : ''}
@@ -3852,8 +3372,13 @@
         }
 
         function openChatFromBook(phone) {
-            showSection('chat');
-            if (typeof openChat === 'function') openChat(normalizePhoneJs(phone));
+            const cleanDigits = normalizePhoneJs(phone);
+            if (!cleanDigits) return;
+            if (typeof openWaWebPage === 'function') openWaWebPage();
+            const jid = cleanDigits + '@s.whatsapp.net';
+            if (typeof selectWaWebChat === 'function') {
+                selectWaWebChat(jid, '+' + cleanDigits, cleanDigits);
+            }
         }
 
         async function saveChatContactToBook(phone) {
@@ -4043,7 +3568,7 @@
                     </div>
                     <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; border-top:1px solid var(--border); padding-top:10px;">
                         <select onchange="updateLeadStatus('${c.phone}', this.value)" style="padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; font-weight:bold;">${opts}</select>
-                        ${c.fromChat ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
+                        ${c.phone ? `<button onclick="openChatFromBook('${c.phone}')" style="${BTN_ROW}">💬 Chat</button>` : ''}
                         ${!c.fromBook ? `<button onclick="saveChatContactToBook('${c.phone}')" style="${BTN_ROW}">💾 Save to Book</button>` : ''}
                         <button onclick="openContactModal('${c.phone}')" style="${BTN_ROW}">✏️ Edit</button>
                         ${c.fromBook ? `<button onclick="deleteBookContact('${c.phone}')" style="${BTN_ROW} color:#c62828;">🗑️</button>` : ''}

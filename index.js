@@ -572,114 +572,24 @@ function orderedProviders(preferred, available) {
   const k = (aiFallbackRotation++) % base.length;
   return order.concat(base.slice(k), base.slice(0, k));
 }
+// --- WhatsApp Messaging (Directly routed to WhatsApp Web / Baileys personal client) ---
 async function sendWhatsAppMessage(to, text, settings) {
   if (DRY_RUN) {
     console.log('[DRY-RUN] Outbound text BLOCKED -> ' + to + ' | ' + safeTruncate(text, 140));
     return true;
   }
-  const token = settings.WHATSAPP_TOKEN;
-  const phoneId = settings.PHONE_NUMBER_ID;
-  const apiVersion = process.env.API_VERSION || 'v20.0';
-  
-  if (!token || !phoneId) {
-    console.error("Missing WhatsApp Token or Phone ID in DB Settings.");
-    return false;
-  }
-
-  try {
-    const resp = await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/${apiVersion}/${phoneId}/messages`,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      data: {
-        messaging_product: 'whatsapp',
-        to: to,
-        type: 'text',
-        text: { body: text }
-      }
-    });
-
-    // Log to Firestore. "sent" only means Meta ACCEPTED the message - the real delivery
-    // status (delivered / read / failed) arrives later via the status webhook and updates this doc.
-    const wamid = (resp.data && resp.data.messages && resp.data.messages[0] && resp.data.messages[0].id) || null;
-    await addDoc(collection(db, "chats", to, "messages"), {
-      sender: "bot",
-      text: text,
-      status: "sent",
-      wamid: wamid,
-      metaAcceptedAt: Date.now(),
-      timestamp: Date.now()
-    });
-    return true;
-  } catch (err) { 
-    console.error("Error sending WhatsApp message:", err.response ? err.response.data : err.message); 
-    return false;
-  }
+  return await sendWaWebMessage(to, text);
 }
 
-// Applies a Meta delivery status (sent / delivered / read / failed) to the matching logged message.
-// NOTE: Meta accepts the send API call even when it will NOT deliver (e.g. customer idle > 24h),
-// so "failed" events carry the real reason (e.g. error 131047 re-engagement) - the dashboard shows it.
-async function updateMessageStatus(st) {
-  if (!st || !st.id || !st.recipient_id) return;
-  const snap = await getDocs(query(collection(db, "chats", st.recipient_id, "messages"), where("wamid", "==", st.id), limit(1)));
-  if (snap.empty) return;
-  const upd = { status: st.status, statusUpdatedAt: Date.now() };
-  if (st.status === 'failed') {
-    const err = (st.errors && st.errors[0]) || {};
-    upd.error = {
-      code: err.code || 0,
-      title: err.title || 'Delivery failed',
-      details: (err.error_data && err.error_data.details) || err.message || ''
-    };
-    console.log(`[WEBHOOK] ❌ Message to ${st.recipient_id} FAILED: ${upd.error.code} ${upd.error.title} - ${upd.error.details}`);
-  } else {
-    console.log(`[WEBHOOK] Message to ${st.recipient_id} -> ${st.status}`);
-  }
-  await setDoc(snap.docs[0].ref, upd, { merge: true });
+async function getWaTemplates() {
+  return { templates: [] };
 }
 
-// --- WhatsApp TEMPLATES: the ONLY way to deliver a message when the customer has not messaged in 24h ---
-async function getWaTemplates(settings) {
-  if (!settings.WA_WABA_ID) return { error: 'WhatsApp Business Account id not captured yet - it is saved automatically as soon as the app receives a webhook.' };
-  const r = await axios.get('https://graph.facebook.com/' + (process.env.API_VERSION || 'v20.0') + '/' + settings.WA_WABA_ID + '/message_templates',
-    { params: { fields: 'name,status,language,category,components', limit: 100 }, headers: { Authorization: 'Bearer ' + settings.WHATSAPP_TOKEN }, timeout: 30000 });
-  return { templates: (r.data && r.data.data) || [] };
+async function sendWhatsAppTemplate(to, templateName) {
+  console.warn('[WA-WEB] Message templates are only supported on Meta Cloud API (businesswhatanagent).');
+  return false;
 }
 
-async function sendWhatsAppTemplate(to, templateName, languageCode, variables, settings) {
-  if (DRY_RUN) {
-    console.log('[DRY-RUN] Outbound TEMPLATE "' + templateName + '" BLOCKED -> ' + to);
-    return true;
-  }
-  const token = settings.WHATSAPP_TOKEN;
-  const phoneId = settings.PHONE_NUMBER_ID;
-  const apiVersion = process.env.API_VERSION || 'v20.0';
-  if (!token || !phoneId) throw new Error('WhatsApp token / phone id missing in settings.');
-  const vars = (variables || []).map(v => String(v == null ? '' : v)).filter(v => v !== '');
-  const components = vars.length ? [{ type: 'body', parameters: vars.map(v => ({ type: 'text', text: v })) }] : [];
-  const resp = await axios({
-    method: 'POST',
-    url: `https://graph.facebook.com/${apiVersion}/${phoneId}/messages`,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    data: { messaging_product: 'whatsapp', to: to, type: 'template', template: { name: templateName, language: { code: languageCode || 'en_US' }, components: components } }
-  });
-  const wamid = (resp.data && resp.data.messages && resp.data.messages[0] && resp.data.messages[0].id) || null;
-  await addDoc(collection(db, 'chats', to, 'messages'), {
-    sender: 'bot',
-    text: '📨 Template "' + templateName + '" sent' + (vars.length ? ': ' + vars.join(' · ') : ''),
-    status: 'sent',
-    wamid: wamid,
-    isTemplate: true,
-    templateName: templateName,
-    metaAcceptedAt: Date.now(),
-    timestamp: Date.now()
-  });
-  return true;
-}
 
 // --- Text safety helpers: AI APIs reject JSON that contains unpaired UTF-16 surrogates
 // (this happens when an emoji gets cut in half by a character limit - it broke ALL boss replies on 2026-09-11) ---
@@ -1595,9 +1505,6 @@ app.get('/api/env', async (req, res) => {
     QWEN_API_KEY: settings.QWEN_API_KEY || '',
     QWEN_BASE_URL: settings.QWEN_BASE_URL || '',
     QWEN_MODEL: settings.QWEN_MODEL || '',
-    WHATSAPP_TOKEN: settings.WHATSAPP_TOKEN || '',
-    PHONE_NUMBER_ID: settings.PHONE_NUMBER_ID || '',
-    VERIFY_TOKEN: settings.VERIFY_TOKEN || '',
     OWNER_PHONE_NUMBER: settings.OWNER_PHONE_NUMBER || '',
     RESTRICT_PRICING: settings.RESTRICT_PRICING === true,
     BLOCK_COMPETITORS: settings.BLOCK_COMPETITORS === true
@@ -1618,9 +1525,6 @@ app.post('/api/env', async (req, res) => {
       QWEN_API_KEY: keep(data.QWEN_API_KEY, prev.QWEN_API_KEY),
       QWEN_BASE_URL: keep(data.QWEN_BASE_URL, prev.QWEN_BASE_URL),
       QWEN_MODEL: keep(data.QWEN_MODEL, prev.QWEN_MODEL) || 'qwen3.8-flash',
-      WHATSAPP_TOKEN: keep(data.WHATSAPP_TOKEN, prev.WHATSAPP_TOKEN),
-      PHONE_NUMBER_ID: keep(data.PHONE_NUMBER_ID, prev.PHONE_NUMBER_ID),
-      VERIFY_TOKEN: keep(data.VERIFY_TOKEN, prev.VERIFY_TOKEN),
       OWNER_PHONE_NUMBER: keep(data.OWNER_PHONE_NUMBER, prev.OWNER_PHONE_NUMBER),
       RESTRICT_PRICING: data.RESTRICT_PRICING === true,
       BLOCK_COMPETITORS: data.BLOCK_COMPETITORS === true
@@ -1842,27 +1746,6 @@ app.post('/api/contactbook/sync-chats', async (req, res) => {
     }
     res.json({ success: true, synced: rows.length });
   } catch (error) { res.status(500).json({ error: 'Sync failed: ' + error.message }); }
-});
-
-app.get('/api/chats/:number/messages', async (req, res) => {
-  try {
-    const q = query(collection(db, "chats", req.params.number, "messages"), orderBy("timestamp", "asc"));
-    const snapshot = await getDocs(q);
-    res.json(snapshot.docs.map(d => d.data()));
-  } catch (err) { res.status(500).json({error: "Failed to load messages"}); }
-});
-
-app.post('/api/chats/reply', async (req, res) => {
-  try {
-    const { number, text } = req.body;
-    const settings = await getSettings();
-    const accepted = await sendWhatsAppMessage(number, text, settings);
-    
-    // Update interaction timestamp only - AI stays ACTIVE (manual chatting never pauses the AI)
-    await setDoc(doc(db, "appData", "contacts"), { [number]: { lastInteraction: Date.now() } }, { merge: true });
-    
-    res.json({ success: true, accepted: !!accepted });
-  } catch (err) { res.status(500).json({error: "Failed to send"}); }
 });
 
 app.post('/api/chats/toggleAI', async (req, res) => {
@@ -3470,89 +3353,12 @@ app.post('/api/ai-tasks/delete', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// --- WhatsApp templates API ---
-app.get('/api/wa-templates', async (req, res) => {
-  try {
-    const settings = await getSettings();
-    const out = await getWaTemplates(settings);
-    if (out.error) return res.status(400).json({ error: out.error });
-    const list = out.templates.map(t => {
-      const body = ((t.components || []).find(c => c.type === 'BODY') || {}).text || '';
-      const found = body.match(/\{\{\d+\}\}/g) || [];
-      const varCount = found.length ? Math.max.apply(null, found.map(x => parseInt(x.replace(/\D/g, '')))) : 0;
-      return { name: t.name, status: t.status, language: t.language, category: t.category, body: body, varCount: varCount };
-    });
-    res.json({ success: true, templates: list });
-  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 300) : e.message }); }
+
+// --- Webhooks (Meta Cloud API is migrated to businesswhatanagent) ---
+app.get('/webhook', (req, res) => {
+  res.status(200).send('META_WEBHOOK_MIGRATED_TO_BUSINESSWHATANAGENT');
 });
 
-app.post('/api/wa-templates/create', async (req, res) => {
-  try {
-    const b = req.body || {};
-    const name = String(b.name || '').toLowerCase().replace(/[^a-z0-9_]/g, '_').substring(0, 60);
-    if (!/^[a-z0-9_]{3,60}$/.test(name)) return res.status(400).json({ error: 'Template name: lowercase letters, numbers and underscores only (3-60 chars).' });
-    if (!String(b.bodyText || '').trim()) return res.status(400).json({ error: 'Template body text is required. Use {{1}}, {{2}} for variables.' });
-    const settings = await getSettings();
-    if (!settings.WA_WABA_ID) return res.status(400).json({ error: 'WhatsApp Business Account id not captured yet - send/receive one WhatsApp message first.' });
-    const components = [];
-    if (String(b.headerText || '').trim()) components.push({ type: 'HEADER', format: 'TEXT', text: String(b.headerText).trim() });
-    components.push({ type: 'BODY', text: String(b.bodyText).trim() });
-    const payload = {
-      name: name,
-      language: b.language || 'en_US',
-      category: (b.category === 'MARKETING' || b.category === 'AUTHENTICATION') ? b.category : 'UTILITY',
-      components: components
-    };
-    const r = await axios.post('https://graph.facebook.com/' + (process.env.API_VERSION || 'v20.0') + '/' + settings.WA_WABA_ID + '/message_templates', payload,
-      { headers: { Authorization: 'Bearer ' + settings.WHATSAPP_TOKEN, 'Content-Type': 'application/json' }, timeout: 60000 });
-    res.json({ success: true, id: r.data && r.data.id, status: r.data && r.data.status, category: payload.category, note: 'Submitted to WhatsApp for review - approved templates appear in the template list.' });
-  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 400) : e.message }); }
-});
-
-app.post('/api/chats/send-template', async (req, res) => {
-  try {
-    const b = req.body || {};
-    if (!b.number || !b.templateName) return res.status(400).json({ error: 'number and templateName are required.' });
-    const settings = await getSettings();
-    await sendWhatsAppTemplate(b.number, b.templateName, b.language || 'en_US', b.variables || [], settings);
-    await setDoc(doc(db, 'appData', 'contacts'), { [b.number]: { lastInteraction: Date.now() } }, { merge: true });
-    res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.response ? JSON.stringify(e.response.data).substring(0, 300) : e.message }); }
-});
-
-// --- Webhooks ---
-app.get('/webhook', async (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-  const settings = await getSettings();
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === settings.VERIFY_TOKEN) {
-      return res.status(200).send(challenge);
-    } else {
-      return res.status(403).sendStatus(403);
-    }
-  }
-  return res.status(400).send('Missing hub.mode or hub.verify_token');
-});
-
-// Download WhatsApp Media (Audio/Voice Note)
-async function downloadWhatsAppMedia(mediaId, settings) {
-  const url = `https://graph.facebook.com/v20.0/${mediaId}`;
-  const res = await axios.get(url, {
-    headers: { 'Authorization': `Bearer ${settings.WHATSAPP_TOKEN}` }
-  });
-  const mediaUrl = res.data.url;
-  const mediaRes = await axios.get(mediaUrl, {
-    headers: { 'Authorization': `Bearer ${settings.WHATSAPP_TOKEN}` },
-    responseType: 'arraybuffer'
-  });
-  return {
-    data: mediaRes.data,
-    mimeType: res.data.mime_type
-  };
-}
 
 // Gemini media chain - the automatic fallback when Qwen cannot handle the media
 // (Gemini 3.6 Flash first: it is the most reliable Gemini model for audio/images right now)
@@ -3636,264 +3442,9 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
   return await geminiMediaAnalyze(imageBuffer, mimeType, prompt, settings);
 }
 
-async function processIncomingMessage(message) {
-  const senderNumber = message.from;
-  let userText = "";
-  const settings = await getSettings();
 
-      if (message.type === 'text') {
-        userText = message.text.body;
-      } else if (message.type === 'audio') {
-        try {
-          const audioId = message.audio?.id;
-          if (audioId) {
-            console.log(`[AUDIO] Fetching and transcribing audio ${audioId} from ${senderNumber}`);
-            const media = await downloadWhatsAppMedia(audioId, settings);
-            const transcription = await transcribeAudio(media.data, media.mimeType, settings);
-            console.log(`[AUDIO] Transcribed: "${transcription}"`);
-            userText = `[Voice Message]: ${transcription}`;
-          } else {
-            return;
-          }
-        } catch(err) {
-          console.error("Audio download/transcription failed:", err.message);
-          await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble understanding your voice note.", settings);
-          return;
-        }
-      } else if (message.type === 'image') {
-        try {
-          const imageId = message.image?.id;
-          if (imageId) {
-            console.log(`[IMAGE] Fetching and analyzing image ${imageId} from ${senderNumber}`);
-            const media = await downloadWhatsAppMedia(imageId, settings);
-            const description = await analyzeImage(media.data, media.mimeType, settings);
-            console.log(`[IMAGE] Description: "${description}"`);
-            userText = `[Image]: ${description}`;
-          } else {
-            return;
-          }
-        } catch(err) {
-          console.error("Image download/analysis failed:", err.message);
-          await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble processing your image.", settings);
-          return;
-        }
-      } else if (message.type === 'contact') {
-        // WhatsApp "share contact" / business card messages
-        const cards = message.contacts || [];
-        if (!cards.length) return;
-        const parts = [];
-        for (const c of cards) {
-          const nm = (c.name && (c.name.formatted_name || [c.name.first_name, c.name.last_name].filter(Boolean).join(' '))) || '';
-          const phones = (c.phones || []).map(p => p.phone).filter(Boolean);
-          const emails = (c.emails || []).map(e => e.email).filter(Boolean);
-          const company = (c.org && c.org.company) || '';
-          const urls = (c.urls || []).map(u => u.url).filter(Boolean);
-          parts.push(`Name: ${nm} | Phones: ${phones.join(', ')} | Emails: ${emails.join(', ')} | Company: ${company}${urls.length ? ' | Website: ' + urls.join(', ') : ''}`);
-
-          // Auto-save shared contact cards into the Contact Book
-          if (phones.length > 0) {
-            try {
-              const cardPhone = normalizePhone(phones[0]);
-              if (cardPhone.length >= 8) {
-                const cardData = { phone: cardPhone, phoneRaw: phones[0], name: nm, source: 'Contact Card', updatedAt: Date.now() };
-                if (phones[1]) cardData.phone2 = normalizePhone(phones[1]);
-                if (company) cardData.company = company;
-                if (emails[0]) cardData.email = emails[0].toLowerCase();
-                if (urls[0]) cardData.website = urls[0];
-                await setDoc(doc(db, "contactBook", cardPhone), cardData, { merge: true });
-                console.log(`[CONTACT CARD] Saved ${nm} (${cardPhone}) to Contact Book`);
-              }
-            } catch (cardErr) { console.error('Contact card save failed:', cardErr.message); }
-          }
-        }
-        userText = `[Contact Card]: ${parts.join(' || ')}`;
-        console.log(`[CONTACT CARD] Received from ${senderNumber}: ${userText.substring(0, 150)}`);
-      } else if (message.type === 'document') {
-        // PDF / CSV / text / image documents - read them (OCR) and extract the data
-        try {
-          const docMsg = message.document || {};
-          const docId = docMsg.id;
-          const fileName = docMsg.filename || 'document';
-          const docMime = docMsg.mime_type || '';
-          if (docId) {
-            console.log(`[DOC] Fetching document "${fileName}" (${docMime}) from ${senderNumber}`);
-            const media = await downloadWhatsAppMedia(docId, settings);
-            const buf = Buffer.from(media.data);
-            const mime = docMime || media.mimeType || '';
-
-            if (buf.length > 15 * 1024 * 1024) {
-              await sendWhatsAppMessage(senderNumber, "That file is too large for me to read (max 15 MB). Please send a smaller file.", settings);
-              return;
-            }
-
-            let extracted = '';
-            if (mime.includes('pdf')) {
-              extracted = await extractDocumentWithAI(buf, 'application/pdf', settings);
-            } else if (mime.startsWith('image/')) {
-              extracted = await analyzeImage(media.data, mime, settings);
-            } else if (mime.startsWith('text/') || /\.(csv|txt)$/i.test(fileName)) {
-              extracted = buf.toString('utf8').substring(0, 6000);
-            } else {
-              await sendWhatsAppMessage(senderNumber, "I can read PDF, CSV, text and image files. Please re-send it in one of those formats.", settings);
-              return;
-            }
-
-            console.log(`[DOC] Extracted ${extracted.length} chars from "${fileName}"`);
-            userText = `[Document: ${fileName}]: ${extracted}`;
-          } else {
-            return;
-          }
-        } catch(err) {
-          console.error("Document download/extraction failed:", err.message);
-          await sendWhatsAppMessage(senderNumber, "Sorry, I had trouble reading that file. Please try again.", settings);
-          return;
-        }
-      } else {
-        return;
-      }
-
-      // Log to Firestore
-      try {
-        await addDoc(collection(db, "chats", senderNumber, "messages"), {
-          sender: "user",
-          text: userText,
-          timestamp: Date.now()
-        });
-      } catch(err) { console.error("Logging incoming error:", err); }
-
-      // --- BOSS MODE: private access for the boss number ---
-      console.log(`[WEBHOOK] Message from ${senderNumber}: "${(userText || '').substring(0, 60)}"`);
-      const bossCfg = await getBossConfig();
-      if (bossCfg.number && phoneMatch(senderNumber, bossCfg.number)) {
-        console.log(`[BOSS] Boss message detected from ${senderNumber}`);
-        // Detect phone numbers inside documents/images/voice notes so the boss can be asked to save them
-        const isMediaMsg = /^\[(Document|Image|Voice Message)/i.test(userText || '');
-        const detectedPhones = isMediaMsg ? extractPhonesFromText(userText) : [];
-        await handleBossMessage(senderNumber, userText, settings, bossCfg, { detectedPhones });
-        return;
-      }
-
-      // Proxy check (owner relay)
-      if (settings.OWNER_PHONE_NUMBER && senderNumber === settings.OWNER_PHONE_NUMBER) {
-        if (userText.toUpperCase().startsWith("REPLY ")) {
-          const parts = userText.split(" ");
-          const targetNumber = parts[1];
-          const msgBody = parts.slice(2).join(" ");
-          
-          if (targetNumber && msgBody) {
-            await sendWhatsAppMessage(targetNumber, msgBody, settings);
-            // Mark interaction only - AI stays ACTIVE (manual sending never pauses the AI)
-            await setDoc(doc(db, "appData", "contacts"), { [targetNumber]: { lastInteraction: Date.now() } }, { merge: true });
-            await sendWhatsAppMessage(senderNumber, `✅ Sent for +${targetNumber} (AI stays active).`, settings);
-            return;
-          }
-        }
-      }
-
-      // Track chat counts / interaction - per-contact merged write so simultaneous chats never overwrite each other
-      const contactsRef = doc(db, "appData", "contacts");
-      let wasPaused = false;
-      try {
-        const contactsSnap = await getDoc(contactsRef);
-        const contacts = contactsSnap.exists() ? contactsSnap.data() : {};
-        const info = contacts[senderNumber] || {};
-        wasPaused = info.aiPaused === true;
-        const currentCount = (info.chatCount || 0) + 1;
-
-        await setDoc(contactsRef, {
-          [senderNumber]: {
-            chatCount: currentCount,
-            lastInteraction: Date.now(),
-            firstContacted: info.firstContacted || new Date().toISOString()
-          }
-        }, { merge: true });
-
-        // Auto-save new chat contacts into the Contact Book (first message only)
-        if (currentCount === 1) {
-          try {
-            await setDoc(doc(db, "contactBook", normalizePhone(senderNumber)), {
-              phone: normalizePhone(senderNumber),
-              phoneRaw: senderNumber,
-              source: 'AI Chat',
-              inChat: true,
-              leadStatus: 'New',
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-            }, { merge: true });
-          } catch(cbErr) { console.error('Contact book auto-save failed:', cbErr.message); }
-        }
-
-        // Trigger 4-chatting alert to owner
-        if (currentCount === 4 && settings.OWNER_PHONE_NUMBER && senderNumber !== settings.OWNER_PHONE_NUMBER) {
-          const alertMsg = `⚠️ Alert: Customer +${senderNumber} is chatting regularly (4 messages exchanged). You can click to join the chat directly here: https://wa.me/${senderNumber}`;
-          console.log(`[ALERT] Sending regular-chatter alert to owner: ${settings.OWNER_PHONE_NUMBER}`);
-          try {
-            await sendWhatsAppMessage(settings.OWNER_PHONE_NUMBER, alertMsg, settings);
-          } catch (alertErr) {
-            console.error("Failed to send owner alert:", alertErr.message);
-          }
-        }
-      } catch (cErr) { console.error('Contact tracking error:', cErr.message); }
-
-      if (!wasPaused) {
-        const replyText = await generateAIResponse(userText, senderNumber, settings);
-        await sendWhatsAppMessage(senderNumber, replyText, settings);
-      }
-}
-
-app.post('/webhook', async (req, res) => {
-  res.status(200).send('EVENT_RECEIVED'); // Quick ack
-
-  try {
-    const { body } = req;
-    if (body.object !== 'whatsapp_business_account') return;
-
-    // --- Delivery status updates (sent / delivered / read / failed) ---
-    // These arrive even when there are no incoming messages, so process BEFORE the empty check.
-    for (const entry of (body.entry || [])) {
-      for (const change of (entry.changes || [])) {
-        const statuses = (change.value && change.value.statuses) || [];
-        for (const st of statuses) {
-          updateMessageStatus(st).catch(e => console.error('[WEBHOOK] Status update error:', e.message));
-        }
-      }
-    }
-
-    // Remember the WhatsApp Business Account id (entry.id) - needed later to manage message templates
-    const wabaId = (body.entry || []).map(e => e && e.id).filter(Boolean)[0];
-    if (wabaId) {
-      setDoc(doc(db, "appData", "settings"), { WA_WABA_ID: wabaId }, { merge: true }).catch(() => {});
-    }
-
-    // Collect ALL messages from the payload - Meta can batch several messages
-    // (from several different people) into ONE webhook call.
-    const bySender = new Map();
-    for (const entry of (body.entry || [])) {
-      for (const change of (entry.changes || [])) {
-        const msgs = (change.value && change.value.messages) || [];
-        for (const m of msgs) {
-          if (!m || !m.from) continue;
-          if (!bySender.has(m.from)) bySender.set(m.from, []);
-          bySender.get(m.from).push(m);
-        }
-      }
-    }
-    const totalMsgs = [...bySender.values()].reduce((n, arr) => n + arr.length, 0);
-    if (totalMsgs === 0) return;
-    if (totalMsgs > 1) console.log(`[WEBHOOK] Batch received: ${totalMsgs} message(s) from ${bySender.size} sender(s)`);
-
-    // Process each sender's messages in order, but ALL senders CONCURRENTLY
-    for (const [num, msgs] of bySender.entries()) {
-      (async () => {
-        for (const m of msgs) {
-          try { await processIncomingMessage(m); }
-          catch (e) { console.error(`Webhook message processing error (${num}):`, e.message); }
-        }
-      })();
-    }
-  } catch (error) {
-    console.error('Webhook Error:', error.message);
-  }
+app.post('/webhook', (req, res) => {
+  res.status(200).send('META_WEBHOOK_MIGRATED_TO_BUSINESSWHATANAGENT');
 });
 
 // ===== FOLLOW-UP AUTO-SEND SCHEDULER =====
@@ -3967,11 +3518,10 @@ async function processFollowUpScheduler() {
       
       // Check if it's time to send
       if (f.nextSendDate <= now) {
-        // NEVER block a number: always attempt the send. WhatsApp itself may not deliver a message
-        // to a customer who has not messaged in 24h - the chat then shows "⚠ Not delivered" with the reason.
-        console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber}: "${(f.startWords || '').substring(0, 50)}..."`);
+        // Send directly through WhatsApp Web
+        console.log(`[SCHEDULER] Sending follow-up to ${f.phoneNumber} via WhatsApp Web: "${(f.startWords || '').substring(0, 50)}..."`);
         if (f.startWords) {
-          await sendWhatsAppMessage(f.phoneNumber, f.startWords, settings);
+          await sendWaWebMessage(f.phoneNumber, f.startWords);
         }
         
         // Update counters
@@ -4019,38 +3569,22 @@ async function processAiTasks() {
 
     for (const t of tasks) {
       if (!t || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
-      if (t.taskType === 'waweb_message') continue;   // handled by the WhatsApp-Web node (boss's personal session)
       console.log(`[AI TASKS] Running task ${t.id} (${t.taskType}): "${String(t.title || t.message || t.instruction || '').substring(0, 60)}"`);
       t.status = 'running';
       t.startedAt = now;
       try {
-        if (t.taskType === 'send_message') {
+        if (t.taskType === 'send_message' || t.taskType === 'waweb_message') {
           const target = normalizePhone(t.target || '');
           if (!target) throw new Error('Missing target number.');
-          // NEVER block a number: always attempt the send. (Even if the customer has not messaged in
-          // 24h we still try - WhatsApp decides delivery, and the chat ticks show the real result.)
-          let windowOpen = false;
-          try {
-            const mq = query(collection(db, 'chats', target, 'messages'), orderBy('timestamp', 'desc'), limit(20));
-            const ms = await getDocs(mq);
-            ms.forEach(d => {
-              const m = d.data();
-              if (m.sender === 'user' && m.timestamp && (now - m.timestamp) < 24 * 60 * 60 * 1000) windowOpen = true;
-            });
-          } catch (e) { windowOpen = false; }
-          const settings = await getSettings();
-          const ok = await sendWhatsAppMessage(target, t.message || '', settings);
+          console.log(`[AI TASKS] Sending via WhatsApp Web to ${target}: "${(t.message || '').substring(0, 50)}..."`);
+          const ok = await sendWaWebMessage(target, t.message || '');
           t.status = ok ? 'done' : 'failed';
           t.result = ok
-            ? ('✅ Message accepted by WhatsApp.' + (windowOpen ? '' : ' NOTE: the customer has not messaged in the last 24 hours - if WhatsApp drops it, the chat will show "⚠ Not delivered" with the reason.'))
-            : '❌ WhatsApp API rejected the send.';
+            ? '✅ Message sent via WhatsApp Web.'
+            : '❌ WhatsApp Web message sending failed.';
         } else if (t.taskType === 'send_template') {
-          const settings = await getSettings();
-          const target = normalizePhone(t.target || '');
-          if (!target) throw new Error('Missing target number.');
-          await sendWhatsAppTemplate(target, t.templateName, t.language || 'en_US', t.variables || [], settings);
-          t.status = 'done';
-          t.result = '✅ Template "' + t.templateName + '" accepted by WhatsApp — templates are delivered even outside the 24h window (✓ = sent, ✓✓ = delivered in the chat).';
+          t.status = 'failed';
+          t.result = '⚠️ Message templates are only available for Meta Business API (managed in businesswhatanagent). For personal WhatsApp Web, use normal message tasks.';
         } else if (t.taskType === 'ai_task') {
           const seoSnap = await getDoc(doc(db, 'appData', 'seoAgent'));
           const sites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
