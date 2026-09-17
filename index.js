@@ -299,8 +299,8 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
         temperature: 0.4
       });
       reply = comp.choices[0]?.message?.content || '';
-    } else if (settings.DEEPSEEK_API_KEY) {
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 30000 });
+    } else if (settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY) {
+      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY, timeout: 30000 });
       const comp = await openai.chat.completions.create({
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
         model: 'deepseek-chat',

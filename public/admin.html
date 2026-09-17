@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.17.3 (STRICT NO-HINDI messaging rule added to all AI engines: WhatsApp chatbot, Boss AI, AI Assistant, AI Workspace - Hindi is never sent; reply in Roman Urdu/English instead) -->
+    <!-- APP VERSION: 2026.09.17.4 (Vision cost control: image/document AI reading now limited to selected power customers - text + voice notes stay for everyone; KB modal has the new control card; boss always allowed) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -712,6 +712,36 @@
                                     </div>
                                 </div>
                                 <span style="background:#022c22; color:#34d399; font-size:10px; padding:3px 8px; border-radius:8px; font-weight:bold; border:1px solid #059669;">100+ LANGUAGES</span>
+                            </div>
+                            <div id="waWebKbMediaGateCard" style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border:1px solid #8b5cf6; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:0 4px 18px rgba(139,92,246,0.18); margin-bottom:14px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                                    <div style="display:flex; align-items:center; gap:10px;">
+                                        <span style="font-size:20px;">🖼️</span>
+                                        <div>
+                                            <div style="font-size:13px; font-weight:bold; color:#c4b5fd;">Image &amp; Document Reading — Cost Control (Power Customers)</div>
+                                            <div style="font-size:11px; color:#94a3b8;">Text chat + voice notes (audio) always work for EVERYONE. Choose who may also use AI image/document reading (the expensive vision feature).</div>
+                                        </div>
+                                    </div>
+                                    <span style="background:#3b0764; color:#e9d5ff; font-size:10px; padding:3px 8px; border-radius:8px; font-weight:bold; border:1px solid #7c3aed;">SAVES COST</span>
+                                </div>
+                                <div style="display:grid; grid-template-columns:1fr 1.4fr; gap:12px;">
+                                    <div>
+                                        <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">Vision (images + documents) allowed for:</label>
+                                        <select id="waWebKbMediaMode" style="width:100%; background:#0f172a; border:1px solid #7c3aed; color:#e9d5ff; padding:8px 10px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
+                                            <option value="selected">🎯 Only selected power customers (recommended)</option>
+                                            <option value="all">🌍 Everyone</option>
+                                            <option value="off">🚫 Nobody (text + audio only for all)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">Power customers (phone numbers — one per line or comma separated; boss is always allowed):</label>
+                                        <textarea id="waWebKbMediaAllowed" rows="2" placeholder="+971501234567&#10;971559876543" style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e9edef; padding:10px; font-size:12px; font-family:monospace; line-height:1.4; resize:vertical;"></textarea>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">Polite reply when a non-power customer sends an image/document (optional — leave blank for default):</label>
+                                    <input type="text" id="waWebKbMediaReply" placeholder="Assalam-o-Alaikum! Please send your message as text or a voice note..." style="width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e9edef; padding:9px 10px; font-size:12px;">
+                                </div>
                             </div>
                             <label style="display:block; font-size:13px; font-weight:600; color:#e9edef; margin-bottom:6px;">
                                 🎯 System Prompt & AI Behavior Instructions (WhatsApp Web Specific)
@@ -6110,6 +6140,14 @@
             const bossPasscodeInput = document.getElementById('waWebKbBossPasscode');
             if (bossPasscodeInput) bossPasscodeInput.value = kb.bossPasscode || '2831';
 
+            // Vision cost control (power customers for image/document reading)
+            const mediaModeSel = document.getElementById('waWebKbMediaMode');
+            if (mediaModeSel) mediaModeSel.value = kb.mediaAiMode || 'selected';
+            const mediaAllowedInput = document.getElementById('waWebKbMediaAllowed');
+            if (mediaAllowedInput) mediaAllowedInput.value = Array.isArray(kb.mediaAiAllowed) ? kb.mediaAiAllowed.join('\n') : (kb.mediaAiAllowed || '');
+            const mediaReplyInput = document.getElementById('waWebKbMediaReply');
+            if (mediaReplyInput) mediaReplyInput.value = kb.mediaAiReply || '';
+
             // Rules Engine
             renderWaWebKbRules(kb.rules || []);
 
@@ -6387,6 +6425,9 @@
                 customKnowledgeText: custom,
                 bossPhone: bossPhone,
                 bossPasscode: bossPasscode,
+                mediaAiMode: document.getElementById('waWebKbMediaMode')?.value || 'selected',
+                mediaAiAllowed: (document.getElementById('waWebKbMediaAllowed')?.value || '').split(/[\n,;]+/).map(function (s) { return s.trim(); }).filter(Boolean),
+                mediaAiReply: document.getElementById('waWebKbMediaReply')?.value.trim() || '',
                 rules: rules,
                 autoReplyEnabled: autoEnabled,
                 autoReplyScope: scope,

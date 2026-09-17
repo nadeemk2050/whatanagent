@@ -100,6 +100,7 @@ const BOSS_CONFIG_KEYS = [
   'rules', 'rulesAppend', 'systemPromptInstructions', 'customKnowledgeText', 'knowledgeAppend',
   'greetingTemplate', 'humanHandoverKeywords', 'productsCatalog', 'faqs', 'faqAppend',
   'cooldownSeconds', 'autoReplyEnabled', 'autoReplyScope', 'aiModel',
+  'mediaAiMode', 'mediaAiAllowed', 'mediaAiReply',
   'bossPhone', 'bossPasscode', 'bossName', 'pausedContacts'
 ];
 
@@ -966,6 +967,47 @@ export function resolveRealPhoneNumber(jid) {
   if (!isLidJid(jid) && clean.length <= 15) return clean;
 
   return ''; // Unknown LID
+}
+
+// ---- Vision cost control: image/document AI reading allowed only for chosen "power customers" ----
+// Text chat and voice notes stay available to EVERY customer; the boss is always allowed.
+function digitsOf(s) { return String(s || '').replace(/[^0-9]/g, ''); }
+
+function phonesMatchLoose(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const min = Math.min(a.length, b.length);
+  return min >= 9 && (a.endsWith(b) || b.endsWith(a));
+}
+
+export function isVisualMediaAllowedFor(jid) {
+  const mode = String(waWebKnowledgeBase.mediaAiMode || 'selected').toLowerCase();
+  const senderDigits = digitsOf(jidUser(jid));
+  const resolvedDigits = digitsOf(resolveRealPhoneNumber(jid) || '');
+  const configuredBoss = digitsOf(waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592');
+
+  // Boss is ALWAYS allowed (owner)
+  const isBoss =
+    senderDigits === '128046178803746' ||
+    senderDigits.endsWith('529244592') ||
+    resolvedDigits.endsWith('529244592') ||
+    (configuredBoss && (senderDigits.endsWith(configuredBoss) || resolvedDigits.endsWith(configuredBoss) || configuredBoss.endsWith(senderDigits)));
+  if (isBoss) return true;
+
+  if (mode === 'all') return true;
+  if (mode === 'off') return false;
+
+  const rawList = waWebKnowledgeBase.mediaAiAllowed;
+  const list = (Array.isArray(rawList) ? rawList : String(rawList || '').split(/[\n,;]+/))
+    .map(digitsOf)
+    .filter(n => n.length >= 7);
+  return list.some(n => phonesMatchLoose(n, senderDigits) || phonesMatchLoose(n, resolvedDigits));
+}
+
+export function visualMediaBlockedReplyText() {
+  const custom = String(waWebKnowledgeBase.mediaAiReply || '').trim();
+  if (custom) return custom;
+  return 'Assalam-o-Alaikum! 🙏 Please send your message as *text* or a *voice note* so I can help you right away. Image & document reading is currently limited to selected contacts. Thank you!';
 }
 
 // Helper: Link LID to Real Phone Number & Name (manual tool + API endpoint)
@@ -3050,6 +3092,16 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     const audioAlreadyTranscribed = !!(mediaData && mediaData.mediaType === 'audio' && String(customerMessage || '').trim());
     if (audioAlreadyTranscribed) {
       console.log('[WA-WEB AUDIO] Using the transcript as text (audio quota reserved for voice only)');
+    }
+
+    // Vision cost control gate: image/document reading only for allowed "power customers"
+    // (boss always allowed). Text chat and voice notes remain available to EVERY customer.
+    if (mediaData && mediaData.buffer && mediaData.buffer.length > 0 &&
+        (mediaData.mediaType === 'image' || mediaData.mediaType === 'document') &&
+        !isVisualMediaAllowedFor(jid)) {
+      const blocked = visualMediaBlockedReplyText();
+      console.log('[WA-WEB MEDIA] ⛔ Vision skipped for non-power customer ' + jid + ' (' + mediaData.mediaType + ') - polite text-only notice sent');
+      return blocked;
     }
     if (mediaData && mediaData.buffer && mediaData.buffer.length > 0 && !audioAlreadyTranscribed) {
       const rawMime = (mediaData.mimetype || '').split(';')[0].trim().toLowerCase();
