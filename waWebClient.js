@@ -655,7 +655,7 @@ export let waWebKnowledgeBase = {
       id: 'rule_multilingual_mirroring',
       title: '🌍 Rule #4: Universal Multilingual Understanding & Native Language Mirroring',
       enabled: true,
-      description: 'Understand every language and dialect (Arabic, Urdu, Roman Urdu, English, Hindi, Tagalog, Russian, French, Chinese, Malayalam, Bengali, etc.). Automatically reply in the exact same language, script, and dialect the customer used in their text message or voice note.'
+      description: 'Understand every language and dialect (Arabic, Urdu, Roman Urdu, English, Hindi, Tagalog, Russian, French, Chinese, Malayalam, Bengali, etc.). Automatically reply in the exact same language, script, and dialect the customer used in their text message or voice note. STRICT: never reply in Hindi/Devanagari - if the customer writes Hindi, reply in Roman Urdu or English.'
     }
   ],
   systemPromptInstructions: `You are the Official WhatsApp AI Business Assistant for WhatAnAgent.
@@ -1110,7 +1110,7 @@ export async function transcribeAudioBuffer(audioBuffer, mimeType) {
         contents: [{
           role: 'user',
           parts: [
-            { text: 'Transcribe this voice note / audio accurately into text in its original spoken language (Urdu, Arabic, Hindi, English, etc.). Output only the plain transcribed words.' },
+            { text: 'Transcribe this voice note / audio accurately into text. If the language is Hindi or Urdu, transcribe in clean Roman Urdu (Urdu written in English letters); if Arabic, Arabic script; if English, English; other languages in their spoken language (prefer English/Latin letters for Indic languages). Output only the plain transcribed words.' },
             {
               inlineData: {
                 mimeType: mimeType || 'audio/ogg; codecs=opus',
@@ -2899,9 +2899,10 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
   let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +
     '--- 🌍 UNIVERSAL MULTILINGUAL PROTOCOL (ALL LANGUAGES SUPPORTED) ---\n' +
     '1. AUTO-DETECT SENDER LANGUAGE: Detect the language, script, or dialect of the customer (Arabic, English, Roman Urdu, Urdu script, Hindi, Roman Hindi, Tagalog, Russian, French, Spanish, Chinese, Malayalam, Bengali, Pashto, Persian/Farsi, etc.).\n' +
-    '2. NATIVE MIRRORING: You MUST reply in the EXACT SAME language, dialect, and script used by the customer. If they message in Arabic -> reply in natural business Arabic. If they write in Roman Urdu (e.g. "bhai price kya hai?") -> reply fluently in Roman Urdu. If English -> reply in English.\n' +
-    '3. MULTIMODAL AUDIO/VOICE NOTES: Understand voice notes spoken in any language and respond in the same native language.\n' +
-    '4. PRESERVE ACCURACY: Keep prices, invoice numbers, product names, and dates crystal clear across all languages.\n\n';
+    '2. NATIVE MIRRORING: You MUST reply in the EXACT SAME language, dialect, and script used by the customer. If they message in Arabic -> reply in natural business Arabic. If they write in Roman Urdu (e.g. "bhai price kya hai?") -> reply fluently in Roman Urdu. If English -> reply in English. EXCEPTION: Hindi is NEVER mirrored - see Rule 5.\n' +
+    '3. MULTIMODAL AUDIO/VOICE NOTES: Understand voice notes spoken in any language and respond in the same native language (except Hindi - Rule 5).\n' +
+    '4. PRESERVE ACCURACY: Keep prices, invoice numbers, product names, and dates crystal clear across all languages.\n' +
+    '5. 🚫 STRICT NO-HINDI RULE: NEVER write or send text in Hindi (Devanagari script or Hindi-style wording) - not even when the customer writes in Hindi. Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and any other language. If the customer uses Hindi, ALWAYS reply in clean Roman Urdu (Urdu in English letters) or English.\n\n';
 
   if (Array.isArray(kb.rules) && kb.rules.length > 0) {
     prompt += '--- STRICT MANDATORY AI RULES (MUST BE STRICTLY OBEYED) ---\n';
