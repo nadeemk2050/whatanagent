@@ -14,6 +14,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
@@ -413,7 +414,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createSubUser(name: String, email: String, password: String, adminEmail: String, onResult: (String?) -> Unit) {
+    fun createSubUser(name: String, email: String, password: String, adminEmail: String, whatsappNumber: String = "", onResult: (String?) -> Unit) {
         viewModelScope.launch {
             val normalizedEmail = email.trim().lowercase()
             val trimmedName = name.trim()
@@ -460,7 +461,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 ).await()
 
-                upsertStaffRecord(trimmedName, normalizedEmail, newUser.uid)
+                upsertStaffRecord(trimmedName, normalizedEmail, newUser.uid, whatsappNumber)
                 secondaryAuth.signOut()
                 secondaryApp?.delete()
                 onResult(null)
@@ -508,24 +509,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun upsertStaffRecord(name: String, email: String, uid: String) {
+    private suspend fun upsertStaffRecord(name: String, email: String, uid: String, whatsappNumber: String = "") {
         val existing = db.collection("$BASE/staff")
             .whereEqualTo("email", email)
             .limit(1)
             .get()
             .await()
 
-        val data = mapOf(
+        val data = mutableMapOf<String, Any>(
             "name" to name,
             "email" to email,
             "uid" to uid,
             "ownerAdminUid" to currentOwnerAdminUid()
         )
+        val digits = normalizeWaDigits(whatsappNumber)
+        if (digits.isNotBlank()) data["whatsappNumber"] = digits
         if (existing.documents.isEmpty()) {
             db.collection("$BASE/staff").add(data).await()
         } else {
             db.collection("$BASE/staff").document(existing.documents.first().id).update(data).await()
         }
+        saveStaffToContactBook(name, email, digits)
+    }
+
+    // "+971 50 123..." / "050..." / "00971..." -> "9715..." for WhatsApp sending
+    private fun normalizeWaDigits(raw: String?): String {
+        var d = (raw ?: "").filter { it.isDigit() }
+        if (d.startsWith("00")) d = d.substring(2)
+        if (d.startsWith("0")) d = "971" + d.substring(1)
+        return d
+    }
+
+    // Save the member into the UNIVERSAL CONTACT BOOK so every AI (and the boss bot) can WhatsApp them by name
+    private fun saveStaffToContactBook(name: String, email: String, digits: String) {
+        if (digits.isBlank()) return
+        db.collection("contactBook").document(digits).set(
+            mapOf(
+                "name" to name.ifBlank { email.substringBefore('@') },
+                "phone" to digits,
+                "company" to "AlignTasks Team",
+                "source" to "aligntasks-android",
+                "updatedAt" to System.currentTimeMillis()
+            ),
+            SetOptions.merge()
+        )
     }
 
     fun signOut() {
@@ -812,19 +839,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         docRef.update("comments", FieldValue.arrayUnion(comment))
     }
 
-    fun addStaff(name: String, email: String) {
+    fun addStaff(name: String, email: String, whatsappNumber: String = "") {
+        val digits = normalizeWaDigits(whatsappNumber)
         db.collection("$BASE/staff").add(
             mapOf(
                 "name" to name,
                 "email" to email.lowercase(),
+                "whatsappNumber" to digits,
                 "ownerAdminUid" to currentOwnerAdminUid()
             )
         )
+        saveStaffToContactBook(name, email.lowercase(), digits)
     }
 
-    fun editStaff(id: String, name: String, email: String) {
-        db.collection("$BASE/staff").document(id)
-            .update(mapOf("name" to name, "email" to email.lowercase()))
+    fun editStaff(id: String, name: String, email: String, whatsappNumber: String? = null) {
+        val update = mutableMapOf<String, Any>("name" to name, "email" to email.lowercase())
+        val digits = normalizeWaDigits(whatsappNumber)
+        if (whatsappNumber != null) update["whatsappNumber"] = digits
+        db.collection("$BASE/staff").document(id).update(update)
+            .addOnSuccessListener { saveStaffToContactBook(name, email.lowercase(), digits) }
     }
 
     fun removeStaff(id: String) {

@@ -197,11 +197,12 @@
                     <div id="staff-management-section" class="bg-white p-6 rounded-xl shadow-sm">
                         <h2 class="text-xl font-semibold mb-4">Sub User Management</h2>
                         <div id="staff-list-container" class="max-h-64 overflow-y-auto pr-2"></div>
-                        <form id="add-staff-form" class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
+                        <form id="add-staff-form" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
                             <input type="text" id="new-staff-name" placeholder="Name" class="p-2 border rounded-lg" />
                             <input type="email" id="new-staff-email" placeholder="Email" class="p-2 border rounded-lg" />
                             <input type="password" id="new-staff-password" placeholder="Password" minLength="6" class="p-2 border rounded-lg" />
-                            <button id="add-staff-button" type="submit" class="sm:col-span-3 bg-green-500 text-white px-3 py-2 rounded-lg font-semibold hover:bg-green-600">Save Sub User</button>
+                            <input type="tel" id="new-staff-wa" placeholder="WhatsApp Number e.g. +971501234567" class="p-2 border rounded-lg" />
+                            <button id="add-staff-button" type="submit" class="sm:col-span-2 bg-green-500 text-white px-3 py-2 rounded-lg font-semibold hover:bg-green-600">Save Sub User</button>
                         </form>
                         <p id="subuser-form-message" class="hidden text-sm mt-3"></p>
                     </div>
@@ -242,7 +243,7 @@
     <div id="edit-staff-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Staff Member</h3><button id="edit-staff-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
+            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
         </div>
     </div>
     <div id="edit-task-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -670,6 +671,7 @@
                                     ${dueDate ? `<span class="text-xs font-semibold px-2 py-1 rounded-full ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}">${formatTaskTimestamp(dueDate)}</span>` : ''}
                                 </div>
                                 <div class="flex items-center gap-2">
+                                    <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} title="Send a WhatsApp reminder to the assigned member">💬 Remind</button>
                                     <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>Comments (${task.comments?.length || 0})</button>
                                     ${actionButtons}
                                 </div>
@@ -677,6 +679,93 @@
                         </div>
                     </div>
                 `;
+            }
+
+            // ===== WhatsApp reminders + staff WhatsApp numbers (webapp side of the AlignTasks→WhatsApp bridge) =====
+            function normalizeWaNumberClient(raw) {
+                let d = String(raw || '').replace(/[^0-9]/g, '');
+                if (!d) return '';
+                if (d.startsWith('00')) d = d.slice(2);
+                if (d.startsWith('0')) d = '971' + d.slice(1);   // UAE local 05x -> 9715x
+                return d;
+            }
+            async function persistStaffWhatsApp(email, rawNumber, name) {
+                const digits = normalizeWaNumberClient(rawNumber);
+                if (!digits || !email) return;
+                const normalizedEmail = String(email).toLowerCase();
+                try {
+                    const snap = await db.collection(`/artifacts/${appId}/public/data/staff`).where('email', '==', normalizedEmail).limit(1).get();
+                    if (!snap.empty) await db.collection(`/artifacts/${appId}/public/data/staff`).doc(snap.docs[0].id).update({ whatsappNumber: digits });
+                } catch (e) { console.warn('staff whatsapp save:', e); }
+                try {
+                    await db.collection('contactBook').doc(digits).set({
+                        name: name || normalizedEmail.split('@')[0],
+                        phone: digits,
+                        company: 'AlignTasks Team',
+                        source: 'aligntasks-web',
+                        updatedAt: Date.now()
+                    }, { merge: true });
+                } catch (e) { console.warn('contact book save:', e); }
+            }
+            async function sendWaReminderForTask(type, taskId, projectId) {
+                const taskRef = (type === 'project' && projectId)
+                    ? db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId)
+                    : db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
+                const snap = await taskRef.get();
+                if (!snap.exists) throw new Error('Task not found');
+                const t = snap.data() || {};
+                const assignee = String(t.assigneeEmail || '').toLowerCase();
+                const myEmail = String((currentUser && currentUser.email) || '').toLowerCase();
+                let target = '';
+                let fallback = '';
+                const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).limit(50).get();
+                staffSnap.forEach(d => {
+                    const v = d.data() || {};
+                    const email = String(v.email || '').toLowerCase();
+                    const wa = normalizeWaNumberClient(v.whatsappNumber || '');
+                    if (!wa) return;
+                    if (!target && assignee && email === assignee && assignee !== myEmail) target = wa;
+                    if (!fallback) fallback = wa;
+                });
+                if (!target) target = fallback;
+                if (!target) throw new Error('No WhatsApp number saved yet — add it in Settings → Sub User Management.');
+                const due = t.dueDate ? formatTaskTimestamp(t.dueDate) : '';
+                const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
+                    (due ? ('\n🗓️ Due: ' + due) : '') +
+                    '\n👤 Task for: ' + (assignee ? assignee.split('@')[0] : 'everyone') +
+                    '\n\nPlease check and update the board when done.';
+                await db.collection('alignWaQueue').add({
+                    target: target,
+                    message: msg,
+                    taskId: taskId,
+                    taskTitle: String(t.description || '').substring(0, 80),
+                    status: 'pending',
+                    source: 'aligntasks-web',
+                    createdAt: new Date()
+                });
+            }
+            document.body.addEventListener('click', async e => {
+                const btn = e.target.closest('.wa-remind-button');
+                if (!btn || btn.disabled) return;
+                const type = btn.getAttribute('data-task-type');
+                const taskId = btn.getAttribute('data-task-id');
+                const projectId = btn.getAttribute('data-project-id');
+                if (!type || !taskId) return;
+                const orig = btn.innerText;
+                btn.disabled = true;
+                btn.innerText = '…sending';
+                try {
+                    await sendWaReminderForTask(type, taskId, projectId);
+                    btn.innerText = '✅ Queued!';
+                } catch (err) {
+                    btn.innerText = '❌ ' + (err.message || 'Failed');
+                    console.warn('wa reminder:', err);
+                } finally {
+                    setTimeout(() => { btn.innerText = orig || '💬 Remind'; btn.disabled = false; }, 2600);
+                }
+            });
+            if ('Notification' in window && Notification.permission === 'default') {
+                setTimeout(() => { try { Notification.requestPermission(); } catch (e) {} }, 5000);
             }
 
             function createTaskForAllListItemHTML(task) {
@@ -699,6 +788,7 @@
                             <div class="task-meta">${metaHTML}</div>
                             <div class="flex justify-end items-center mt-2">
                                 <div class="flex items-center gap-2">
+                                    <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="tasks_for_all" data-task-id="${task.id}" title="Send a WhatsApp reminder for this general task">💬 Remind</button>
                                     <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="tasks_for_all" data-task-id="${task.id}">Comments (${task.comments?.length || 0})</button>
                                     ${adminButtons}
                                 </div>
@@ -1118,6 +1208,8 @@
             function openEditStaffModal(staff) {
                 document.getElementById('edit-staff-id').value = staff.id;
                 document.getElementById('edit-staff-name').value = staff.name;
+                const editWaField = document.getElementById('edit-staff-wa');
+                if (editWaField) editWaField.value = staff.whatsappNumber || '';
                 document.getElementById('edit-staff-email').value = staff.email;
                 editStaffModal.classList.remove('hidden');
             }
@@ -1336,10 +1428,12 @@
                 const name = document.getElementById('new-staff-name').value.trim();
                 const email = document.getElementById('new-staff-email').value.trim();
                 const password = document.getElementById('new-staff-password').value;
+                const waNumber = (document.getElementById('new-staff-wa') || {}).value || '';
                 createSubUser(name, email, password)
-                    .then(() => {
+                    .then(async () => {
+                        try { await persistStaffWhatsApp(email, waNumber, name); } catch (err) { console.warn('Staff WhatsApp save:', err); }
                         e.target.reset();
-                        setInlineMessage(subuserFormMessage, 'Sub user created successfully.');
+                        setInlineMessage(subuserFormMessage, 'Sub user created successfully' + (normalizeWaNumberClient(waNumber) ? ' — WhatsApp number saved and added to the Contact Book.' : '.'));
                     })
                     .catch(error => setInlineMessage(subuserFormMessage, error.message, true));
             });
@@ -1452,7 +1546,10 @@
                 const name = document.getElementById('edit-staff-name').value.trim();
                 const email = document.getElementById('edit-staff-email').value.trim();
                 if (id && name && email) {
-                    db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({ name, email: email.toLowerCase() }).then(() => editStaffModal.classList.add('hidden'));
+                    const waNumber = (document.getElementById('edit-staff-wa') || {}).value || '';
+                    db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({ name, email: email.toLowerCase(), whatsappNumber: normalizeWaNumberClient(waNumber) })
+                        .then(() => persistStaffWhatsApp(email, waNumber, name))
+                        .then(() => editStaffModal.classList.add('hidden'));
                 }
             });
 

@@ -4,7 +4,7 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -961,6 +961,132 @@ export async function runDashboardBossCommand(text, opts = {}) {
   } catch (e) {
     console.warn('[BOSS DASHBOARD] Error:', e.message);
     return { ok: false, error: e.message || 'Boss command failed.' };
+  }
+}
+
+// ================= ALIGNTASKS → WHATSAPP NOTIFICATIONS =================
+// (1) alignWaQueue: the webapp/Android "💬 WhatsApp Reminder" buttons drop a doc here; this server
+//     (the only node holding the WhatsApp session) sends it within seconds and marks it sent.
+// (2) Due-date watcher: live onSnapshot caches of tasks/tasks_for_all (zero polling reads) + a 45s
+//     in-memory tick that WhatsApps the assignee the moment a task's due time arrives (once each).
+let alignNotifyInit = false;
+let alignTickTimer = null;
+let alignQueueUnsub = null;
+let alignTasksUnsubA = null;
+let alignTasksUnsubB = null;
+let alignStaffUnsub = null;
+const alignTasksCache = new Map();     // task id -> { ref, data, src }
+const alignStaffWaMap = new Map();     // email -> { name, wa }
+let alignQueueBusy = false;
+
+function normalizeWaNumber(raw) {
+  let d = String(raw || '').replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = '971' + d.slice(1);   // UAE local 05x -> 9715x
+  return d;
+}
+
+async function processAlignQueueItem(ref, d) {
+  try {
+    const target = normalizeWaNumber(d.target);
+    if (!target) {
+      await setDoc(ref, { status: 'failed', error: 'no-target', processedAt: Date.now() }, { merge: true });
+      return;
+    }
+    if (!sock || waWebState.status !== 'connected') return;   // leave pending - the 45s tick retries
+    let msg = String(d.message || '').substring(0, 900);
+    msg = await ensureNoDevanagari(msg);   // company-wide NO-HINDI rule
+    await sendWaWebMessage(target + '@s.whatsapp.net', msg);
+    await setDoc(ref, { status: 'sent', sentAt: Date.now() }, { merge: true });
+    console.log('[ALIGN WA] 💬 Reminder sent to +' + target + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 60) + '"') : ''));
+  } catch (e) {
+    try { await setDoc(ref, { status: 'failed', error: String((e && e.message) || e).substring(0, 200), processedAt: Date.now() }, { merge: true }); } catch (_) {}
+    console.warn('[ALIGN WA] queue item failed:', (e && e.message) || e);
+  }
+}
+
+async function alignNotifyTick() {
+  try {
+    if (!globalDb || waWebState.status !== 'connected') return;
+    // 1) retry anything the instant listener missed (normally zero extra docs)
+    if (!alignQueueBusy) {
+      alignQueueBusy = true;
+      try {
+        const qs = await getDocs(query(collection(globalDb, 'alignWaQueue'), where('status', '==', 'pending'), limit(10)));
+        for (const d of qs.docs) { await processAlignQueueItem(d.ref, d.data() || {}); }
+      } catch (e) { /* ignore */ } finally { alignQueueBusy = false; }
+    }
+    // 2) due-date reminders from the in-memory task cache (no extra Firestore reads)
+    const now = Date.now();
+    for (const entry of Array.from(alignTasksCache.values())) {
+      const v = entry.data || {};
+      if (!v || v.status === 'Done' || v.reminderSentAt) continue;
+      const dueMs = alignTaskDueMs(v);
+      if (!dueMs || dueMs > now) continue;
+      if (dueMs < now - 24 * 3600 * 1000) continue;   // older than a day - skip silently
+      const ae = String(v.assigneeEmail || '').toLowerCase();
+      let target = '';
+      let targetName = '';
+      if (ae && alignStaffWaMap.get(ae) && alignStaffWaMap.get(ae).wa) {
+        target = alignStaffWaMap.get(ae).wa;
+        targetName = alignStaffWaMap.get(ae).name || ae.split('@')[0];
+      } else {
+        for (const s of alignStaffWaMap.values()) { if (s.wa) { target = s.wa; targetName = s.name || 'team'; break; } }
+        if (!target) target = normalizeWaNumber(waWebKnowledgeBase.bossPhone || (waWebKnowledgeBase.bossKnowledge && waWebKnowledgeBase.bossKnowledge.bossPhone) || '+971529244592');
+      }
+      if (!target) {
+        await setDoc(entry.ref, { reminderSentAt: now, reminderSkipReason: 'no-whatsapp-number' }, { merge: true }).catch(() => {});
+        console.log('[ALIGN WA] ⚠️ Task due but no WhatsApp number saved anywhere - reminder skipped: "' + String(v.description || '').substring(0, 50) + '"');
+        continue;
+      }
+      const dueStr = new Date(dueMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const msg = '⏰ *AlignTasks — Due Reminder*\n\n📋 "' + String(v.description || '').substring(0, 140) + '"\n🗓️ Due: ' + dueStr + ' (Dubai)' +
+        (ae ? '' : '\n👥 General task (for everyone)') +
+        '\n👉 Please update the board when done.';
+      try {
+        await sendWaWebMessage(target + '@s.whatsapp.net', msg);
+        await setDoc(entry.ref, { reminderSentAt: now }, { merge: true });
+        console.log('[ALIGN WA] ⏰ Due reminder sent to +' + target + ' (' + targetName + ') for "' + String(v.description || '').substring(0, 50) + '"');
+      } catch (e) {
+        console.warn('[ALIGN WA] due reminder send failed:', (e && e.message) || e);
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function initAlignNotifySystem(db) {
+  if (!db || alignNotifyInit) return;
+  alignNotifyInit = true;
+  try {
+    alignQueueUnsub = onSnapshot(collection(db, 'alignWaQueue'), snap => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed') return;
+        const d = ch.doc.data() || {};
+        if (d.status === 'pending') processAlignQueueItem(ch.doc.ref, d);
+      });
+    }, () => {});
+    const handleTaskSnap = (snap, src) => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed') { alignTasksCache.delete(ch.doc.id); return; }
+        alignTasksCache.set(ch.doc.id, { ref: ch.doc.ref, data: ch.doc.data() || {}, src: src });
+      });
+    };
+    alignTasksUnsubA = onSnapshot(collection(db, ALIGNTASKS_BASE + '/tasks'), s => handleTaskSnap(s, 'tasks'), () => {});
+    alignTasksUnsubB = onSnapshot(collection(db, ALIGNTASKS_BASE + '/tasks_for_all'), s => handleTaskSnap(s, 'tasks_for_all'), () => {});
+    alignStaffUnsub = onSnapshot(collection(db, ALIGNTASKS_BASE + '/staff'), s => {
+      alignStaffWaMap.clear();
+      s.forEach(d => {
+        const v = d.data() || {};
+        const email = String(v.email || '').toLowerCase();
+        if (!email) return;
+        alignStaffWaMap.set(email, { name: String(v.name || '').trim(), wa: normalizeWaNumber(v.whatsappNumber || '') });
+      });
+    }, () => {});
+    if (!alignTickTimer) alignTickTimer = setInterval(alignNotifyTick, 45000);
+    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue)');
+  } catch (e) {
+    console.warn('[ALIGN WA] init failed:', e.message);
   }
 }
 
@@ -2729,6 +2855,8 @@ export async function initWaWeb(db = null) {
         setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
         // Deliver boss reminders + task-result notifications through this (only) live socket
         if (!bossDeliveryTimer) bossDeliveryTimer = setInterval(processBossRemindersAndNotifications, 60000);
+        // AlignTasks → WhatsApp: reminder queue listener + due-date watcher (zero-read in-memory ticks)
+        initAlignNotifySystem(globalDb);
         // Keep the UNIVERSAL Contact Book fed with WhatsApp Web numbers (throttled, every 15 min)
         if (!waWebContactsBookTimer) {
           waWebContactsBookTimer = setInterval(syncWaWebContactsToBook, 15 * 60 * 1000);

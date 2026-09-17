@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -61,7 +62,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentChange
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
@@ -1356,6 +1359,7 @@ fun ProjectsPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfile) {
 fun AddSubUserDialog(vm: AppViewModel, user: FirebaseUser, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var whatsappNumber by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -1380,6 +1384,14 @@ fun AddSubUserDialog(vm: AppViewModel, user: FirebaseUser, onDismiss: () -> Unit
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+                OutlinedTextField(
+                    value = whatsappNumber,
+                    onValueChange = { whatsappNumber = it; error = null },
+                    label = { Text("WhatsApp Number (e.g. +971501234567)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
                 )
                 OutlinedTextField(
                     value = password,
@@ -1418,7 +1430,7 @@ fun AddSubUserDialog(vm: AppViewModel, user: FirebaseUser, onDismiss: () -> Unit
                         password != confirmPassword -> error = "Passwords do not match"
                         else -> {
                             loading = true
-                            vm.createSubUser(name, email, password, user.email ?: "") { result ->
+                            vm.createSubUser(name, email, password, user.email ?: "", whatsappNumber) { result ->
                                 loading = false
                                 if (result == null) onDismiss() else error = result
                             }
@@ -2479,11 +2491,16 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                         color = MaterialTheme.colorScheme.onSurface.copy(0.45f))
                 }
             }
+            val waReminderContext = LocalContext.current
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { onShowComments(task) }, modifier = Modifier.size(32.dp)) {
                     BadgedBox(badge = {
                         if (task.comments.isNotEmpty()) Badge { Text("${task.comments.size}") }
                     }) { Icon(Icons.Default.Comment, "Comments", modifier = Modifier.size(18.dp)) }
+                }
+
+                IconButton(onClick = { sendAlignWhatsAppReminder(waReminderContext, task) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Send, "WhatsApp Reminder", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF25D366))
                 }
 
                 if (onRemindTask != null && reminderTargets.isNotEmpty()) {
@@ -2543,6 +2560,60 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
         )
     }
 
+}
+
+private fun normalizeWaDigitsAndroid(raw: String?): String {
+    var d = (raw ?: "").filter { it.isDigit() }
+    if (d.startsWith("00")) d = d.substring(2)
+    if (d.startsWith("0")) d = "971" + d.substring(1)
+    return d
+}
+
+// Queue a WhatsApp reminder for this task - the Railway server (the only WhatsApp node) sends it in seconds.
+fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task) {
+    val db = FirebaseFirestore.getInstance()
+    val assignee = (task.assigneeEmail ?: "").lowercase()
+    val myEmail = FirebaseAuth.getInstance().currentUser?.email?.lowercase() ?: ""
+    db.collection("$REMINDER_BASE/staff").get()
+        .addOnSuccessListener { snap ->
+            var target = ""
+            var fallback = ""
+            snap.documents.forEach { doc ->
+                val v = doc.data ?: return@forEach
+                val email = (v["email"] as? String)?.lowercase() ?: ""
+                val wa = normalizeWaDigitsAndroid(v["whatsappNumber"] as? String)
+                if (wa.isBlank()) return@forEach
+                if (target.isBlank() && email == assignee && assignee.isNotBlank() && assignee != myEmail) target = wa
+                if (fallback.isBlank()) fallback = wa
+            }
+            if (target.isBlank()) target = fallback
+            if (target.isBlank()) {
+                Toast.makeText(context, "No WhatsApp number saved for this member yet - add it in Sub User management", Toast.LENGTH_LONG).show()
+                return@addOnSuccessListener
+            }
+            val due = task.dueDate ?: ""
+            val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
+                (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
+                "\n\nPlease check and update the board when done."
+            db.collection("alignWaQueue").add(
+                mapOf(
+                    "target" to target,
+                    "message" to msg,
+                    "taskId" to task.id,
+                    "taskTitle" to task.description.take(80),
+                    "status" to "pending",
+                    "source" to "aligntasks-android",
+                    "createdAt" to System.currentTimeMillis()
+                )
+            ).addOnSuccessListener {
+                Toast.makeText(context, "✅ WhatsApp reminder queued - will be sent in a few seconds", Toast.LENGTH_SHORT).show()
+            }.addOnFailureListener { e ->
+                Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+            }
+        }
+        .addOnFailureListener { e ->
+            Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+        }
 }
 
 @Composable

@@ -40,6 +40,7 @@ data class Staff(
     val name: String = "",
     val email: String = "",
     val uid: String = "",
+    val whatsappNumber: String = "",
     val ownerAdminUid: String = ""
 )
 
