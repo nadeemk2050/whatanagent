@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v10'; // Change this version number (v2, v3, etc.) every time you deploy
+const CACHE_NAME = 'task-board-cache-v11'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const urlsToCache = [
 
 // Install the service worker
 self.addEventListener('install', event => {
+  self.skipWaiting();   // activate the new version immediately on next reload
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -57,6 +58,7 @@ self.addEventListener('fetch', event => {
 
 // Clean up old caches
 self.addEventListener('activate', event => {
+  event.waitUntil(self.clients.claim());   // take control of open pages immediately
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
