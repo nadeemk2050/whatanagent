@@ -2520,6 +2520,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
     }
 
     if (showReminderDialog && onRemindTask != null) {
+        val waDialogContext = LocalContext.current
         ReminderTargetsDialog(
             task = task,
             targets = reminderTargets,
@@ -2529,6 +2530,10 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 onRemindTask.invoke(task, selected) { callId ->
                     startSenderRinging(callId, selected)
                 }
+            },
+            onSendWhatsApp = { selected ->
+                showReminderDialog = false
+                sendAlignWhatsAppReminder(waDialogContext, task, selected)
             }
         )
     }
@@ -2570,45 +2575,57 @@ private fun normalizeWaDigitsAndroid(raw: String?): String {
 }
 
 // Queue a WhatsApp reminder for this task - the Railway server (the only WhatsApp node) sends it in seconds.
-fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task) {
+// targetEmails: the members picked in the reminder dialog. Empty = smart default (assignee -> admin).
+fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task, targetEmails: List<String> = emptyList()) {
     val db = FirebaseFirestore.getInstance()
     val assignee = (task.assigneeEmail ?: "").lowercase()
     val myEmail = FirebaseAuth.getInstance().currentUser?.email?.lowercase() ?: ""
+    val wanted = targetEmails.map { it.trim().lowercase() }.filter { it.isNotBlank() }
     db.collection("$REMINDER_BASE/staff").get()
         .addOnSuccessListener { snap ->
-            var target = ""
+            val numbers = LinkedHashMap<String, String>()   // name -> wa number
             var fallback = ""
+            var fallbackName = ""
             snap.documents.forEach { doc ->
                 val v = doc.data ?: return@forEach
                 val email = (v["email"] as? String)?.lowercase() ?: ""
+                val name = ((v["name"] as? String) ?: "").ifBlank { email.substringBefore('@') }
                 val wa = normalizeWaDigitsAndroid(v["whatsappNumber"] as? String)
                 if (wa.isBlank()) return@forEach
-                if (target.isBlank() && email == assignee && assignee.isNotBlank() && assignee != myEmail) target = wa
-                if (fallback.isBlank()) fallback = wa
+                if (wanted.isNotEmpty()) {
+                    if (email in wanted || name.lowercase() in wanted) numbers[name] = wa
+                } else {
+                    if (numbers.isEmpty() && email == assignee && assignee.isNotBlank() && assignee != myEmail) numbers[name] = wa
+                    if (fallback.isBlank()) { fallback = wa; fallbackName = name }
+                }
             }
-            if (target.isBlank()) target = fallback
-            if (target.isBlank()) {
-                Toast.makeText(context, "No WhatsApp number saved for this member yet - add it in Sub User management", Toast.LENGTH_LONG).show()
+            if (numbers.isEmpty() && wanted.isEmpty() && fallback.isNotBlank()) numbers[fallbackName] = fallback
+            if (numbers.isEmpty()) {
+                Toast.makeText(context, "No WhatsApp number saved for the selected member(s) - add it in Sub User Management", Toast.LENGTH_LONG).show()
                 return@addOnSuccessListener
             }
             val due = task.dueDate ?: ""
-            val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
-                (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
-                "\n\nPlease check and update the board when done."
-            db.collection("alignWaQueue").add(
-                mapOf(
-                    "target" to target,
-                    "message" to msg,
-                    "taskId" to task.id,
-                    "taskTitle" to task.description.take(80),
-                    "status" to "pending",
-                    "source" to "aligntasks-android",
-                    "createdAt" to System.currentTimeMillis()
-                )
-            ).addOnSuccessListener {
-                Toast.makeText(context, "✅ WhatsApp reminder queued - will be sent in a few seconds", Toast.LENGTH_SHORT).show()
-            }.addOnFailureListener { e ->
-                Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+            numbers.forEach { (name, wa) ->
+                val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
+                    (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
+                    "\n👤 For: " + name +
+                    "\n\nPlease check and update the board when done."
+                db.collection("alignWaQueue").add(
+                    mapOf(
+                        "target" to wa,
+                        "message" to msg,
+                        "taskId" to task.id,
+                        "taskTitle" to task.description.take(80),
+                        "toName" to name,
+                        "status" to "pending",
+                        "source" to "aligntasks-android",
+                        "createdAt" to System.currentTimeMillis()
+                    )
+                ).addOnSuccessListener {
+                    Toast.makeText(context, "✅ WhatsApp reminder queued for " + name, Toast.LENGTH_SHORT).show()
+                }.addOnFailureListener { e ->
+                    Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+                }
             }
         }
         .addOnFailureListener { e ->
@@ -2621,7 +2638,8 @@ fun ReminderTargetsDialog(
     task: Task,
     targets: List<String>,
     onDismiss: () -> Unit,
-    onSend: (List<String>) -> Unit
+    onSend: (List<String>) -> Unit,
+    onSendWhatsApp: ((List<String>) -> Unit)? = null
 ) {
     val uniqueTargets = remember(targets) { targets.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct() }
     var allSelected by remember { mutableStateOf(false) }
@@ -2684,11 +2702,21 @@ fun ReminderTargetsDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val selectedEmails = uniqueTargets.filter { selected[it] == true }
-                if (selectedEmails.isNotEmpty()) onSend(selectedEmails)
-            }) {
-                Text("Send")
+            Row {
+                if (onSendWhatsApp != null) {
+                    TextButton(onClick = {
+                        val selectedEmails = uniqueTargets.filter { selected[it] == true }
+                        if (selectedEmails.isNotEmpty()) onSendWhatsApp.invoke(selectedEmails)
+                    }) {
+                        Text("📲 WhatsApp")
+                    }
+                }
+                Button(onClick = {
+                    val selectedEmails = uniqueTargets.filter { selected[it] == true }
+                    if (selectedEmails.isNotEmpty()) onSend(selectedEmails)
+                }) {
+                    Text("Send")
+                }
             }
         },
         dismissButton = {

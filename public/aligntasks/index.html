@@ -246,6 +246,20 @@
             <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
         </div>
     </div>
+    <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
+            <div class="p-6 space-y-3">
+                <p id="wa-remind-task-text" class="text-sm text-gray-600"></p>
+                <label class="text-sm font-medium text-gray-700">Select the team member to remind</label>
+                <div id="wa-remind-members" class="space-y-1 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button id="wa-remind-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+                    <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">💬 Send on WhatsApp</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="edit-task-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Task</h3><button id="edit-task-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
@@ -707,43 +721,81 @@
                     }, { merge: true });
                 } catch (e) { console.warn('contact book save:', e); }
             }
-            async function sendWaReminderForTask(type, taskId, projectId) {
+            async function openWaRemindPicker(type, taskId, projectId) {
                 const taskRef = (type === 'project' && projectId)
                     ? db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId)
                     : db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
                 const snap = await taskRef.get();
                 if (!snap.exists) throw new Error('Task not found');
                 const t = snap.data() || {};
-                const assignee = String(t.assigneeEmail || '').toLowerCase();
-                const myEmail = String((currentUser && currentUser.email) || '').toLowerCase();
-                let target = '';
-                let fallback = '';
                 const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).limit(50).get();
+                const members = [];
                 staffSnap.forEach(d => {
                     const v = d.data() || {};
                     const email = String(v.email || '').toLowerCase();
-                    const wa = normalizeWaNumberClient(v.whatsappNumber || '');
-                    if (!wa) return;
-                    if (!target && assignee && email === assignee && assignee !== myEmail) target = wa;
-                    if (!fallback) fallback = wa;
+                    if (!email) return;
+                    members.push({ name: v.name || email.split('@')[0], email: email, wa: normalizeWaNumberClient(v.whatsappNumber || '') });
                 });
-                if (!target) target = fallback;
-                if (!target) throw new Error('No WhatsApp number saved yet — add it in Settings → Sub User Management.');
+                waRemindCtx = { type: type, taskId: taskId, projectId: projectId || null, task: t, members: members };
+                document.getElementById('wa-remind-task-text').innerText = '📋 "' + String(t.description || '').substring(0, 140) + '"' + (t.dueDate ? ('\n🗓️ Due: ' + formatTaskTimestamp(t.dueDate)) : '');
+                const box = document.getElementById('wa-remind-members');
+                const assignee = String(t.assigneeEmail || '').toLowerCase();
+                if (!members.length) {
+                    box.innerHTML = '<p class="text-sm text-gray-500 p-2">No team members yet. Add them in Settings → Sub User Management (with WhatsApp numbers) first.</p>';
+                } else {
+                    box.innerHTML = members.map(m => {
+                        const disabled = !m.wa;
+                        const checked = (assignee && m.email === assignee) ? 'checked' : '';
+                        return '<label class="flex items-center gap-3 p-2 rounded-lg ' + (disabled ? 'opacity-50' : 'hover:bg-gray-50 cursor-pointer') + '">' +
+                            '<input type="radio" name="wa-remind-member" value="' + m.email + '" ' + checked + (disabled ? ' disabled' : '') + ' class="h-4 w-4" />' +
+                            '<span class="flex-grow text-sm text-gray-800">' + m.name + '</span>' +
+                            '<span class="text-xs ' + (m.wa ? 'text-green-600' : 'text-red-400') + '">' + (m.wa ? ('+' + m.wa) : 'no WhatsApp number') + '</span>' +
+                            '</label>';
+                    }).join('');
+                    const anyChecked = box.querySelector('input[name="wa-remind-member"]:checked');
+                    if (!anyChecked) {
+                        const first = box.querySelector('input[name="wa-remind-member"]:not(:disabled)');
+                        if (first) first.checked = true;
+                    }
+                }
+                document.getElementById('wa-remind-modal').classList.remove('hidden');
+            }
+            async function submitWaRemind() {
+                if (!waRemindCtx) return;
+                const box = document.getElementById('wa-remind-members');
+                const picked = box.querySelector('input[name="wa-remind-member"]:checked');
+                if (!picked) { alert('Please select a team member first.'); return; }
+                const email = String(picked.value || '').toLowerCase();
+                const member = waRemindCtx.members.find(m => m.email === email);
+                if (!member || !member.wa) { alert('This member has no WhatsApp number saved. Add it in Settings → Sub User Management.'); return; }
+                const t = waRemindCtx.task || {};
                 const due = t.dueDate ? formatTaskTimestamp(t.dueDate) : '';
                 const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
                     (due ? ('\n🗓️ Due: ' + due) : '') +
-                    '\n👤 Task for: ' + (assignee ? assignee.split('@')[0] : 'everyone') +
+                    '\n👤 For: ' + member.name +
                     '\n\nPlease check and update the board when done.';
-                await db.collection('alignWaQueue').add({
-                    target: target,
-                    message: msg,
-                    taskId: taskId,
-                    taskTitle: String(t.description || '').substring(0, 80),
-                    status: 'pending',
-                    source: 'aligntasks-web',
-                    createdAt: new Date()
-                });
+                const sendBtn = document.getElementById('wa-remind-send');
+                if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
+                try {
+                    await db.collection('alignWaQueue').add({
+                        target: member.wa,
+                        message: msg,
+                        taskId: waRemindCtx.taskId,
+                        taskTitle: String(t.description || '').substring(0, 80),
+                        toName: member.name,
+                        status: 'pending',
+                        source: 'aligntasks-web',
+                        createdAt: new Date()
+                    });
+                    document.getElementById('wa-remind-modal').classList.add('hidden');
+                    waRemindCtx = null;
+                } catch (e) {
+                    alert('❌ ' + (e.message || 'Failed to queue reminder'));
+                } finally {
+                    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = '💬 Send on WhatsApp'; }
+                }
             }
+            let waRemindCtx = null;
             document.body.addEventListener('click', async e => {
                 const btn = e.target.closest('.wa-remind-button');
                 if (!btn || btn.disabled) return;
@@ -753,15 +805,15 @@
                 if (!type || !taskId) return;
                 const orig = btn.innerText;
                 btn.disabled = true;
-                btn.innerText = '…sending';
+                btn.innerText = '…';
                 try {
-                    await sendWaReminderForTask(type, taskId, projectId);
-                    btn.innerText = '✅ Queued!';
+                    await openWaRemindPicker(type, taskId, projectId);
                 } catch (err) {
-                    btn.innerText = '❌ ' + (err.message || 'Failed');
+                    alert('❌ ' + (err.message || 'Could not open the reminder picker'));
                     console.warn('wa reminder:', err);
                 } finally {
-                    setTimeout(() => { btn.innerText = orig || '💬 Remind'; btn.disabled = false; }, 2600);
+                    btn.innerText = orig || '💬 Remind';
+                    btn.disabled = false;
                 }
             });
             if ('Notification' in window && Notification.permission === 'default') {
@@ -1214,6 +1266,9 @@
                 editStaffModal.classList.remove('hidden');
             }
             document.getElementById('edit-staff-modal-close').addEventListener('click', () => editStaffModal.classList.add('hidden'));
+            document.getElementById('wa-remind-modal-close').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
+            document.getElementById('wa-remind-cancel').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
+            document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
 
             // --- Firestore Listeners ---
             function setupFirestoreListeners() {
