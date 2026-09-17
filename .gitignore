@@ -6,3 +6,11 @@ knowledge.json
 auth_info_baileys/
 *.log
 
+# AlignTasks Android app (android-kotlin)
+android-kotlin/.gradle/
+android-kotlin/build/
+android-kotlin/app/build/
+android-kotlin/local.properties
+android-kotlin/.kotlin/
+android-kotlin/.idea/
+

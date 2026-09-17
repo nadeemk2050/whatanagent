@@ -1,6 +1,6 @@
 {
-  "name": "Project & Task Board",
-  "short_name": "Task Board",
+  "name": "AlignTasks",
+  "short_name": "AlignTasks",
   "version": "1.5",
   "start_url": ".",
   "display": "standalone",

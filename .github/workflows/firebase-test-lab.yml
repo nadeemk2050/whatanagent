@@ -1,0 +1,97 @@
+name: Firebase Test Lab - Robo Test (Auto Crash Detection)
+
+on:
+  push:
+    branches: ["master", "main"]
+    paths:
+      - "android-kotlin/**"
+      - ".github/workflows/firebase-test-lab.yml"
+  workflow_dispatch:
+
+jobs:
+  robo-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    defaults:
+      run:
+        working-directory: android-kotlin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure Android SDK location
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
+        run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      # ------------------------------------------------------------------
+      # Firebase Test Lab - Robo Test
+      # FREE: 5 virtual device tests/day on Spark plan
+      # Requires:
+      #   FIREBASE_SERVICE_ACCOUNT_JSON secret (JSON key from GCP service account)
+      #   FIREBASE_PROJECT_ID secret = "whatanagent-a1e59"
+      # Setup: https://firebase.google.com/docs/test-lab/android/continuous
+      # ------------------------------------------------------------------
+      - name: Authenticate to Google Cloud
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
+      - name: Set up gcloud CLI
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Run Robo Test on Firebase Test Lab
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+        run: |
+          gcloud firebase test android run \
+            --project whatanagent-a1e59 \
+            --type robo \
+            --app app/build/outputs/apk/debug/app-debug.apk \
+            --device model=Pixel2,version=29,locale=en,orientation=portrait \
+            --timeout 3m \
+            --robo-directives "text:titleInput=Test Task" \
+            --no-record-video \
+            --format=json 2>&1 | tee firebase_test_result.txt
+
+          cat firebase_test_result.txt
+
+      - name: Upload Firebase test result
+        if: ${{ always() && secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-test-lab-results
+          path: android-kotlin/firebase_test_result.txt
+
+      - name: Skip message if secrets not configured
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON == '' }}
+        run: |
+          echo "=========================================="
+          echo " Firebase Test Lab skipped."
+          echo " Add FIREBASE_SERVICE_ACCOUNT_JSON secret"
+          echo " to enable automated Robo crash testing."
+          echo "=========================================="

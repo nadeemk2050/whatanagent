@@ -1,0 +1,111 @@
+name: Android Emulator Test (ReactiveCircus)
+
+on:
+  push:
+    branches: ["master", "main"]
+    paths:
+      - "android-kotlin/**"
+      - ".github/workflows/emulator-test.yml"
+  workflow_dispatch:
+
+jobs:
+  emulator-test:
+    runs-on: macos-latest       # macOS gives hardware acceleration for free
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: android-kotlin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+
+      - name: Configure Android SDK location
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Write google-services.json (optional)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
+        run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Build debug test APK (needed for connectedCheck)
+        run: gradle :app:assembleDebugAndroidTest
+
+      # Accept Android SDK licenses silently
+      - name: Accept SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      # Boot emulator + install + smoke test
+      - name: Run APK on Android Emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: arm64-v8a
+          profile: Nexus 6
+          ram-size: 2048M
+          heap-size: 512M
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            echo "--- Emulator booted ---"
+            adb devices
+
+            echo "--- Installing APK ---"
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+            echo "--- Launching app ---"
+            adb shell am start -n com.assigntask.app/.MainActivity
+            sleep 5
+
+            echo "--- Screenshot after launch ---"
+            adb shell screencap -p /sdcard/screen.png
+            adb pull /sdcard/screen.png ../screen.png
+
+            echo "--- Check for crash in logcat ---"
+            adb logcat -d | grep -E "FATAL|AndroidRuntime|ANR|CRASH" | tee ../crash.log || true
+            CRASHES=$(cat ../crash.log | wc -l)
+            echo "Crash lines found: $CRASHES"
+            if [ "$CRASHES" -gt 0 ]; then
+              echo "CRASH DETECTED:" && cat ../crash.log
+              exit 1
+            else
+              echo "No crash detected. App launched successfully."
+            fi
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-screenshot
+          path: screen.png
+
+      - name: Upload crash log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-log
+          path: crash.log
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assign-task-debug-apk
+          path: android-kotlin/app/build/outputs/apk/debug/app-debug.apk
