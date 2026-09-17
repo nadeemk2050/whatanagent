@@ -4,7 +4,7 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where } from 'firebase/firestore';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -391,6 +391,26 @@ function dubaiYmd(ms) {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
 }
 
+// The board's admin view renders tasks ONLY under staff sections (staffList.forEach in
+// renderAdminIndividualTasks) - so every boss-added task must have its assignee present in the
+// `staff` collection, otherwise the task is written but INVISIBLE. This upserts a staff entry.
+async function ensureAlignTasksStaffDoc(person) {
+  if (!globalDb || !person || !person.email) return;
+  try {
+    const staffCol = collection(globalDb, ALIGNTASKS_BASE + '/staff');
+    const snap = await getDocs(query(staffCol, where('email', '==', person.email)));
+    const data = { name: person.name || person.email.split('@')[0], email: person.email, uid: person.uid || '' };
+    if (snap.empty) {
+      await addDoc(staffCol, data);
+      console.log('[ALIGNTASKS] ➕ Created board staff entry for ' + data.name + ' (' + person.email + ')');
+    } else {
+      await setDoc(snap.docs[0].ref, data, { merge: true });
+    }
+  } catch (e) {
+    console.warn('[ALIGNTASKS] Could not ensure staff entry:', e.message);
+  }
+}
+
 export async function bossAlignTaskAdd(p) {
   if (!globalDb) return { ok: false, error: 'No database connection' };
   const title = String((p && (p.title || p.task || p.description)) || '').trim();
@@ -415,6 +435,7 @@ export async function bossAlignTaskAdd(p) {
     ownerAdminEmail: '',
     setAlarm: false
   };
+  await ensureAlignTasksStaffDoc(who.person);   // board visibility: the admin view renders only staff sections
   const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks'), task);
   console.log('[ALIGNTASKS] ➕ Boss added task "' + title + '" for ' + who.person.name + (due.value ? (' due ' + due.value) : ''));
   return { ok: true, id: ref.id, task: task, assignee: who.person, dueTs: due.ts || null };
