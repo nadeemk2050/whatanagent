@@ -620,30 +620,71 @@ async function bossAddReminder(text, runAt) {
   return { ok: true, reminder: r };
 }
 
-// Simple natural-time parser for reminders ("in 30 minutes", "at 4 pm", "tomorrow")
-function parseBossWhen(text) {
+// Simple natural-time parser for reminders ("in 30 minutes", "at 4 pm", "tomorrow 9am",
+// "today 7pm", "7 pm", "18-09-2026 10:00"). Returns UTC ms or 0 if unparseable.
+export function parseBossWhen(text) {
   const t = String(text || '').toLowerCase();
   const now = Date.now();
   const inM = t.match(/in\s+(\d+)\s*(min|mins|minute|minutes)/);
   if (inM) return now + parseInt(inM[1], 10) * 60000;
   const inH = t.match(/in\s+(\d+)\s*(hour|hours|hr|hrs)/);
   if (inH) return now + parseInt(inH[1], 10) * 3600000;
+
+  const timeMatch = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  const applyHm = (h, m, ap) => {
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    return [h, m];
+  };
+  const dubaiToday = (h, m) => {
+    const d = new Date(now + 4 * 3600000);
+    d.setUTCHours(h, m, 0, 0);
+    return d.getTime() - 4 * 3600000;
+  };
+
   if (/\btomorrow\b/.test(t)) {
-    const d = new Date(Date.now() + 4 * 3600000 + 86400000);
-    const hm = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    const d = new Date(now + 4 * 3600000 + 86400000);
     let h = 9, m = 0;
-    if (hm) { h = parseInt(hm[1], 10); m = hm[2] ? parseInt(hm[2], 10) : 0; if (hm[3] === 'pm' && h < 12) h += 12; if (hm[3] === 'am' && h === 12) h = 0; }
+    if (timeMatch) { [h, m] = applyHm(parseInt(timeMatch[1], 10), timeMatch[2] ? parseInt(timeMatch[2], 10) : 0, timeMatch[3]); }
     d.setUTCHours(h, m, 0, 0);
     return d.getTime() - 4 * 3600000;
   }
-  const at = t.match(/(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-  if (at) {
-    let h = parseInt(at[1], 10); const m = at[2] ? parseInt(at[2], 10) : 0; const ap = at[3];
+
+  // "18-09-2026 10:00" / "18/09/2026" (Dubai wall time) -> absolute ms
+  const dmy = t.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:[\s,t]+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/);
+  if (dmy) {
+    let h = parseInt(dmy[4] || '9', 10);
+    const m = parseInt(dmy[5] || '0', 10);
+    const ap = dmy[6];
     if (ap === 'pm' && h < 12) h += 12;
     if (ap === 'am' && h === 12) h = 0;
-    const d = new Date(Date.now() + 4 * 3600000);
-    d.setUTCHours(h, m, 0, 0);
-    let ms = d.getTime() - 4 * 3600000;
+    return Date.UTC(+dmy[3], +dmy[2] - 1, +dmy[1], h - 4, m, 0);   // Dubai = UTC+4
+  }
+
+  // "today 7pm" / "today at 4 pm" / "tonight" / "aaj 7 pm" - explicitly today (Dubai)
+  if (/\b(today|tonight|aaj)\b/.test(t)) {
+    let h = 12, m = 0;
+    if (timeMatch) { [h, m] = applyHm(parseInt(timeMatch[1], 10), timeMatch[2] ? parseInt(timeMatch[2], 10) : 0, timeMatch[3]); }
+    else if (/\btonight\b/.test(t)) h = 21;
+    else return 0;   // "today" with no clock time = not a usable time
+    return dubaiToday(h, m);
+  }
+
+  const at = t.match(/(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (at) {
+    let h = parseInt(at[1], 10); let m = at[2] ? parseInt(at[2], 10) : 0; const ap = at[3];
+    [h, m] = applyHm(h, m, ap);
+    let ms = dubaiToday(h, m);
+    if (ms < now) ms += 86400000;
+    return ms;
+  }
+
+  // Bare clock time with am/pm: "7pm", "7:30 pm"
+  const bare = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (bare) {
+    let h = parseInt(bare[1], 10); let m = bare[2] ? parseInt(bare[2], 10) : 0;
+    [h, m] = applyHm(h, m, bare[3]);
+    let ms = dubaiToday(h, m);
     if (ms < now) ms += 86400000;
     return ms;
   }
@@ -667,6 +708,17 @@ function stripBossActionBlocks(text) {
     .replace(/\[TASKLIST\]/gi, '')
     .replace(/\[ALIGNTASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[CONTACT:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .trim();
+}
+
+// The model sometimes INVENTS success confirmations ("✅ Added to AlignTasks ...", "entry is set")
+// even when the real execution failed or never ran. Real results are only the ones appended by the
+// system from actual executions - so any model-written action-result claims are stripped here.
+function stripBossClaimedResults(text) {
+  return String(text || '')
+    .split('\n')
+    .filter(line => !/(added to align\s*tasks?|align\s*tasks? (entry|task) (is|has been) set|entry is set for|added to the board|has been added to|added in align\s*task|task (is|has been) (added|created)|assigned to \*)/i.test(line))
+    .join('\n')
     .trim();
 }
 
@@ -1254,6 +1306,53 @@ async function getQwenCfg() {
   cachedQwenCfg = { key, base, asr, nativeBase: qwenNativeBaseFrom(base) };
   cachedQwenCfgAt = Date.now();
   return cachedQwenCfg;
+}
+
+// ================= NO-HINDI OUTBOUND GUARD =================
+// Company rule: NO outbound WhatsApp message may contain Devanagari (Hindi) script - from any AI,
+// any reminder, any stored task, any caller. Every outbound text goes through sendWaWebMessage,
+// which calls this: if Devanagari is detected the text is rewritten in Roman Urdu (Qwen).
+// Results are cached; if conversion is unavailable a Devanagari-stripped fallback is sent so
+// Hindi can NEVER leave the system.
+const devanagariFixCache = new Map();
+function hasDevanagari(s) { return /[\u0900-\u097F]/.test(String(s || '')); }
+export async function ensureNoDevanagari(text) {
+  const original = String(text == null ? '' : text);
+  if (!original || !hasDevanagari(original)) return original;
+  const cached = devanagariFixCache.get(original);
+  if (cached) return cached;
+  try {
+    const q = await getQwenCfg();
+    if (q && q.key) {
+      const res = await fetch(q.base.replace(/\/+$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + q.key },
+        body: JSON.stringify({
+          model: 'qwen3.8-flash',
+          temperature: 0,
+          max_tokens: 400,
+          messages: [
+            { role: 'system', content: 'Rewrite the user text in ROMAN URDU (Urdu/Hindi spoken style written with English letters). Keep every emoji and the line formatting exactly. NEVER use Devanagari characters. Return ONLY the rewritten text.' },
+            { role: 'user', content: original }
+          ]
+        }),
+        signal: AbortSignal.timeout(9000)
+      });
+      if (res.ok) {
+        const j = await res.json();
+        const out = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        if (out && !hasDevanagari(out)) {
+          if (devanagariFixCache.size > 200) devanagariFixCache.clear();
+          devanagariFixCache.set(original, out);
+          console.log('[NO-HINDI GUARD] Converted a Devanagari outbound message to Roman Urdu');
+          return out;
+        }
+      }
+    }
+  } catch (e) { /* fall through to the safe fallback */ }
+  const stripped = original.replace(/[\u0900-\u097F]+/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+  console.warn('[NO-HINDI GUARD] Roman-Urdu conversion failed - Devanagari stripped from outbound text');
+  return stripped || 'Reminder message';
 }
 
 // Qwen3-ASR-Flash (sync DashScope): base64 audio in -> plain transcript out
@@ -2789,7 +2888,7 @@ export async function initWaWeb(db = null) {
                     '  (assignee = a team member name from the BOARD TEAM MEMBERS list below; due is optional - "today 5pm", "tomorrow 9am", "in 2 hours", "18-09-2026 10:00")\n' +
                     '  [ALIGNTASK: {"action":"list"}]  (all pending) | {"action":"list","when":"today"} | {"when":"tomorrow"} | {"when":"overdue"} | {"when":"done"} | {"assignee":"Ahmed"} (can combine when + assignee)\n' +
                     '  [ALIGNTASK: {"action":"done","title":"a few words from the task description"}]\n' +
-                    'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and confirms; NEVER say a task was added or completed unless the app confirmed it in the result.\n' +
+                    'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and appends the REAL result at the bottom - YOU MUST NEVER write your own result or confirmation (NEVER write phrases like "Added to AlignTasks:", "task added", "entry is set", "assigned to *...*" yourself). Just emit the action block plus one short sentence like "On it, Boss." A false confirmation is a serious error because the app shows exactly what really happened - including failures.\n' +
                     '--- UNIVERSAL CONTACT BOOK (ALWAYS use these numbers when the boss names a person) ---\n' +
                     (contactLines ? (contactLines + '\n') : '(no saved contacts yet)\n') +
                     'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the Contact Book automatically. If the name is NOT in the list above, ask the boss for the number (or save it with [CONTACT]). NEVER invent a number.\n' +
@@ -2876,6 +2975,8 @@ export async function initWaWeb(db = null) {
                           : ('⚠️ ' + res.error + '\n');
                       }
                       if (sectionSummary) replyText = stripBossActionBlocks(replyText || '');
+                      // Strip any model-invented result claims - only real execution results may reach the boss
+                      replyText = stripBossClaimedResults(replyText);
 
                       const voiceHeader = transcribedAudioText ? '🎙️ *[Voice Note Understood]*\n\n' : '';
                       const finalMsg = (voiceHeader + cfgSummary + sectionSummary + (replyText ? replyText.trim() : '')).trim();
@@ -3103,7 +3204,9 @@ export async function getWaWebMessages(jid) {
 }
 
 // Helper: Send message with retry & connection grace
+// (EVERY outbound text passes the company-wide NO-HINDI guard first.)
 export async function sendWaWebMessage(to, text) {
+  text = await ensureNoDevanagari(text);
   let jid = to.trim();
   if (!jid.includes('@')) {
     const cleanDigits = jid.replace(/\D/g, '');
