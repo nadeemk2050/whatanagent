@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.16.2 (sidebar assignTask button opens the team task board; DeepSeek reduced to ONE engine - DeepSeek V4.1 Flash (deepseek-chat); DeepSeek R1/Pro option removed from all model dropdowns) -->
+    <!-- APP VERSION: 2026.09.17.1 (assignTask board ships with this deployment at /assigntask/ - one deploy updates dashboard + task board; DeepSeek single engine = DeepSeek V4.1 Flash) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -270,7 +270,7 @@
             </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('tasks'); loadAiTasks();">⏰ Tasks for AI</div>
-            <div class="menu-item" onclick="window.open('https://whatanagent-tasks.web.app','_blank')" title="Open the assignTask team task board (same login as this dashboard)">📋 assignTask</div>
+            <div class="menu-item" onclick="window.open('/assigntask/','_blank')" title="Open the assignTask team task board (same login as this dashboard)">📋 assignTask</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
             <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
