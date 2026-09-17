@@ -121,10 +121,14 @@ app.get('/api/wa-web/chats', (req, res) => {
   res.json({ chats: getWaWebChats() });
 });
 
-app.get('/api/wa-web/messages', (req, res) => {
+app.get('/api/wa-web/messages', async (req, res) => {
   const jid = req.query.jid;
   if (!jid) return res.status(400).json({ error: 'Missing jid parameter' });
-  res.json({ messages: getWaWebMessages(jid) });
+  try {
+    res.json({ messages: await getWaWebMessages(jid) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/wa-web/download-media', async (req, res) => {

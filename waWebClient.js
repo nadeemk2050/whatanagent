@@ -4,7 +4,7 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit } from 'firebase/firestore';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -316,8 +316,12 @@ async function bossCancelTask(q) {
 const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
 const ALIGNTASKS_BASE = 'artifacts/' + ALIGNTASKS_APP_ID + '/public/data';
 
+let staffDirCache = { at: 0, list: [] };
 async function alignTasksStaffDirectory() {
   if (!globalDb) return [];
+  // Cache for 5 minutes - the staff list rarely changes and each boss task command used to
+  // re-read the staff + users collections from Firestore every single time.
+  if (staffDirCache.list.length && (Date.now() - staffDirCache.at) < 5 * 60 * 1000) return staffDirCache.list;
   const map = new Map();
   try {
     const staffSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/staff'));
@@ -335,7 +339,8 @@ async function alignTasksStaffDirectory() {
       if (email && u.active !== false && !map.has(email)) map.set(email, { name: String(u.name || '').trim() || email.split('@')[0], email: email, uid: d.id });
     });
   } catch (e) { /* users collection optional */ }
-  return Array.from(map.values());
+  staffDirCache = { at: Date.now(), list: Array.from(map.values()) };
+  return staffDirCache.list;
 }
 
 function alignTaskFindStaff(raw, staff) {
@@ -1555,6 +1560,13 @@ function upsertMessageToChat(msg, isHistorySync = false) {
     }
   }
 
+  // A chat restored from the lightweight index carries only a SHELL (no messages yet).
+  // The moment it receives a message we hydrate its archived history from Firestore (1 read)
+  // so a later delta-save can never overwrite the archive with just this one message.
+  if (chat._messagesLoaded === false) {
+    hydrateChatFromVault(jid);
+  }
+
   scheduleHistorySaveToFirestore();
 }
 
@@ -1568,11 +1580,13 @@ async function restoreSessionFromFirestore(db) {
       const totalChunks = meta.totalChunks || 0;
       let restoredCount = 0;
 
+      const restoredChunkPayloads = [];
       for (let i = 0; i < totalChunks; i++) {
         const chunkSnap = await getDoc(doc(db, "waWebSessionChunks", `chunk_${i}`));
         if (chunkSnap.exists()) {
           const chunkData = chunkSnap.data();
           if (chunkData && chunkData.data) {
+            restoredChunkPayloads[i] = chunkData.data;
             try {
               const files = JSON.parse(chunkData.data);
               for (const [fn, content] of Object.entries(files)) {
@@ -1584,7 +1598,11 @@ async function restoreSessionFromFirestore(db) {
           }
         }
       }
-      console.log(`[WA-WEB AUTH] Restored ${restoredCount} session files from Firestore chunks`);
+      // Prime the content diff: files were just written fresh to disk (new mtimes), but their
+      // CONTENT matches Firestore exactly - so the first post-boot sync can skip every chunk write.
+      lastChunkPayloads = restoredChunkPayloads;
+      lastMetaTotalChunks = totalChunks;
+      console.log(`[WA-WEB AUTH] Restored ${restoredCount} session files from Firestore chunks (write-diff primed)`);
     } else {
       // Backward compatibility check for individual files
       const legacySnap = await getDocs(collection(db, "waWebSession"));
@@ -1608,8 +1626,15 @@ async function restoreSessionFromFirestore(db) {
 }
 
 // Debounced and chunked sync to Firestore (groups 900+ small files into 2-4 docs, avoiding write exhaustion)
+// WRITE-OPTIMIZED (2026-09): three layers of protection so an idle or steady live session costs ZERO writes:
+//   1. Directory FINGERPRINT (file count + total bytes + latest mtime): unchanged -> skip instantly.
+//   2. Chunk CONTENT DIFF: only chunks whose payload actually changed are written.
+//   3. Spacing: 150ms between chunk writes to keep the Firestore write stream calm.
 let syncSessionTimeout = null;
 let isSyncingSession = false;
+let lastAuthFingerprint = '';
+let lastChunkPayloads = [];
+let lastMetaTotalChunks = -1;
 
 async function syncSessionToFirestore(db) {
   if (!db || isSyncingSession) return;
@@ -1620,14 +1645,26 @@ async function syncSessionToFirestore(db) {
     const fileNames = fs.readdirSync(AUTH_DIR);
     if (fileNames.length === 0) return;
 
-    const filesMap = {};
+    // Layer 1: cheap fingerprint - skip the entire sync when nothing on disk changed
+    let totalBytes = 0;
+    let maxMtime = 0;
+    const statMap = new Map();
     for (const fn of fileNames) {
-      const fp = path.join(AUTH_DIR, fn);
       try {
-        if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
-          filesMap[fn] = fs.readFileSync(fp, 'utf-8');
+        const st = fs.statSync(path.join(AUTH_DIR, fn));
+        if (st.isFile()) {
+          statMap.set(fn, st);
+          totalBytes += st.size;
+          if (st.mtimeMs > maxMtime) maxMtime = st.mtimeMs;
         }
       } catch (e) {}
+    }
+    const fingerprint = fileNames.length + '|' + totalBytes + '|' + Math.round(maxMtime);
+    if (fingerprint === lastAuthFingerprint) return;   // 0 reads, 0 writes, 0 noise
+
+    const filesMap = {};
+    for (const fn of statMap.keys()) {
+      try { filesMap[fn] = fs.readFileSync(path.join(AUTH_DIR, fn), 'utf-8'); } catch (e) {}
     }
 
     const totalFiles = Object.keys(filesMap).length;
@@ -1652,20 +1689,32 @@ async function syncSessionToFirestore(db) {
       chunks.push(currentChunk);
     }
 
+    // Layer 2: write ONLY the chunks whose content actually changed
+    let written = 0;
     for (let i = 0; i < chunks.length; i++) {
+      const payload = JSON.stringify(chunks[i]);
+      if (payload === lastChunkPayloads[i]) continue;
       await setDoc(doc(db, "waWebSessionChunks", `chunk_${i}`), {
-        data: JSON.stringify(chunks[i]),
+        data: payload,
         updatedAt: Date.now()
       });
+      lastChunkPayloads[i] = payload;
+      written++;
+      await new Promise(r => setTimeout(r, 150));   // Layer 3: calm spacing between writes
     }
 
-    await setDoc(doc(db, "waWebSessionChunks", "meta"), {
-      totalChunks: chunks.length,
-      totalFiles: totalFiles,
-      updatedAt: Date.now()
-    });
+    if (chunks.length !== lastMetaTotalChunks) {
+      await setDoc(doc(db, "waWebSessionChunks", "meta"), {
+        totalChunks: chunks.length,
+        totalFiles: totalFiles,
+        updatedAt: Date.now()
+      });
+      lastMetaTotalChunks = chunks.length;
+    }
 
-    console.log(`[WA-WEB AUTH] Synced ${totalFiles} auth files to Firestore in ${chunks.length} chunks`);
+    lastAuthFingerprint = fingerprint;
+    if (written) console.log(`[WA-WEB AUTH] Synced ${totalFiles} auth files (${written}/${chunks.length} chunks changed)`);
+    else console.log('[WA-WEB AUTH] Auth files touched on disk but content identical - no Firestore writes needed');
   } catch (err) {
     console.warn('[WA-WEB AUTH] Could not sync session to Firestore:', err.message);
   } finally {
@@ -1707,50 +1756,168 @@ async function clearFirestoreSession(db) {
   }
 }
 
-// Save text-only 7-day conversation history + lightweight thumbnails to Firestore collection
+// ================= VAULT SAVE PIPELINE (write-optimized, 2026-09) =================
+// Fixes the RESOURCE_EXHAUSTED write-stream spam. Four protections:
+//   1. SINGLE-FLIGHT: overlapping save runs are impossible (runs could previously pile onto a
+//      still-running one - that is exactly what exhausted the Firestore write stream).
+//   2. DELTA: every chat has a signature; only chats whose signature changed since their last
+//      save are written. A quiet inbox now produces ZERO vault writes.
+//   3. BATCHED: changed chats are committed via writeBatch (<=400 docs per commit) instead of
+//      thousands of individual stream writes.
+//   4. SHELL-SAFE: chats restored as shells (archive not loaded yet) are never rewritten, so
+//      their archived conversations can never be clobbered with an empty array.
+const FULL_VAULT_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;  // safety-net full sweep: every 6h
+const VAULT_BATCH_SIZE = 400;                             // Firestore hard limit: 500 writes/commit
+const RESTORE_RECENT_CHATS = 80;                          // boot: only newest N chats get messages
+
+let historySaveInFlight = false;
+let historySavePending = false;
+let lastFullVaultSyncAt = 0;
+let lastChatIndexAt = 0;
+let vaultSavedSinceLog = 0;
+const chatVaultSignatures = new Map();   // chat jid -> signature of its last saved vault doc
+
+function buildChatVaultPayload(c) {
+  const allMsgs = (c.messages || []).map(m => ({
+    id: m.id,
+    fromMe: m.fromMe,
+    senderName: m.senderName || '',
+    text: m.text || '',
+    timestamp: m.timestamp || Date.now(),
+    mediaType: m.mediaType || null,
+    mediaInfo: m.mediaInfo ? {
+      thumbnail: m.mediaInfo.thumbnail || null,
+      caption: m.mediaInfo.caption || '',
+      fileName: m.mediaInfo.fileName || '',
+      mimetype: m.mediaInfo.mimetype || '',
+      seconds: m.mediaInfo.seconds || 0
+    } : null
+  }));
+  return {
+    id: c.id,
+    name: c.name || resolveContactName(c.id),
+    phone: resolveRealPhoneNumber(c.id) || '',
+    realPhone: resolveRealPhoneNumber(c.id) || '',
+    isGroup: c.isGroup || false,
+    lastMessage: c.lastMessage || '',
+    timestamp: c.timestamp || 0,
+    unreadCount: c.unreadCount || 0,
+    messagesCount: allMsgs.length,
+    messages: allMsgs,
+    updatedAt: Date.now()
+  };
+}
+
+function chatVaultSignature(c) {
+  const msgs = c.messages || [];
+  const last = msgs.length ? msgs[msgs.length - 1] : null;
+  return msgs.length + '|' + (last ? (last.id || '') : '') + '|' + (last ? (last.timestamp || 0) : 0) + '|' +
+    (c.unreadCount || 0) + '|' + (c.lastMessage || '') + '|' + (c.name || '');
+}
+
+// Compact chat-list index -> restarts restore thousands of chats with 2-3 reads instead of a
+// full-collection scan. Pages are kept under ~700KB (Firestore doc limit is 1MB).
+async function saveChatIndexToFirestore(chats, force = false) {
+  if (!globalDb) return;
+  if (!force && (Date.now() - lastChatIndexAt) < 10 * 60 * 1000) return;
+  try {
+    const shells = chats.map(c => ({
+      id: c.id,
+      name: c.name || resolveContactName(c.id),
+      phone: resolveRealPhoneNumber(c.id) || '',
+      isGroup: c.isGroup || false,
+      unreadCount: c.unreadCount || 0,
+      lastMessage: c.lastMessage || '',
+      timestamp: c.timestamp || 0,
+      messagesCount: c._messagesLoaded === false ? (c._messagesCount || 0) : (c.messages || []).length
+    }));
+    const pages = [];
+    let cur = [];
+    let curSize = 0;
+    for (const s of shells) {
+      const entryLen = JSON.stringify(s).length + 2;
+      if (curSize + entryLen > 700 * 1024 && cur.length) { pages.push(cur); cur = []; curSize = 0; }
+      cur.push(s);
+      curSize += entryLen;
+    }
+    pages.push(cur);
+    for (let i = 0; i < pages.length; i++) {
+      await setDoc(doc(globalDb, "appData", "waWebChatIndex_" + i), { data: JSON.stringify(pages[i]), updatedAt: Date.now() });
+    }
+    await setDoc(doc(globalDb, "appData", "waWebChatIndexMeta"), { pages: pages.length, total: shells.length, updatedAt: Date.now() });
+    lastChatIndexAt = Date.now();
+    console.log(`[WA-WEB VAULT] 🗂️ Chat index saved (${shells.length} chats in ${pages.length} page(s))`);
+  } catch (e) {
+    console.warn('[WA-WEB VAULT] Chat index save failed:', e.message);
+  }
+}
+
+// Fetch one chat's archived messages from Firestore (1 read) and merge them in. Used lazily when
+// an old (shell) chat is opened, or the moment it receives a new message.
+async function hydrateChatFromVault(jid) {
+  try {
+    const chat = waWebState.chats.get(jid);
+    if (!chat || chat._messagesLoaded === true || !globalDb) return;
+    const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const snap = await getDoc(doc(globalDb, "waWebChatHistory", docId));
+    const archived = (snap.exists() && snap.data().messages) || [];
+    const known = new Set((chat.messages || []).map(m => m.id));
+    for (const m of archived) {
+      if (m && m.id && !known.has(m.id)) chat.messages.push(m);
+    }
+    chat.messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    if (chat.messages.length > 200) chat.messages = chat.messages.slice(-200);
+    chat._messagesLoaded = true;
+    chat._messagesCount = chat.messages.length;
+    console.log(`[WA-WEB VAULT] 📥 Hydrated ${chat.messages.length} archived messages for ${jid}`);
+    scheduleHistorySaveToFirestore();   // persist the merged archive (delta: 1 write)
+  } catch (e) { /* ignore - chat stays usable */ }
+}
+
 async function saveHistoryToFirestore() {
   if (!globalDb) return;
+  if (historySaveInFlight) { historySavePending = true; return; }   // PROTECTION 1: never overlap
+  historySaveInFlight = true;
   try {
+    const now = Date.now();
+    const fullSweep = (now - lastFullVaultSyncAt) > FULL_VAULT_SYNC_INTERVAL_MS;
     const chats = Array.from(waWebState.chats.values())
-      .filter(c => (c.messages && c.messages.length > 0) || c.timestamp)
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      .filter(c => c.id && c._messagesLoaded !== false && ((c.messages && c.messages.length > 0) || c.timestamp));
 
-    // Save all chats and full history permanently to Firestore
+    // PROTECTION 2: delta - only chats whose signature changed since their last save
+    const toSave = [];
     for (const c of chats) {
-      const docId = c.id.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const allMsgs = (c.messages || []).map(m => ({
-        id: m.id,
-        fromMe: m.fromMe,
-        senderName: m.senderName || '',
-        text: m.text || '',
-        timestamp: m.timestamp || Date.now(),
-        mediaType: m.mediaType || null,
-        mediaInfo: m.mediaInfo ? {
-          thumbnail: m.mediaInfo.thumbnail || null,
-          caption: m.mediaInfo.caption || '',
-          fileName: m.mediaInfo.fileName || '',
-          mimetype: m.mediaInfo.mimetype || '',
-          seconds: m.mediaInfo.seconds || 0
-        } : null
-      }));
-
-      await setDoc(doc(globalDb, "waWebChatHistory", docId), {
-        id: c.id,
-        name: c.name || resolveContactName(c.id),
-        phone: resolveRealPhoneNumber(c.id) || '',
-        realPhone: resolveRealPhoneNumber(c.id) || '',
-        isGroup: c.isGroup || false,
-        lastMessage: c.lastMessage || '',
-        timestamp: c.timestamp || 0,
-        unreadCount: c.unreadCount || 0,
-        messagesCount: allMsgs.length,
-        messages: allMsgs,
-        updatedAt: Date.now()
-      }, { merge: true });
+      const sig = chatVaultSignature(c);
+      if (fullSweep || chatVaultSignatures.get(c.id) !== sig) toSave.push({ c: c, sig: sig });
     }
-    console.log('[WA-WEB VAULT] 💾 Successfully archived ' + chats.length + ' full chat histories to Firestore');
+
+    // PROTECTION 3: batched commits (<=400 docs per commit = one stream operation)
+    for (let i = 0; i < toSave.length; i += VAULT_BATCH_SIZE) {
+      const slice = toSave.slice(i, i + VAULT_BATCH_SIZE);
+      const batch = writeBatch(globalDb);
+      for (const item of slice) {
+        const docId = item.c.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        batch.set(doc(globalDb, "waWebChatHistory", docId), buildChatVaultPayload(item.c), { merge: true });
+      }
+      await batch.commit();
+      for (const item of slice) chatVaultSignatures.set(item.c.id, item.sig);  // only mark after success
+    }
+
+    if (fullSweep) {
+      lastFullVaultSyncAt = now;
+      await saveChatIndexToFirestore(Array.from(waWebState.chats.values()).filter(c => c.id), true);
+    }
+
+    vaultSavedSinceLog += toSave.length;
+    if (fullSweep || vaultSavedSinceLog >= 25) {
+      console.log(`[WA-WEB VAULT] 💾 ${fullSweep ? 'Full sweep' : 'Delta'} wrote ${vaultSavedSinceLog} chat(s) (${chats.length} tracked, batched - write-stream safe)`);
+      vaultSavedSinceLog = 0;
+    }
   } catch (err) {
     console.warn('[WA-WEB HISTORY] Error saving full history to Firestore:', err.message);
+  } finally {
+    historySaveInFlight = false;
+    if (historySavePending) { historySavePending = false; scheduleHistorySaveToFirestore(); }
   }
 }
 
@@ -1820,7 +1987,17 @@ async function restoreKnowledgeBaseFromFirestore(db) {
 
 
 // Persist entire contact name index into Firestore chunk
+// WRITE-OPTIMIZED (2026-09): content signature - the doc is only rewritten when names actually
+// changed. A quiet contact list now costs ZERO writes per hour instead of one per minute.
 let contactsSaveTimeout = null;
+let lastContactsSignature = '';
+
+function simpleStringHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 async function saveContactsIndexToFirestore() {
   if (!globalDb || waWebState.contacts.size === 0) return;
   try {
@@ -1839,22 +2016,28 @@ async function saveContactsIndexToFirestore() {
     for (const [k, v] of lidToPhoneMap.entries()) {
       lidMappingsObj[k] = v;
     }
+    const contactsJson = JSON.stringify(contactsObj);
+    const lidJson = JSON.stringify(lidMappingsObj);
+    const sig = simpleStringHash(contactsJson) + '|' + simpleStringHash(lidJson);
+    if (sig === lastContactsSignature) return;   // unchanged -> skip write entirely
     await setDoc(doc(globalDb, "appData", "waContactsIndex"), {
-      contacts: JSON.stringify(contactsObj),
-      lidMappings: JSON.stringify(lidMappingsObj),
+      contacts: contactsJson,
+      lidMappings: lidJson,
       count: Object.keys(contactsObj).length,
       updatedAt: Date.now()
     }, { merge: true });
+    lastContactsSignature = sig;
     console.log('[WA-WEB CONTACTS] Saved ' + Object.keys(contactsObj).length + ' contacts index to Firestore');
   } catch (e) {
     console.warn('[WA-WEB CONTACTS] Error saving contacts index:', e.message);
   }
 }
 
-// Throttled: the contacts index was being rewritten every few seconds during history sync.
+// Throttled: the contacts index is only re-checked every 5 minutes now (was 60s), and the
+// content signature above prevents even that from writing when nothing actually changed.
 let lastContactsSaveAt = 0;
 function scheduleContactsSaveToFirestore(force = false) {
-  if (!force && lastContactsSaveAt && (Date.now() - lastContactsSaveAt) < 60000) return;
+  if (!force && lastContactsSaveAt && (Date.now() - lastContactsSaveAt) < 5 * 60 * 1000) return;
   if (contactsSaveTimeout) clearTimeout(contactsSaveTimeout);
   contactsSaveTimeout = setTimeout(() => {
     lastContactsSaveAt = Date.now();
@@ -1908,6 +2091,13 @@ async function restoreContactsIndexFromFirestore(db) {
           }
         }
         console.log('[WA-WEB CONTACTS] Restored ' + count + ' contact names from Firestore index');
+        // Prime the write signature: restored data already matches Firestore, so an unchanged
+        // contact list costs 0 writes after every boot.
+        try {
+          const cJson = String(data.contacts || '');
+          const lJson = String(data.lidMappings || '');
+          lastContactsSignature = simpleStringHash(cJson) + '|' + simpleStringHash(lJson);
+        } catch (e) {}
         // Re-resolve names for direct chats only (group names come from their subjects)
         refreshChatNamesAndPhones();
       }
@@ -1917,29 +2107,83 @@ async function restoreContactsIndexFromFirestore(db) {
   }
 }
 
-// Restore text-only chat history from Firestore on startup
+// Restore text-only chat history from Firestore on startup.
+// READ-OPTIMIZED (2026-09): a compact chat-list index (2-3 reads for thousands of chats) plus
+// full messages for only the most recent RESTORE_RECENT_CHATS chats. Older chats stay as
+// lightweight shells and lazy-load their archive the moment they are opened or receive a
+// message. Previously this read EVERY chat document (~4,000 reads on every restart).
 async function restoreHistoryFromFirestore(db) {
   if (!db) return;
   try {
-    const snap = await getDocs(collection(db, "waWebChatHistory"));
-    if (!snap.empty) {
-      snap.forEach(docSnap => {
-        const ch = docSnap.data();
-        if (ch.id && !waWebState.chats.has(ch.id)) {
-          waWebState.chats.set(ch.id, {
-            id: ch.id,
-            name: ch.name || resolveContactName(ch.id),
-            phone: ch.phone || ch.id.split('@')[0],
-            isGroup: ch.isGroup || false,
-            unreadCount: ch.unreadCount || 0,
-            lastMessage: ch.lastMessage || '',
-            timestamp: ch.timestamp || Date.now(),
-            messages: ch.messages || []
-          });
+    // A) Fast path: the chat-list index written by saveChatIndexToFirestore
+    let shells = [];
+    const metaSnap = await getDoc(doc(db, "appData", "waWebChatIndexMeta"));
+    if (metaSnap.exists()) {
+      const pageCount = Number(metaSnap.data().pages || 0);
+      for (let i = 0; i < pageCount; i++) {
+        const pSnap = await getDoc(doc(db, "appData", "waWebChatIndex_" + i));
+        if (pSnap.exists() && pSnap.data() && pSnap.data().data) {
+          try { shells = shells.concat(JSON.parse(pSnap.data().data) || []); } catch (e) {}
         }
-      });
-      console.log(`[WA-WEB HISTORY] Restored ${snap.size} text chats from Firestore`);
+      }
     }
+
+    // B) First run after this update (no index yet): capped fallback scan instead of a full one
+    if (!shells.length) {
+      const fbSnap = await getDocs(query(collection(db, "waWebChatHistory"), orderBy("timestamp", "desc"), limit(400)));
+      fbSnap.forEach(docSnap => {
+        const ch = docSnap.data() || {};
+        if (ch.id) shells.push({ id: ch.id, name: ch.name || '', phone: ch.phone || '', isGroup: !!ch.isGroup, unreadCount: ch.unreadCount || 0, lastMessage: ch.lastMessage || '', timestamp: ch.timestamp || 0, messagesCount: (ch.messages || []).length });
+      });
+      if (shells.length) console.log(`[WA-WEB HISTORY] No chat index yet - seeded ${shells.length} chats from a capped scan (index builds automatically)`);
+    }
+
+    for (const s of shells) {
+      if (!s.id || waWebState.chats.has(s.id)) continue;
+      waWebState.chats.set(s.id, {
+        id: s.id,
+        name: s.name || resolveContactName(s.id),
+        phone: s.phone || s.id.split('@')[0],
+        isGroup: !!s.isGroup,
+        unreadCount: s.unreadCount || 0,
+        lastMessage: s.lastMessage || '',
+        timestamp: s.timestamp || Date.now(),
+        messages: [],
+        _messagesLoaded: false,   // archive stays in Firestore until this chat is opened / updated
+        _messagesCount: s.messagesCount || 0
+      });
+    }
+
+    // C) Full messages for the newest chats only (one ordered query, RESTORE_RECENT_CHATS reads)
+    let recentLoaded = 0;
+    const recentSnap = await getDocs(query(collection(db, "waWebChatHistory"), orderBy("timestamp", "desc"), limit(RESTORE_RECENT_CHATS)));
+    recentSnap.forEach(docSnap => {
+      const ch = docSnap.data() || {};
+      if (!ch.id || !ch.messages || ch.messages.length === 0) return;
+      const existing = waWebState.chats.get(ch.id);
+      if (existing && (existing.messages || []).length >= ch.messages.length) { existing._messagesLoaded = true; return; }
+      if (existing && (existing.timestamp || 0) > (ch.timestamp || 0)) {
+        ch.lastMessage = existing.lastMessage || ch.lastMessage;
+        ch.timestamp = existing.timestamp;
+        ch.unreadCount = existing.unreadCount || ch.unreadCount;
+      }
+      const chat = {
+        id: ch.id,
+        name: ch.name || resolveContactName(ch.id),
+        phone: ch.phone || ch.id.split('@')[0],
+        isGroup: ch.isGroup || false,
+        unreadCount: ch.unreadCount || 0,
+        lastMessage: ch.lastMessage || '',
+        timestamp: ch.timestamp || Date.now(),
+        messages: ch.messages || [],
+        _messagesLoaded: true,
+        _messagesCount: (ch.messages || []).length
+      };
+      waWebState.chats.set(ch.id, chat);
+      chatVaultSignatures.set(ch.id, chatVaultSignature(chat));   // already matches the doc -> 0 delta writes
+      recentLoaded++;
+    });
+    if (waWebState.chats.size) console.log(`[WA-WEB HISTORY] Restored ${waWebState.chats.size} chats (${recentLoaded} with recent messages) - index-based fast restore`);
 
     // Also load contact names from app contactBook
     const cbSnap = await getDoc(doc(db, "appData", "contacts"));
@@ -2060,6 +2304,8 @@ export async function initWaWeb(db = null) {
         waWebState.user = sock.user || { id: 'unknown', name: 'WhatsApp User' };
         isInitializing = false;
         scheduleSessionSync(globalDb, true);
+        // Refresh the compact chat-list index shortly after connect (2-3 writes only)
+        setTimeout(() => { saveChatIndexToFirestore(Array.from(waWebState.chats.values()).filter(c => c.id), true); }, 20000);
         // Pull all group subjects shortly after connect so the chat list shows GROUP names
         setTimeout(() => { fetchAllGroupSubjects(); }, 6000);
         // Deliver boss reminders + task-result notifications through this (only) live socket
@@ -2761,11 +3007,14 @@ export function getWaWebChats() {
   return list;
 }
 
-// Helper: Get message history for a chat
-export function getWaWebMessages(jid) {
+// Helper: Get message history for a chat (lazy-loads the archive for old chats on first open)
+export async function getWaWebMessages(jid) {
   const chat = waWebState.chats.get(jid);
   if (!chat) return [];
   chat.unreadCount = 0;
+  if (chat._messagesLoaded === false) {
+    await hydrateChatFromVault(jid);
+  }
   return chat.messages || [];
 }
 
@@ -3014,6 +3263,7 @@ export async function clearWaWebChat(jid) {
         lastMessage: '',
         updatedAt: Date.now()
       }, { merge: true });
+      chatVaultSignatures.set(jid, chatVaultSignature(chat));   // already matches Firestore -> no re-write
     }
 
     scheduleHistorySaveToFirestore();
@@ -3038,6 +3288,7 @@ export async function deleteWaWebChat(jid) {
   if (globalDb) {
     const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
     await deleteDoc(doc(globalDb, "waWebChatHistory", docId)).catch(() => {});
+    chatVaultSignatures.delete(jid);
   }
 
   scheduleHistorySaveToFirestore();
