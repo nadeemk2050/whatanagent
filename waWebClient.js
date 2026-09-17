@@ -4,7 +4,7 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc } from 'firebase/firestore';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -310,6 +310,160 @@ async function bossCancelTask(q) {
   return { ok: true, task: cancelled };
 }
 
+// ================= ALIGNTASKS (team task board) — same Firestore project as this app =================
+// The board stores tasks under /artifacts/{webAppId}/public/data/tasks. The boss can ADD tasks,
+// READ lists (today / tomorrow / overdue / done / by person) and COMPLETE tasks - text or voice.
+const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
+const ALIGNTASKS_BASE = 'artifacts/' + ALIGNTASKS_APP_ID + '/public/data';
+
+async function alignTasksStaffDirectory() {
+  if (!globalDb) return [];
+  const map = new Map();
+  try {
+    const staffSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/staff'));
+    staffSnap.forEach(d => {
+      const s = d.data() || {};
+      const email = String(s.email || '').toLowerCase();
+      if (email) map.set(email, { name: String(s.name || '').trim() || email.split('@')[0], email: email, uid: s.uid || '' });
+    });
+  } catch (e) { /* staff collection optional */ }
+  try {
+    const usersSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/users'));
+    usersSnap.forEach(d => {
+      const u = d.data() || {};
+      const email = String(u.email || '').toLowerCase();
+      if (email && u.active !== false && !map.has(email)) map.set(email, { name: String(u.name || '').trim() || email.split('@')[0], email: email, uid: d.id });
+    });
+  } catch (e) { /* users collection optional */ }
+  return Array.from(map.values());
+}
+
+function alignTaskFindStaff(raw, staff) {
+  const q = String(raw || '').trim().toLowerCase();
+  if (!q) return { error: 'Give me a team member name (e.g. assign to Ahmed).' };
+  if (q.includes('@')) {
+    const hit = staff.find(s => s.email === q);
+    return hit ? { person: hit } : { error: 'No board user with the email ' + q + '.' };
+  }
+  const scored = [];
+  for (const s of staff) {
+    const n = s.name.toLowerCase();
+    const first = n.split(' ')[0];
+    let score = 0;
+    if (n === q) score = 100;
+    else if (n.includes(q)) score = 80;
+    else if (q.includes(n)) score = 70;
+    else if (first === q || q.startsWith(first + ' ')) score = 60;
+    if (score) scored.push({ s: s, score: score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  if (!scored.length) return { notFound: true };
+  const top = scored.filter(x => x.score === scored[0].score);
+  if (top.length > 1) return { multiple: top.map(x => x.s) };
+  return { person: scored[0].s };
+}
+
+// "tomorrow 9am" / "at 4 pm" / "in 2 hours" / "18-09-2026 10:00" -> datetime-local string in DUBAI time
+function alignTaskDueToDatetimeLocal(dueRaw) {
+  const t = String(dueRaw || '').trim();
+  if (!t) return { empty: true };
+  let ts = /^\d{4}-\d{2}-\d{2}/.test(t) ? Date.parse(t) : parseBossWhen(t);
+  if (!ts || Number.isNaN(ts)) return { error: 'I could not understand the time "' + t + '". Try e.g. "tomorrow 9am" or "18-09-2026 10:00".' };
+  const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ts));
+  return { value: parts.replace(' ', 'T').slice(0, 16), ts: ts };
+}
+
+// datetime-local string (Dubai wall time, no timezone in string) -> absolute ms
+function alignTaskDueMs(t) {
+  const d = String((t && t.dueDate) || '').trim();
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) - 4 * 3600 * 1000; // Dubai = UTC+4, no DST
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function dubaiYmd(ms) {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+}
+
+export async function bossAlignTaskAdd(p) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const title = String((p && (p.title || p.task || p.description)) || '').trim();
+  if (!title) return { ok: false, error: 'Tell me what the task is, Boss.' };
+  const staff = await alignTasksStaffDirectory();
+  if (!staff.length) return { ok: false, error: 'The AlignTasks board has no team members yet - add staff in the board first.' };
+  const who = alignTaskFindStaff(p && (p.assignee || p.assignTo || p.who), staff);
+  if (who.notFound) return { ok: false, error: 'No team member matches "' + String((p && (p.assignee || p.assignTo || p.who)) || '') + '". Available: ' + staff.slice(0, 15).map(s => s.name).join(', ') };
+  if (who.multiple) return { ok: false, error: 'More than one member matches: ' + who.multiple.map(s => s.name).join(', ') + ' - tell me exactly who.' };
+  if (who.error) return { ok: false, error: who.error };
+  const due = alignTaskDueToDatetimeLocal(p && (p.due || p.when || p.dueDate));
+  if (due.error) return { ok: false, error: due.error };
+  const task = {
+    description: title,
+    assigneeEmail: who.person.email,
+    dueDate: due.value || '',
+    status: 'To Do',
+    comments: [],
+    createdAt: new Date(),
+    createdBy: 'boss-waweb',
+    ownerAdminUid: who.person.uid || '',
+    ownerAdminEmail: '',
+    setAlarm: false
+  };
+  const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks'), task);
+  console.log('[ALIGNTASKS] ➕ Boss added task "' + title + '" for ' + who.person.name + (due.value ? (' due ' + due.value) : ''));
+  return { ok: true, id: ref.id, task: task, assignee: who.person, dueTs: due.ts || null };
+}
+
+export async function bossAlignTaskList(p) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
+  let tasks = [];
+  snap.forEach(d => tasks.push(Object.assign({ id: d.id }, d.data() || {})));
+  const staff = await alignTasksStaffDirectory();
+  const nameOf = (email) => { const s = staff.find(x => x.email === String(email || '').toLowerCase()); return s ? s.name : (email || 'unassigned'); };
+  const now = Date.now();
+  let label = '';
+  const qWho = p && (p.assignee || p.assignedTo || p.who || p.person);
+  if (qWho) {
+    const who = alignTaskFindStaff(qWho, staff);
+    if (who.person) { tasks = tasks.filter(t => String(t.assigneeEmail || '').toLowerCase() === who.person.email); label += ' for ' + who.person.name; }
+    else return { ok: false, error: who.notFound ? ('No team member matches "' + qWho + '"') : (who.multiple ? ('More than one member matches: ' + who.multiple.map(s => s.name).join(', ')) : who.error) };
+  }
+  const when = String((p && (p.when || p.filter || p.range)) || '').toLowerCase();
+  const doneQuery = /done|completed|finished/.test(when);
+  if (/today/.test(when)) { const today = dubaiYmd(now); tasks = tasks.filter(t => t.dueDate && String(t.dueDate).slice(0, 10) === today); label += ' due today'; }
+  else if (/tomorrow/.test(when)) { const tm = dubaiYmd(now + 24 * 3600 * 1000); tasks = tasks.filter(t => t.dueDate && String(t.dueDate).slice(0, 10) === tm); label += ' due tomorrow'; }
+  else if (/overdue|late/.test(when)) { tasks = tasks.filter(t => t.status !== 'Done' && alignTaskDueMs(t) !== null && alignTaskDueMs(t) < now); label += ' overdue'; }
+  else if (doneQuery) { tasks = tasks.filter(t => t.status === 'Done'); label += ' completed'; }
+  if (!doneQuery) tasks = tasks.filter(t => t.status !== 'Done');
+  const odFirst = (t) => { const d = alignTaskDueMs(t); return t.status !== 'Done' && d !== null && d < now ? 0 : 1; };
+  tasks.sort((a, b) => (odFirst(a) - odFirst(b)) || ((alignTaskDueMs(a) || 9e15) - (alignTaskDueMs(b) || 9e15)));
+  const lines = tasks.slice(0, 20).map(t => {
+    const d = alignTaskDueMs(t);
+    const od = t.status !== 'Done' && d !== null && d < now;
+    return '• ' + (t.description || '(no title)') + ' — ' + nameOf(t.assigneeEmail) +
+      (d ? (' — ' + new Date(d).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : ' — no due date') +
+      (od ? ' ⚠️ OVERDUE' : '');
+  });
+  return { ok: true, total: tasks.length, lines: lines, label: label };
+}
+
+export async function bossAlignTaskDone(p) {
+  if (!globalDb) return { ok: false, error: 'No database connection' };
+  const q = String((p && (p.title || p.task || p.match)) || '').trim().toLowerCase();
+  if (!q) return { ok: false, error: 'Which task should I mark done, Boss? Give me a few words from its description.' };
+  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
+  const all = [];
+  snap.forEach(d => all.push(Object.assign({ id: d.id, ref: d.ref }, d.data() || {})));
+  const match = all.filter(t => t.status !== 'Done' && String(t.description || '').toLowerCase().includes(q));
+  if (!match.length) return { ok: false, error: 'No open task matches "' + q + '".' };
+  if (match.length > 1) return { ok: false, error: 'More than one task matches: ' + match.slice(0, 5).map(t => '"' + String(t.description).substring(0, 40) + '"').join(' | ') + ' - be more specific.' };
+  await setDoc(match[0].ref, { status: 'Done', completedBy: 'boss-waweb', completedAt: new Date(), lastUpdatedBy: 'boss-waweb', lastUpdatedAt: new Date() }, { merge: true });
+  console.log('[ALIGNTASKS] ✅ Boss marked done: ' + match[0].description);
+  return { ok: true, task: match[0] };
+}
+
 // ================= UNIVERSAL CONTACT BOOK (shared by every AI) =================
 // Read the whole book once (cheap) and return rows sorted by recency.
 async function bossContactDirectory(limit = 500) {
@@ -506,6 +660,7 @@ function stripBossActionBlocks(text) {
     .replace(/\[TASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[TASKCANCEL:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[TASKLIST\]/gi, '')
+    .replace(/\[ALIGNTASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[CONTACT:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .trim();
 }
@@ -2256,6 +2411,8 @@ export async function initWaWeb(db = null) {
                   // C. Executive prompt for general instructions / website work / inquiries
                   const contactDir = await bossContactDirectory(120);
                   const contactLines = contactDir.filter(x => x.name).map(x => '• ' + x.name + (x.company && x.company !== x.name ? ' (' + x.company + ')' : '') + ' → +' + x.phone).join('\n');
+                  const alignStaff = await alignTasksStaffDirectory();
+                  const alignStaffLine = alignStaff.length ? ('BOARD TEAM MEMBERS (align tasks to these EXACT names): ' + alignStaff.map(s => s.name).join(', ')) : '';
                   const brainCtx = await getBossBrainContext(16);
                   const bossExecPrompt = 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem UAE +971529244592).\n' +
                     'He is commanding you directly from his verified personal phone number via Voice Note or Text.\n' +
@@ -2296,10 +2453,18 @@ export async function initWaWeb(db = null) {
                     'Contact Book:\n' +
                     '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +
                     '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
+                    '--- ALIGNTASKS (TEAM TASK BOARD) POWERS ---\n' +
+                    'Add tasks to the AlignTasks board, read the board on demand, or mark tasks done - from the boss\'s text OR voice notes:\n' +
+                    '  [ALIGNTASK: {"action":"add","assignee":"Ahmed","title":"Check the container paperwork","due":"tomorrow 9am"}]\n' +
+                    '  (assignee = a team member name from the BOARD TEAM MEMBERS list below; due is optional - "today 5pm", "tomorrow 9am", "in 2 hours", "18-09-2026 10:00")\n' +
+                    '  [ALIGNTASK: {"action":"list"}]  (all pending) | {"action":"list","when":"today"} | {"when":"tomorrow"} | {"when":"overdue"} | {"when":"done"} | {"assignee":"Ahmed"} (can combine when + assignee)\n' +
+                    '  [ALIGNTASK: {"action":"done","title":"a few words from the task description"}]\n' +
+                    'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and confirms; NEVER say a task was added or completed unless the app confirmed it in the result.\n' +
                     '--- UNIVERSAL CONTACT BOOK (ALWAYS use these numbers when the boss names a person) ---\n' +
                     (contactLines ? (contactLines + '\n') : '(no saved contacts yet)\n') +
                     'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the Contact Book automatically. If the name is NOT in the list above, ask the boss for the number (or save it with [CONTACT]). NEVER invent a number.\n' +
                     'NEVER claim a message was sent unless the app confirmed it in the action result.\n\n' +
+                    (alignStaffLine ? (alignStaffLine + '\n\n') : '') +
                     (brainCtx ? ('--- BOSS BRAIN (memory of your previous exchanges with the boss) ---\n' + brainCtx + '\n\n') : '') +
                     'After any action block, confirm briefly what you did.\n\n' +
                     buildWaWebKnowledgeSystemPrompt();
@@ -2351,6 +2516,28 @@ export async function initWaWeb(db = null) {
                         sectionSummary += res.ok
                           ? ('❌ *Cancelled:* ' + (res.task.title || res.task.id) + '\n')
                           : ('⚠️ ' + res.error + '\n');
+                      }
+                      for (const a of extractBossActionBlocks(replyText, 'ALIGNTASK')) {
+                        const act = String((a && a.action) || '').toLowerCase();
+                        if (act === 'add' || act === 'create' || act === 'new') {
+                          const res = await bossAlignTaskAdd(a);
+                          sectionSummary += res.ok
+                            ? ('📋 *AlignTasks added:* "' + String(res.task.description).substring(0, 60) + '" → ' + res.assignee.name + (res.dueTs ? (' • due ' + new Date(res.dueTs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' (Dubai)') : '') + '\n')
+                            : ('⚠️ AlignTasks: ' + res.error + '\n');
+                        } else if (act === 'list' || act === 'show' || act === 'today') {
+                          const params = (act === 'today' && !(a && a.when)) ? Object.assign({}, a, { when: 'today' }) : a;
+                          const res = await bossAlignTaskList(params);
+                          sectionSummary += res.ok
+                            ? (res.lines.length ? ('📋 *AlignTasks' + (res.label || '') + '* (' + res.total + '):\n' + res.lines.join('\n') + '\n') : ('📋 No tasks' + (res.label || '') + '.\n'))
+                            : ('⚠️ AlignTasks: ' + res.error + '\n');
+                        } else if (act === 'done' || act === 'complete' || act === 'finish') {
+                          const res = await bossAlignTaskDone(a);
+                          sectionSummary += res.ok
+                            ? ('✅ *AlignTasks done:* "' + String(res.task.description).substring(0, 60) + '"\n')
+                            : ('⚠️ AlignTasks: ' + res.error + '\n');
+                        } else {
+                          sectionSummary += '⚠️ AlignTasks: unknown action "' + act + '" (use add / list / done).\n';
+                        }
                       }
                       for (const c of extractBossActionBlocks(replyText, 'CONTACT')) {
                         const res = await bossUpsertContact(c);
