@@ -1516,7 +1516,8 @@
                 <p class="subtitle" style="margin-top:0;">Give the AI a job now — it runs it automatically later: send a WhatsApp message in 10 minutes, message someone on 12 Sep at 10:00, publish a blog at 11:00, etc. Tasks are saved in the app database.</p>
 
                 <div class="card" style="margin-bottom:20px;">
-                    <h3 style="margin-top:0;">➕ New Task <span id="taskNextTimer" style="float:right; font-size:13px; color:#546e7a; font-weight:normal;"></span></h3>
+                    <h3 class="collapse-head" data-collapse="taskNewBody" style="margin-top:0; cursor:pointer;">➕ New Task <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span> <span id="taskNextTimer" style="float:right; font-size:13px; color:#546e7a; font-weight:normal; margin-right:14px;"></span></h3>
+                    <div id="taskNewBody" style="display:none;">
                     <div class="form-group">
                         <label>What should the AI do?</label>
                         <select id="taskKind" onchange="taskKindChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
@@ -1569,20 +1570,26 @@
                     </div>
                     <button class="btn-save" onclick="saveAiTask()">✅ Save Task — the AI will run it at that time</button>
                     <div id="taskSaveResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
+                    </div>
                 </div>
 
                 <div class="card" style="margin-bottom:20px;">
-                    <h3 style="margin-top:0;">🕒 Scheduled & Running</h3>
-                    <div id="taskUpcoming"><p class="subtitle">Loading...</p></div>
+                    <h3 class="collapse-head" data-collapse="taskUpcomingBody" style="margin-top:0; cursor:pointer;">🕒 Scheduled & Running <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span></h3>
+                    <div id="taskUpcomingBody" style="display:none;">
+                        <div id="taskUpcoming"><p class="subtitle">Loading...</p></div>
+                    </div>
                 </div>
 
                 <div class="card">
-                    <h3 style="margin-top:0;">📜 Done / Failed / Cancelled</h3>
-                    <div id="taskHistory"><p class="subtitle">Loading...</p></div>
+                    <h3 class="collapse-head" data-collapse="taskHistoryBody" style="margin-top:0; cursor:pointer;">📜 Done / Failed / Cancelled <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span></h3>
+                    <div id="taskHistoryBody" style="display:none;">
+                        <div id="taskHistory"><p class="subtitle">Loading...</p></div>
+                    </div>
                 </div>
 
                 <div class="card" style="margin-bottom:20px; border:2px solid #7c3aed;">
-                    <h3 style="margin-top:0;">🔀 Conditional Align Task <span style="font-size:12px; color:#546e7a; font-weight:normal;">— smart follow-ups: wait for a reply • retry if silent • AI understands the answer • follow up again at the time they promise</span></h3>
+                    <h3 class="collapse-head" data-collapse="condFormBody" style="margin-top:0; cursor:pointer;">🔀 Conditional Align Task <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span> <span style="font-size:12px; color:#546e7a; font-weight:normal;">— smart follow-ups: wait for a reply • retry if silent • AI understands the answer • follow up again at the time they promise</span></h3>
+                    <div id="condFormBody" style="display:none;">
                     <div style="display:flex; gap:12px; flex-wrap:wrap;">
                         <div class="form-group" style="flex:2; min-width:220px;"><label>Title (for you)</label><input type="text" id="condTitle" placeholder="e.g. Payment check - Usama" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                         <div class="form-group" style="flex:2; min-width:220px;"><label>Send to (contact name or number)</label><input type="text" id="condTarget" placeholder="e.g. Usama or 971501234567" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
@@ -1621,11 +1628,14 @@
                     </div>
                     <button class="btn-save" onclick="createConditionalTask()">✅ Create Conditional Task</button>
                     <div id="condSaveResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
+                    </div>
                 </div>
 
                 <div class="card">
-                    <h3 style="margin-top:0;">🧩 Conditional Tasks — Live</h3>
-                    <div id="condTaskList"><p class="subtitle">Loading...</p></div>
+                    <h3 class="collapse-head" data-collapse="condLiveBody" style="margin-top:0; cursor:pointer;">🧩 Conditional Tasks — Live <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span></h3>
+                    <div id="condLiveBody" style="display:none;">
+                        <div id="condTaskList"><p class="subtitle">Loading...</p></div>
+                    </div>
                 </div>
             </div>
 
@@ -6818,6 +6828,19 @@
         loadConditionalTasks();
       } catch (e) { /* ignore */ }
     }
+
+    // ==================== COLLAPSIBLE HEADS (Tasks for AI - auto-hidden, click to open) ====================
+    document.addEventListener('click', function (e) {
+      const h = e.target.closest('.collapse-head');
+      if (!h) return;
+      const bodyId = h.getAttribute('data-collapse');
+      const body = bodyId ? document.getElementById(bodyId) : null;
+      if (!body) return;
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      const caret = h.querySelector('.collapse-caret');
+      if (caret) caret.textContent = isOpen ? '▸' : '▾';
+    });
 
     </script>
 
