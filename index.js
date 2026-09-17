@@ -3386,6 +3386,70 @@ app.post('/api/ai-tasks/delete', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// --- Conditional Align Tasks API (smart follow-ups: wait for reply, retry if silent, AI understands the answer, time-given re-follow-up) ---
+app.get('/api/conditional-tasks', async (req, res) => {
+  try {
+    const snap = await getDocs(query(collection(db, 'conditionalTasks'), orderBy('createdAt', 'desc'), limit(100)));
+    const items = [];
+    snap.forEach(d => items.push(Object.assign({ id: d.id }, d.data() || {})));
+    res.json(items);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/conditional-tasks', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const target = String(b.target || '').trim();
+    const message = String(b.message || '').trim();
+    if (!target) return res.status(400).json({ error: 'Who should receive it? Enter a contact name or WhatsApp number.' });
+    if (!message) return res.status(400).json({ error: 'Write the message to send.' });
+    const payload = {
+      title: String(b.title || message).substring(0, 80),
+      target: target,
+      message: message,
+      waitMinutes: Math.max(1, parseInt(b.waitMinutes) || 10),
+      retryAfterMinutes: Math.max(1, parseInt(b.retryAfterMinutes) || 10),
+      maxRetries: Math.max(0, Math.min(10, isNaN(parseInt(b.maxRetries)) ? 3 : parseInt(b.maxRetries))),
+      onReplyMode: ['ai', 'map', 'log'].includes(b.onReplyMode) ? b.onReplyMode : 'ai',
+      replyYes: String(b.replyYes || ''),
+      replyNo: String(b.replyNo || ''),
+      replyLater: String(b.replyLater || ''),
+      replyOther: String(b.replyOther || ''),
+      followTimeGiven: b.followTimeGiven !== false,
+      activeFrom: Math.max(0, Math.min(23, isNaN(parseInt(b.activeFrom)) ? 8 : parseInt(b.activeFrom))),
+      activeTo: Math.max(1, Math.min(24, isNaN(parseInt(b.activeTo)) ? 22 : parseInt(b.activeTo))),
+      notifyBoss: b.notifyBoss !== false,
+      status: 'active',
+      stage: 'pending_send',
+      nextActionAt: Date.now() + 30000,
+      attempts: 0,
+      lastSentAt: 0,
+      lastReply: '',
+      lastReplyAt: 0,
+      brain: {},
+      history: [{ at: Date.now(), event: 'created', detail: 'Created from the dashboard' }],
+      createdAt: Date.now(),
+      createdBy: 'dashboard'
+    };
+    const ref = await addDoc(collection(db, 'conditionalTasks'), payload);
+    res.json({ success: true, id: ref.id, task: Object.assign({ id: ref.id }, payload) });
+  } catch (e) { res.status(500).json({ error: 'Failed to save: ' + e.message }); }
+});
+
+app.post('/api/conditional-tasks/action', async (req, res) => {
+  try {
+    const { id, action } = req.body || {};
+    if (!id || !action) return res.status(400).json({ error: 'Missing id or action' });
+    const ref = doc(db, 'conditionalTasks', id);
+    if (action === 'delete') { await deleteDoc(ref); return res.json({ success: true }); }
+    if (action === 'pause') { await setDoc(ref, { status: 'paused' }, { merge: true }); return res.json({ success: true }); }
+    if (action === 'resume') { await setDoc(ref, { status: 'active', stage: 'pending_send', nextActionAt: Date.now() + 20000 }, { merge: true }); return res.json({ success: true }); }
+    if (action === 'run_now') { await setDoc(ref, { status: 'active', stage: 'pending_send', nextActionAt: Date.now() + 5000 }, { merge: true }); return res.json({ success: true }); }
+    if (action === 'complete') { await setDoc(ref, { status: 'done', stage: 'done' }, { merge: true }); return res.json({ success: true }); }
+    return res.status(400).json({ error: 'Unknown action' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // --- Webhooks (Meta Cloud API is migrated to businesswhatanagent) ---
 app.get('/webhook', (req, res) => {

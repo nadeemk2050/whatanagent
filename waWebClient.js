@@ -1090,6 +1090,215 @@ function initAlignNotifySystem(db) {
   }
 }
 
+// ================= CONDITIONAL ALIGN TASKS (smart follow-up state machine) =================
+// Each task: send a message -> wait X min for a reply; no reply -> retry (up to N attempts) or
+// escalate to the boss; every reply -> AI reads it (or fixed replies map) and answers naturally;
+// if the reply promises a time ("in 30 min", "at 5pm") -> follow-up is scheduled for exactly then.
+let condEngineInit = false;
+let condTickTimer = null;
+let condUnsub = null;
+const condTasksCache = new Map();   // id -> { ref, data }
+
+function condDubaiHour(ms) {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', hour12: false }).format(new Date(ms || Date.now())));
+}
+
+function conditionalTaskAwaitingFor(jid) {
+  if (!jid) return null;
+  const clean = String(jid).split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  for (const entry of condTasksCache.values()) {
+    const t = entry.data || {};
+    if (t.status !== 'active') continue;
+    if (t.stage !== 'awaiting_reply' && t.stage !== 'scheduled_followup') continue;
+    const tClean = String(t.targetJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    if (tClean && tClean === clean) return entry;
+  }
+  return null;
+}
+
+async function condSaveTask(entry, patch) {
+  try {
+    Object.assign(entry.data, patch);
+    await setDoc(entry.ref, patch, { merge: true });
+  } catch (e) { console.warn('[COND TASK] save failed:', e.message); }
+}
+
+// If the current Dubai time is outside the task's active hours, return the next allowed moment.
+function condNextWindow(t, fromMs) {
+  const fromHour = condDubaiHour(fromMs);
+  const af = t.activeFrom || 8, ato = t.activeTo || 22;
+  if (fromHour >= af && fromHour < ato) return fromMs;
+  const d = new Date(fromMs + 4 * 3600000);
+  d.setUTCHours(af, 0, 0, 0);
+  let ms = d.getTime() - 4 * 3600000;
+  if (ms <= fromMs) ms += 86400000;
+  return ms;
+}
+
+async function condNotifyBoss(text) {
+  try {
+    if (!globalDb) return;
+    const ref = doc(globalDb, 'appData', 'bossNotifications');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    items.push({ id: 'ntf-' + Date.now() + '-cnd', text: text, createdAt: Date.now(), status: 'pending' });
+    await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+  } catch (e) { /* ignore */ }
+}
+
+async function conditionalEngineTick() {
+  try {
+    if (!globalDb || waWebState.status !== 'connected') return;
+    const now = Date.now();
+    for (const entry of Array.from(condTasksCache.values())) {
+      const t = entry.data || {};
+      if (t.status !== 'active') continue;
+      if ((t.stage === 'pending_send' || t.stage === 'scheduled_followup') && (t.nextActionAt || 0) <= now) {
+        const allowedAt = condNextWindow(t, now);
+        if (allowedAt > now) {
+          await condSaveTask(entry, { nextActionAt: allowedAt });
+          console.log('[COND TASK] 🌙 Outside active hours - queued for ' + new Date(allowedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai)');
+          continue;
+        }
+        let phone = '';
+        try {
+          const resolved = await bossResolveTarget(t.target);
+          if (resolved && resolved.phone) phone = String(resolved.phone).split('@')[0].replace(/[^0-9]/g, '');
+        } catch (e) { /* ignore */ }
+        if (!phone) {
+          await condSaveTask(entry, {
+            status: 'done', stage: 'done',
+            history: (t.history || []).concat([{ at: now, event: 'target-not-found', detail: 'Could not resolve "' + t.target + '"' }]).slice(-40)
+          });
+          console.warn('[COND TASK] ⚠️ Target not found: "' + t.target + '" - task stopped');
+          continue;
+        }
+        const attempt = (t.attempts || 0) + 1;
+        const isRetry = (t.attempts || 0) > 0;
+        let msg = isRetry ? ('⏰ Reminder: ' + t.message) : t.message;
+        msg = await ensureNoDevanagari(msg);
+        try {
+          await sendWaWebMessage(phone + '@s.whatsapp.net', msg);
+          await condSaveTask(entry, {
+            stage: 'awaiting_reply',
+            nextActionAt: now + (t.waitMinutes || 10) * 60000,
+            targetJid: phone + '@s.whatsapp.net',
+            attempts: attempt,
+            lastSentAt: now,
+            history: (t.history || []).concat([{ at: now, event: isRetry ? 'resent' : 'sent', detail: 'to +' + phone + ' (try #' + attempt + ')' }]).slice(-40)
+          });
+          console.log('[COND TASK] 📤 ' + (isRetry ? 'Resent' : 'Sent') + ' to +' + phone + ' — "' + String(t.title || '').substring(0, 50) + '" (try #' + attempt + ')');
+        } catch (e) {
+          console.warn('[COND TASK] send failed:', e.message);
+          await condSaveTask(entry, { nextActionAt: now + 120000 });
+        }
+        continue;
+      }
+      if (t.stage === 'awaiting_reply' && (t.nextActionAt || 0) <= now) {
+        if ((t.attempts || 0) < (t.maxRetries || 3)) {
+          await condSaveTask(entry, {
+            stage: 'pending_send',
+            nextActionAt: now + (t.retryAfterMinutes || 10) * 60000,
+            history: (t.history || []).concat([{ at: now, event: 'no-reply', detail: 'no reply in ' + (t.waitMinutes || 10) + ' min - will retry in ' + (t.retryAfterMinutes || 10) + ' min (# ' + ((t.attempts || 0) + 1) + ')' }]).slice(-40)
+          });
+          console.log('[COND TASK] ⌛ No reply — retrying "' + String(t.title || '').substring(0, 50) + '" in ' + (t.retryAfterMinutes || 10) + ' min');
+        } else {
+          await condSaveTask(entry, {
+            status: 'done', stage: 'escalated',
+            history: (t.history || []).concat([{ at: now, event: 'escalated', detail: 'no reply after ' + (t.attempts || 0) + ' attempts' }]).slice(-40)
+          });
+          console.log('[COND TASK] 🚨 Escalating "' + String(t.title || '').substring(0, 50) + '" - no reply after ' + (t.attempts || 0) + ' attempts');
+          if (t.notifyBoss !== false) await condNotifyBoss('🚨 *No reply* from "' + t.target + '" after ' + (t.attempts || 0) + ' attempts on: "' + String(t.title || '').substring(0, 80) + '" — giving up. You may want to call them.');
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function handleConditionalTaskReply(jid, text) {
+  const entry = conditionalTaskAwaitingFor(jid);
+  if (!entry) return false;
+  const t = entry.data || {};
+  const now = Date.now();
+  const replyTextRaw = String(text || '').trim();
+  if (!replyTextRaw) return false;
+  const history = (t.history || []).concat([{ at: now, event: 'reply', detail: replyTextRaw.substring(0, 200) }]).slice(-40);
+  const brain = Object.assign({}, t.brain || {}, { lastReply: replyTextRaw.substring(0, 300), intent: 'other' });
+
+  let followAt = 0;
+  if (t.followTimeGiven !== false) {
+    try {
+      const when = parseBossWhen(replyTextRaw);
+      if (when && when > now + 60000) followAt = when;
+    } catch (e) { /* ignore */ }
+  }
+
+  let replyToSend = '';
+  if (t.onReplyMode === 'map') {
+    if (/\b(paid|received|receive|cleared|clear|done|ho ?gaya|kar diya|aa ?gaya|transfer|de diya)\b/i.test(replyTextRaw)) brain.intent = 'yes';
+    else if (/\b(not|nahi|nahin|no\b|pending|baaki|baki|left|abhi nahi)\b/i.test(replyTextRaw)) brain.intent = 'no';
+    else if (/\b(later|baad|after|kal|tomorrow|minute|min|hour|hours|pm|am|time|batata|batati)\b/i.test(replyTextRaw)) brain.intent = 'later';
+    const map = { yes: t.replyYes || '', no: t.replyNo || '', later: t.replyLater || '', other: t.replyOther || '' };
+    replyToSend = map[brain.intent] || '';
+    if (!replyToSend && followAt) replyToSend = '✅ Noted — I will follow up at the promised time.';
+  } else if (t.onReplyMode === 'ai') {
+    try {
+      const ctx = 'You are handling a WhatsApp follow-up on behalf of the boss (Mr. Nadeem).\n' +
+        'Your original message/question to this contact was: "' + String(t.message || '').substring(0, 200) + '"\n' +
+        'They just replied: "' + replyTextRaw.substring(0, 400) + '"\n' +
+        'Write ONE short, polite, professional WhatsApp reply that acknowledges their answer and responds naturally' +
+        (followAt ? ' — and confirm that you will follow up with them at the time they mentioned.' : '') + '.' +
+        '\nRules: Roman Urdu or English only (NEVER Devanagari/Hindi script). No action blocks. No markdown headers. Max 3 sentences.';
+      const aiOut = await generateWaWebAutoBotReply(jid, replyTextRaw, ctx, null, 'gemini-3.6-flash');
+      replyToSend = String(aiOut || '').trim();
+    } catch (e) { console.warn('[COND TASK] AI reply failed:', e.message); }
+    if (!replyToSend && followAt) replyToSend = '✅ Noted — I will follow up at the promised time.';
+  }
+
+  if (replyToSend) {
+    try { await sendWaWebMessage(jid, await ensureNoDevanagari(replyToSend)); } catch (e) { console.warn('[COND TASK] reply send failed:', e.message); }
+  }
+
+  if (followAt) {
+    brain.givenTime = followAt;
+    await condSaveTask(entry, {
+      stage: 'scheduled_followup',
+      nextActionAt: followAt,
+      status: 'active',
+      brain: brain,
+      lastReply: replyTextRaw.substring(0, 300),
+      lastReplyAt: now,
+      history: history
+    });
+    console.log('[COND TASK] 🕐 "' + String(t.title || '').substring(0, 50) + '" — time promised; follow-up scheduled ' + new Date(followAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai)');
+  } else {
+    await condSaveTask(entry, {
+      stage: 'done', status: 'done', brain: brain,
+      lastReply: replyTextRaw.substring(0, 300), lastReplyAt: now, history: history
+    });
+    console.log('[COND TASK] ✅ "' + String(t.title || '').substring(0, 50) + '" — replied: "' + replyTextRaw.substring(0, 80) + '"');
+  }
+  if (t.notifyBoss !== false) {
+    await condNotifyBoss('📩 ' + (t.target || 'Contact') + ' replied to "' + String(t.title || '').substring(0, 60) + '":\n"' + replyTextRaw.substring(0, 200) + '"' + (followAt ? ('\n🕐 Follow-up scheduled: ' + new Date(followAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai)') : ''));
+  }
+  return true;
+}
+
+function initConditionalEngine(db) {
+  if (!db || condEngineInit) return;
+  condEngineInit = true;
+  try {
+    condUnsub = onSnapshot(collection(db, 'conditionalTasks'), snap => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === 'removed') { condTasksCache.delete(ch.doc.id); return; }
+        condTasksCache.set(ch.doc.id, { ref: ch.doc.ref, data: ch.doc.data() || {} });
+      });
+    }, () => {});
+    if (!condTickTimer) condTickTimer = setInterval(conditionalEngineTick, 45000);
+    console.log('[COND TASK] 🔀 Conditional Align Task engine ACTIVE (if/timeout/retry/time-given follow-ups)');
+  } catch (e) { console.warn('[COND TASK] init failed:', e.message); }
+}
+
 // Deliver due reminders + task-result notifications to the boss's own chat (60s tick, only while the
 // socket is actually connected - so exactly ONE node ever sends them)
 let bossDeliveryTimer = null;
@@ -2857,6 +3066,8 @@ export async function initWaWeb(db = null) {
         if (!bossDeliveryTimer) bossDeliveryTimer = setInterval(processBossRemindersAndNotifications, 60000);
         // AlignTasks → WhatsApp: reminder queue listener + due-date watcher (zero-read in-memory ticks)
         initAlignNotifySystem(globalDb);
+        // Conditional Align Tasks: smart follow-up state machine (wait/retry/understand/time-given)
+        initConditionalEngine(globalDb);
         // Keep the UNIVERSAL Contact Book fed with WhatsApp Web numbers (throttled, every 15 min)
         if (!waWebContactsBookTimer) {
           waWebContactsBookTimer = setInterval(syncWaWebContactsToBook, 15 * 60 * 1000);
@@ -3080,7 +3291,7 @@ export async function initWaWeb(db = null) {
               // Check cooldown (NEVER applies to the Boss - he must be answered instantly, every message)
               const lastTime = waWebAutoReplyCooldown.get(remoteJid) || 0;
               const cooldownMs = (waWebKnowledgeBase.cooldownSeconds || 30) * 1000;
-              if (!isBossNumber && (Date.now() - lastTime < cooldownMs)) {
+              if (!isBossNumber && (Date.now() - lastTime < cooldownMs) && !conditionalTaskAwaitingFor(remoteJid)) {
                 console.log('[WA-WEB AUTO-REPLY] Skipping auto-reply due to cooldown (' + remoteJid + ')');
                 return;
               }
@@ -3121,6 +3332,16 @@ export async function initWaWeb(db = null) {
               }
 
               const effectiveText = (transcribedAudioText || text || '').trim();
+
+              // Conditional Align Task replies: if this sender belongs to an active conditional
+              // task, the smart follow-up engine handles this message (AI understands + responds)
+              // and the normal auto-bot must NOT reply on top of it.
+              if (!isBossNumber && !isGroup) {
+                try {
+                  const handledByCond = await handleConditionalTaskReply(remoteJid, effectiveText || ('[' + (mediaType || 'media') + ']'));
+                  if (handledByCond) return;
+                } catch (e) { console.warn('[COND TASK] reply handling error:', e.message); }
+              }
 
               // (Boss identity + passcode were already computed above, before the cooldown checks)
               if (isBossNumber) {

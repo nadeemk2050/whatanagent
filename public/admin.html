@@ -271,7 +271,7 @@
                 <span id="waWebNavBadge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
             </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
-            <div class="menu-item" onclick="showSection('tasks'); loadAiTasks();">⏰ Tasks for AI</div>
+            <div class="menu-item" onclick="showSection('tasks'); loadAiTasks(); loadConditionalTasks();">⏰ Tasks for AI</div>
             <div class="menu-item" onclick="window.open('/aligntasks/','_blank')" title="Open the AlignTasks team board (same login as this dashboard)">📋 AlignTasks</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
@@ -1579,6 +1579,53 @@
                 <div class="card">
                     <h3 style="margin-top:0;">📜 Done / Failed / Cancelled</h3>
                     <div id="taskHistory"><p class="subtitle">Loading...</p></div>
+                </div>
+
+                <div class="card" style="margin-bottom:20px; border:2px solid #7c3aed;">
+                    <h3 style="margin-top:0;">🔀 Conditional Align Task <span style="font-size:12px; color:#546e7a; font-weight:normal;">— smart follow-ups: wait for a reply • retry if silent • AI understands the answer • follow up again at the time they promise</span></h3>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:2; min-width:220px;"><label>Title (for you)</label><input type="text" id="condTitle" placeholder="e.g. Payment check - Usama" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                        <div class="form-group" style="flex:2; min-width:220px;"><label>Send to (contact name or number)</label><input type="text" id="condTarget" placeholder="e.g. Usama or 971501234567" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                    </div>
+                    <div class="form-group"><label>First message to send</label><textarea id="condMessage" placeholder="e.g. Shams ka payment clear ho gaya? Please confirm."></textarea></div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1; min-width:150px;"><label>Wait for reply (minutes)</label><input type="number" id="condWait" value="10" min="1" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                        <div class="form-group" style="flex:1; min-width:150px;"><label>No reply → resend after (minutes)</label><input type="number" id="condRetryAfter" value="10" min="1" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                        <div class="form-group" style="flex:1; min-width:120px;"><label>Max attempts</label><input type="number" id="condMaxRetries" value="3" min="0" max="10" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                    </div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:2; min-width:240px;"><label>When they reply, respond with</label>
+                            <select id="condReplyMode" onchange="condReplyModeChanged()" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;">
+                                <option value="ai">🤖 AI understands the reply & answers smartly (recommended)</option>
+                                <option value="map">📝 Fixed replies (I set the exact texts below)</option>
+                                <option value="log">🔕 No auto-reply — just inform me</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:150px;"><label>Active hours (Dubai)</label>
+                            <div style="display:flex; gap:6px; align-items:center;"><input type="number" id="condFrom" value="8" min="0" max="23" style="width:70px; padding:10px; border:1px solid var(--border); border-radius:8px;"> <span>to</span> <input type="number" id="condTo" value="22" min="1" max="24" style="width:70px; padding:10px; border:1px solid var(--border); border-radius:8px;"></div>
+                        </div>
+                    </div>
+                    <div id="condMapFields" style="display:none;">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:200px;"><label>💰 If paid / positive</label><input type="text" id="condReplyYes" placeholder="e.g. Shukriya! Noted." style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                            <div class="form-group" style="flex:1; min-width:200px;"><label>⛔ If NOT paid / negative</label><input type="text" id="condReplyNo" placeholder="e.g. Theek hai, follow up kar lenge." style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                        </div>
+                        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:200px;"><label>🕐 If later / will update</label><input type="text" id="condReplyLater" placeholder="e.g. Bilkul, aap ke time par phir check karenge." style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                            <div class="form-group" style="flex:1; min-width:200px;"><label>❓ Any other reply</label><input type="text" id="condReplyOther" placeholder="(optional)" style="width:100%; padding:12px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-bottom:12px;">
+                        <label style="display:flex; align-items:center; gap:8px; font-size:14px;"><input type="checkbox" id="condTimeGiven" checked> 🕐 If the reply promises a time ("in 30 min", "at 5pm") → follow up again at that time</label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:14px;"><input type="checkbox" id="condNotifyBoss" checked> 🔔 Inform me on WhatsApp about every reply & escalation</label>
+                    </div>
+                    <button class="btn-save" onclick="createConditionalTask()">✅ Create Conditional Task</button>
+                    <div id="condSaveResult" style="display:none; margin-top:12px; padding:12px; border-radius:8px; font-size:14px;"></div>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin-top:0;">🧩 Conditional Tasks — Live</h3>
+                    <div id="condTaskList"><p class="subtitle">Loading...</p></div>
                 </div>
             </div>
 
@@ -4725,7 +4772,7 @@
             const sec = document.getElementById('tasksSection');
             if (!sec || !sec.classList.contains('active')) return;   // and only inside the Tasks section
             updateTaskCountdowns();
-            if (!window.__taskRefreshAt || Date.now() - window.__taskRefreshAt > 30000) { window.__taskRefreshAt = Date.now(); loadAiTasks(); }
+            if (!window.__taskRefreshAt || Date.now() - window.__taskRefreshAt > 30000) { window.__taskRefreshAt = Date.now(); loadAiTasks(); loadConditionalTasks(); }
         }, 1000);
 
         // ===== CODE STUDIO (Monaco editor + AI + WordPress) =====
@@ -6692,6 +6739,85 @@
       const b = document.getElementById('bossAiVoiceBtn');
       if (b) { b.innerText = bossAiVoiceReply ? '🔊' : '🔇'; b.title = bossAiVoiceReply ? 'Voice replies ON' : 'Voice replies OFF'; }
     })();
+
+    // ==================== CONDITIONAL ALIGN TASKS (smart follow-up UI) ====================
+    var condTasksCache = [];
+    function condEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+    function condReplyModeChanged() {
+      var mode = (document.getElementById('condReplyMode') || {}).value || 'ai';
+      var f = document.getElementById('condMapFields');
+      if (f) f.style.display = (mode === 'map') ? 'block' : 'none';
+    }
+    async function loadConditionalTasks() {
+      try {
+        const r = await fetch('api/conditional-tasks');
+        condTasksCache = await r.json();
+        if (!Array.isArray(condTasksCache)) condTasksCache = [];
+      } catch (e) { condTasksCache = []; }
+      renderConditionalTasks();
+    }
+    function condDubai(ms) { return ms ? new Date(ms).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; }
+    function renderConditionalTasks() {
+      const box = document.getElementById('condTaskList');
+      if (!box) return;
+      if (!condTasksCache.length) { box.innerHTML = '<p class="subtitle">No conditional tasks yet — create one above. Example: ask Usama about Shams\'s payment — if he doesn\'t reply in 10 minutes it resends automatically, if he promises a time it follows up exactly then, and you get informed about every reply.</p>'; return; }
+      const badge = (s) => s === 'active' ? '🟢' : (s === 'paused' ? '⏸️' : (s === 'done' ? '⚪' : '⚪'));
+      box.innerHTML = condTasksCache.map(t => {
+        const stageTxt = t.stage === 'pending_send' ? '📤 will send ' + condDubai(t.nextActionAt)
+          : t.stage === 'awaiting_reply' ? '⏳ waiting for reply (deadline ' + condDubai(t.nextActionAt) + ')'
+          : t.stage === 'scheduled_followup' ? '🕐 follow-up scheduled ' + condDubai(t.nextActionAt)
+          : t.stage === 'escalated' ? '🚨 no reply — escalated to you'
+          : '✅ done';
+        const last = (t.history && t.history.length) ? t.history[t.history.length - 1] : null;
+        const lastReply = t.lastReply ? '<div style="font-size:12px; color:#1b5e20; margin-top:4px;">💬 Last reply: "' + condEsc(String(t.lastReply).substring(0, 90)) + '"</div>' : '';
+        const lastEvent = last ? '<div style="font-size:12px; color:#8a8a8a; margin-top:4px;">' + condEsc(last.event) + ': ' + condEsc(String(last.detail || '').substring(0, 90)) + '</div>' : '';
+        return '<div style="border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px;">' +
+          '<div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;"><b>' + badge(t.status) + ' ' + condEsc(t.title || '(untitled)') + '</b><span style="font-size:12px; color:#546e7a;">→ ' + condEsc(t.target || '') + ' • tries: ' + (t.attempts || 0) + '/' + (t.maxRetries || 0) + '</span></div>' +
+          '<div style="font-size:13px; margin-top:4px; color:#333;">' + stageTxt + '</div>' +
+          lastReply + lastEvent +
+          '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
+          '<button onclick="conditionalAction(\'' + t.id + '\',\'run_now\')" style="padding:6px 12px; background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">▶️ Send / Run now</button>' +
+          (t.status === 'active'
+            ? '<button onclick="conditionalAction(\'' + t.id + '\',\'pause\')" style="padding:6px 12px; background:#fff8e1; border:1px solid #ffe082; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">⏸️ Pause</button>'
+            : '<button onclick="conditionalAction(\'' + t.id + '\',\'resume\')" style="padding:6px 12px; background:#e8f5e9; border:1px solid #a5d6a7; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">▶️ Resume</button>') +
+          '<button onclick="conditionalAction(\'' + t.id + '\',\'complete\')" style="padding:6px 12px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">✅ Mark done</button>' +
+          '<button onclick="conditionalAction(\'' + t.id + '\',\'delete\')" style="padding:6px 12px; background:#ffebee; border:1px solid #ef9a9a; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🗑️ Delete</button>' +
+          '</div></div>';
+      }).join('');
+    }
+    async function createConditionalTask() {
+      const gv = (id) => (document.getElementById(id) || {}).value || '';
+      const payload = {
+        title: gv('condTitle'), target: gv('condTarget'), message: gv('condMessage'),
+        waitMinutes: parseInt(gv('condWait')) || 10,
+        retryAfterMinutes: parseInt(gv('condRetryAfter')) || 10,
+        maxRetries: parseInt(gv('condMaxRetries')),
+        onReplyMode: gv('condReplyMode'),
+        replyYes: gv('condReplyYes'), replyNo: gv('condReplyNo'), replyLater: gv('condReplyLater'), replyOther: gv('condReplyOther'),
+        followTimeGiven: (document.getElementById('condTimeGiven') || {}).checked !== false,
+        notifyBoss: (document.getElementById('condNotifyBoss') || {}).checked !== false,
+        activeFrom: parseInt(gv('condFrom')) || 8,
+        activeTo: parseInt(gv('condTo')) || 22
+      };
+      const box = document.getElementById('condSaveResult');
+      try {
+        const r = await fetch('api/conditional-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Failed');
+        box.style.display = 'block'; box.style.background = '#e8f5e9'; box.style.color = '#1b5e20';
+        box.innerText = '✅ Conditional task created — it sends within a minute, then follows its rules automatically.';
+        loadConditionalTasks();
+      } catch (e) {
+        box.style.display = 'block'; box.style.background = '#ffebee'; box.style.color = '#b71c1c';
+        box.innerText = '❌ ' + e.message;
+      }
+    }
+    async function conditionalAction(id, action) {
+      try {
+        await fetch('api/conditional-tasks/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, action: action }) });
+        loadConditionalTasks();
+      } catch (e) { /* ignore */ }
+    }
 
     </script>
 

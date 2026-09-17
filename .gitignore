@@ -14,3 +14,6 @@ android-kotlin/local.properties
 android-kotlin/.kotlin/
 android-kotlin/.idea/
 
+
+# APK build artifact served by Firebase hosting (not committed to keep the repo light)
+public/*.apk
