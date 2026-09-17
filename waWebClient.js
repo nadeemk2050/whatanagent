@@ -4,7 +4,7 @@ import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter } from 'firebase/firestore';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -1817,6 +1817,11 @@ function chatVaultSignature(c) {
 
 // Compact chat-list index -> restarts restore thousands of chats with 2-3 reads instead of a
 // full-collection scan. Pages are kept under ~700KB (Firestore doc limit is 1MB).
+// `chatIndexComplete` becomes true after the ONE-TIME background enrichment below has paged
+// through the entire archive, so it never runs again on future boots.
+let chatIndexComplete = false;
+let indexEnrichmentRunning = false;
+
 async function saveChatIndexToFirestore(chats, force = false) {
   if (!globalDb) return;
   if (!force && (Date.now() - lastChatIndexAt) < 10 * 60 * 1000) return;
@@ -1844,11 +1849,60 @@ async function saveChatIndexToFirestore(chats, force = false) {
     for (let i = 0; i < pages.length; i++) {
       await setDoc(doc(globalDb, "appData", "waWebChatIndex_" + i), { data: JSON.stringify(pages[i]), updatedAt: Date.now() });
     }
-    await setDoc(doc(globalDb, "appData", "waWebChatIndexMeta"), { pages: pages.length, total: shells.length, updatedAt: Date.now() });
+    await setDoc(doc(globalDb, "appData", "waWebChatIndexMeta"), { pages: pages.length, total: shells.length, complete: chatIndexComplete, updatedAt: Date.now() });
     lastChatIndexAt = Date.now();
     console.log(`[WA-WEB VAULT] 🗂️ Chat index saved (${shells.length} chats in ${pages.length} page(s))`);
   } catch (e) {
     console.warn('[WA-WEB VAULT] Chat index save failed:', e.message);
+  }
+}
+
+// ONE-TIME migration helper: page through the full history collection in small, calm batches
+// (250 reads every 8s) and seed shells for chats the live session never redelivers - so the
+// 5-year archive stays fully visible in the dashboard without reading 4,000 docs on every boot.
+// Runs at most once ever (until meta.complete flips to true; retries on next boot if interrupted).
+async function enrichChatIndexFromArchive(db) {
+  if (!db || indexEnrichmentRunning) return;
+  indexEnrichmentRunning = true;
+  try {
+    console.log('[WA-WEB VAULT] 🧭 Background index enrichment started (one-time archive scan, calm batches)...');
+    const PAGE = 250;
+    let cursor = null;
+    let added = 0;
+    for (let page = 0; page < 40; page++) {
+      const q = cursor
+        ? query(collection(db, "waWebChatHistory"), orderBy("timestamp", "desc"), startAfter(cursor), limit(PAGE))
+        : query(collection(db, "waWebChatHistory"), orderBy("timestamp", "desc"), limit(PAGE));
+      const snap = await getDocs(q);
+      if (snap.empty) break;
+      snap.forEach(docSnap => {
+        const ch = docSnap.data() || {};
+        if (!ch.id || waWebState.chats.has(ch.id)) return;
+        waWebState.chats.set(ch.id, {
+          id: ch.id,
+          name: ch.name || resolveContactName(ch.id),
+          phone: ch.phone || ch.id.split('@')[0],
+          isGroup: !!ch.isGroup,
+          unreadCount: ch.unreadCount || 0,
+          lastMessage: ch.lastMessage || '',
+          timestamp: ch.timestamp || 0,
+          messages: [],
+          _messagesLoaded: false,
+          _messagesCount: (ch.messages || []).length
+        });
+        added++;
+      });
+      cursor = snap.docs[snap.docs.length - 1];
+      if (snap.size < PAGE) break;
+      await new Promise(r => setTimeout(r, 8000));   // calm spacing: 250 reads every 8s
+    }
+    chatIndexComplete = true;
+    await saveChatIndexToFirestore(Array.from(waWebState.chats.values()).filter(c => c.id), true);
+    console.log(`[WA-WEB VAULT] 🧭 Index enrichment done - ${added} dormant chats re-indexed (archive fully visible, will not run again)`);
+  } catch (e) {
+    console.warn('[WA-WEB VAULT] Index enrichment failed (will retry on next boot):', e.message);
+  } finally {
+    indexEnrichmentRunning = false;
   }
 }
 
@@ -1955,6 +2009,29 @@ export async function searchWaWebHistory(query) {
       }
     }
     if (results.length >= 100) break;
+  }
+
+  // Fallback: dormant (shell) chats - match against their LAST message text, which is always in
+  // memory thanks to the chat index. Opening a result lazy-loads the full archive (1 read).
+  if (results.length < 100) {
+    for (const chat of waWebState.chats.values()) {
+      if (chat._messagesLoaded !== false) continue;
+      const t = (chat.lastMessage || '');
+      if (!t || !t.toLowerCase().includes(qLower)) continue;
+      results.push({
+        chatId: chat.id,
+        contactName: chat.name || resolveContactName(chat.id),
+        phone: resolveRealPhoneNumber(chat.id) || '',
+        msgId: '',
+        text: t,
+        caption: '',
+        mediaType: null,
+        thumbnail: null,
+        timestamp: chat.timestamp || 0,
+        fromMe: false
+      });
+      if (results.length >= 100) break;
+    }
   }
 
   // Sort latest first
@@ -2184,6 +2261,13 @@ async function restoreHistoryFromFirestore(db) {
       recentLoaded++;
     });
     if (waWebState.chats.size) console.log(`[WA-WEB HISTORY] Restored ${waWebState.chats.size} chats (${recentLoaded} with recent messages) - index-based fast restore`);
+
+    // One-time background enrichment: if this index has never paged the FULL archive, schedule
+    // it (90s after boot so it never competes with the connect/history storm).
+    chatIndexComplete = metaSnap.exists() && metaSnap.data().complete === true;
+    if (!chatIndexComplete && globalDb) {
+      setTimeout(() => { enrichChatIndexFromArchive(db); }, 90000);
+    }
 
     // Also load contact names from app contactBook
     const cbSnap = await getDoc(doc(db, "appData", "contacts"));
