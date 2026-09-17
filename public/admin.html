@@ -207,9 +207,11 @@
                 if (typeof loadFAQs === 'function') loadFAQs();
                 if (typeof loadProducts === 'function') loadProducts();
                 if (typeof loadWaWebKnowledgeBase === 'function') loadWaWebKnowledgeBase();
+                if (typeof showBossAiFab === 'function') showBossAiFab(true);
             } else {
                 document.getElementById('authContainer').style.display = 'flex';
                 document.getElementById('appContainer').style.display = 'none';
+                if (typeof showBossAiFab === 'function') showBossAiFab(false);
             }
         });
     </script>
@@ -6529,6 +6531,194 @@
             }
         }
 
+    // ==================== BOSS AI — LIVE ORDERS (same brain as the WhatsApp Boss) ====================
+    let bossAiVoiceReply = localStorage.getItem('bossAiVoiceReply') === '1';
+    let bossAiHistory = [];
+    try { bossAiHistory = JSON.parse(localStorage.getItem('bossAiChat') || '[]'); } catch (e) { bossAiHistory = []; }
+    let bossAiRecorder = null;
+    let bossAiChunks = [];
+    let bossAiBusy = false;
+    let bossAiTempEl = null;
+
+    function showBossAiFab(show) {
+      const fab = document.getElementById('bossAiFab');
+      if (!fab) return;
+      fab.style.display = show ? 'flex' : 'none';
+      if (!show) {
+        const panel = document.getElementById('bossAiPanel');
+        if (panel) panel.style.display = 'none';
+      }
+    }
+    function bossAiTogglePanel(force) {
+      const panel = document.getElementById('bossAiPanel');
+      if (!panel) return;
+      const show = force !== undefined ? force : (panel.style.display !== 'flex');
+      panel.style.display = show ? 'flex' : 'none';
+      if (show) {
+        bossAiRenderHistory();
+        const inp = document.getElementById('bossAiInput');
+        if (inp) setTimeout(function () { inp.focus(); }, 60);
+      }
+    }
+    function bossAiToggleVoice() {
+      bossAiVoiceReply = !bossAiVoiceReply;
+      localStorage.setItem('bossAiVoiceReply', bossAiVoiceReply ? '1' : '0');
+      const b = document.getElementById('bossAiVoiceBtn');
+      if (b) { b.innerText = bossAiVoiceReply ? '🔊' : '🔇'; b.title = bossAiVoiceReply ? 'Voice replies ON' : 'Voice replies OFF'; }
+    }
+    function bossAiClear() {
+      bossAiHistory = [];
+      localStorage.removeItem('bossAiChat');
+      bossAiRenderHistory();
+    }
+    function bossAiRemoveTemp() {
+      if (bossAiTempEl && bossAiTempEl.parentNode) bossAiTempEl.parentNode.removeChild(bossAiTempEl);
+      bossAiTempEl = null;
+    }
+    function bossAiAddBubble(role, text, isTemp) {
+      const box = document.getElementById('bossAiMessages');
+      if (box) {
+        const div = document.createElement('div');
+        const base = 'max-width:86%; padding:8px 12px; border-radius:12px; font-size:13px; line-height:1.45; white-space:pre-wrap; word-break:break-word;';
+        if (role === 'boss') div.style.cssText = base + 'align-self:flex-end; background:#005c4b; color:#e9edef;';
+        else if (role === 'err') div.style.cssText = base + 'align-self:flex-start; background:#3b1818; color:#ff8585;';
+        else div.style.cssText = base + 'align-self:flex-start; background:#202c33; color:#e9edef;';
+        div.innerText = String(text || '');
+        box.appendChild(div);
+        box.scrollTop = box.scrollHeight;
+        if (isTemp) { bossAiTempEl = div; return; }
+      }
+      if (!isTemp && role !== 'err') {
+        bossAiHistory.push({ role: role, text: String(text || ''), ts: Date.now() });
+        if (bossAiHistory.length > 60) bossAiHistory = bossAiHistory.slice(-60);
+        try { localStorage.setItem('bossAiChat', JSON.stringify(bossAiHistory)); } catch (e) {}
+      }
+    }
+    function bossAiRenderHistory() {
+      const box = document.getElementById('bossAiMessages');
+      if (!box) return;
+      box.innerHTML = '';
+      if (!bossAiHistory.length) {
+        const div = document.createElement('div');
+        div.style.cssText = 'max-width:86%; padding:8px 12px; border-radius:12px; font-size:13px; line-height:1.45; white-space:pre-wrap; background:#202c33; color:#e9edef; align-self:flex-start;';
+        div.innerText = '👑 Boss AI ready — same powers as your WhatsApp orders. Type or tap 🎤 and give orders:\n• "send msg to Fazeelat: dawai time"\n• "AlignTask: RAKBANK update today 5pm"\n• "reminder in 30 minutes: call supplier"\n• "what tasks are due today"\n• "auto reply band karo / chalu karo"';
+        box.appendChild(div);
+        return;
+      }
+      bossAiHistory.forEach(function (h) { bossAiAddBubble(h.role, h.text); });
+    }
+    function bossAiSpeak(text) {
+      if (!bossAiVoiceReply || !('speechSynthesis' in window)) return;
+      try {
+        const clean = String(text).replace(/[\u{1F000}-\u{1FAFF}\u2600-\u27BF\uFE0F]/gu, ' ').replace(/[*_`#]/g, ' ').replace(/\(Dubai\)/g, '').replace(/\s{2,}/g, ' ').trim();
+        if (!clean) return;
+        const u = new SpeechSynthesisUtterance(clean.slice(0, 600));
+        const voices = speechSynthesis.getVoices() || [];
+        const pick = voices.find(function (v) { return /^ur/i.test(v.lang); }) || voices.find(function (v) { return /^hi/i.test(v.lang); }) || voices.find(function (v) { return /^en-IN/i.test(v.lang); }) || voices.find(function (v) { return /^en/i.test(v.lang); });
+        if (pick) u.voice = pick;
+        u.rate = 1.0;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      } catch (e) {}
+    }
+    async function bossAiSend(text, opts) {
+      if (bossAiBusy) return;
+      opts = opts || {};
+      const input = document.getElementById('bossAiInput');
+      const msg = (text !== undefined && text !== null && text !== '') ? String(text) : (input ? input.value : '').trim();
+      const hasAudio = Boolean(opts.audioBase64);
+      if (!msg && !hasAudio) return;
+      bossAiBusy = true;
+      const sendBtn = document.getElementById('bossAiSendBtn');
+      if (sendBtn) sendBtn.disabled = true;
+      if (msg && !hasAudio) { bossAiAddBubble('boss', msg); if (input) input.value = ''; }
+      bossAiAddBubble('ai', '🤔 Processing your order...', true);
+      try {
+        const payload = hasAudio ? { audioBase64: opts.audioBase64, mimeType: opts.mimeType || 'audio/webm' } : { text: msg };
+        const res = await fetch('/api/boss-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json().catch(function () { return {}; });
+        bossAiRemoveTemp();
+        if (!res.ok || !data.reply) {
+          bossAiAddBubble('err', '❌ ' + (data.error || ('HTTP ' + res.status)));
+        } else {
+          if (data.wasVoice && data.transcript) bossAiAddBubble('boss', '🎙️ ' + data.transcript);
+          bossAiAddBubble('ai', data.reply);
+          bossAiSpeak(data.reply);
+        }
+      } catch (e) {
+        bossAiRemoveTemp();
+        bossAiAddBubble('err', '❌ Network error: ' + e.message);
+      } finally {
+        bossAiBusy = false;
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    }
+    async function bossAiMic() {
+      const micBtn = document.getElementById('bossAiMicBtn');
+      if (bossAiRecorder && bossAiRecorder.state === 'recording') { bossAiRecorder.stop(); return; }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        let mime = '';
+        if (window.MediaRecorder) {
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime = 'audio/webm;codecs=opus';
+          else if (MediaRecorder.isTypeSupported('audio/webm')) mime = 'audio/webm';
+          else if (MediaRecorder.isTypeSupported('audio/mp4')) mime = 'audio/mp4';
+        }
+        bossAiChunks = [];
+        bossAiRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        bossAiRecorder.ondataavailable = function (e) { if (e.data && e.data.size) bossAiChunks.push(e.data); };
+        bossAiRecorder.onstop = async function () {
+          if (micBtn) { micBtn.classList.remove('recording'); micBtn.innerText = '🎤'; }
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          const blobType = (bossAiRecorder && bossAiRecorder.mimeType) || 'audio/webm';
+          const blob = new Blob(bossAiChunks, { type: blobType });
+          if (!blob.size) return;
+          if (blob.size > 12 * 1024 * 1024) { bossAiAddBubble('err', '❌ Voice note too large (max 12MB)'); return; }
+          bossAiAddBubble('boss', '🎙️ (sending voice order...)');
+          const b64 = await new Promise(function (r) {
+            const fr = new FileReader();
+            fr.onload = function () { r(String(fr.result).split(',')[1] || ''); };
+            fr.readAsDataURL(blob);
+          });
+          bossAiSend('', { audioBase64: b64, mimeType: blobType });
+        };
+        bossAiRecorder.start();
+        if (micBtn) { micBtn.classList.add('recording'); micBtn.innerText = '⏹️'; }
+      } catch (e) {
+        bossAiAddBubble('err', '❌ Microphone unavailable: ' + e.message);
+      }
+    }
+    (function initBossAi() {
+      const b = document.getElementById('bossAiVoiceBtn');
+      if (b) { b.innerText = bossAiVoiceReply ? '🔊' : '🔇'; b.title = bossAiVoiceReply ? 'Voice replies ON' : 'Voice replies OFF'; }
+    })();
+
     </script>
+
+    <!-- ==================== BOSS AI — LIVE ORDERS (Floating button + chat panel) ==================== -->
+    <style>
+      #bossAiFab { position: fixed; top: 14px; right: 14px; z-index: 1400; width: 52px; height: 52px; border-radius: 50%; border: 2px solid #f0b429; background: linear-gradient(135deg, #1f2937, #111b21); color: #f0b429; font-size: 24px; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; }
+      #bossAiFab:hover { transform: scale(1.06); }
+      #bossAiMicBtn.recording { background: #b91c1c !important; }
+    </style>
+    <button id="bossAiFab" title="Boss AI — Live Orders (same brain as WhatsApp)" onclick="bossAiTogglePanel()">👑</button>
+    <div id="bossAiPanel" style="display:none; position:fixed; top:74px; right:14px; z-index:1400; width:min(420px, calc(100vw - 20px)); height:min(72vh, 640px); background:#111b21; border:1px solid #2a3942; border-radius:14px; overflow:hidden; box-shadow:0 12px 44px rgba(0,0,0,.6); flex-direction:column;">
+      <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:#202c33; border-bottom:1px solid #2a3942;">
+        <span style="font-size:18px;">👑</span>
+        <div style="flex:1;">
+          <div style="color:#e9edef; font-weight:700; font-size:14px;">Boss AI — Live Orders</div>
+          <div style="color:#8696a0; font-size:11px;">Same brain as WhatsApp • Gemini + Qwen</div>
+        </div>
+        <button id="bossAiVoiceBtn" onclick="bossAiToggleVoice()" title="Voice replies" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:14px;">🔊</button>
+        <button onclick="bossAiClear()" title="Clear chat" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:14px;">🧹</button>
+        <button onclick="bossAiTogglePanel(false)" title="Close" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:14px;">✖</button>
+      </div>
+      <div id="bossAiMessages" style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; background:#0b141a;"></div>
+      <div style="display:flex; align-items:center; gap:8px; padding:10px; background:#202c33;">
+        <input id="bossAiInput" placeholder="Type an order... AlignTask, send msg, reminder, settings" onkeydown="if(event.key==='Enter'){bossAiSend();}" style="flex:1; background:#111b21; border:none; outline:none; color:#e9edef; padding:10px 12px; border-radius:8px; font-size:13px;">
+        <button id="bossAiMicBtn" onclick="bossAiMic()" title="Voice order (tap to record / tap to stop & send)" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:16px;">🎤</button>
+        <button id="bossAiSendBtn" onclick="bossAiSend()" title="Send" style="background:#00a884; border:none; color:#fff; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:16px; font-weight:bold;">➤</button>
+      </div>
+    </div>
 </body>
 </html>

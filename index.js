@@ -131,6 +131,30 @@ app.get('/api/wa-web/messages', async (req, res) => {
   }
 });
 
+// --- BOSS AI: LIVE ORDERS from the dashboard (same brain as the WhatsApp boss flow) ---
+app.post('/api/boss-chat', async (req, res) => {
+  try {
+    const { text, audioBase64, mimeType } = req.body || {};
+    let command = String(text || '').trim();
+    let wasVoice = false;
+    if (!command && audioBase64) {
+      const buf = Buffer.from(String(audioBase64), 'base64');
+      if (!buf.length) return res.status(400).json({ error: 'Empty audio' });
+      const { transcribeAudioBuffer } = await import('./waWebClient.js');
+      command = String(await transcribeAudioBuffer(buf, mimeType || 'audio/webm') || '').trim();
+      wasVoice = true;
+      if (!command) return res.status(422).json({ error: 'Could not understand the voice note - please try again.' });
+    }
+    if (!command) return res.status(400).json({ error: 'Missing text or audio' });
+    const { runDashboardBossCommand } = await import('./waWebClient.js');
+    const result = await runDashboardBossCommand(command, { wasVoice });
+    if (!result.ok) return res.status(500).json({ error: result.error });
+    res.json({ reply: result.reply, wasVoice: result.wasVoice, transcript: wasVoice ? command : '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/wa-web/download-media', async (req, res) => {
   try {
     const { jid, msgId } = req.query;
