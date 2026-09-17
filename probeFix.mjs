@@ -40,6 +40,16 @@ async function main() {
     console.log('Total shown:', ts.size);
   } catch (e) { console.log('tasks read error:', e.message); }
 
+  console.log('\n=== GENERAL TASKS (tasks_for_all, latest 20) ===');
+  try {
+    const gs = await getDocs(query(collection(db, `artifacts/${APPID}/public/data/tasks_for_all`), orderBy('createdAt', 'desc'), limit(20)));
+    gs.forEach(d => {
+      const t = d.data();
+      console.log(`- ${d.id} | "${String(t.description || '').slice(0, 50)}" | status=${t.status} | by=${t.createdBy} | due=${t.dueDate || '-'}`);
+    });
+    console.log('Total shown:', gs.size);
+  } catch (e) { console.log('tasks_for_all read error:', e.message); }
+
   console.log('\n=== STAFF (board) ===');
   try {
     const ss = await getDocs(collection(db, `artifacts/${APPID}/public/data/staff`));

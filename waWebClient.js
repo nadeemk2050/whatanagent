@@ -411,18 +411,54 @@ async function ensureAlignTasksStaffDoc(person) {
   }
 }
 
+// Team owner (admin) info - used to populate ownerAdminUid/Email on General tasks created by the boss
+export async function alignTasksOwnerAdmin() {
+  if (!globalDb) return { uid: '', email: '' };
+  try {
+    const snap = await getDocs(query(collection(globalDb, ALIGNTASKS_BASE + '/users'), where('role', '==', 'admin')));
+    const d = snap.docs[0];
+    if (d) {
+      const u = d.data() || {};
+      return { uid: u.ownerAdminUid || d.id, email: String(u.ownerAdminEmail || u.email || '').toLowerCase() };
+    }
+  } catch (e) { /* fall through */ }
+  return { uid: '', email: '' };
+}
+
 export async function bossAlignTaskAdd(p) {
   if (!globalDb) return { ok: false, error: 'No database connection' };
   const title = String((p && (p.title || p.task || p.description)) || '').trim();
   if (!title) return { ok: false, error: 'Tell me what the task is, Boss.' };
+  const rawAssignee = String((p && (p.assignee || p.assignTo || p.who)) || '').trim();
+  const due = alignTaskDueToDatetimeLocal(p && (p.due || p.when || p.dueDate));
+  if (due.error) return { ok: false, error: due.error };
+
+  // BOARD RULE: when no person is named the task goes to the shared "General Tasks (For All)"
+  // list. Only an explicitly named person ("for Sahir", "assign to Farhan") creates an
+  // individual task under that person.
+  if (!rawAssignee) {
+    const owner = await alignTasksOwnerAdmin();
+    const task = {
+      description: title,
+      dueDate: due.value || '',
+      status: 'To Do',
+      comments: [],
+      createdAt: new Date(),
+      createdBy: 'boss-waweb',
+      ownerAdminUid: owner.uid,
+      ownerAdminEmail: owner.email
+    };
+    const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'), task);
+    console.log('[ALIGNTASKS] ➕ Boss added GENERAL task "' + title + '"' + (due.value ? (' due ' + due.value) : ''));
+    return { ok: true, id: ref.id, task: task, general: true, dueTs: due.ts || null };
+  }
+
   const staff = await alignTasksStaffDirectory();
-  if (!staff.length) return { ok: false, error: 'The AlignTasks board has no team members yet - add staff in the board first.' };
-  const who = alignTaskFindStaff(p && (p.assignee || p.assignTo || p.who), staff);
+  if (!staff.length) return { ok: false, error: 'No team member named "' + rawAssignee + '" and the board has no staff yet - add them in the board first (or ask for it without a person and it goes to the General list).' };
+  const who = alignTaskFindStaff(rawAssignee, staff);
   if (who.notFound) return { ok: false, error: 'No team member matches "' + String((p && (p.assignee || p.assignTo || p.who)) || '') + '". Available: ' + staff.slice(0, 15).map(s => s.name).join(', ') };
   if (who.multiple) return { ok: false, error: 'More than one member matches: ' + who.multiple.map(s => s.name).join(', ') + ' - tell me exactly who.' };
   if (who.error) return { ok: false, error: who.error };
-  const due = alignTaskDueToDatetimeLocal(p && (p.due || p.when || p.dueDate));
-  if (due.error) return { ok: false, error: due.error };
   const task = {
     description: title,
     assigneeEmail: who.person.email,
@@ -443,9 +479,11 @@ export async function bossAlignTaskAdd(p) {
 
 export async function bossAlignTaskList(p) {
   if (!globalDb) return { ok: false, error: 'No database connection' };
-  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
   let tasks = [];
-  snap.forEach(d => tasks.push(Object.assign({ id: d.id }, d.data() || {})));
+  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
+  snap.forEach(d => tasks.push(Object.assign({ id: d.id, _src: 'individual' }, d.data() || {})));
+  const gSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'));
+  gSnap.forEach(d => tasks.push(Object.assign({ id: d.id, _src: 'general' }, d.data() || {})));
   const staff = await alignTasksStaffDirectory();
   const nameOf = (email) => { const s = staff.find(x => x.email === String(email || '').toLowerCase()); return s ? s.name : (email || 'unassigned'); };
   const now = Date.now();
@@ -468,7 +506,7 @@ export async function bossAlignTaskList(p) {
   const lines = tasks.slice(0, 20).map(t => {
     const d = alignTaskDueMs(t);
     const od = t.status !== 'Done' && d !== null && d < now;
-    return '• ' + (t.description || '(no title)') + ' — ' + nameOf(t.assigneeEmail) +
+    return '• ' + (t.description || '(no title)') + ' — ' + (t._src === 'general' ? 'General (all)' : nameOf(t.assigneeEmail)) +
       (d ? (' — ' + new Date(d).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : ' — no due date') +
       (od ? ' ⚠️ OVERDUE' : '');
   });
@@ -482,6 +520,8 @@ export async function bossAlignTaskDone(p) {
   const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
   const all = [];
   snap.forEach(d => all.push(Object.assign({ id: d.id, ref: d.ref }, d.data() || {})));
+  const gSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'));
+  gSnap.forEach(d => all.push(Object.assign({ id: d.id, ref: d.ref }, d.data() || {})));
   const match = all.filter(t => t.status !== 'Done' && String(t.description || '').toLowerCase().includes(q));
   if (!match.length) return { ok: false, error: 'No open task matches "' + q + '".' };
   if (match.length > 1) return { ok: false, error: 'More than one task matches: ' + match.slice(0, 5).map(t => '"' + String(t.description).substring(0, 40) + '"').join(' | ') + ' - be more specific.' };
@@ -2905,8 +2945,9 @@ export async function initWaWeb(db = null) {
                     '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
                     '--- ALIGNTASKS (TEAM TASK BOARD) POWERS ---\n' +
                     'Add tasks to the AlignTasks board, read the board on demand, or mark tasks done - from the boss\'s text OR voice notes:\n' +
-                    '  [ALIGNTASK: {"action":"add","assignee":"Ahmed","title":"Check the container paperwork","due":"tomorrow 9am"}]\n' +
-                    '  (assignee = a team member name from the BOARD TEAM MEMBERS list below; due is optional - "today 5pm", "tomorrow 9am", "in 2 hours", "18-09-2026 10:00")\n' +
+                    '  [ALIGNTASK: {"action":"add","title":"Check the container paperwork","due":"tomorrow 9am"}]  (NO person named -> saved to the shared "General Tasks (For All)" list - THIS IS THE DEFAULT)\n' +
+                    '  [ALIGNTASK: {"action":"add","assignee":"Ahmed","title":"...","due":"..."}]  (ONLY when the boss EXPLICITLY names a person - saved to that person\'s individual list)\n' +
+                    '  *** RULE: include "assignee" ONLY if the boss clearly says a person\'s name ("for Sahir", "assign to Farhan", "give it to Ahmed"). NEVER invent, copy or default an assignee - without a named person the task MUST go to the General list. due is optional - "today 5pm", "tomorrow 9am", "in 2 hours", "18-09-2026 10:00")\n' +
                     '  [ALIGNTASK: {"action":"list"}]  (all pending) | {"action":"list","when":"today"} | {"when":"tomorrow"} | {"when":"overdue"} | {"when":"done"} | {"assignee":"Ahmed"} (can combine when + assignee)\n' +
                     '  [ALIGNTASK: {"action":"done","title":"a few words from the task description"}]\n' +
                     'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and appends the REAL result at the bottom - YOU MUST NEVER write your own result or confirmation (NEVER write phrases like "Added to AlignTasks:", "task added", "entry is set", "assigned to *...*" yourself). Just emit the action block plus one short sentence like "On it, Boss." A false confirmation is a serious error because the app shows exactly what really happened - including failures.\n' +
@@ -2971,8 +3012,11 @@ export async function initWaWeb(db = null) {
                         const act = String((a && a.action) || '').toLowerCase();
                         if (act === 'add' || act === 'create' || act === 'new') {
                           const res = await bossAlignTaskAdd(a);
+                          const dueStr = res.dueTs ? (' • due ' + new Date(res.dueTs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' (Dubai)') : '';
                           sectionSummary += res.ok
-                            ? ('📋 *AlignTasks added:* "' + String(res.task.description).substring(0, 60) + '" → ' + res.assignee.name + (res.dueTs ? (' • due ' + new Date(res.dueTs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' (Dubai)') : '') + '\n')
+                            ? (res.general
+                              ? ('📋 *AlignTasks (General) added:* "' + String(res.task.description).substring(0, 60) + '"' + dueStr + '\n')
+                              : ('📋 *AlignTasks added:* "' + String(res.task.description).substring(0, 60) + '" → ' + res.assignee.name + dueStr + '\n'))
                             : ('⚠️ AlignTasks: ' + res.error + '\n');
                         } else if (act === 'list' || act === 'show' || act === 'today') {
                           const params = (act === 'today' && !(a && a.when)) ? Object.assign({}, a, { when: 'today' }) : a;
