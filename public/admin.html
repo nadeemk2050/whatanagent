@@ -272,6 +272,7 @@
             </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('tasks'); loadAiTasks(); loadConditionalTasks();">⏰ Tasks for AI</div>
+            <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
             <div class="menu-item" onclick="window.open('/aligntasks/','_blank')" title="Open the AlignTasks team board (same login as this dashboard)">📋 AlignTasks</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
@@ -429,6 +430,7 @@
                     <!-- Search & Start Chat Header -->
                     <div style="padding:10px 14px; background:#202c33; display:flex; gap:8px; align-items:center; border-bottom:1px solid #2a3942;">
                         <input id="waWebSearchInput" type="text" placeholder="Search all chats & 5-year history..." oninput="filterWaWebChats()" onkeydown="if(event.key==='Enter') searchWaWebGlobalHistory(this.value)" style="flex:1; background:#111b21; border:none; outline:none; color:#e9edef; padding:8px 12px; border-radius:8px; font-size:13px;">
+                        <button onclick="waFullBackup()" id="waBackupBtn" title="Download a FULL backup of all chats as a ZIP (HTML + JSON per chat) - works straight from the vault, no WhatsApp needed" style="background:#111b21; border:1px solid #7c3aed; color:#c4b5fd; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:700; white-space:nowrap;">💾 Full Backup</button>
                         <button onclick="promptNewWaWebChat()" title="Start New Chat" style="background:#00a884; border:none; color:#fff; width:32px; height:32px; border-radius:50%; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; font-weight:bold;">+</button>
                     </div>
 
@@ -482,6 +484,9 @@
                                 </button>
                                 <button onclick="promptEditWaWebContactName()" title="Edit Contact Name" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>✏️ Edit Name</span>
+                                </button>
+                                <button onclick="exportWaWebChat()" id="waExportBtn" title="Export this chat as HTML + JSON inside a zip file" style="background:#202c33; border:1px solid #7c3aed; color:#c4b5fd; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <span>💾 Export</span>
                                 </button>
                                 <button onclick="confirmClearWaWebChat()" title="Clear all messages in this conversation (Instantly clears from Firebase & WhatsApp)" style="background:#202c33; border:1px solid #e74c3c; color:#e74c3c; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>🗑️ Clear Chat</span>
@@ -1635,6 +1640,84 @@
                     <h3 class="collapse-head" data-collapse="condLiveBody" style="margin-top:0; cursor:pointer;">🧩 Conditional Tasks — Live <span class="collapse-caret" style="float:right; color:#546e7a; font-size:13px;">▸</span></h3>
                     <div id="condLiveBody" style="display:none;">
                         <div id="condTaskList"><p class="subtitle">Loading...</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Note Book Section -->
+            <div id="notebookSection" class="app-section">
+                <style>@keyframes notePulse{0%,100%{opacity:1}50%{opacity:.5}}</style>
+                <h2 style="margin-bottom:5px;">📓 Note Book</h2>
+                <p class="subtitle" style="margin-top:0;">Type or tap 🎤 and speak — the AI writes the perfect paragraph. Same note + more audio = next paragraph, seamlessly. Push notes to WhatsApp, extract tasks into AlignTasks, everything stays searchable forever.</p>
+
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px;">
+                    <input id="noteSearchInput" type="text" placeholder="🔍 Search notes..." oninput="renderNotesGrid()" style="flex:1; min-width:220px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; font-size:14px; box-sizing:border-box;">
+                    <select id="noteFilter" onchange="renderNotesGrid()" style="padding:12px; border:1px solid var(--border); border-radius:10px; font-size:14px;">
+                        <option value="all">All notes</option>
+                        <option value="pinned">📌 Pinned</option>
+                        <option value="archive">🗄️ Archive</option>
+                        <option value="trash">🗑️ Trash</option>
+                    </select>
+                    <button onclick="newNote()" style="padding:12px 18px; background:#f59e0b; border:none; color:#111827; border-radius:10px; font-weight:800; cursor:pointer; font-size:14px;">➕ New Note</button>
+                    <button onclick="quickVoiceNote()" style="padding:12px 18px; background:#7c3aed; border:none; color:#fff; border-radius:10px; font-weight:800; cursor:pointer; font-size:14px;">🎤 Quick Voice Note</button>
+                </div>
+
+                <div id="notesGrid" style="columns: 300px; column-gap:14px;"><p class="subtitle">Loading notes...</p></div>
+
+                <!-- Note Editor Overlay - full page, fit to screen -->
+                <div id="noteEditorOverlay" style="display:none; position:fixed; inset:0; background:#fff; z-index:1300;">
+                    <div style="width:100%; height:100vh; height:100dvh; display:flex; flex-direction:column; background:#fff; overflow:hidden;">
+                        <div style="padding:13px 18px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); background:#fffbeb;">
+                            <input id="noteTitle" placeholder="Title..." oninput="scheduleNoteSave()" style="flex:1; min-width:190px; border:none; outline:none; font-size:19px; font-weight:700; background:transparent;">
+                            <select id="noteModel" onchange="saveNoteField('model', this.value)" title="AI brain for this note" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px; font-weight:600;">
+                                <option value="gemini">🤖 Gemini</option>
+                                <option value="qwen">⚡ Qwen</option>
+                                <option value="deepseek">🧠 DeepSeek</option>
+                            </select>
+                            <span id="noteColorDots"></span>
+                            <button onclick="toggleNotePin()" id="notePinBtn" title="Pin note" style="border:1px solid var(--border); background:#fff; border-radius:8px; padding:6px 9px; cursor:pointer; font-size:14px;">📍</button>
+                            <button onclick="promptNoteReminder()" title="Remind me (WhatsApp alert)" style="border:1px solid var(--border); background:#fff; border-radius:8px; padding:6px 9px; cursor:pointer; font-size:14px;">⏰</button>
+                            <button onclick="pushNoteToWhatsApp()" title="Send this note via WhatsApp" style="border:1px solid #a5d6a7; background:#e8f5e9; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12.5px; font-weight:700;">📤 WhatsApp</button>
+                            <button onclick="extractNoteTasks()" title="AI extracts tasks → AlignTasks" style="border:1px solid #ffe082; background:#fff8e1; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12.5px; font-weight:700;">✅ Tasks</button>
+                            <button onclick="importWaChatToNote()" title="Import a WhatsApp chat into a note" style="border:1px solid #90caf9; background:#e3f2fd; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12.5px; font-weight:700;">📥 From WhatsApp</button>
+                            <button onclick="exportNoteClient()" title="Download this note (HTML + JSON)" style="border:1px solid var(--border); background:#fff; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12.5px; font-weight:700;">💾 Export</button>
+                            <button onclick="noteTrash()" title="Move to trash" style="border:1px solid #ef9a9a; background:#ffebee; border-radius:8px; padding:6px 9px; cursor:pointer; font-size:14px;">🗑️</button>
+                            <button onclick="closeNoteEditor()" title="Close" style="border:1px solid var(--border); background:#f0f2f5; border-radius:8px; padding:6px 11px; cursor:pointer; font-size:13px; font-weight:800;">✖</button>
+                        </div>
+                        <div style="padding:9px 18px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border);">
+                            <input id="noteLabelsInput" placeholder="Labels (comma separated) e.g. SEO, Boss Orders" style="flex:1; min-width:200px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px;">
+                            <button onclick="saveNoteLabels()" style="border:1px solid var(--border); background:#fff; border-radius:8px; padding:7px 12px; cursor:pointer; font-size:12.5px; font-weight:700;">🏷️ Save labels</button>
+                            <span id="noteLabelsView"></span>
+                        </div>
+                        <div style="padding:11px 18px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#f8fafc; border-bottom:1px solid var(--border);">
+                            <span style="font-size:12px; color:#546e7a; font-weight:800;">🎤 Voice →</span>
+                            <button id="noteMicBtn" onclick="noteMicToggle()" style="width:46px; height:46px; border-radius:50%; background:#111827; color:#fff; border:none; font-size:18px; cursor:pointer;">🎤</button>
+                            <input id="noteAudioInstruction" placeholder="Optional instruction: e.g. 'make a to-do list', 'professional summary', 'Roman Urdu'" style="flex:1; min-width:220px; padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                            <span id="noteRecStatus" style="font-size:12px; color:#7c3aed; font-weight:800;"></span>
+                        </div>
+                        <div id="noteBlocks" style="flex:1; min-height:0; overflow-y:auto; padding:14px 18px 24px;"><div id="noteBlocksInner" style="max-width:1100px; margin:0 auto;"></div></div>
+                        <div style="padding:11px 18px 16px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#fffbeb;">
+                            <select id="noteNewBlockType" style="padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                                <option value="paragraph">📝 Paragraph</option>
+                                <option value="todo">☑️ To-do</option>
+                                <option value="code">💻 Code</option>
+                                <option value="table">📊 Table (paste from Excel)</option>
+                            </select>
+                            <input id="noteNewBlockText" placeholder="Write a block... (or use 🎤 above)" style="flex:1; min-width:220px; padding:11px; border:1px solid var(--border); border-radius:8px; font-size:14px;" onkeydown="if(event.key==='Enter'){addNoteBlock();}">
+                            <button onclick="addNoteBlock()" style="padding:11px 16px; background:#00a884; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">➕ Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Extract tasks modal -->
+                <div id="noteTaskModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1350; padding:16px; overflow-y:auto;">
+                    <div style="max-width:640px; margin:50px auto; background:#fff; border-radius:14px; padding:18px;">
+                        <h3 style="margin-top:0;">✅ Extracted tasks — approve and send to AlignTasks</h3>
+                        <div id="noteTaskList"></div>
+                        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+                            <button onclick="document.getElementById('noteTaskModal').style.display='none'" style="padding:9px 14px; border:1px solid var(--border); background:#f0f2f5; border-radius:8px; cursor:pointer; font-weight:700;">Cancel</button>
+                            <button onclick="applyNoteTasks()" style="padding:9px 14px; border:none; background:#7c3aed; color:#fff; border-radius:8px; cursor:pointer; font-weight:700;">📋 Send to AlignTasks</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -6841,6 +6924,538 @@
       const caret = h.querySelector('.collapse-caret');
       if (caret) caret.textContent = isOpen ? '▸' : '▾';
     });
+
+    // ==================== 📓 NOTE BOOK (AI notes: voice -> paragraphs, refine, tasks, WhatsApp) ====================
+    let notesCache = [];
+    let noteCurrent = null;
+    let noteBlocks = [];
+    let noteRecorder = null, noteChunks = [], noteIsRecording = false;
+    let noteTaskCandidates = [];
+    let noteSaveTimer = null;
+    let noteAudioEl = null;
+    const NOTE_COLORS = ['', '#fff8e1', '#fce4ec', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#ffe0b2', '#e0f7fa'];
+
+    async function loadNotes() {
+      try {
+        const r = await fetch('api/notes');
+        const j = await r.json();
+        notesCache = Array.isArray(j) ? j : [];
+      } catch (e) { notesCache = []; }
+      renderNotesGrid();
+    }
+
+    function renderNotesGrid() {
+      const box = document.getElementById('notesGrid');
+      if (!box) return;
+      const q = (document.getElementById('noteSearchInput').value || '').toLowerCase();
+      const filt = document.getElementById('noteFilter').value;
+      let list = notesCache.slice();
+      if (filt === 'pinned') list = list.filter(n => n.pinned && !n.archived && !n.trashed);
+      else if (filt === 'archive') list = list.filter(n => n.archived && !n.trashed);
+      else if (filt === 'trash') list = list.filter(n => n.trashed);
+      else list = list.filter(n => !n.trashed && !n.archived);
+      if (q) list = list.filter(n => ((n.title || '') + ' ' + (n.preview || '') + ' ' + (n.labels || []).join(' ')).toLowerCase().includes(q));
+      list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0));
+      if (!list.length) {
+        box.innerHTML = '<p class="subtitle" style="column-span:all;">No notes here yet — click ➕ New Note, or 🎤 Quick Voice Note and just speak. The AI writes the note for you.</p>';
+        return;
+      }
+      box.innerHTML = list.map(noteCardHTML).join('');
+    }
+
+    function noteCardHTML(n) {
+      const when = n.updatedAt ? new Date(n.updatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      const tags = (n.labels || []).map(l => '<span style="font-size:10px; background:#f1f5f9; border:1px solid var(--border); padding:1px 7px; border-radius:9px; margin-right:4px;">' + escapeHtml(l) + '</span>').join('');
+      return "<div onclick=\"openNoteEditor('" + n.id + "')\" style=\"break-inside:avoid; margin-bottom:14px; background:" + (n.color || '#fff') + "; border:1px solid var(--border); border-radius:12px; padding:14px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.06);\">" +
+        "<div style=\"font-weight:800; font-size:15px; margin-bottom:6px;\">" + (n.pinned ? '📌 ' : '') + escapeHtml(n.title || 'Untitled note') + "</div>" +
+        "<div style=\"font-size:12.5px; color:#546e7a; white-space:pre-wrap; max-height:70px; overflow:hidden;\">" + escapeHtml(n.preview || '(empty)') + "</div>" +
+        "<div style=\"margin-top:9px; display:flex; align-items:center; justify-content:space-between; gap:6px;\">" + tags +
+        "<span style=\"font-size:10.5px; color:#90a4ae;\">" + when + " · " + ((n.segmentCount || 0) + " blocks") + "</span></div></div>";
+    }
+
+    async function newNote() {
+      try {
+        const r = await fetch('api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Untitled note', model: 'qwen' }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        await loadNotes();
+        await openNoteEditor(j.id);
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function quickVoiceNote() {
+      try {
+        const r = await fetch('api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🎤 Voice note', model: 'qwen' }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        await loadNotes();
+        await openNoteEditor(j.id);
+        window.__noteAutoStartMic = true;
+        setTimeout(noteMicToggle, 450);
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function openNoteEditor(id) {
+      try {
+        const r = await fetch('api/notes/' + id);
+        if (!r.ok) { toastMsg('❌ Note not found'); return; }
+        const j = await r.json();
+        noteCurrent = j.note;
+        noteBlocks = j.blocks || [];
+        document.getElementById('noteTitle').value = noteCurrent.title || '';
+        document.getElementById('noteModel').value = noteCurrent.model || 'qwen';
+        document.getElementById('notePinBtn').innerText = noteCurrent.pinned ? '📌' : '📍';
+        document.getElementById('noteLabelsInput').value = (noteCurrent.labels || []).join(', ');
+        document.getElementById('noteLabelsView').innerHTML = (noteCurrent.labels || []).map(l => '<span style="font-size:11px; background:#f1f5f9; border:1px solid var(--border); padding:2px 8px; border-radius:10px; margin-left:6px;">' + escapeHtml(l) + '</span>').join('');
+        renderNoteColorDots();
+        renderNoteBlocks();
+        document.getElementById('noteEditorOverlay').style.display = 'block';
+        try {
+          const d = JSON.parse(localStorage.getItem('noteDraft-' + id) || 'null');
+          if (d && d.title && d.title !== noteCurrent.title) { document.getElementById('noteTitle').value = d.title; toastMsg('📝 Restored your unsaved title draft'); }
+          const bd = localStorage.getItem('noteBlockDraft-' + id);
+          if (bd) document.getElementById('noteNewBlockText').value = bd;
+        } catch (e2) { /* ignore */ }
+        if (window.__noteAutoStartMic) { window.__noteAutoStartMic = false; setTimeout(noteMicToggle, 450); }
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    function closeNoteEditor() {
+      document.getElementById('noteEditorOverlay').style.display = 'none';
+      document.getElementById('noteLabelsView').innerHTML = '';
+      noteCurrent = null; noteBlocks = [];
+      loadNotes();
+    }
+
+    // Esc closes the full-page editor
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        const ov = document.getElementById('noteEditorOverlay');
+        if (ov && ov.style.display === 'block') closeNoteEditor();
+      }
+    });
+
+    function scheduleNoteSave() {
+      if (!noteCurrent) return;
+      const id = noteCurrent.id;
+      const title = document.getElementById('noteTitle').value;
+      try { localStorage.setItem('noteDraft-' + id, JSON.stringify({ title: title, at: Date.now() })); } catch (e) { /* ignore */ }
+      clearTimeout(noteSaveTimer);
+      noteSaveTimer = setTimeout(async () => {
+        try {
+          await fetch('api/notes/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title }) });
+          if (noteCurrent && noteCurrent.id === id) noteCurrent.title = title;
+          try { localStorage.removeItem('noteDraft-' + id); } catch (e) { /* ignore */ }
+          loadNotes();
+        } catch (e) { /* keep the draft */ }
+      }, 900);
+    }
+
+    function saveNoteBlockDraft() {
+      if (!noteCurrent) return;
+      try { localStorage.setItem('noteBlockDraft-' + noteCurrent.id, document.getElementById('noteNewBlockText').value); } catch (e) { /* ignore */ }
+    }
+
+    async function saveNoteField(field, value) {
+      if (!noteCurrent) return;
+      try {
+        await fetch('api/notes/' + noteCurrent.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: value }) });
+        noteCurrent[field] = value;
+        loadNotes();
+      } catch (e) { toastMsg('❌ Save failed'); }
+    }
+
+    async function toggleNotePin() {
+      if (!noteCurrent) return;
+      await saveNoteField('pinned', !noteCurrent.pinned);
+      document.getElementById('notePinBtn').innerText = noteCurrent.pinned ? '📌' : '📍';
+    }
+
+    async function saveNoteLabels() {
+      if (!noteCurrent) return;
+      const labels = (document.getElementById('noteLabelsInput').value || '').split(',').map(s => s.trim()).filter(Boolean);
+      await saveNoteField('labels', labels);
+      document.getElementById('noteLabelsView').innerHTML = labels.map(l => '<span style="font-size:11px; background:#f1f5f9; border:1px solid var(--border); padding:2px 8px; border-radius:10px; margin-left:6px;">' + escapeHtml(l) + '</span>').join('');
+      toastMsg('🏷️ Labels saved');
+    }
+
+    function renderNoteColorDots() {
+      const box = document.getElementById('noteColorDots');
+      if (!box) return;
+      box.innerHTML = NOTE_COLORS.map(c =>
+        '<span onclick="setNoteColor(\'' + c + '\')" title="colour" style="display:inline-block; width:19px; height:19px; border-radius:50%; margin-left:5px; cursor:pointer; border:2px solid ' + ((noteCurrent && noteCurrent.color === c) ? '#7c3aed' : '#d1d5db') + '; background:' + (c || '#ffffff') + ';"></span>'
+      ).join('');
+    }
+
+    async function setNoteColor(c) {
+      if (!noteCurrent) return;
+      await saveNoteField('color', c);
+      renderNoteColorDots();
+    }
+
+    async function noteTrash() {
+      if (!noteCurrent) return;
+      if (!confirm('Move this note to trash?\n\n(You can restore it from the 🗑️ Trash filter; purge deletes permanently.)')) return;
+      try {
+        await fetch('api/notes/' + noteCurrent.id, { method: 'DELETE' });
+        toastMsg('🗑️ Note moved to trash');
+        closeNoteEditor();
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    function renderNoteBlocks() {
+      const box = document.getElementById('noteBlocksInner');
+      if (!box) return;
+      if (!noteBlocks.length) {
+        box.innerHTML = '<p class="subtitle" style="margin:0;">This note is empty. Write a block below, or tap 🎤 and speak — the AI writes the paragraph.</p>';
+        return;
+      }
+      box.innerHTML = noteBlocks.map(noteBlockHTML).join('');
+    }
+
+    function noteBlockHTML(b, i) {
+      const ctrl = "display:flex; gap:6px; align-items:center; margin-bottom:6px;";
+      let body = '';
+      if (b.type === 'todo') {
+        body = "<label style=\"display:flex; gap:9px; align-items:flex-start; font-size:15px;\"><input type=\"checkbox\" " + (b.checked ? 'checked' : '') + " onchange=\"updateNoteBlock('" + b.id + "', { checked: this.checked })\" style=\"margin-top:4px;\"><span contenteditable=\"true\" onblur=\"updateNoteBlock('" + b.id + "', { text: this.innerText })\" style=\"flex:1; " + (b.checked ? 'text-decoration:line-through; color:#90a4ae;' : '') + " outline:none;\">" + escapeHtml(b.text || '') + "</span></label>";
+      } else if (b.type === 'code') {
+        body = "<textarea contenteditable onblur=\"updateNoteBlock('" + b.id + "', { text: this.value })\" style=\"width:100%; min-height:70px; font-family:Consolas,monospace; font-size:13px; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; border:none; box-sizing:border-box;\">" + escapeHtml(b.text || '') + "</textarea>";
+      } else if (b.type === 'table') {
+        const rows = String(b.text || '').split('\n').filter(Boolean).map(r => '<tr>' + r.split('\t').map(c2 => '<td style="border:1px solid var(--border); padding:5px 9px; font-size:13px;">' + escapeHtml(c2) + '</td>').join('') + '</tr>').join('');
+        body = "<div style=\"overflow-x:auto; margin-bottom:6px;\"><table style=\"border-collapse:collapse;\">" + rows + "</table></div>" +
+          "<textarea onblur=\"updateNoteBlock('" + b.id + "', { text: this.value })\" style=\"width:100%; min-height:52px; font-size:12.5px; border:1px dashed var(--border); border-radius:8px; padding:8px; box-sizing:border-box;\" title=\"Edit as TSV (paste straight from Excel)\">" + escapeHtml(b.text || '') + "</textarea>";
+      } else {
+        body = "<div contenteditable=\"true\" onblur=\"updateNoteBlock('" + b.id + "', { text: this.innerText })\" style=\"font-size:15px; line-height:1.7; white-space:pre-wrap; outline:none;\">" + escapeHtml(b.text || '') + "</div>";
+      }
+      let extra = '';
+      if (b.source === 'audio') {
+        extra = "<div style=\"margin-top:6px; font-size:11px; color:#7c3aed; display:flex; gap:10px; align-items:center; flex-wrap:wrap;\"><span>🎤 AI wrote this from your voice" + (b.instruction ? (' · “' + escapeHtml(String(b.instruction).substring(0, 70)) + '”') : '') + "</span>" + (b.audioB64 ? ("<button onclick=\"playNoteAudio('" + b.id + "')\" style=\"border:1px solid #c4b5fd; background:#f3e8ff; color:#6d28d9; border-radius:7px; padding:3px 9px; cursor:pointer; font-size:11px; font-weight:700;\">🔉 Hear original</button>") : '') + "</div>";
+      }
+      const undoBtn = (b.versions && b.versions.length) ? ("<button onclick=\"undoNoteBlock('" + b.id + "')\" title=\"Undo last AI change\" style=\"border:1px solid #fbbf24; background:#fffbeb; border-radius:7px; padding:3px 8px; cursor:pointer; font-size:11.5px; font-weight:700;\">↩️ Undo</button>") : '';
+      return "<div style=\"background:#fff; border:1px solid var(--border); border-left:4px solid " + (b.source === 'audio' ? '#7c3aed' : (b.type === 'todo' ? '#00a884' : '#e2e8f0')) + "; border-radius:10px; padding:12px 14px; margin-bottom:11px;\">" +
+        "<div style=\"" + ctrl + "\"><span style=\"font-size:10px; color:#90a4ae; font-weight:800;\">" + (i + 1) + "</span><span style=\"flex:1;\"></span>" +
+        "<button onclick=\"refineNoteBlock('" + b.id + "')\" title=\"Ask the AI to rewrite this block\" style=\"border:1px solid #c4b5fd; background:#f3e8ff; border-radius:7px; padding:3px 8px; cursor:pointer; font-size:11.5px; font-weight:700;\">✨ Refine</button>" + undoBtn +
+        "<button onclick=\"deleteNoteBlock('" + b.id + "')\" title=\"Delete block\" style=\"border:1px solid #ef9a9a; background:#ffebee; border-radius:7px; padding:3px 8px; cursor:pointer; font-size:11.5px; font-weight:700;\">🗑️</button></div>" +
+        body + extra + "</div>";
+    }
+
+    async function updateNoteBlock(blockId, patch) {
+      const b = noteBlocks.find(x => x.id === blockId);
+      if (b) Object.assign(b, patch);
+      try {
+        await fetch('api/notes/' + noteCurrent.id + '/block-update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ blockId: blockId }, patch)) });
+      } catch (e) { /* offline-safe: local state already updated */ }
+    }
+
+    async function undoNoteBlock(blockId) {
+      if (!noteCurrent) return;
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/block-update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blockId: blockId, undo: true }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        const b = noteBlocks.find(x => x.id === blockId);
+        if (b) { b.text = j.text; if (b.versions) b.versions.pop(); }
+        renderNoteBlocks();
+        toastMsg('↩️ Restored the previous version');
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function deleteNoteBlock(blockId) {
+      if (!noteCurrent) return;
+      noteBlocks = noteBlocks.filter(x => x.id !== blockId);
+      renderNoteBlocks();
+      try {
+        await fetch('api/notes/' + noteCurrent.id + '/block-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blockId: blockId }) });
+      } catch (e) { /* ignore */ }
+    }
+
+    async function addNoteBlock() {
+      if (!noteCurrent) return;
+      const type = document.getElementById('noteNewBlockType').value;
+      const inp = document.getElementById('noteNewBlockText');
+      const text = (inp.value || '').trim();
+      if (!text) { toastMsg('Write something first'); return; }
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/blocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: type, text: text }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        noteBlocks.push(j.block);
+        inp.value = '';
+        try { localStorage.removeItem('noteBlockDraft-' + noteCurrent.id); } catch (e2) { /* ignore */ }
+        renderNoteBlocks();
+        loadNotes();
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function refineNoteBlock(blockId) {
+      if (!noteCurrent) return;
+      const instruction = prompt('✨ What should the AI change about this block?\n\nExamples:\n• make it professional\n• shorten it\n• convert into bullet to-do lines\n• fix grammar, keep meaning');
+      if (!instruction) return;
+      toastMsg('✨ AI is rewriting…');
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/refine', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ blockId: blockId, instruction: instruction }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + (j.error || 'Refine failed')); return; }
+        const b = noteBlocks.find(x => x.id === blockId);
+        if (b) { if (!b.versions) b.versions = []; b.versions.push({ text: b.text, at: Date.now() }); b.text = j.text; }
+        renderNoteBlocks();
+        toastMsg('✨ Refined — ↩️ Undo is available');
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- 🎤 VOICE: record -> transcription + AI paragraph appended to THIS note ----------
+    // Decode whatever the browser recorded (webm/opus, ogg, mp4) and re-encode as 16 kHz mono WAV -
+    // the one format every ASR engine accepts. Returns null if conversion is not possible.
+    async function noteBlobToWav16kMono(blob) {
+      try {
+        const arr = await blob.arrayBuffer();
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const tmp = new AC();
+        const decoded = await tmp.decodeAudioData(arr.slice(0));
+        try { tmp.close(); } catch (e0) { /* ignore */ }
+        const targetRate = 16000;
+        const dur = Math.min(decoded.duration, 240);
+        const frames = Math.max(1, Math.floor(dur * targetRate));
+        const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        if (!OAC) return null;
+        const off = new OAC(1, frames, targetRate);
+        const src = off.createBufferSource();
+        src.buffer = decoded;
+        src.connect(off.destination);
+        src.start(0);
+        const rendered = await off.startRendering();
+        const pcm = rendered.getChannelData(0);
+        const out = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+        const wstr = function (o, s) { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+        wstr(0, 'RIFF'); out.setUint32(4, 36 + pcm.length * 2, true); wstr(8, 'WAVE'); wstr(12, 'fmt ');
+        out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+        out.setUint32(24, targetRate, true); out.setUint32(28, targetRate * 2, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+        wstr(36, 'data'); out.setUint32(40, pcm.length * 2, true);
+        let o = 44;
+        for (let i = 0; i < pcm.length; i++, o += 2) {
+          const s = Math.max(-1, Math.min(1, pcm[i]));
+          out.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return new Blob([out.buffer], { type: 'audio/wav' });
+      } catch (e) { console.warn('[NOTEBOOK] WAV conversion failed - sending the raw recording instead:', e && e.message); return null; }
+    }
+
+    async function noteMicToggle() {
+      if (!noteCurrent) { toastMsg('Open a note first'); return; }
+      const micBtn = document.getElementById('noteMicBtn');
+      if (noteRecorder && noteRecorder.state === 'recording') { noteRecorder.stop(); return; }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        let mime = '';
+        if (window.MediaRecorder) {
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime = 'audio/webm;codecs=opus';
+          else if (MediaRecorder.isTypeSupported('audio/webm')) mime = 'audio/webm';
+          else if (MediaRecorder.isTypeSupported('audio/mp4')) mime = 'audio/mp4';
+        }
+        noteChunks = [];
+        noteRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        noteRecorder.ondataavailable = function (e) { if (e.data && e.data.size) noteChunks.push(e.data); };
+        noteRecorder.onstop = async function () {
+          noteIsRecording = false;
+          if (micBtn) { micBtn.style.background = '#111827'; micBtn.innerText = '🎤'; }
+          const st = document.getElementById('noteRecStatus'); if (st) st.innerText = '';
+          stream.getTracks().forEach(t => t.stop());
+          const blob = new Blob(noteChunks, { type: (noteRecorder && noteRecorder.mimeType) || 'audio/webm' });
+          if (!blob.size) return;
+          const st2 = document.getElementById('noteRecStatus'); if (st2) st2.innerText = '⚙️ Preparing audio…';
+          const wav = await noteBlobToWav16kMono(blob);
+          const sendBlob = wav || blob;   // WAV is accepted by both Qwen ASR and Gemini - the raw recording is only the safety net
+          if (st2) st2.innerText = '';
+          if (sendBlob.size > 12 * 1024 * 1024) { toastMsg('❌ Recording too large — keep it under ~3 minutes'); return; }
+          const b64 = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(sendBlob); });
+          noteSendAudio(b64, sendBlob.type || 'audio/webm');
+        };
+        noteRecorder.start();
+        noteIsRecording = true;
+        if (micBtn) { micBtn.style.background = '#dc2626'; micBtn.innerText = '⏹️'; }
+        const st = document.getElementById('noteRecStatus'); if (st) st.innerText = '● Recording… tap ⏹️ to stop — the AI will write it as the next paragraph';
+      } catch (e) { toastMsg('❌ Microphone unavailable: ' + e.message); }
+    }
+
+    async function noteSendAudio(b64, mimeType) {
+      if (!noteCurrent) return;
+      const noteId = noteCurrent.id;
+      const instrEl = document.getElementById('noteAudioInstruction');
+      const instruction = instrEl ? instrEl.value : '';
+      const box = document.getElementById('noteBlocksInner');
+      const ph = document.createElement('div');
+      ph.id = 'noteAiWriting';
+      ph.style.cssText = 'padding:12px 14px; background:#f3e8ff; border:1px dashed #c4b5fd; border-radius:10px; color:#7c3aed; font-weight:800; font-size:13.5px; animation: notePulse 1.2s infinite;';
+      ph.innerText = '✨ AI is listening and writing the paragraph…';
+      box.appendChild(ph);
+      ph.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      try {
+        const r = await fetch('api/notes/' + noteId + '/audio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audioBase64: b64, mimeType: mimeType, instruction: instruction }) });
+        const j = await r.json();
+        const phEl = document.getElementById('noteAiWriting'); if (phEl) phEl.remove();
+        if (!r.ok) { toastMsg('❌ ' + (j.error || 'Audio failed')); return; }
+        if (noteCurrent && noteCurrent.id === noteId) {
+          noteBlocks.push(j.block);
+          if (instrEl && instruction) instrEl.value = '';
+          renderNoteBlocks();
+          toastMsg('🎤 Paragraph written ✅ (transcript: “' + String(j.transcript || '').substring(0, 60) + '…”');
+        }
+        loadNotes();
+      } catch (e) {
+        const phEl = document.getElementById('noteAiWriting'); if (phEl) phEl.remove();
+        toastMsg('❌ Network error: ' + e.message);
+      }
+    }
+
+    function playNoteAudio(blockId) {
+      const b = noteBlocks.find(x => x.id === blockId);
+      if (!b || !b.audioB64) return;
+      try {
+        if (noteAudioEl) { noteAudioEl.pause(); noteAudioEl = null; }
+        noteAudioEl = new Audio('data:' + (b.mimeType || 'audio/webm') + ';base64,' + b.audioB64);
+        noteAudioEl.play();
+      } catch (e) { toastMsg('❌ Cannot play audio: ' + e.message); }
+    }
+
+    // ---------- ✅ Extract tasks -> AlignTasks ----------
+    async function extractNoteTasks() {
+      if (!noteCurrent) return;
+      toastMsg('🤖 AI is reading the note for action items…');
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/extract-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        noteTaskCandidates = (j.tasks || []).map(t => ({ description: String(t.description || '').trim(), assignee: String(t.assignee || '').trim(), due: String(t.due || '').trim(), checked: true }));
+        if (!noteTaskCandidates.length) { toastMsg('✅ No action items found in this note'); return; }
+        renderNoteTaskModal();
+        document.getElementById('noteTaskModal').style.display = 'block';
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    function renderNoteTaskModal() {
+      document.getElementById('noteTaskList').innerHTML = noteTaskCandidates.map((t, i) =>
+        '<label style="display:flex; gap:10px; align-items:flex-start; padding:9px; border-bottom:1px solid var(--border);">' +
+        '<input type="checkbox" ' + (t.checked ? 'checked' : '') + ' onchange="noteTaskCandidates[' + i + '].checked=this.checked" style="margin-top:3px;">' +
+        '<span style="font-size:14px;">' + escapeHtml(t.description) +
+        (t.assignee ? ' <b>· ' + escapeHtml(t.assignee) + '</b>' : ' <span style="color:#90a4ae; font-size:12px;">· General (For All)</span>') +
+        (t.due ? ' <span style="color:#7c3aed;">🕐 ' + escapeHtml(t.due) + '</span>' : '') + '</span></label>'
+      ).join('');
+    }
+
+    async function applyNoteTasks() {
+      if (!noteCurrent) return;
+      const chosen = noteTaskCandidates.filter(t => t.checked);
+      if (!chosen.length) { toastMsg('Select at least one task'); return; }
+      toastMsg('📋 Sending to AlignTasks…');
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/extract-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apply: true, tasks: chosen }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        document.getElementById('noteTaskModal').style.display = 'none';
+        const okCount = (j.results || []).filter(x => x.ok).length;
+        toastMsg('📋 ' + okCount + ' task(s) sent to AlignTasks ✅');
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- 📤 Push note to WhatsApp ----------
+    async function pushNoteToWhatsApp() {
+      if (!noteCurrent) return;
+      const target = prompt('📤 Send this note to which contact?\n\nType a name from the Contact Book, or a WhatsApp number with country code.');
+      if (!target) return;
+      const defText = (noteCurrent.title || '') + '\n\n' + noteBlocks.map(b => b.text).filter(Boolean).join('\n\n');
+      const text = prompt('Message text (you can edit before sending):', defText.substring(0, 1500));
+      if (!text) return;
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/push-whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: target, text: text }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        toastMsg('✅ Sent to ' + j.to);
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- 📥 Import a WhatsApp chat into a note ----------
+    async function importWaChatToNote() {
+      const target = prompt('📥 Which WhatsApp chat should I bring into a note?\n\nType the chat/contact name or number.');
+      if (!target) return;
+      toastMsg('📥 Importing from the WhatsApp vault…');
+      try {
+        const r = await fetch('api/notes/import-whatsapp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target: target }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        toastMsg('📥 Imported ' + j.count + ' messages ✅');
+        await loadNotes();
+        await openNoteEditor(j.noteId);
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- ⏰ Reminder about this note (WhatsApp alert) ----------
+    async function promptNoteReminder() {
+      if (!noteCurrent) return;
+      const whenText = prompt('⏰ When should I remind you?\n\nExamples:\n• in 30 minutes\n• tomorrow 9am\n• today 7pm');
+      if (!whenText) return;
+      try {
+        const r = await fetch('api/notes/' + noteCurrent.id + '/remind', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ whenText: whenText }) });
+        const j = await r.json();
+        if (!r.ok) { toastMsg('❌ ' + j.error); return; }
+        toastMsg('⏰ Reminder set — you will get a WhatsApp alert');
+      } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- 💾 Export this note (HTML + JSON, client side) ----------
+    function exportNoteClient() {
+      if (!noteCurrent) return;
+      const safeTitle = String(noteCurrent.title || 'note').replace(/[^A-Za-z0-9._-]+/g, '_').substring(0, 50) || 'note';
+      const json = JSON.stringify({ app: 'WhatAnAgent NoteBook', exportFormatVersion: 1, exportedAt: new Date().toISOString(), note: noteCurrent, blocks: noteBlocks }, null, 1);
+      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(noteCurrent.title || 'Note') + '</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:860px;margin:30px auto;padding:0 18px;color:#1f2937;line-height:1.7}h1{margin-bottom:4px}.meta{color:#6b7280;font-size:12px;margin-bottom:18px}.b{padding:10px 0;border-bottom:1px dashed #e5e7eb;white-space:pre-wrap;font-size:14.5px}.tag{font-size:11px;color:#7c3aed}</style></head><body><h1>' + escapeHtml(noteCurrent.title || 'Note') + '</h1><div class="meta">Exported ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai) · ' + noteBlocks.length + ' blocks</div>' + noteBlocks.map(b => '<div class="b">' + escapeHtml(b.text || '') + (b.source === 'audio' ? '<div class="tag">🎤 AI-written from voice' + (b.instruction ? ' · ' + escapeHtml(String(b.instruction).substring(0, 60)) : '') + '</div>' : '') + '</div>').join('') + '</body></html>';
+      const d1 = document.createElement('a');
+      d1.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+      d1.download = safeTitle + '.html';
+      document.body.appendChild(d1); d1.click(); d1.remove();
+      const d2 = document.createElement('a');
+      d2.href = URL.createObjectURL(new Blob([json], { type: 'application/json;charset=utf-8' }));
+      d2.download = safeTitle + '.json';
+      document.body.appendChild(d2); d2.click(); d2.remove();
+      setTimeout(function () { try { URL.revokeObjectURL(d1.href); URL.revokeObjectURL(d2.href); } catch (e) { /* ignore */ } }, 8000);
+      toastMsg('💾 Note exported (HTML + JSON)');
+    }
+
+    // ==================== 💾 WHATSAPP BACKUPS (HTML + JSON zip straight from the vault) ====================
+    async function waFullBackup() {
+      if (!confirm('Build a FULL backup of ALL WhatsApp chats?\n\n• Every chat becomes its own HTML page + JSON data file\n• One ZIP with an index.html you can open anywhere — no app, no internet needed\n• This reads the archive and can take 1-3 minutes — keep this page open')) return;
+      const btn = document.getElementById('waBackupBtn');
+      const old = btn ? btn.innerText : '';
+      if (btn) { btn.disabled = true; btn.innerText = '💾 Building… (1-3 min)'; }
+      try {
+        const r = await fetch('api/wa-web/backup');
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ('HTTP ' + r.status)); }
+        const blob = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'AlignTasks-Backup-' + new Date().toISOString().slice(0, 10) + '.zip';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) { /* ignore */ } }, 8000);
+        toastMsg('✅ Backup downloaded (' + (Math.round(blob.size / 1048576 * 10) / 10) + ' MB) — open index.html inside the zip');
+      } catch (e) { toastMsg('❌ Backup failed: ' + e.message); }
+      finally { if (btn) { btn.disabled = false; btn.innerText = old || '💾 Full Backup'; } }
+    }
+
+    async function exportWaWebChat() {
+      if (typeof waWebCurrentJid === 'undefined' || !waWebCurrentJid) { toastMsg('Open a WhatsApp chat first'); return; }
+      const btn = document.getElementById('waExportBtn');
+      if (btn) { btn.disabled = true; btn.innerText = '💾 …'; }
+      try {
+        const r = await fetch('api/wa-web/backup?jid=' + encodeURIComponent(waWebCurrentJid));
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ('HTTP ' + r.status)); }
+        const blob = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'WhatsApp-Chat-' + String(waWebCurrentJid).split('@')[0] + '-' + new Date().toISOString().slice(0, 10) + '.zip';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) { /* ignore */ } }, 8000);
+        toastMsg('✅ Chat exported (HTML + JSON zip)');
+      } catch (e) { toastMsg('❌ Export failed: ' + e.message); }
+      finally { if (btn) { btn.disabled = false; btn.innerText = '💾 Export'; } }
+    }
 
     </script>
 

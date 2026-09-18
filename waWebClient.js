@@ -1599,6 +1599,10 @@ let isInitializing = false;
 let globalDb = null;
 let historySaveTimeout = null;
 
+// Staging/standby nodes never run initWaWeb - yet Notebook audio, the chat vault and other helpers
+// still need Firestore (to resolve the Qwen/Gemini keys). index.js calls this right after creating db.
+export function attachWaWebDb(db) { if (db) globalDb = db; }
+
 // Helper to extract text, thumbnail, and media metadata without downloading heavy binary files
 function parseMessageContent(msg) {
   if (!msg || !msg.message) return { text: '', mediaType: null, mediaInfo: null };

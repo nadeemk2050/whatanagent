@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
+import { registerNotebookRoutes } from './notebookApi.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -29,7 +30,8 @@ import {
   saveWaWebKnowledgeBase,
   buildWaWebKnowledgeSystemPrompt,
   generateWaWebAutoBotReply,
-  transcribeAudioBuffer
+  transcribeAudioBuffer,
+  attachWaWebDb
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,6 +49,10 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+
+// Give waWebClient Firestore access on ALL nodes (staging skips initWaWeb, but Notebook audio /
+// backups / key resolution inside waWebClient must still work there).
+attachWaWebDb(db);
 
 dotenv.config();
 
@@ -85,6 +91,9 @@ let schedulerState = 'starting';
 const app = express();
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
+
+// Note Book (AI notebook: voice -> paragraphs, refine, AlignTasks extraction, WhatsApp push/import, reminders)
+registerNotebookRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -3448,6 +3457,37 @@ app.post('/api/conditional-tasks/action', async (req, res) => {
     if (action === 'complete') { await setDoc(ref, { status: 'done', stage: 'done' }, { merge: true }); return res.json({ success: true }); }
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- WhatsApp chat BACKUPS (HTML + JSON zip straight from the Firestore vault - works without the WhatsApp session) ---
+app.get('/api/wa-web/backup', async (req, res) => {
+  try {
+    const { buildChatFiles, buildFullBackup } = await import('./waBackup.mjs');
+    const { buildZip } = await import('./zipUtil.mjs');
+    const jid = req.query.jid;
+    if (jid) {
+      const docId = String(jid).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const snap = await getDoc(doc(db, 'waWebChatHistory', docId));
+      if (!snap.exists()) return res.status(404).json({ error: 'Chat not found in the vault' });
+      const { base, html, json } = buildChatFiles(snap.data() || {});
+      const zip = buildZip([{ name: base + '.html', data: html }, { name: base + '.json', data: json }]);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="' + base + '.zip"');
+      console.log('[BACKUP] 💬 Single chat exported: ' + base + ' (' + Math.round(zip.length / 1024) + ' KB)');
+      return res.send(zip);
+    }
+    const limitParam = parseInt(req.query.limit) || 0;
+    const { files, stats } = await buildFullBackup(db, { limit: limitParam || undefined });
+    const zip = buildZip(files);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="AlignTasks-Backup-' + dateStr + '.zip"');
+    console.log('[BACKUP] 📦 Full backup built: ' + stats.chats + ' chats / ' + stats.messages + ' messages (' + Math.round(zip.length / 1048576 * 10) / 10 + ' MB)');
+    res.send(zip);
+  } catch (e) {
+    console.error('[BACKUP] failed:', e.message);
+    res.status(500).json({ error: 'Backup failed: ' + e.message });
+  }
 });
 
 
