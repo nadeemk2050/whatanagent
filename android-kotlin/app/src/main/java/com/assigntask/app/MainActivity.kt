@@ -359,6 +359,9 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         }
                     },
                     actions = {
+                        IconButton(onClick = { currentPage = "completedTasks" }) {
+                            Icon(Icons.Default.CheckCircle, "Completed Tasks")
+                        }
                         IconButton(onClick = { currentPage = "reminderHistory" }) {
                             Icon(Icons.Default.History, "Reminder Calls History")
                         }
@@ -384,6 +387,7 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         addTaskRequestToken = addTaskRequestToken
                     )
                     "individualTasks" -> IndividualTasksPage(vm, user, profile)
+                    "completedTasks" -> CompletedTasksPage(vm, user, profile)
                     "projects" -> ProjectsPage(vm, user, profile)
                     "addSubUser" -> AddSubUserDialog(vm, user) { currentPage = "tasksForAll" }
                     "teamMembers" -> TeamMembersPage(vm, user, profile)
@@ -446,6 +450,13 @@ fun NavigationDrawerContent(
             icon = { Icon(Icons.Default.Assignment, null) },
             selected = currentPage == "individualTasks",
             onClick = { onPageSelect("individualTasks") }
+        )
+
+        NavigationDrawerItem(
+            label = { Text("Completed Tasks") },
+            icon = { Icon(Icons.Default.CheckCircle, null) },
+            selected = currentPage == "completedTasks",
+            onClick = { onPageSelect("completedTasks") }
         )
 
         NavigationDrawerItem(
@@ -515,6 +526,7 @@ fun NavigationDrawerContent(
 fun pageTitle(page: String): String = when (page) {
     "tasksForAll" -> "Tasks For All"
     "individualTasks" -> "Individual Tasks"
+    "completedTasks" -> "Completed Tasks"
     "projects" -> "Projects"
     "addSubUser" -> "Add Sub User"
     "teamMembers" -> "Team Members"
@@ -1168,14 +1180,6 @@ fun IndividualTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfi
                                     ) { _, callId -> onCallId(callId) }
                                 })
                         }
-
-                        if (doneTasks.isNotEmpty()) {
-                            item(key = "group_done_$groupKey") {
-                                CompletedToggle(doneTasks, "tasks", null, user, profile.hasAdminPowers, vm,
-                                    onShowComments = { showComments = it },
-                                    onEditTask = { t, type -> showEditTask = t to type })
-                            }
-                        }
                     }
                 }
             }
@@ -1188,6 +1192,95 @@ fun IndividualTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfi
 
     showComments?.let { task ->
         CommentsDialog(task, "tasks", null, user.email ?: "", vm) { showComments = null }
+    }
+
+    showEditTask?.let { (task, taskType) ->
+        EditTaskDialog(task, taskType, null, user, profile.hasAdminPowers, vm, staff) { showEditTask = null }
+    }
+}
+
+// ✅ Every completed task lives here - General + Individual - with all the same features
+// (WhatsApp remind, reminder calls, comments, edit, delete, and untick to restore).
+@Composable
+fun CompletedTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfile) {
+    val allForAll by vm.tasksForAll.collectAsState()
+    val allTasks by vm.tasks.collectAsState()
+    val staff by vm.staff.collectAsState()
+    val reminderTargets = remember(staff, user.email) { buildReminderTargets(staff, user.email) }
+    var showComments by remember { mutableStateOf<Task?>(null) }
+    var showEditTask by remember { mutableStateOf<Pair<Task, String>?>(null) }
+
+    val doneForAll = remember(allForAll) { allForAll.filter { it.isDone } }
+    val doneIndividual = remember(allTasks) { allTasks.filter { it.isDone } }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("✅ Completed Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("${doneForAll.size + doneIndividual.size} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
+
+        if (doneForAll.isEmpty() && doneIndividual.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No completed tasks yet", color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (doneForAll.isNotEmpty()) {
+                    item(key = "completed_header_forall") {
+                        Text("General Tasks", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    }
+                    items(doneForAll, key = { "fa_" + it.id }) { task ->
+                        TaskRow(task, "tasks_for_all", null, user, profile.hasAdminPowers, vm,
+                            onShowComments = { showComments = it },
+                            onEditTask = { t, type -> showEditTask = t to type },
+                            reminderTargets = reminderTargets,
+                            onRemindTask = { t, selected, onCallId ->
+                                vm.sendTaskReminder(
+                                    task = t,
+                                    taskType = "tasks_for_all",
+                                    projectId = null,
+                                    recipientEmails = selected,
+                                    senderEmail = user.email ?: ""
+                                ) { err, callId ->
+                                    if (err != null) vm.clearError() else onCallId(callId)
+                                }
+                            })
+                    }
+                }
+                if (doneIndividual.isNotEmpty()) {
+                    item(key = "completed_header_individual") {
+                        Text("Individual Tasks", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    }
+                    items(doneIndividual, key = { "ind_" + it.id }) { task ->
+                        TaskRow(task, "tasks", null, user, profile.hasAdminPowers, vm,
+                            onShowComments = { showComments = it },
+                            onEditTask = { t, type -> showEditTask = t to type },
+                            reminderTargets = reminderTargets,
+                            onRemindTask = { t, selected, onCallId ->
+                                vm.sendTaskReminder(
+                                    task = t,
+                                    taskType = "tasks",
+                                    projectId = null,
+                                    recipientEmails = selected,
+                                    senderEmail = user.email ?: ""
+                                ) { _, callId -> onCallId(callId) }
+                            })
+                    }
+                }
+            }
+        }
+    }
+
+    showComments?.let { task ->
+        CommentsDialog(task, if (task.assigneeEmail.isNullOrBlank()) "tasks_for_all" else "tasks", null, user.email ?: "", vm) { showComments = null }
     }
 
     showEditTask?.let { (task, taskType) ->
@@ -2390,6 +2483,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
     var showReminderDialog by remember(task.id) { mutableStateOf(false) }
     var showQuickReminderConfirm by remember(task.id) { mutableStateOf(false) }
     var showReminderRepliesDialog by remember(task.id) { mutableStateOf(false) }
+    var showWaTargetsPicker by remember(task.id) { mutableStateOf(false) }
     var swipeOffsetPx by remember(task.id) { mutableFloatStateOf(0f) }
     val maxSwipePx = with(density) { 156.dp.toPx() }
 
@@ -2499,7 +2593,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                     }) { Icon(Icons.Default.Comment, "Comments", modifier = Modifier.size(18.dp)) }
                 }
 
-                IconButton(onClick = { sendAlignWhatsAppReminder(waReminderContext, task) }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { showWaTargetsPicker = true }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Send, "WhatsApp Reminder", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF25D366))
                 }
 
@@ -2534,6 +2628,18 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
             onSendWhatsApp = { selected ->
                 showReminderDialog = false
                 sendAlignWhatsAppReminder(waDialogContext, task, selected)
+            }
+        )
+    }
+
+    if (showWaTargetsPicker) {
+        val waPickerContext = LocalContext.current
+        WhatsAppTargetsDialog(
+            task = task,
+            onDismiss = { showWaTargetsPicker = false },
+            onSend = { selected ->
+                showWaTargetsPicker = false
+                sendAlignWhatsAppReminder(waPickerContext, task, selected)
             }
         )
     }
@@ -2722,6 +2828,90 @@ fun ReminderTargetsDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
+    )
+}
+
+// The one-tap WhatsApp member picker: shows every team member with their WhatsApp number
+// (like the webapp) and queues the reminder for the chosen member - no typos, no guessing.
+@Composable
+fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<String>) -> Unit) {
+    val context = LocalContext.current
+    var loading by remember { mutableStateOf(true) }
+    var members by remember { mutableStateOf(listOf<Triple<String, String, String>>()) }
+    var selectedEmail by remember { mutableStateOf("") }
+    val assigneeDefault = (task.assigneeEmail ?: "").lowercase()
+
+    LaunchedEffect(task.id) {
+        FirebaseFirestore.getInstance().collection("$REMINDER_BASE/staff").get()
+            .addOnSuccessListener { snap ->
+                val list = mutableListOf<Triple<String, String, String>>()
+                snap.documents.forEach { d ->
+                    val v = d.data ?: return@forEach
+                    val email = ((v["email"] as? String) ?: "").lowercase()
+                    if (email.isBlank()) return@forEach
+                    val name = ((v["name"] as? String) ?: "").ifBlank { email.substringBefore('@') }
+                    val wa = normalizeWaDigitsAndroid(v["whatsappNumber"] as? String)
+                    list.add(Triple(email, name, wa))
+                }
+                members = list
+                val preferred = list.firstOrNull { it.first == assigneeDefault && it.third.isNotBlank() }
+                    ?: list.firstOrNull { it.third.isNotBlank() }
+                selectedEmail = preferred?.first ?: ""
+                loading = false
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+                loading = false
+            }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Send WhatsApp Reminder") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("\"${task.description.take(70)}\"", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(6.dp))
+                Text("Select the team member to remind", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                when {
+                    loading -> Text("Loading team members…", style = MaterialTheme.typography.bodySmall)
+                    members.isEmpty() -> Text("No team members found. Add them in Add Sub User.", style = MaterialTheme.typography.bodySmall)
+                    else -> Column(modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                        members.forEach { (email, name, wa) ->
+                            val hasWa = wa.isNotBlank()
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .clickable(enabled = hasWa) { selectedEmail = email }
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedEmail == email,
+                                    onClick = { if (hasWa) selectedEmail = email },
+                                    enabled = hasWa
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(name, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Text(
+                                    text = if (hasWa) "+$wa" else "no WhatsApp number",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (hasWa) androidx.compose.ui.graphics.Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = selectedEmail.isNotBlank(),
+                onClick = { if (selectedEmail.isNotBlank()) onSend(listOf(selectedEmail)) }
+            ) { Text("💬 Send on WhatsApp") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
