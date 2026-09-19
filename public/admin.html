@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.17.5 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live) -->
+    <!-- APP VERSION: 2026.09.17.6 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent added: 5 business-news sites x top 5 each, merged + non-repeated every 5 hours) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -278,6 +278,7 @@
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
             <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
             <div class="menu-item" onclick="openNewsPage()">📰 News & Info Collection</div>
+            <div class="menu-item" onclick="showSection('news'); if (typeof naLoadStatus === 'function') naLoadStatus();">📡 Browsing News Agent</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
@@ -1479,6 +1480,71 @@
                 </div>
             </div>
 
+            <!-- NEWS & INFO COLLECTION SECTION -->
+            <div id="newsSection" class="app-section">
+                <div class="followup-header">
+                    <h2>📡 Browsing News Agent</h2>
+                    <div style="font-size:13px; color:#546e7a; margin-top:4px;">Auto-browses <b>5 websites</b> → top <b>5 business news</b> each → merged → <b>non-repeated every 5 hours</b></div>
+                </div>
+                
+                <div class="card" style="margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h3 style="margin:0;">🤖 The agent browses these 5 business-news websites</h3>
+                            <p style="margin:6px 0 0 0; color:#667781; font-size:13px;"><b>Khaleej Times (UAE) · Jang (Pakistan) · Times of India (India) · Google News (Global) · Gulf News (Gulf)</b> — top <b>5 news</b> from each, merged together, repeats removed, refreshed every <b>5 hours</b>.</p>
+                        </div>
+                        <span style="font-size:11px; font-weight:bold; padding:5px 12px; border-radius:14px; background:#e8f5e9; color:#1b5e20; border:1px solid #a5d6a7; white-space:nowrap;">⏱️ Auto-refresh: every 5h</span>
+                    </div>
+
+                    <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+                        <button id="naRunBtn" onclick="naRun()" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); border:none; color:white; padding:13px 22px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:8px; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                            <span>🤖 Run Browsing Agent</span>
+                            <span id="naRunState" style="background:#1e3a8a; padding:3px 10px; border-radius:8px; font-size:11px;">Ready</span>
+                        </button>
+                        <button id="naMergeBtn" onclick="naMerge()" style="background:linear-gradient(135deg, #8b5cf6, #6d28d9); border:none; color:white; padding:13px 22px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:8px; box-shadow:0 4px 12px rgba(139,92,246,0.3);">
+                            <span>🔀 Merge Check</span>
+                            <span id="naMergeState" style="background:#4c1d95; padding:3px 10px; border-radius:8px; font-size:11px;">Not Run</span>
+                        </button>
+                        <button onclick="naExportCsv()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:white; padding:13px 22px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:8px; box-shadow:0 4px 12px rgba(16,185,129,0.3);">
+                            <span>📤 Export CSV</span>
+                        </button>
+                    </div>
+
+                    <div id="naStatusChips" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; font-size:12px;"></div>
+                    <div id="naProgress" style="display:none; margin-top:12px; padding:10px 14px; border-radius:8px; background:#eef4ff; border:1px solid #bfdbfe; font-size:13px; color:#1e40af;"></div>
+                </div>
+
+                <div id="naStats" class="followup-stats" style="display:none; margin-bottom:16px;">
+                    <div class="stat-box"><h3 id="naStatSources">0</h3><span>Sources Online</span></div>
+                    <div class="stat-box"><h3 id="naStatTotal">0</h3><span>Total Articles</span></div>
+                    <div class="stat-box"><h3 id="naStatUnique" style="color:#1b5e20;">0</h3><span>✅ Non-Repeated</span></div>
+                    <div class="stat-box"><h3 id="naStatRepeated" style="color:#b45309;">0</h3><span>🔁 Repeated</span></div>
+                </div>
+
+                <div id="naFilterBar" style="display:none; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;">
+                    <select id="naFilterType" onchange="naRenderLists()" style="padding:9px 14px; border:1px solid var(--border); border-radius:8px; font-size:13px; font-weight:bold;">
+                        <option value="unique">✅ Non-repeated only</option>
+                        <option value="all">📰 All merged news</option>
+                        <option value="repeated">🔁 Repeated groups only</option>
+                    </select>
+                    <select id="naFilterSource" onchange="naRenderLists()" style="padding:9px 14px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                        <option value="all">All sources</option>
+                    </select>
+                    <span id="naFilterCount" style="font-size:12px; color:#667781;"></span>
+                </div>
+
+                <div id="naResults">
+                    <div class="followup-empty"><h3>📡 Agent idle</h3><p style="margin-top:8px;">Click "🤖 Run Browsing Agent" to browse the 5 sites right now — or just wait: the agent auto-refreshes the merged non-repeated news every 5 hours. ⏱️</p></div>
+                </div>
+
+                <div id="naRaw" style="margin-top:20px;"></div>
+                    
+                    <!-- (config row removed - agent uses built-in sources) -->
+                    
+                    <!-- (old agent buttons removed - controls are in the card above) -->
+
+            </div>
+
             <!-- Follow Up Section -->
             <div id="followupSection" class="app-section">
                 <div class="followup-header">
@@ -2387,6 +2453,8 @@
                     if (typeof loadLeadsBook === 'function') loadLeadsBook();
                 } else if (id === 'followup') {
                     if (typeof loadFollowUps === 'function') loadFollowUps();
+                } else if (id === 'news') {
+                    if (typeof naLoadStatus === 'function') naLoadStatus();
                 }
             } catch(loaderErr) {
                 console.warn('[showSection] section loader error:', loaderErr);
@@ -4601,6 +4669,7 @@
 
         // ===== NEWS & INFO COLLECTION (full screen page view, all tabs coming soon) =====
         var NEWS_TABS = [
+            { id: 'browse', icon: '📡', label: 'Browsing News Agent', desc: 'The live multi-source business news agent — browses Khaleej Times, Jang, Times of India, Google News & Gulf News, takes the top 5 business news from each, merges them and keeps only the non-repeated stories, refreshed every 5 hours.' },
             { id: 'plastic', icon: '♻️', label: 'Plastic Scrap News', desc: 'Fresh news about plastic scrap: PET, HDPE, LDPE, PP, PVC, PC, regrind, flakes, bottle scrap — price movements, demand and market updates.' },
             { id: 'metal', icon: '🔩', label: 'Metal Scrap News', desc: 'Fresh news about metal scrap: copper, aluminium, brass, iron & steel — prices, import/export rules and buyer demand worldwide.' },
             { id: 'companies', icon: '🏢', label: 'Companies & Suppliers Worldwide', desc: 'Database of big producers, recyclers, traders and suppliers of plastic & metal scrap worldwide — company profiles, locations and contact information.' },
@@ -4608,7 +4677,7 @@
             { id: 'tech', icon: '🧪', label: 'Recycling Tech & Innovations', desc: 'New machines, sorting technology and recycling innovations from around the world.' },
             { id: 'rules', icon: '📜', label: 'Laws & Regulations', desc: 'Import/export rules, bans and compliance updates for scrap trade (Basel Convention, EU, Asia, Middle East).' }
         ];
-        var newsActiveTab = 'plastic';
+        var newsActiveTab = 'browse';
 
         function openNewsPage() {
             const p = document.getElementById('newsPage');
@@ -4643,6 +4712,15 @@
             const el = document.getElementById('newsContent');
             if (!el) return;
             const t = NEWS_TABS.filter(function(x) { return x.id === newsActiveTab; })[0] || NEWS_TABS[0];
+            if (t.id === 'browse') {
+                el.innerHTML = '<div class="card" style="text-align:center; padding:50px 30px;">' +
+                    '<div style="font-size:56px; line-height:1.2;">📡</div>' +
+                    '<h2 style="margin:10px 0 8px 0;">Browsing News Agent</h2>' +
+                    '<p style="max-width:600px; margin:0 auto 16px; color:#546e7a; line-height:1.7; font-size:14px;">The agent browses <b>5 business-news websites</b> (Khaleej Times, Jang, Times of India, Google News, Gulf News), takes the top <b>5 business news</b> from each, merges everything together and shows the <b>non-repeated news</b> separately — auto-refreshed every <b>5 hours</b> with publisher time details.</p>' +
+                    '<button onclick="closeNewsPage(); showSection(\'news\'); if (typeof naLoadStatus === \'function\') naLoadStatus();" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); border:none; color:white; padding:13px 26px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:15px; box-shadow:0 4px 12px rgba(59,130,246,0.3);">🤖 Open Browsing News Agent</button>' +
+                    '</div>';
+                return;
+            }
             el.innerHTML = '<div class="card" style="text-align:center; padding:60px 30px;">' +
                 '<div style="font-size:56px; line-height:1.2;">' + t.icon + '</div>' +
                 '<h2 style="margin:10px 0 8px 0;">' + t.label + '</h2>' +
@@ -4650,6 +4728,196 @@
                 '<p style="max-width:560px; margin:0 auto; color:#546e7a; line-height:1.7; font-size:14px;">' + t.desc + '</p>' +
                 '<p style="max-width:560px; margin:16px auto 0; color:#90a4ae; font-size:13px;">This section is being built — daily automatic collection and summaries will appear here as soon as it goes live. 🔜</p>' +
                 '</div>';
+        }
+
+        // ===== BROWSING NEWS AGENT (5 sites -> top 5 business news each -> merged & non-repeated, refreshed every 5h) =====
+        var naData = null;
+        var naBusy = false;
+
+        function naTimeAgo(ms) {
+            if (!ms) return '—';
+            const diff = Date.now() - ms;
+            if (diff < 60000) return 'just now';
+            const m = Math.floor(diff / 60000);
+            if (m < 60) return m + 'm ago';
+            const h = Math.floor(m / 60);
+            if (h < 24) return h + 'h ' + (m % 60) + 'm ago';
+            return Math.floor(h / 24) + 'd ago';
+        }
+
+        function naTimeUntil(ms) {
+            if (!ms) return '—';
+            const diff = ms - Date.now();
+            if (diff <= 0) return 'due now';
+            const m = Math.round(diff / 60000);
+            if (m < 60) return 'in ' + m + 'm';
+            const h = Math.floor(m / 60);
+            return 'in ' + h + 'h ' + (m % 60) + 'm';
+        }
+
+        function naFmtTime(ms) {
+            if (!ms) return '—';
+            return new Date(ms).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function naLoadStatus() {
+            try {
+                const r = await fetch('api/news/status');
+                const d = await r.json();
+                const chips = document.getElementById('naStatusChips');
+                if (chips) {
+                    const chip = (txt, bg, fg) => '<span style="background:' + bg + '; color:' + fg + '; padding:5px 12px; border-radius:14px; font-weight:bold;">' + txt + '</span>';
+                    let html = '';
+                    html += chip('🕒 Last run: ' + (d.lastRunAt ? naTimeAgo(d.lastRunAt) : 'never'), '#f0f2f5', '#546e7a');
+                    if (d.nextRunAt) html += chip('⏭️ Next auto-run: ' + naTimeUntil(d.nextRunAt), '#eef4ff', '#1e40af');
+                    if (d.stats) html += chip('✅ ' + d.stats.uniqueCount + ' non-repeated', '#e8f5e9', '#1b5e20');
+                    if (d.stats) html += chip('📰 ' + d.stats.totalCount + ' total articles', '#fff8e1', '#8d6e00');
+                    html += chip('🤖 ' + (d.schedulerState || 'idle'), '#f3e8ff', '#6b21a8');
+                    chips.innerHTML = html;
+                }
+                // if a cache already exists, show it right away (no re-browse)
+                if (d.lastRunAt && !naData && !naBusy) {
+                    try {
+                        const cr = await fetch('api/news/collect');
+                        const cd = await cr.json();
+                        if (cr.ok && cd.merged) { naData = cd; naRenderAll(); const ms = document.getElementById('naMergeState'); if (ms) ms.textContent = 'Merged ✅'; }
+                    } catch (e) { console.warn('[NEWS-AGENT] cached load failed:', e.message); }
+                }
+            } catch (e) { console.warn('[NEWS-AGENT] status failed:', e.message); }
+        }
+
+        async function naAgentFetch(force, stateId, busyText) {
+            if (naBusy) return;
+            naBusy = true;
+            const st = document.getElementById(stateId);
+            const prog = document.getElementById('naProgress');
+            if (st) st.textContent = force ? 'Browsing...' : 'Checking...';
+            if (prog) { prog.style.display = 'block'; prog.textContent = busyText; }
+            try {
+                const r = await fetch('api/news/collect' + (force ? '?force=1' : ''));
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'request failed');
+                naData = d;
+                naRenderAll();
+                if (st) st.textContent = force ? 'Done ✅' : 'Merged ✅';
+                const ms = document.getElementById('naMergeState');
+                if (ms) ms.textContent = 'Merged ✅';
+                if (prog) prog.textContent = (force ? '✅ Browsed all sites' : '✅ Merge check done') + ' at ' + naFmtTime(d.collectedAt) + ' — ' + (d.merged ? d.merged.totalCount : 0) + ' articles collected → ' + (d.merged ? d.merged.uniqueCount : 0) + ' non-repeated · ' + (d.merged ? d.merged.repeatedCount : 0) + ' repeated. Next auto-refresh ' + naTimeUntil(d.nextRunAt) + '.';
+            } catch (e) {
+                if (st) st.textContent = '❌ Error';
+                if (prog) prog.textContent = '❌ ' + e.message + ' — check that the server is running and internet access to news sites is available.';
+            } finally {
+                naBusy = false;
+                naLoadStatus();
+            }
+        }
+
+        function naRun() {
+            return naAgentFetch(true, 'naRunState', '🤖 Agent is browsing 5 websites in parallel (RSS → page scrape → Google News fallback)... this can take 10-25 seconds. Please wait.');
+        }
+
+        function naMerge() {
+            return naAgentFetch(false, 'naMergeState', '🔀 Merge check: using the 5-hour agent cache (it auto-refreshes if older than 5 hours)...');
+        }
+
+        function naRenderAll() {
+            if (!naData || !naData.merged) return;
+            const m = naData.merged;
+            const srcs = naData.sources || [];
+            const online = srcs.filter(s => s.ok).length;
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            set('naStatSources', online + ' / ' + srcs.length);
+            set('naStatTotal', m.totalCount);
+            set('naStatUnique', m.uniqueCount);
+            set('naStatRepeated', m.repeatedCount + (m.repeatedGroups ? ' (' + m.repeatedGroups + ' groups)' : ''));
+            const stats = document.getElementById('naStats'); if (stats) stats.style.display = 'flex';
+            const fbar = document.getElementById('naFilterBar'); if (fbar) fbar.style.display = 'flex';
+            const fsel = document.getElementById('naFilterSource');
+            if (fsel) {
+                const cur = fsel.value || 'all';
+                fsel.innerHTML = '<option value="all">All sources</option>' + srcs.map(s => '<option value="' + wsEsc(s.sourceId) + '">' + wsEsc(s.sourceName) + ' (' + (s.items || []).length + ')</option>').join('');
+                fsel.value = cur;
+                if (!fsel.value) fsel.value = 'all';
+            }
+            naRenderLists();
+            naRenderRaw();
+        }
+
+        function naRenderLists() {
+            if (!naData || !naData.merged) return;
+            const m = naData.merged;
+            const type = (document.getElementById('naFilterType') || {}).value || 'unique';
+            const srcFilter = (document.getElementById('naFilterSource') || {}).value || 'all';
+            let list = (m.clusters || []).slice();
+            if (type === 'unique') list = list.filter(c => !c.alsoSeenIn || !c.alsoSeenIn.length);
+            else if (type === 'repeated') list = list.filter(c => c.alsoSeenIn && c.alsoSeenIn.length);
+            if (srcFilter !== 'all') {
+                list = list.filter(c => c.source === srcFilter || (c.alsoSeenIn || []).some(d => d.source === srcFilter));
+            }
+            const cnt = document.getElementById('naFilterCount');
+            if (cnt) cnt.textContent = 'Showing ' + list.length + ' of ' + (m.clusters || []).length + ' merged stories · collected ' + naTimeAgo(naData.collectedAt);
+            const el = document.getElementById('naResults');
+            if (!el) return;
+            if (!list.length) { el.innerHTML = '<div class="followup-empty"><h3>📭 No news in this filter</h3></div>'; return; }
+            el.innerHTML = '<div class="followup-grid">' + list.map(naClusterCard).join('') + '</div>';
+        }
+
+        function naClusterCard(c) {
+            const isUnique = !c.alsoSeenIn || !c.alsoSeenIn.length;
+            const border = isUnique ? '#4caf50' : '#ff9800';
+            const badge = isUnique
+                ? '<span style="background:#e8f5e9; color:#1b5e20; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">✅ NON-REPEATED</span>'
+                : '<span style="background:#fff8e1; color:#8d6e00; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">🔁 REPEATED — ALSO IN ' + c.alsoSeenIn.length + ' SOURCE(S)</span>';
+            const alsoList = (c.alsoSeenIn || []).map(d =>
+                '<div style="font-size:12px; margin-top:4px;">↪ <b>' + wsEsc(d.sourceName) + '</b>: <a href="' + wsEsc(d.link) + '" target="_blank" rel="noopener" style="color:#1e40af; text-decoration:none;">open copy</a>' + (d.publishedAt ? ' <span style="color:#90a4ae;">(' + naFmtTime(d.publishedAt) + ')</span>' : '') + '</div>'
+            ).join('');
+            return '<div class="followup-card" style="border-left-color:' + border + ';">' +
+                '<div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; flex-wrap:wrap;">' +
+                    '<span style="background:#e3f2fd; color:#1565c0; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">' + wsEsc(c.sourceName) + (c.region ? ' · ' + wsEsc(c.region) : '') + '</span>' + badge +
+                '</div>' +
+                '<a href="' + wsEsc(c.link) + '" target="_blank" rel="noopener" style="display:block; font-size:14px; font-weight:700; color:#111b21; text-decoration:none; margin-top:10px; line-height:1.45;">' + wsEsc(c.title) + '</a>' +
+                '<div style="margin-top:10px; font-size:12px; color:#546e7a;">🕒 Published: <b>' + (c.publishedAt ? naFmtTime(c.publishedAt) + ' (' + naTimeAgo(c.publishedAt) + ')' : 'time not given by site') + '</b> · 📥 Collected: <b>' + naFmtTime(c.collectedAt) + '</b></div>' +
+                (alsoList ? '<div style="margin-top:8px; padding:8px 10px; background:#fffde7; border-radius:8px; border:1px dashed #ffe082;"><div style="font-size:11px; font-weight:bold; color:#8d6e00;">🔁 SAME STORY ALSO REPORTED IN:</div>' + alsoList + '</div>' : '') +
+            '</div>';
+        }
+
+        function naRenderRaw() {
+            const el = document.getElementById('naRaw');
+            if (!el || !naData || !naData.sources) return;
+            el.innerHTML = '<h3 style="margin:0 0 10px 0;">🗂️ Raw Collected News — per source (top 5 each)</h3>' +
+                naData.sources.map(s => {
+                    const items = (s.items || []).map((it, i) =>
+                        '<div style="padding:8px 0; border-bottom:1px solid #f0f2f5; font-size:13px;">' +
+                            '<b>' + (i + 1) + '.</b> <a href="' + wsEsc(it.link) + '" target="_blank" rel="noopener" style="color:#1e40af; text-decoration:none;">' + wsEsc(it.title) + '</a>' +
+                            '<div style="font-size:11px; color:#90a4ae; margin-top:2px;">🕒 ' + (it.publishedAt ? naFmtTime(it.publishedAt) + ' · ' + naTimeAgo(it.publishedAt) : 'time not given') + ' · 📥 collected ' + naFmtTime(it.collectedAt) + '</div>' +
+                        '</div>').join('');
+                    return '<details style="margin-bottom:10px; background:#fff; border:1px solid var(--border); border-radius:10px; padding:10px 14px;">' +
+                        '<summary style="cursor:pointer; font-weight:bold; font-size:14px;">' + (s.ok ? '✅' : '❌') + ' ' + wsEsc(s.sourceName) + ' <span style="color:#90a4ae; font-weight:normal; font-size:12px;">(' + (s.items || []).length + ' collected · via ' + wsEsc(s.method) + ')</span></summary>' +
+                        '<div style="margin-top:8px;">' + (items || '<i style="color:#90a4ae;">No items collected from this source this run.</i>') + '</div>' +
+                    '</details>';
+                }).join('');
+        }
+
+        function naExportCsv() {
+            if (!naData || !naData.merged) { toastMsg('⚠️ Run the agent first'); return; }
+            const rows = [['Type', 'Source', 'Region', 'Title', 'Published', 'Collected', 'Link', 'Also seen in']];
+            (naData.merged.clusters || []).forEach(c => {
+                rows.push([
+                    (c.alsoSeenIn && c.alsoSeenIn.length) ? 'REPEATED' : 'NON-REPEATED',
+                    c.sourceName, c.region || '', c.title,
+                    c.publishedAt ? new Date(c.publishedAt).toISOString() : '',
+                    c.collectedAt ? new Date(c.collectedAt).toISOString() : '',
+                    c.link,
+                    (c.alsoSeenIn || []).map(d => d.sourceName + ' ' + d.link).join(' | ')
+                ]);
+            });
+            const csv = rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'news-agent-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.csv';
+            document.body.appendChild(a); a.click(); a.remove();
+            toastMsg('📤 News CSV exported');
         }
 
         // ===== TASKS FOR AI (scheduled WhatsApp messages + AI website jobs) =====

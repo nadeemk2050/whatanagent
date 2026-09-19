@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
+import { registerNewsRoutes } from './newsAgent.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -95,6 +96,8 @@ app.use(express.json({ limit: '30mb' }));
 
 // Note Book (AI notebook: voice -> paragraphs, refine, AlignTasks extraction, WhatsApp push/import, reminders)
 registerNotebookRoutes(app, db);
+// Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
+const newsAgent = registerNewsRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -3807,6 +3810,10 @@ function startFollowUpScheduler() {
     schedulerState = 'active';
     processFollowUpScheduler();
     processAiTasks();
+    // Browsing News Agent: auto-refreshes the merged non-repeated news every 5 hours
+    if (newsAgent && typeof newsAgent.maybeAutoRefresh === 'function') {
+      newsAgent.maybeAutoRefresh();
+    }
   };
   console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));
   runTick();
