@@ -18,8 +18,17 @@
 import * as cheerio from 'cheerio';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-export const NEWS_CACHE_HOURS = 5;   // auto-refresh every 5 hours
-export const NEWS_PER_SOURCE = 5;    // top 5 news from each website
+// Defaults — all three are now user-configurable from the dashboard and stored in
+// Firestore (appData/newsAgentConfig):
+//   enabled       -> Pause / Resume the automatic refresh ("stop until we click resume")
+//   intervalHours -> auto-refresh cycle length ("timings", 1 hour .. 1 week)
+//   perSource     -> news taken from each website per run ("repeatings", 1..10)
+export const NEWS_CACHE_HOURS = 5;   // default auto-refresh cycle (hours)
+export const NEWS_PER_SOURCE = 5;    // default news per website per run
+export const NEWS_MIN_INTERVAL_HOURS = 1;
+export const NEWS_MAX_INTERVAL_HOURS = 168; // one week
+export const NEWS_MIN_PER_SOURCE = 1;
+export const NEWS_MAX_PER_SOURCE = 10;
 
 export const NEWS_SOURCES = [
   {
@@ -365,13 +374,60 @@ export async function collectAllSources({ perSource = NEWS_PER_SOURCE, sources =
 }
 
 // ---------------------------------------------------------------------------
-// 5-hour cache (Firestore-backed) + auto-refresh helper for the 60s scheduler
+// Firestore-backed cache + settings (pause/resume, timings, repeatings)
+// + auto-refresh helper for the 60s scheduler
 // ---------------------------------------------------------------------------
 export function createNewsAgent(db) {
   const ref = doc(db, 'appData', 'newsAgentCache');
+  const cfgRef = doc(db, 'appData', 'newsAgentConfig');
   let mem = null;
+  let cfg = null;
   let lastAutoCheck = 0;
   let newsState = 'idle';
+
+  // --- settings (changeable live from the dashboard, no restart needed) ---
+  async function getConfig() {
+    if (cfg) return { ...cfg };
+    const defaults = { enabled: true, intervalHours: NEWS_CACHE_HOURS, perSource: NEWS_PER_SOURCE, updatedAt: null };
+    try {
+      const snap = await getDoc(cfgRef);
+      cfg = snap.exists() ? { ...defaults, ...snap.data() } : { ...defaults };
+    } catch (e) {
+      console.error('[NEWS-AGENT] config read failed:', e.message);
+      cfg = { ...defaults };
+    }
+    return { ...cfg };
+  }
+
+  async function saveConfig(patch) {
+    const cur = await getConfig();
+    const next = { ...cur };
+    if (patch && patch.enabled !== undefined) next.enabled = !!patch.enabled;
+    if (patch && patch.intervalHours !== undefined) {
+      const n = Math.round(Number(patch.intervalHours));
+      if (Number.isFinite(n)) next.intervalHours = Math.min(NEWS_MAX_INTERVAL_HOURS, Math.max(NEWS_MIN_INTERVAL_HOURS, n));
+    }
+    if (patch && patch.perSource !== undefined) {
+      const n = Math.round(Number(patch.perSource));
+      if (Number.isFinite(n)) next.perSource = Math.min(NEWS_MAX_PER_SOURCE, Math.max(NEWS_MIN_PER_SOURCE, n));
+    }
+    next.updatedAt = Date.now();
+    cfg = next;
+    try {
+      await setDoc(cfgRef, next, { merge: true });
+    } catch (e) {
+      console.error('[NEWS-AGENT] config save failed:', e.message);
+    }
+    console.log('[NEWS-AGENT] settings updated: every ' + next.intervalHours + 'h · ' + next.perSource + '/site · ' + (next.enabled ? 'ACTIVE' : 'PAUSED'));
+    return { ...next };
+  }
+
+  // nextRunAt is always computed live from the CURRENT settings, so changing the
+  // interval (or pausing) applies immediately without touching the cache.
+  function computeNextRunAt(c, conf) {
+    if (!c || !c.lastRunAt || !conf || !conf.enabled) return null;
+    return c.lastRunAt + conf.intervalHours * 3600 * 1000;
+  }
 
   async function loadCache() {
     if (mem) return mem;
@@ -385,11 +441,7 @@ export function createNewsAgent(db) {
   }
 
   async function saveCache(payload) {
-    mem = {
-      ...payload,
-      lastRunAt: payload.collectedAt,
-      nextRunAt: payload.collectedAt + NEWS_CACHE_HOURS * 3600 * 1000
-    };
+    mem = { ...payload, lastRunAt: payload.collectedAt };
     try {
       await setDoc(ref, mem);
     } catch (e) {
@@ -398,17 +450,19 @@ export function createNewsAgent(db) {
     return mem;
   }
 
-  function isFresh(c) {
-    return !!(c && c.lastRunAt && (Date.now() - c.lastRunAt) < NEWS_CACHE_HOURS * 3600 * 1000);
+  function isFresh(c, conf) {
+    return !!(c && c.lastRunAt && (Date.now() - c.lastRunAt) < conf.intervalHours * 3600 * 1000);
   }
 
-  // Used by the API: returns the 5-hour cached payload, or re-collects when stale/forced
+  // Used by the API: returns the cached payload, or re-collects when stale/forced.
+  // Manual "Run Browsing Agent" (force) ALWAYS works, even while auto-refresh is paused.
   async function getFresh(force = false) {
+    const conf = await getConfig();
     const c = await loadCache();
-    if (!force && isFresh(c)) return c;
+    if (!force && isFresh(c, conf)) return c;
     newsState = 'running';
     try {
-      const payload = await collectAllSources();
+      const payload = await collectAllSources({ perSource: conf.perSource });
       newsState = 'ok (' + new Date(payload.collectedAt).toISOString() + ')';
       return await saveCache(payload);
     } catch (e) {
@@ -419,15 +473,18 @@ export function createNewsAgent(db) {
     }
   }
 
-  // Called from the 60s scheduler tick — self-throttled to a light check, refreshes when 5h old
+  // Called from the 60s scheduler tick — self-throttled to a light check.
+  // Paused => it does absolutely nothing until Resume is pressed.
   async function maybeAutoRefresh() {
     if (Date.now() - lastAutoCheck < 10 * 60 * 1000) return; // max one check per 10 min
     lastAutoCheck = Date.now();
     try {
+      const conf = await getConfig();
+      if (!conf.enabled) { newsState = 'paused'; return; }
       const c = await loadCache();
-      if (isFresh(c)) return;
-      console.log('[NEWS-AGENT] 5-hour auto-refresh starting...');
-      const payload = await collectAllSources();
+      if (isFresh(c, conf)) return;
+      console.log('[NEWS-AGENT] auto-refresh starting (every ' + conf.intervalHours + 'h, ' + conf.perSource + ' per site)...');
+      const payload = await collectAllSources({ perSource: conf.perSource });
       await saveCache(payload);
       newsState = 'auto-refreshed (' + new Date(payload.collectedAt).toISOString() + ')';
       console.log('[NEWS-AGENT] auto-refresh done:', payload.merged.uniqueCount, 'unique /', payload.merged.totalCount, 'total articles');
@@ -438,18 +495,21 @@ export function createNewsAgent(db) {
   }
 
   async function getStatus() {
+    const conf = await getConfig();
     const c = await loadCache();
     const ageMs = c && c.lastRunAt ? (Date.now() - c.lastRunAt) : null;
-    const nextRunAt = c && c.nextRunAt ? c.nextRunAt : null;
+    const nextRunAt = computeNextRunAt(c, conf);
     return {
       ok: true,
-      schedulerState: newsState,
-      cacheHours: NEWS_CACHE_HOURS,
-      perSource: NEWS_PER_SOURCE,
+      schedulerState: conf.enabled ? newsState : 'paused',
+      paused: !conf.enabled,
+      config: { enabled: conf.enabled, intervalHours: conf.intervalHours, perSource: conf.perSource, updatedAt: conf.updatedAt || null },
+      cacheHours: conf.intervalHours,
+      perSource: conf.perSource,
       lastRunAt: c ? c.lastRunAt || null : null,
       nextRunAt,
       ageMs,
-      fresh: isFresh(c),
+      fresh: !!(c && c.lastRunAt && isFresh(c, conf)),
       sources: NEWS_SOURCES.map(s => ({ id: s.id, name: s.name, region: s.region, url: s.url })),
       sourceResults: c && c.sources ? c.sources.map(s => ({ sourceId: s.sourceId, sourceName: s.sourceName, ok: s.ok, method: s.method, count: (s.items || []).length })) : null,
       stats: c && c.merged ? {
@@ -462,7 +522,7 @@ export function createNewsAgent(db) {
     };
   }
 
-  return { getFresh, maybeAutoRefresh, getStatus, loadCache };
+  return { getFresh, maybeAutoRefresh, getStatus, loadCache, getConfig, saveConfig, computeNextRunAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -477,12 +537,29 @@ export function registerNewsRoutes(app, db) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Dashboard settings: pause/resume, auto-refresh interval, news per source
+  app.get('/api/news/config', async (req, res) => {
+    try { res.json({ ok: true, config: await agent.getConfig() }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/api/news/config', async (req, res) => {
+    try {
+      const config = await agent.saveConfig(req.body || {});
+      const status = await agent.getStatus();
+      res.json({ ok: true, config, status });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.get('/api/news/collect', async (req, res) => {
     try {
       const c = await agent.getFresh(parseForce(req.query.force));
+      const conf = await agent.getConfig();
       res.json({
-        lastRunAt: c.lastRunAt, nextRunAt: c.nextRunAt, collectedAt: c.collectedAt,
-        perSource: c.perSource, cacheHours: NEWS_CACHE_HOURS,
+        lastRunAt: c.lastRunAt, nextRunAt: agent.computeNextRunAt(c, conf), collectedAt: c.collectedAt,
+        perSource: c.perSource, cacheHours: conf.intervalHours,
+        paused: !conf.enabled,
+        config: { enabled: conf.enabled, intervalHours: conf.intervalHours, perSource: conf.perSource },
         sources: c.sources, merged: c.merged
       });
     } catch (e) {
@@ -493,9 +570,12 @@ export function registerNewsRoutes(app, db) {
   app.get('/api/news/merged', async (req, res) => {
     try {
       const c = await agent.getFresh(parseForce(req.query.force));
+      const conf = await agent.getConfig();
       res.json({
-        lastRunAt: c.lastRunAt, nextRunAt: c.nextRunAt, collectedAt: c.collectedAt,
-        cacheHours: NEWS_CACHE_HOURS, perSource: c.perSource,
+        lastRunAt: c.lastRunAt, nextRunAt: agent.computeNextRunAt(c, conf), collectedAt: c.collectedAt,
+        cacheHours: conf.intervalHours, perSource: c.perSource,
+        paused: !conf.enabled,
+        config: { enabled: conf.enabled, intervalHours: conf.intervalHours, perSource: conf.perSource },
         merged: c.merged
       });
     } catch (e) {

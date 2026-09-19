@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.17.6 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent added: 5 business-news sites x top 5 each, merged + non-repeated every 5 hours) -->
+    <!-- APP VERSION: 2026.09.19.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent: 5 business-news sites x configurable news per site, merged + non-repeated, configurable auto-refresh timings (1h-1w) with Pause / Resume control from the dashboard) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1508,6 +1508,32 @@
                         <button onclick="naExportCsv()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:white; padding:13px 22px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:15px; display:flex; align-items:center; gap:8px; box-shadow:0 4px 12px rgba(16,185,129,0.3);">
                             <span>📤 Export CSV</span>
                         </button>
+                    </div>
+
+                    <div style="display:flex; gap:14px; margin-top:16px; flex-wrap:wrap; align-items:flex-end; border-top:1px dashed var(--border); padding-top:14px;">
+                        <div>
+                            <label style="font-size:12px; font-weight:bold; color:#546e7a;">⏱️ Auto-refresh timings (every)</label><br>
+                            <select id="naInterval" style="padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; margin-top:4px;">
+                                <option value="1">1 hour</option>
+                                <option value="2">2 hours</option>
+                                <option value="3">3 hours</option>
+                                <option value="4">4 hours</option>
+                                <option value="5" selected>5 hours (default)</option>
+                                <option value="6">6 hours</option>
+                                <option value="8">8 hours</option>
+                                <option value="12">12 hours</option>
+                                <option value="24">24 hours (1 day)</option>
+                                <option value="48">48 hours (2 days)</option>
+                                <option value="72">72 hours (3 days)</option>
+                                <option value="168">168 hours (1 week)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:12px; font-weight:bold; color:#546e7a;">🔁 Repeatings — news per site per run</label><br>
+                            <input type="number" id="naPerSource" min="1" max="10" value="5" style="width:110px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; font-size:13px; margin-top:4px;">
+                        </div>
+                        <button onclick="naSaveConfig()" style="background:linear-gradient(135deg, #0ea5e9, #0369a1); border:none; color:white; padding:11px 20px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:14px;">💾 Save Settings</button>
+                        <button id="naPauseBtn" onclick="naTogglePause()" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:white; padding:11px 20px; border-radius:10px; font-weight:bold; cursor:pointer; font-size:14px;">⏸️ Pause Auto-Refresh</button>
                     </div>
 
                     <div id="naStatusChips" style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; font-size:12px;"></div>
@@ -4733,6 +4759,7 @@
         // ===== BROWSING NEWS AGENT (5 sites -> top 5 business news each -> merged & non-repeated, refreshed every 5h) =====
         var naData = null;
         var naBusy = false;
+        var naPaused = false;
 
         function naTimeAgo(ms) {
             if (!ms) return '—';
@@ -4767,13 +4794,27 @@
                 const chips = document.getElementById('naStatusChips');
                 if (chips) {
                     const chip = (txt, bg, fg) => '<span style="background:' + bg + '; color:' + fg + '; padding:5px 12px; border-radius:14px; font-weight:bold;">' + txt + '</span>';
+                    const conf = d.config || {};
                     let html = '';
                     html += chip('🕒 Last run: ' + (d.lastRunAt ? naTimeAgo(d.lastRunAt) : 'never'), '#f0f2f5', '#546e7a');
-                    if (d.nextRunAt) html += chip('⏭️ Next auto-run: ' + naTimeUntil(d.nextRunAt), '#eef4ff', '#1e40af');
+                    if (d.paused) html += chip('⏸️ AUTO-REFRESH PAUSED — press Resume when you want it back', '#fde8e8', '#b91c1c');
+                    else if (d.nextRunAt) html += chip('⏭️ Next auto-run: ' + naTimeUntil(d.nextRunAt), '#eef4ff', '#1e40af');
+                    if (conf.intervalHours) html += chip('⏱️ every ' + conf.intervalHours + 'h · ' + (conf.perSource || 5) + ' news/site', '#e0f2fe', '#075985');
                     if (d.stats) html += chip('✅ ' + d.stats.uniqueCount + ' non-repeated', '#e8f5e9', '#1b5e20');
                     if (d.stats) html += chip('📰 ' + d.stats.totalCount + ' total articles', '#fff8e1', '#8d6e00');
                     html += chip('🤖 ' + (d.schedulerState || 'idle'), '#f3e8ff', '#6b21a8');
                     chips.innerHTML = html;
+                }
+                // sync settings controls + pause button with server state
+                naPaused = !!d.paused;
+                const iv = document.getElementById('naInterval');
+                if (iv && d.config && !iv.matches(':focus')) iv.value = String(d.config.intervalHours);
+                const ps = document.getElementById('naPerSource');
+                if (ps && d.config && !ps.matches(':focus')) ps.value = d.config.perSource;
+                const pb = document.getElementById('naPauseBtn');
+                if (pb) {
+                    if (naPaused) { pb.textContent = '▶️ Resume Auto-Refresh'; pb.style.background = 'linear-gradient(135deg, #16a34a, #15803d)'; }
+                    else { pb.textContent = '⏸️ Pause Auto-Refresh'; pb.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)'; }
                 }
                 // if a cache already exists, show it right away (no re-browse)
                 if (d.lastRunAt && !naData && !naBusy) {
@@ -4802,7 +4843,7 @@
                 if (st) st.textContent = force ? 'Done ✅' : 'Merged ✅';
                 const ms = document.getElementById('naMergeState');
                 if (ms) ms.textContent = 'Merged ✅';
-                if (prog) prog.textContent = (force ? '✅ Browsed all sites' : '✅ Merge check done') + ' at ' + naFmtTime(d.collectedAt) + ' — ' + (d.merged ? d.merged.totalCount : 0) + ' articles collected → ' + (d.merged ? d.merged.uniqueCount : 0) + ' non-repeated · ' + (d.merged ? d.merged.repeatedCount : 0) + ' repeated. Next auto-refresh ' + naTimeUntil(d.nextRunAt) + '.';
+                if (prog) prog.textContent = (force ? '✅ Browsed all sites' : '✅ Merge check done') + ' at ' + naFmtTime(d.collectedAt) + ' — ' + (d.merged ? d.merged.totalCount : 0) + ' articles collected → ' + (d.merged ? d.merged.uniqueCount : 0) + ' non-repeated · ' + (d.merged ? d.merged.repeatedCount : 0) + ' repeated.' + (d.nextRunAt ? ' Next auto-refresh ' + naTimeUntil(d.nextRunAt) + '.' : (d.paused ? ' ⏸️ Auto-refresh is paused — press Resume to re-enable.' : ''));
             } catch (e) {
                 if (st) st.textContent = '❌ Error';
                 if (prog) prog.textContent = '❌ ' + e.message + ' — check that the server is running and internet access to news sites is available.';
@@ -4817,7 +4858,31 @@
         }
 
         function naMerge() {
-            return naAgentFetch(false, 'naMergeState', '🔀 Merge check: using the 5-hour agent cache (it auto-refreshes if older than 5 hours)...');
+            return naAgentFetch(false, 'naMergeState', '🔀 Merge check: using the agent cache (it auto-refreshes when older than the configured interval)...');
+        }
+
+        async function naSaveConfig() {
+            const iv = document.getElementById('naInterval');
+            const ps = document.getElementById('naPerSource');
+            const intervalHours = iv ? Number(iv.value) : 5;
+            const perSource = ps ? Number(ps.value) : 5;
+            try {
+                const r = await fetch('api/news/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intervalHours: intervalHours, perSource: perSource }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'save failed');
+                toastMsg('💾 Saved: auto-refresh every ' + d.config.intervalHours + 'h · ' + d.config.perSource + ' news per site');
+                naLoadStatus();
+            } catch (e) { toastMsg('❌ Save failed: ' + e.message); }
+        }
+
+        async function naTogglePause() {
+            try {
+                const r = await fetch('api/news/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: naPaused }) });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || 'failed');
+                toastMsg(d.config.enabled ? ('▶️ Auto-refresh RESUMED — running every ' + d.config.intervalHours + 'h again') : '⏸️ Auto-refresh PAUSED — the agent will not run by itself until you press Resume');
+                naLoadStatus();
+            } catch (e) { toastMsg('❌ ' + e.message); }
         }
 
         function naRenderAll() {
