@@ -5536,20 +5536,72 @@
             await loadWaWebMessages(jid, true);
         }
 
-        async function loadWaWebMessages(jid, autoScroll = false) {
+        // ---- 📉 EGRESS-SAVING PAGINATION: first page = last 7 days; older pages load when you scroll up ----
+        const waWebMsgCache = new Map();   // jid -> { page1: [], older: [], oldestTs, hasMore, page1Sig, at }
+        const WA_WEB_OLDER_CACHE_MS = 10 * 60 * 1000;
+
+        function waWebMsgSigOf(messages) {
+            if (!messages || !messages.length) return '0';
+            const last = messages[messages.length - 1];
+            return messages.length + '|' + (last.id || '') + '|' + String(last.text || '').length;
+        }
+
+        async function loadWaWebMessages(jid, autoScroll = false, loadOlder = false) {
             if (!jid) return;
+            let cache = waWebMsgCache.get(jid);
+            if (!cache) { cache = { page1: [], older: [], oldestTs: 0, hasMore: false, page1Sig: '', at: 0 }; waWebMsgCache.set(jid, cache); }
+            if (Date.now() - cache.at > WA_WEB_OLDER_CACHE_MS) { cache.older = []; cache.oldestTs = 0; cache.hasMore = false; }
+
+            if (loadOlder) {
+                if (!cache.hasMore || cache.loadingOlder || !cache.oldestTs) return;
+                cache.loadingOlder = true;
+                try {
+                    const res = await fetch(`/api/wa-web/messages?jid=${encodeURIComponent(jid)}&before=${cache.oldestTs}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const older = data.messages || [];
+                        if (older.length) cache.older = older.concat(cache.older);
+                        cache.oldestTs = data.oldestTs || 0;
+                        cache.hasMore = !!data.hasMore;
+                    }
+                } catch (err) { console.warn('[WA-WEB] Older page failed:', err); }
+                cache.loadingOlder = false;
+                cache.at = Date.now();
+                renderWaWebMessages(cache.older.concat(cache.page1), false, true);
+                return;
+            }
+
             try {
                 const res = await fetch(`/api/wa-web/messages?jid=${encodeURIComponent(jid)}`);
                 if (!res.ok) return;
                 const data = await res.json();
-                renderWaWebMessages(data.messages || [], autoScroll);
+                cache.page1 = data.messages || [];
+                if (!cache.older.length) { cache.oldestTs = data.oldestTs || 0; cache.hasMore = !!data.hasMore; }
+                cache.at = Date.now();
+                const sig = waWebMsgSigOf(cache.page1);
+                if (sig === cache.page1Sig && !autoScroll) return;   // poll tick with nothing new -> no re-render
+                cache.page1Sig = sig;
+                renderWaWebMessages(cache.older.concat(cache.page1), autoScroll, false);
             } catch (err) {
                 console.warn('[WA-WEB] Error loading messages:', err);
             }
         }
 
-        function renderWaWebMessages(messages, autoScroll) {
+        // Load older history on demand when the user scrolls to the very top
+        (function () {
+            const mc = document.getElementById('waWebMessagesContainer');
+            if (mc) mc.addEventListener('scroll', function () {
+                if (mc.scrollTop < 60 && waWebCurrentJid) {
+                    const c = waWebMsgCache.get(waWebCurrentJid);
+                    if (c && c.hasMore && !c.loadingOlder) loadWaWebMessages(waWebCurrentJid, false, true);
+                }
+            });
+        })();
+
+        function renderWaWebMessages(messages, autoScroll, preserveScroll = false) {
             const container = document.getElementById('waWebMessagesContainer');
+            const prevHeight = container ? container.scrollHeight : 0;
+            const prevTop = container ? container.scrollTop : 0;
             if (!container) return;
 
             if (messages.length === 0) {
@@ -5571,9 +5623,9 @@
                 <div style="margin:4px auto 16px auto; text-align:center; max-width:520px; width:92%;">
                     <div style="background:linear-gradient(135deg, #182229 0%, #111b21 100%); border:1px solid #2a3942; padding:8px 18px; border-radius:14px; font-size:12px; color:#38bdf8; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 14px rgba(0,0,0,0.35); flex-wrap:wrap;">
                         <span style="font-size:14px;">📅</span>
-                        <span><b>Chat Inception:</b> ${earliestDateStr}</span>
+                        <span><b>Earliest Loaded:</b> ${earliestDateStr}</span>
                         <span style="color:#64748b;">•</span>
-                        <span style="color:#a7f3d0; font-weight:bold;">${messages.length} Total Messages Saved</span>
+                        <span style="color:#a7f3d0; font-weight:bold;">${messages.length} Messages Loaded</span>
                         <span style="color:#64748b;">•</span>
                         <span style="background:#064e3b; color:#34d399; font-size:10px; padding:1px 6px; border-radius:6px; font-weight:bold;">Permanent Cloud Vault</span>
                     </div>
@@ -5641,6 +5693,10 @@
             });
 
             container.innerHTML = html;
+            if (preserveScroll && container) {
+                container.scrollTop = prevTop + (container.scrollHeight - prevHeight);
+                return;
+            }
             if (autoScroll) {
                 container.scrollTop = container.scrollHeight;
             }

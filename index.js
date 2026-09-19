@@ -15,6 +15,7 @@ import {
   getWaWebStatus, 
   getWaWebChats, 
   getWaWebMessages, 
+  getWaWebMessagesPage, 
   sendWaWebMessage, 
   logoutWaWeb, 
   downloadWaWebMedia,
@@ -134,7 +135,10 @@ app.get('/api/wa-web/messages', async (req, res) => {
   const jid = req.query.jid;
   if (!jid) return res.status(400).json({ error: 'Missing jid parameter' });
   try {
-    res.json({ messages: await getWaWebMessages(jid) });
+    // Paginated (egress saver): first page = last 7 days; ?before=<ts> fetches older pages on demand.
+    const before = parseInt(req.query.before) || 0;
+    const limit = Math.min(parseInt(req.query.limit) || 500, 1000);
+    res.json(await getWaWebMessagesPage(jid, before, limit));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

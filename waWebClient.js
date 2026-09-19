@@ -3661,6 +3661,41 @@ export async function getWaWebMessages(jid) {
   return chat.messages || [];
 }
 
+// 📉 Dashboard pagination (egress saver): first page = last 7 days (min 50, max `limit` messages);
+// older pages are fetched on demand with beforeTs = the oldest timestamp the browser already has.
+// getWaWebMessages() above stays 100% unchanged (notebooks, backups, imports keep full access).
+export async function getWaWebMessagesPage(jid, beforeTs = 0, limit = 500) {
+  const chat = waWebState.chats.get(jid);
+  if (!chat) return { messages: [], hasMore: false, oldestTs: 0, total: 0 };
+  chat.unreadCount = 0;
+  if (chat._messagesLoaded === false) {
+    await hydrateChatFromVault(jid);
+  }
+  const all = (chat.messages || []).slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  const total = all.length;
+  let sliceStart = 0;
+  let sliceEnd = all.length;
+  if (beforeTs && beforeTs > 0) {
+    let end = all.length;
+    while (end > 0 && (all[end - 1].timestamp || 0) >= beforeTs) end--;
+    sliceStart = Math.max(0, end - limit);
+    sliceEnd = end;
+  } else {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let startIdx = 0;
+    for (let i = all.length - 1; i >= 0; i--) {
+      if ((all[i].timestamp || 0) < cutoff) { startIdx = i + 1; break; }
+      startIdx = i;
+    }
+    if ((all.length - startIdx) < 50) startIdx = Math.max(0, all.length - 50);
+    if ((all.length - startIdx) > limit) startIdx = all.length - limit;
+    sliceStart = startIdx;
+  }
+  const messages = all.slice(sliceStart, sliceEnd);
+  const oldestTs = messages.length ? (messages[0].timestamp || 0) : 0;
+  return { messages, hasMore: sliceStart > 0, oldestTs, total };
+}
+
 // Helper: Send message with retry & connection grace
 // (EVERY outbound text passes the company-wide NO-HINDI guard first.)
 export async function sendWaWebMessage(to, text) {
