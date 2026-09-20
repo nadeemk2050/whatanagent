@@ -11,6 +11,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
 import { registerNewsRoutes } from './newsAgent.mjs';
+import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -56,6 +57,9 @@ const db = getFirestore(firebaseApp);
 // backups / key resolution inside waWebClient must still work there).
 attachWaWebDb(db);
 
+// Contact Brain (per-person persona cards + learned style) needs Firestore on all nodes too.
+attachBrainDb(db);
+
 dotenv.config();
 
 // (WhatsApp Web / Baileys is initialized further below - ONLY on the node that owns the
@@ -98,6 +102,8 @@ app.use(express.json({ limit: '30mb' }));
 registerNotebookRoutes(app, db);
 // Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
 const newsAgent = registerNewsRoutes(app, db);
+// 🧠 Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
+const brainEngine = registerBrainRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -3813,6 +3819,10 @@ function startFollowUpScheduler() {
     // Browsing News Agent: auto-refreshes the merged non-repeated news every 5 hours
     if (newsAgent && typeof newsAgent.maybeAutoRefresh === 'function') {
       newsAgent.maybeAutoRefresh();
+    }
+    // 🧠 Contact Brain: nightly-style learning — studies YOUR past messages per contact (self-throttled)
+    if (brainEngine && typeof brainEngine.maybeLearn === 'function') {
+      brainEngine.maybeLearn();
     }
   };
   console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));

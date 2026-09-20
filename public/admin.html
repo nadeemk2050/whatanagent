@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.19.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent: 5 business-news sites x configurable news per site, merged + non-repeated, configurable auto-refresh timings (1h-1w) with Pause / Resume control from the dashboard) -->
+    <!-- APP VERSION: 2026.09.20.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -273,6 +273,7 @@
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('tasks'); loadAiTasks(); loadConditionalTasks();">⏰ Tasks for AI</div>
             <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
+            <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 Contact Brains</div>
             <div class="menu-item" onclick="window.open('/aligntasks/','_blank')" title="Open the AlignTasks team board (same login as this dashboard)">📋 AlignTasks</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
@@ -485,6 +486,9 @@
                                 </button>
                                 <button onclick="promptEditWaWebContactName()" title="Edit Contact Name" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>✏️ Edit Name</span>
+                                </button>
+                                <button onclick="if (waWebCurrentJid) openBrainPanel(waWebCurrentJid); else toastMsg('Open a chat first');" title="🧠 Contact Brain — personality, memory & AI discussion for this person" style="background:#202c33; border:1px solid #a855f7; color:#d8b4fe; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                    <span>🧠 Brain</span>
                                 </button>
                                 <button onclick="exportWaWebChat()" id="waExportBtn" title="Export this chat as HTML + JSON inside a zip file" style="background:#202c33; border:1px solid #7c3aed; color:#c4b5fd; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>💾 Export</span>
@@ -1814,6 +1818,153 @@
                 </div>
             </div>
 
+            <!-- 🧠 CONTACT BRAINS SECTION -->
+            <div id="brainsSection" class="app-section">
+                <div class="followup-header">
+                    <h2>🧠 Contact Brains</h2>
+                    <div style="font-size:13px; color:#546e7a;">Per-person personality, memory & rules for the AI — open any card to edit, discuss with the AI, learn your style, and approve drafts.</div>
+                </div>
+                <div class="followup-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:16px;">
+                    <div class="stat-box"><h3 id="brStatCards">0</h3><span>Brain Cards</span></div>
+                    <div class="stat-box"><h3 id="brStatDrafts" style="color:#b45309;">0</h3><span>📥 Pending Drafts</span></div>
+                    <div class="stat-box"><h3 id="brStatLearned" style="color:#1b5e20;">0</h3><span>🎓 Style-Learned</span></div>
+                </div>
+                <div class="card" style="margin-bottom:16px; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+                    <label style="display:flex; gap:8px; align-items:center; font-weight:normal; cursor:pointer; font-size:13px;"><input type="checkbox" id="brCfgAutoClassify" style="width:auto;"> Auto-create default brain card for brand-new contacts (Professional+Respect)</label>
+                    <label style="display:flex; gap:8px; align-items:center; font-weight:normal; cursor:pointer; font-size:13px;"><input type="checkbox" id="brCfgLearning" style="width:auto;"> Enable nightly style learning (AI studies your own past messages)</label>
+                    <button onclick="brainSaveConfig()" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">💾 Save Brain Settings</button>
+                </div>
+                <h3 style="margin:0 0 10px 0;">📥 Draft Approvals Inbox <span style="font-weight:normal; font-size:13px; color:#546e7a;">— replies the AI prepared but did NOT send (draft mode / alerts / escalations)</span></h3>
+                <div id="brGlobalDrafts" style="margin-bottom:22px;"><p class="subtitle">Loading…</p></div>
+                <h3 style="margin:0 0 10px 0;">🗂️ All Brain Cards</h3>
+                <div id="brListGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px;">
+                    <div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">Loading brain cards...</div>
+                </div>
+            </div>
+
+            <!-- 🧠 BRAIN PANEL (full-screen overlay: card editor + AI discussion + learned memory + drafts) -->
+            <div id="brainOverlay" style="display:none; position:fixed; inset:0; background:#f8fafc; z-index:3100;">
+                <div style="width:100%; height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden;">
+                    <div style="padding:12px 18px; background:#0f172a; color:#fff; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <span style="font-size:20px;">🧠</span>
+                        <div style="flex:1; min-width:170px;">
+                            <div id="brPanelName" style="font-weight:800; font-size:16px;">Contact</div>
+                            <div id="brPanelJid" style="font-size:11px; color:#94a3b8;"></div>
+                        </div>
+                        <select id="brPanelMode" title="How the AI handles this person" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#e2e8f0;"></select>
+                        <button onclick="saveBrainCard()" style="background:#16a34a; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Card</button>
+                        <button onclick="closeBrainPanel()" style="background:#475569; border:none; color:#fff; padding:8px 14px; border-radius:8px; font-weight:bold; cursor:pointer;">✖ Close</button>
+                    </div>
+                    <div style="display:flex; gap:6px; padding:10px 18px; background:#e2e8f0; flex-wrap:wrap;">
+                        <button class="br-tab" id="brTabBtnCard" onclick="brainTab('card')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#0f172a; color:#fff;">📋 Brain Card</button>
+                        <button class="br-tab" id="brTabBtnDiscuss" onclick="brainTab('discuss')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">💬 AI Discussion</button>
+                        <button class="br-tab" id="brTabBtnLearned" onclick="brainTab('learned')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">🎓 Learned Memory</button>
+                        <button class="br-tab" id="brTabBtnDrafts" onclick="brainTab('drafts')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">📥 Drafts (<span id="brTabDraftCount">0</span>)</button>
+                    </div>
+                    <div style="flex:1; min-height:0; overflow-y:auto; padding:16px 18px 40px;">
+                        <div id="brTabCard">
+                            <div style="max-width:1100px; margin:0 auto;">
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:12px;">
+                                    <div class="form-group"><label style="font-size:12px;">Name</label><input id="brName" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
+                                    <div class="form-group"><label style="font-size:12px;">Nickname (what you call him)</label><input id="brNick" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
+                                    <div class="form-group"><label style="font-size:12px;">What he calls you</label><input id="brCalls" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
+                                    <div class="form-group"><label style="font-size:12px;">Age</label><input id="brAge" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
+                                    <div class="form-group"><label style="font-size:12px;">Gender</label><select id="brGender" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"><option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
+                                    <div class="form-group"><label style="font-size:12px;">Relationship</label><select id="brRelationship" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></select></div>
+                                    <div class="form-group"><label style="font-size:12px;">Language</label><input id="brLanguage" placeholder="Roman Urdu" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
+                                    <div class="form-group"><label style="font-size:12px;">Reply length</label><select id="brLength" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"><option value="short">Short & quick</option><option value="medium">Medium</option><option value="detailed">Detailed</option></select></div>
+                                    <div class="form-group"><label style="font-size:12px;">Emoji level</label><select id="brEmoji" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"><option value="none">None</option><option value="low">Low</option><option value="high">High</option></select></div>
+                                </div>
+
+                                <div class="card" style="margin:14px 0; background:#faf5ff; border:1px solid #e9d5ff;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                        <b>🎭 Persona Mixing <span style="font-weight:normal; font-size:12px; color:#7c3aed;">— pick 3-4+ styles, then set each weight (0-100). Highest = main personality, others = flavors.</span></b>
+                                        <div style="display:flex; gap:8px; align-items:center;">
+                                            <select id="brPreset" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px;"></select>
+                                            <button onclick="brainApplyPreset()" style="padding:8px 14px; background:#7c3aed; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">Apply Preset</button>
+                                        </div>
+                                    </div>
+                                    <div id="brPersonaChips" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;"></div>
+                                    <div id="brPersonaSliders" style="margin-top:12px;"></div>
+                                    <div id="brConflictWarn" style="display:none; margin-top:10px; padding:8px 12px; background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; font-size:12px; color:#92400e;"></div>
+                                </div>
+
+                                <div class="card" style="margin:14px 0; background:#f8fafc;">
+                                    <b>🎚️ Fine Dials</b>
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-top:10px;">
+                                        <div><label style="font-size:12px;">Formality <span id="brDialFormalityVal">40</span>/100</label><input type="range" id="brDialFormality" min="0" max="100" value="40" style="width:100%;" oninput="document.getElementById('brDialFormalityVal').innerText=this.value"></div>
+                                        <div><label style="font-size:12px;">Humor <span id="brDialHumorVal">30</span>/100</label><input type="range" id="brDialHumor" min="0" max="100" value="30" style="width:100%;" oninput="document.getElementById('brDialHumorVal').innerText=this.value"></div>
+                                        <div><label style="font-size:12px;">Warmth <span id="brDialWarmthVal">50</span>/100</label><input type="range" id="brDialWarmth" min="0" max="100" value="50" style="width:100%;" oninput="document.getElementById('brDialWarmthVal').innerText=this.value"></div>
+                                        <div><label style="font-size:12px;">Slang / Roman Urdu <span id="brDialSlangVal">40</span>/100</label><input type="range" id="brDialSlang" min="0" max="100" value="40" style="width:100%;" oninput="document.getElementById('brDialSlangVal').innerText=this.value"></div>
+                                        <div><label style="font-size:12px;">Patience <span id="brDialPatienceVal">60</span>/100</label><input type="range" id="brDialPatience" min="0" max="100" value="60" style="width:100%;" oninput="document.getElementById('brDialPatienceVal').innerText=this.value"></div>
+                                    </div>
+                                </div>
+
+                                <div class="card" style="margin:14px 0;">
+                                    <b>💼 Business Permissions <span style="font-weight:normal; font-size:12px; color:#b91c1c;">(for family/friends switch these OFF — the AI will never offer products, invoices or prices)</span></b>
+                                    <div style="display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:13px;">
+                                        <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="checkbox" id="brPermProducts" style="width:auto;"> Can offer products / packages</label>
+                                        <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="checkbox" id="brPermInvoice" style="width:auto;"> Can send invoices</label>
+                                        <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="checkbox" id="brPermPrice" style="width:auto;"> Can talk prices</label>
+                                    </div>
+                                </div>
+
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                                    <div class="form-group"><label style="font-size:12px;">🚫 NEVER say to this person (one phrase per line)</label><textarea id="brNeverSay" rows="3" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;" placeholder="Dear valued customer&#10;Thank you for contacting us"></textarea></div>
+                                    <div class="form-group"><label style="font-size:12px;">📝 Notes (birthday, likes, dislikes, anything)</label><textarea id="brNotes" rows="3" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;" placeholder="Birthday 5 May, likes cricket, hates voice notes..."></textarea></div>
+                                </div>
+
+                                <div style="display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin:6px 0 16px 0; font-size:13px;">
+                                    <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="checkbox" id="brHumanDelay" style="width:auto;"> 🐢 Human-feel delay (replies after 4-12s with "typing…")</label>
+                                    <label style="display:flex; gap:8px; align-items:center; cursor:pointer;"><input type="checkbox" id="brLearnEnabled" style="width:auto;"> 🎓 Allow style learning for this person</label>
+                                    <span style="flex:1;"></span>
+                                    <button onclick="deleteBrainCard()" style="padding:9px 14px; background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; border-radius:8px; font-weight:bold; cursor:pointer;">🗑️ Delete Card</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="brTabDiscuss" style="display:none;">
+                            <div style="max-width:900px; margin:0 auto;">
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                                    <button onclick="brainQuick('Suggest the best persona mix and weights for this contact, and explain why in 3 short lines.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">💡 Suggest best mix</button>
+                                    <button onclick="brainQuick('Analyse how the owner talks with this contact and what should be remembered about him.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🔍 Analyse this person</button>
+                                    <button onclick="brainQuick('Draft a reply to his last message exactly as the AI would send it.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">✍️ Draft next reply</button>
+                                    <button onclick="brainQuick('What should I change in his brain card? Check mode, permissions and personas.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🛠️ Improve the card</button>
+                                    <button onclick="brainPreview()" style="padding:8px 12px; background:#ecfeff; border:1px solid #a5f3fc; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🎬 Preview 3 sample replies</button>
+                                </div>
+                                <div id="brDiscussLog" style="min-height:260px; max-height:52vh; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px;"></div>
+                                <div id="brSuggestion" style="display:none; margin-top:10px; padding:12px 14px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:10px;">
+                                    <b>🤖 The AI suggests changes to this brain card</b>
+                                    <div id="brSuggestionText" style="font-size:12px; color:#065f46; margin:6px 0; white-space:pre-wrap;"></div>
+                                    <div style="display:flex; gap:8px;">
+                                        <button onclick="brainApplySuggestion()" style="padding:8px 14px; background:#16a34a; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">✅ Apply to card (then press Save Card)</button>
+                                        <button onclick="document.getElementById('brSuggestion').style.display='none'" style="padding:8px 14px; background:#f1f5f9; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">Dismiss</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:8px; margin-top:10px;">
+                                    <input id="brDiscussInput" placeholder="Discuss this person with the AI… e.g. 'usko reply kya karun?' or 'make him Respect+Comedy'" style="flex:1; padding:12px; border:1px solid var(--border); border-radius:10px; font-size:14px;" onkeydown="if(event.key==='Enter'){brainDiscussSend();}">
+                                    <button onclick="brainDiscussSend()" id="brDiscussSendBtn" style="padding:12px 20px; background:#7c3aed; border:none; color:#fff; border-radius:10px; font-weight:bold; cursor:pointer;">Send</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="brTabLearned" style="display:none;">
+                            <div style="max-width:800px; margin:0 auto;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                                    <b>🎓 What the AI learned about this person (from YOUR own past messages + his)</b>
+                                    <button onclick="brainLearnNow()" id="brLearnBtn" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🔄 Learn now</button>
+                                </div>
+                                <div id="brLearnedBox" style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px;"></div>
+                            </div>
+                        </div>
+
+                        <div id="brTabDrafts" style="display:none;">
+                            <div style="max-width:900px; margin:0 auto;" id="brContactDrafts"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Contact Book Section -->
             <div id="contactbookSection" class="app-section">
                 <div class="card" style="margin-bottom:20px;">
@@ -2481,6 +2632,8 @@
                     if (typeof loadFollowUps === 'function') loadFollowUps();
                 } else if (id === 'news') {
                     if (typeof naLoadStatus === 'function') naLoadStatus();
+                } else if (id === 'brains') {
+                    if (typeof loadBrains === 'function') loadBrains();
                 }
             } catch(loaderErr) {
                 console.warn('[showSection] section loader error:', loaderErr);
@@ -7844,6 +7997,451 @@
         toastMsg('✅ Chat exported (HTML + JSON zip)');
       } catch (e) { toastMsg('❌ Export failed: ' + e.message); }
       finally { if (btn) { btn.disabled = false; btn.innerText = '💾 Export'; } }
+    }
+
+    // ==================== 🧠 CONTACT BRAINS (persona cards + AI discussion + learning + drafts) ====================
+    let brainMeta = null;
+    let brainCurrent = null;         // { jid, exists, profile, msgCount }
+    let brainPersonaState = [];      // [{name, weight}]
+    let brainPendingSuggestion = null;
+    let brainActiveTab = 'card';
+    let brainListCache = [];
+    let brainDraftsCache = [];
+    const brainDiscussCache = {};
+
+    function brainSaveDiscuss(jid) {
+        try { localStorage.setItem('brainDiscuss-' + jid, JSON.stringify((brainDiscussCache[jid] || []).slice(-40))); } catch (e) { /* ignore */ }
+    }
+
+    async function brainEnsureMeta() {
+        if (brainMeta) return brainMeta;
+        try { brainMeta = await (await fetch('api/brain/meta')).json(); }
+        catch (e) { brainMeta = { personas: [], presets: [], conflicts: [], relationships: [], modes: [] }; }
+        const rel = document.getElementById('brRelationship');
+        if (rel && !rel.options.length) rel.innerHTML = '<option value="">—</option>' + (brainMeta.relationships || []).map(r => '<option value="' + r + '">' + r + '</option>').join('');
+        const pre = document.getElementById('brPreset');
+        if (pre && !pre.options.length) pre.innerHTML = '<option value="">— quick preset —</option>' + (brainMeta.presets || []).map(p => '<option value="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</option>').join('');
+        const mode = document.getElementById('brPanelMode');
+        if (mode && !mode.options.length) mode.innerHTML = (brainMeta.modes || []).map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('');
+        return brainMeta;
+    }
+
+    async function loadBrains() {
+        await brainEnsureMeta();
+        try {
+            const d = await (await fetch('api/brain/list')).json();
+            brainListCache = d.brains || [];
+            brainDraftsCache = d.drafts || [];
+            const c1 = document.getElementById('brStatCards'); if (c1) c1.innerText = brainListCache.length;
+            const c2 = document.getElementById('brStatDrafts'); if (c2) c2.innerText = d.pendingDrafts || 0;
+            const c3 = document.getElementById('brStatLearned'); if (c3) c3.innerText = brainListCache.filter(b => b.learned && b.learned.style).length;
+            if (d.config) {
+                const a = document.getElementById('brCfgAutoClassify'); if (a) a.checked = d.config.autoClassifyNew !== false;
+                const l = document.getElementById('brCfgLearning'); if (l) l.checked = d.config.learningEnabled !== false;
+            }
+            renderBrainList();
+            renderBrainDrafts(document.getElementById('brGlobalDrafts'), brainDraftsCache, true);
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    function renderBrainList() {
+        const grid = document.getElementById('brListGrid');
+        if (!grid) return;
+        if (!brainListCache.length) {
+            grid.innerHTML = '<p class="subtitle" style="grid-column:1/-1; text-align:center;">No brain cards yet — open any WhatsApp chat and press the 🧠 Brain button. New contacts get a default card automatically.</p>';
+            return;
+        }
+        const modeLabels = { auto: '🤖 Auto', draft_only: '📥 Draft', alert_only: '🔔 Alert', silent: '🔇 Silent' };
+        grid.innerHTML = brainListCache.map(b => {
+            const personas = (b.personas || []).map(p => '<span style="font-size:10.5px; background:#f5f3ff; border:1px solid #ddd6fe; color:#6d28d9; padding:2px 8px; border-radius:10px; margin-right:4px;">' + escapeHtml(p.name) + ' ' + p.weight + '%</span>').join('');
+            const learned = b.learned && b.learned.style ? '🎓 style learned' : '🎓 not learned yet';
+            const jidEsc = escapeHtml(b.jid || b.key);
+            return '<div class="followup-card" style="border-left-color:#a855f7;">' +
+                '<div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start; flex-wrap:wrap;">' +
+                    '<b style="font-size:15px;">🧠 ' + escapeHtml(b.name || b.key) + '</b>' +
+                    '<span style="font-size:11px; background:#f1f5f9; padding:2px 10px; border-radius:10px;">' + (modeLabels[b.mode || 'auto'] || b.mode) + '</span>' +
+                '</div>' +
+                '<div style="font-size:12px; color:#546e7a; margin-top:4px;">' + escapeHtml(b.relationship || '—') + ' · ' + jidEsc + ' · ' + learned + (b.autoCreated ? ' · auto-created' : '') + '</div>' +
+                '<div style="margin-top:8px;">' + (personas || '<span style="font-size:11px; color:#94a3b8;">no personas set</span>') + '</div>' +
+                '<div style="margin-top:10px; display:flex; gap:8px;">' +
+                    '<button onclick="openBrainPanel(\'' + jidEsc.replace(/'/g, "\\'") + '\')" style="padding:7px 14px; background:#7c3aed; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">🧠 Open</button>' +
+                    '<button onclick="openBrainPanel(\'' + jidEsc.replace(/'/g, "\\'") + '\', \'discuss\')" style="padding:7px 14px; background:#f3e8ff; border:1px solid #d8b4fe; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">💬 Discuss</button>' +
+                '</div></div>';
+        }).join('');
+    }
+
+    function renderBrainDrafts(container, drafts, showContact) {
+        if (!container) return;
+        if (!drafts || !drafts.length) { container.innerHTML = '<p class="subtitle">No pending drafts — everything is clear. ✅</p>'; return; }
+        container.innerHTML = drafts.map(d => {
+            const kindBadge = d.kind === 'escalation'
+                ? '<span style="background:#fee2e2; color:#b91c1c; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold;">🚨 ESCALATION</span>'
+                : (d.kind === 'alert'
+                    ? '<span style="background:#fff7ed; color:#c2410c; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold;">🔔 ALERT (no reply sent)</span>'
+                    : '<span style="background:#eef2ff; color:#4338ca; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold;">📥 DRAFT — approve to send</span>');
+            return '<div class="card" style="margin-bottom:10px; padding:14px;">' +
+                '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">' +
+                    '<b style="font-size:14px;">🧠 ' + escapeHtml(d.name || d.jid) + (showContact ? ' <span style="font-weight:normal; font-size:11px; color:#94a3b8;">' + escapeHtml(d.jid) + '</span>' : '') + '</b>' + kindBadge +
+                '</div>' +
+                '<div style="font-size:12px; color:#546e7a; margin-top:6px;">⏱️ ' + (d.createdAt ? new Date(d.createdAt).toLocaleString() : '') + (d.reason ? ' · rule: ' + escapeHtml(d.reason) : '') + '</div>' +
+                (d.incoming ? '<div style="margin-top:8px; font-size:13px;"><b>He wrote:</b> ' + escapeHtml(d.incoming) + '</div>' : '') +
+                (d.draft ? ('<div style="margin-top:8px; font-size:13px;"><b>AI prepared this reply:</b><textarea id="brDraftText-' + d.id + '" style="width:100%; margin-top:6px; padding:9px; border:1px solid var(--border); border-radius:8px; min-height:60px; font-size:13px;">' + escapeHtml(d.draft) + '</textarea></div>') : '') +
+                '<div style="margin-top:10px; display:flex; gap:8px;">' +
+                    (d.kind === 'draft' ? ('<button onclick="brainDraftAction(\'' + d.id + '\', \'send\')" style="padding:8px 16px; background:#16a34a; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">📤 Send it (edit above first if you like)</button>') : '') +
+                    '<button onclick="brainDraftAction(\'' + d.id + '\', \'discard\')" style="padding:8px 16px; background:#f1f5f9; border:1px solid var(--border); border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">🗑️ Discard / Handled</button>' +
+                '</div></div>';
+        }).join('');
+    }
+
+    async function brainDraftAction(id, action) {
+        try {
+            const body = { id: id, action: action };
+            if (action === 'send') {
+                const el = document.getElementById('brDraftText-' + id);
+                if (el) body.text = el.value;
+            }
+            const r = await fetch('api/brain/drafts/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'failed');
+            toastMsg(action === 'send' ? '📤 Draft sent on WhatsApp ✅' : '🗑️ Cleared ✅');
+            if (brainCurrent) brainLoadDrafts();
+            if (document.getElementById('brainsSection').classList.contains('active')) loadBrains();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function brainSaveConfig() {
+        try {
+            const r = await fetch('api/brain/config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    autoClassifyNew: document.getElementById('brCfgAutoClassify').checked,
+                    learningEnabled: document.getElementById('brCfgLearning').checked
+                })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'failed');
+            toastMsg('💾 Brain settings saved');
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- Brain panel (full-screen) ----------
+    async function openBrainPanel(jid, tab) {
+        if (!jid) return;
+        await brainEnsureMeta();
+        brainActiveTab = tab || 'card';
+        brainCurrent = { jid: jid, exists: false, profile: {}, msgCount: 0 };
+        brainDiscussCache[jid] = brainDiscussCache[jid] || JSON.parse(localStorage.getItem('brainDiscuss-' + jid) || '[]');
+        document.getElementById('brainOverlay').style.display = 'block';
+        document.getElementById('brPanelName').innerText = 'Loading…';
+        document.getElementById('brPanelJid').innerText = jid;
+        document.getElementById('brSuggestion').style.display = 'none';
+        brainTab(brainActiveTab);
+        try {
+            const d = await (await fetch('api/brain/' + encodeURIComponent(jid))).json();
+            if (!d.ok) throw new Error(d.error || 'failed');
+            brainCurrent = { jid: jid, exists: !!d.exists, profile: d.profile || {}, msgCount: d.msgCount || 0 };
+            brainRenderPanel();
+            brainLoadDrafts();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    function closeBrainPanel() {
+        document.getElementById('brainOverlay').style.display = 'none';
+        if (typeof loadBrains === 'function') { try { loadBrains(); } catch (e) { /* ignore */ } }
+    }
+
+    function brainTab(t) {
+        brainActiveTab = t;
+        const tabs = ['card', 'discuss', 'learned', 'drafts'];
+        tabs.forEach(x => {
+            const body = document.getElementById('brTab' + x.charAt(0).toUpperCase() + x.slice(1));
+            const btn = document.getElementById('brTabBtn' + x.charAt(0).toUpperCase() + x.slice(1));
+            if (body) body.style.display = (x === t) ? 'block' : 'none';
+            if (btn) {
+                const active = x === t;
+                btn.style.background = active ? '#0f172a' : '#fff';
+                btn.style.color = active ? '#fff' : '#334155';
+            }
+        });
+    }
+
+    function brainRenderPanel() {
+        if (!brainCurrent) return;
+        const p = brainCurrent.profile || {};
+        document.getElementById('brPanelName').innerText = '🧠 ' + (p.name || 'New brain card') + (p.relationship ? ' · ' + p.relationship : '') + (brainCurrent.exists ? '' : ' (not saved yet)');
+        document.getElementById('brPanelMode').value = p.mode || 'auto';
+        const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+        setV('brName', p.name || ''); setV('brNick', p.nickname || ''); setV('brCalls', p.callsYou || '');
+        setV('brAge', p.age || ''); setV('brGender', p.gender || ''); setV('brRelationship', p.relationship || '');
+        setV('brLanguage', p.language || 'Roman Urdu'); setV('brLength', p.length || 'short'); setV('brEmoji', p.emojiLevel || 'low');
+        const d = p.dials || {};
+        const dial = (id, val, def) => {
+            const el = document.getElementById(id);
+            if (el) { el.value = (val != null ? val : def); const lbl = document.getElementById(id + 'Val'); if (lbl) lbl.innerText = el.value; }
+        };
+        dial('brDialFormality', d.formality, 40); dial('brDialHumor', d.humor, 30); dial('brDialWarmth', d.warmth, 50);
+        dial('brDialSlang', d.slang, 40); dial('brDialPatience', d.patience, 60);
+        const perm = p.permissions || {};
+        document.getElementById('brPermProducts').checked = !!perm.canOfferProducts;
+        document.getElementById('brPermInvoice').checked = !!perm.canSendInvoice;
+        document.getElementById('brPermPrice').checked = !!perm.canTalkPrice;
+        document.getElementById('brNeverSay').value = (p.neverSay || []).join('\n');
+        document.getElementById('brNotes').value = p.notes || '';
+        document.getElementById('brHumanDelay').checked = !!p.humanDelay;
+        document.getElementById('brLearnEnabled').checked = p.learnEnabled !== false;
+        brainPersonaState = (p.personas && p.personas.length ? p.personas : []).map(x => ({ name: x.name, weight: x.weight }));
+        brainRenderPersonas();
+        brainRenderLearned(p);
+        brainRenderDiscussLog();
+    }
+
+    function brainRenderPersonas() {
+        const chips = document.getElementById('brPersonaChips');
+        const sliders = document.getElementById('brPersonaSliders');
+        if (!chips || !brainMeta) return;
+        chips.innerHTML = (brainMeta.personas || []).map(pp => {
+            const sel = brainPersonaState.some(s => s.name === pp.id);
+            return '<span onclick="brainTogglePersona(\'' + pp.id + '\')" title="' + escapeHtml(pp.desc) + '" style="cursor:pointer; padding:6px 12px; border-radius:16px; font-size:12.5px; font-weight:bold; border:1px solid ' + (sel ? '#7c3aed' : '#cbd5e1') + '; background:' + (sel ? '#7c3aed' : '#fff') + '; color:' + (sel ? '#fff' : '#334155') + ';">' + pp.icon + ' ' + escapeHtml(pp.label) + (sel ? ' ✓' : '') + '</span>';
+        }).join('');
+        sliders.innerHTML = brainPersonaState.map(s => {
+            const def = (brainMeta.personas || []).find(x => x.id === s.name) || {};
+            return '<div style="display:flex; gap:10px; align-items:center; margin:7px 0;">' +
+                '<span style="min-width:180px; font-size:12.5px; font-weight:bold;">' + (def.icon || '🎭') + ' ' + escapeHtml(def.label || s.name) + '</span>' +
+                '<input type="range" min="0" max="100" value="' + s.weight + '" style="flex:1;" oninput="brainSetWeight(\'' + s.name + '\', this.value)">' +
+                '<span id="brW-' + s.name + '" style="min-width:46px; font-size:12.5px; font-weight:bold; color:#7c3aed;">' + s.weight + '%</span></div>';
+        }).join('') || '<p class="subtitle" style="margin:6px 0 0 0;">Tap personas above to add them (3-4+ works great — e.g. Respect + Comedy + Caring).</p>';
+        brainUpdateConflictWarn();
+    }
+
+    function brainUpdateConflictWarn() {
+        const warn = document.getElementById('brConflictWarn');
+        if (!warn || !brainMeta) return;
+        const hits = [];
+        for (const c of (brainMeta.conflicts || [])) {
+            const A = brainPersonaState.find(x => x.name === c.a), B = brainPersonaState.find(x => x.name === c.b);
+            if (A && B) hits.push('⚠️ ' + c.a + ' + ' + c.b + ' conflict — ' + c.b + ' will be capped at ' + c.maxB + '% automatically.');
+        }
+        if (hits.length) { warn.style.display = 'block'; warn.innerHTML = hits.join('<br>'); }
+        else warn.style.display = 'none';
+    }
+
+    function brainTogglePersona(name) {
+        const i = brainPersonaState.findIndex(s => s.name === name);
+        if (i >= 0) brainPersonaState.splice(i, 1);
+        else brainPersonaState.push({ name: name, weight: 60 });
+        brainRenderPersonas();
+    }
+
+    function brainSetWeight(name, val) {
+        const s = brainPersonaState.find(x => x.name === name);
+        if (s) s.weight = Number(val) || 0;
+        const lbl = document.getElementById('brW-' + name);
+        if (lbl) lbl.innerText = (Number(val) || 0) + '%';
+        brainUpdateConflictWarn();
+    }
+
+    function brainApplyPreset() {
+        const name = document.getElementById('brPreset').value;
+        if (!name || !brainMeta) return;
+        const preset = (brainMeta.presets || []).find(p => p.name === name);
+        if (!preset) return;
+        brainPersonaState = preset.personas.map(x => ({ name: x.name, weight: x.weight }));
+        brainRenderPersonas();
+        toastMsg('🎭 Preset "' + name + '" applied — tweak the weights if you want, then Save Card');
+    }
+
+    function brainCollectProfile() {
+        return {
+            jid: brainCurrent.jid,
+            name: document.getElementById('brName').value.trim(),
+            nickname: document.getElementById('brNick').value.trim(),
+            callsYou: document.getElementById('brCalls').value.trim(),
+            age: document.getElementById('brAge').value.trim(),
+            gender: document.getElementById('brGender').value,
+            relationship: document.getElementById('brRelationship').value,
+            language: document.getElementById('brLanguage').value.trim(),
+            length: document.getElementById('brLength').value,
+            emojiLevel: document.getElementById('brEmoji').value,
+            mode: document.getElementById('brPanelMode').value,
+            personas: brainPersonaState,
+            dials: {
+                formality: Number(document.getElementById('brDialFormality').value),
+                humor: Number(document.getElementById('brDialHumor').value),
+                warmth: Number(document.getElementById('brDialWarmth').value),
+                slang: Number(document.getElementById('brDialSlang').value),
+                patience: Number(document.getElementById('brDialPatience').value)
+            },
+            permissions: {
+                canOfferProducts: document.getElementById('brPermProducts').checked,
+                canSendInvoice: document.getElementById('brPermInvoice').checked,
+                canTalkPrice: document.getElementById('brPermPrice').checked
+            },
+            neverSay: document.getElementById('brNeverSay').value.split('\n').map(x => x.trim()).filter(Boolean),
+            notes: document.getElementById('brNotes').value,
+            humanDelay: document.getElementById('brHumanDelay').checked,
+            learnEnabled: document.getElementById('brLearnEnabled').checked
+        };
+    }
+
+    async function saveBrainCard() {
+        if (!brainCurrent) return;
+        try {
+            const r = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(brainCollectProfile())
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'failed');
+            brainCurrent.profile = d.profile; brainCurrent.exists = true;
+            toastMsg('💾 Brain card saved — the AI now follows these rules for this person 🧠');
+            brainRenderPanel();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    async function deleteBrainCard() {
+        if (!brainCurrent) return;
+        if (!confirm('Delete this brain card? The AI goes back to default behaviour for this contact.')) return;
+        try {
+            await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), { method: 'DELETE' });
+            toastMsg('🗑️ Brain card deleted');
+            closeBrainPanel();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- 💬 AI Discussion area ----------
+    function brainRenderDiscussLog() {
+        const el = document.getElementById('brDiscussLog');
+        if (!el || !brainCurrent) return;
+        const log = brainDiscussCache[brainCurrent.jid] || [];
+        el.innerHTML = log.length ? log.map(m => m.role === 'user'
+            ? '<div style="display:flex; justify-content:flex-end; margin:8px 0;"><div style="background:#ede9fe; color:#4c1d95; padding:10px 14px; border-radius:12px 12px 0 12px; max-width:80%; font-size:13.5px; white-space:pre-wrap;">' + escapeHtml(m.text) + '</div></div>'
+            : '<div style="display:flex; justify-content:flex-start; margin:8px 0;"><div style="background:#f1f5f9; color:#0f172a; padding:10px 14px; border-radius:12px 12px 12px 0; max-width:85%; font-size:13.5px; white-space:pre-wrap;">🤖 ' + escapeHtml(m.text) + '</div></div>'
+        ).join('')
+            : '<p class="subtitle">Ask anything about this person — the AI knows his brain card, your whole history and what it learned. It can also suggest card changes for you to apply. 🧠</p>';
+        el.scrollTop = el.scrollHeight;
+    }
+
+    async function brainDiscussSend() {
+        if (!brainCurrent) return;
+        const inp = document.getElementById('brDiscussInput');
+        const text = (inp.value || '').trim();
+        if (!text) return;
+        inp.value = '';
+        const jid = brainCurrent.jid;
+        const log = brainDiscussCache[jid] || (brainDiscussCache[jid] = []);
+        log.push({ role: 'user', text: text });
+        brainRenderDiscussLog(); brainSaveDiscuss(jid);
+        const btn = document.getElementById('brDiscussSendBtn');
+        if (btn) { btn.disabled = true; btn.innerText = '…'; }
+        try {
+            const r = await fetch('api/brain/' + encodeURIComponent(jid) + '/discuss', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, history: log.slice(-20) })
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'failed');
+            log.push({ role: 'ai', text: d.reply || '(no reply)' });
+            if (d.suggestion) {
+                brainPendingSuggestion = d.suggestion;
+                document.getElementById('brSuggestionText').innerText = JSON.stringify(d.suggestion, null, 1);
+                document.getElementById('brSuggestion').style.display = 'block';
+            }
+        } catch (e) { log.push({ role: 'ai', text: '❌ ' + e.message }); }
+        brainRenderDiscussLog(); brainSaveDiscuss(jid);
+        if (btn) { btn.disabled = false; btn.innerText = 'Send'; }
+    }
+
+    function brainQuick(text) {
+        const inp = document.getElementById('brDiscussInput');
+        if (inp) { inp.value = text; brainDiscussSend(); }
+    }
+
+    function brainApplySuggestion() {
+        if (!brainPendingSuggestion || !brainCurrent) return;
+        const s = brainPendingSuggestion;
+        if (s.personas) brainPersonaState = s.personas.map(x => ({ name: x.name, weight: x.weight }));
+        const setV = (id, key) => { if (s[key] != null) { const el = document.getElementById(id); if (el) el.value = s[key]; } };
+        setV('brName', 'name'); setV('brNick', 'nickname'); setV('brCalls', 'callsYou'); setV('brAge', 'age');
+        setV('brGender', 'gender'); setV('brRelationship', 'relationship'); setV('brLanguage', 'language');
+        setV('brLength', 'length'); setV('brEmoji', 'emojiLevel'); setV('brNotes', 'notes');
+        if (s.mode) document.getElementById('brPanelMode').value = s.mode;
+        if (s.neverSay) document.getElementById('brNeverSay').value = s.neverSay.join('\n');
+        if (s.dials) {
+            const dd = (id, val) => { if (val != null) { const el = document.getElementById(id); if (el) { el.value = val; const lbl = document.getElementById(id + 'Val'); if (lbl) lbl.innerText = el.value; } } };
+            dd('brDialFormality', s.dials.formality); dd('brDialHumor', s.dials.humor); dd('brDialWarmth', s.dials.warmth); dd('brDialSlang', s.dials.slang); dd('brDialPatience', s.dials.patience);
+        }
+        if (s.permissions) {
+            if (s.permissions.canOfferProducts != null) document.getElementById('brPermProducts').checked = !!s.permissions.canOfferProducts;
+            if (s.permissions.canSendInvoice != null) document.getElementById('brPermInvoice').checked = !!s.permissions.canSendInvoice;
+            if (s.permissions.canTalkPrice != null) document.getElementById('brPermPrice').checked = !!s.permissions.canTalkPrice;
+        }
+        if (s.humanDelay != null) document.getElementById('brHumanDelay').checked = !!s.humanDelay;
+        if (s.learnEnabled != null) document.getElementById('brLearnEnabled').checked = !!s.learnEnabled;
+        brainRenderPersonas();
+        document.getElementById('brSuggestion').style.display = 'none';
+        brainTab('card');
+        toastMsg('✅ Suggestion applied to the form — now press 💾 Save Card');
+    }
+
+    async function brainPreview() {
+        if (!brainCurrent) return;
+        const jid = brainCurrent.jid;
+        const log = brainDiscussCache[jid] || (brainDiscussCache[jid] = []);
+        log.push({ role: 'user', text: '🎬 Preview: show me 3 sample replies you would send to him right now.' });
+        brainRenderDiscussLog(); brainSaveDiscuss(jid);
+        try {
+            const r = await fetch('api/brain/' + encodeURIComponent(jid) + '/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'failed');
+            log.push({ role: 'ai', text: '🎬 Three sample replies with his current brain card:\n\n' + (d.options || []).map((o, i) => (i + 1) + '. ' + o).join('\n\n') });
+        } catch (e) { log.push({ role: 'ai', text: '❌ ' + e.message }); }
+        brainRenderDiscussLog(); brainSaveDiscuss(jid);
+    }
+
+    // ---------- 🎓 Learned memory ----------
+    function brainRenderLearned(p) {
+        const el = document.getElementById('brLearnedBox');
+        if (!el) return;
+        const l = (p && p.learned) || null;
+        if (!l || !l.style) {
+            el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). It also runs automatically in the background for active contacts.</p>' +
+                (brainCurrent && brainCurrent.msgCount ? '<div style="font-size:12px; color:#94a3b8; margin-top:8px;">Messages available: ' + brainCurrent.msgCount + '</div>' : '');
+            return;
+        }
+        el.innerHTML =
+            '<div style="margin-bottom:10px;"><b>🎨 Your style with him (imitated on every reply):</b><div style="font-size:13.5px; margin-top:4px;">' + escapeHtml(l.style) + '</div></div>' +
+            (l.mood ? '<div style="margin-bottom:10px;"><b>🌡️ His mood pattern:</b> <span style="font-size:13.5px;">' + escapeHtml(l.mood) + '</span></div>' : '') +
+            ((l.facts && l.facts.length) ? '<div style="margin-bottom:10px;"><b>🧩 Facts remembered:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.facts.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
+            ((l.topics && l.topics.length) ? '<div style="margin-bottom:10px;"><b>💬 Usual topics:</b> ' + l.topics.map(x => '<span style="font-size:12px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:2px 8px; border-radius:10px; margin-right:4px;">' + escapeHtml(x) + '</span>').join('') + '</div>' : '') +
+            ((l.promises && l.promises.length) ? '<div><b>🤞 Open promises / pending things:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.promises.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
+            '<div style="font-size:11px; color:#94a3b8; margin-top:10px;">Last learned: ' + (l.at ? new Date(l.at).toLocaleString() : '—') + '</div>';
+    }
+
+    async function brainLearnNow() {
+        if (!brainCurrent) return;
+        const btn = document.getElementById('brLearnBtn');
+        if (btn) { btn.disabled = true; btn.innerText = '🎓 Reading your chats…'; }
+        try {
+            const r = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid) + '/learn', { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || 'failed');
+            brainCurrent.profile.learned = d.learned;
+            brainRenderLearned(brainCurrent.profile);
+            toastMsg('🎓 Learned! The AI will now imitate your style with this person');
+        } catch (e) { toastMsg('❌ ' + e.message); }
+        if (btn) { btn.disabled = false; btn.innerText = '🔄 Learn now'; }
+    }
+
+    // ---------- 📥 Drafts tab ----------
+    async function brainLoadDrafts() {
+        if (!brainCurrent) return;
+        try {
+            const d = await (await fetch('api/brain/drafts?jid=' + encodeURIComponent(brainCurrent.jid))).json();
+            const drafts = d.drafts || [];
+            const cnt = document.getElementById('brTabDraftCount');
+            if (cnt) cnt.innerText = drafts.length;
+            renderBrainDrafts(document.getElementById('brContactDrafts'), drafts, false);
+        } catch (e) { /* ignore */ }
     }
 
     </script>
