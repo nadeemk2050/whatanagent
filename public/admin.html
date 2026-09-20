@@ -1874,6 +1874,8 @@
                                     <div class="form-group"><label style="font-size:12px;">Language</label><input id="brLanguage" placeholder="Roman Urdu" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
                                     <div class="form-group"><label style="font-size:12px;">Reply length</label><select id="brLength" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"><option value="short">Short & quick</option><option value="medium">Medium</option><option value="detailed">Detailed</option></select></div>
                                     <div class="form-group"><label style="font-size:12px;">Emoji level</label><select id="brEmoji" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"><option value="none">None</option><option value="low">Low</option><option value="high">High</option></select></div>
+                                    <div class="form-group"><label style="font-size:12px;">Formality style <span style="color:#7c3aed;">— not too formal / not too casual</span></label><select id="brFormalityLevel" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></select></div>
+                                    <div class="form-group"><label style="font-size:12px;">How to address him (pronoun) <span style="color:#7c3aed;">— friends & family: tum, never aap</span></label><select id="brAddress" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></select></div>
                                 </div>
 
                                 <div class="card" style="margin:14px 0; background:#faf5ff; border:1px solid #e9d5ff;">
@@ -8023,6 +8025,13 @@
         if (pre && !pre.options.length) pre.innerHTML = '<option value="">— quick preset —</option>' + (brainMeta.presets || []).map(p => '<option value="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</option>').join('');
         const mode = document.getElementById('brPanelMode');
         if (mode && !mode.options.length) mode.innerHTML = (brainMeta.modes || []).map(m => '<option value="' + m.id + '">' + m.label + '</option>').join('');
+        const fl = document.getElementById('brFormalityLevel');
+        if (fl && !fl.options.length) {
+            const flLabels = { very_casual: '😎 No formality (best friends style)', casual: '🙂 Casual & easy', normal: '⚖️ Normal — not too formal, not too casual', formal: '🤝 Formal & polite', very_formal: '💼 Very formal (official)' };
+            fl.innerHTML = '<option value="">— use fine-tuning slider only —</option>' + (brainMeta.formalityLevels || []).map(v => '<option value="' + v + '">' + (flLabels[v] || v) + '</option>').join('');
+        }
+        const ad = document.getElementById('brAddress');
+        if (ad && !ad.options.length) ad.innerHTML = '<option value="auto">Auto (smart: family & friends → tum, elders → aap)</option><option value="tum">tum — normal friendly (friends & family)</option><option value="tu">tu — very close informal</option><option value="aap">aap — respectful only</option>';
         return brainMeta;
     }
 
@@ -8174,6 +8183,7 @@
         setV('brName', p.name || ''); setV('brNick', p.nickname || ''); setV('brCalls', p.callsYou || '');
         setV('brAge', p.age || ''); setV('brGender', p.gender || ''); setV('brRelationship', p.relationship || '');
         setV('brLanguage', p.language || 'Roman Urdu'); setV('brLength', p.length || 'short'); setV('brEmoji', p.emojiLevel || 'low');
+        setV('brFormalityLevel', p.formalityLevel || ''); setV('brAddress', p.addressStyle || 'auto');
         const d = p.dials || {};
         const dial = (id, val, def) => {
             const el = document.getElementById(id);
@@ -8262,6 +8272,8 @@
             language: document.getElementById('brLanguage').value.trim(),
             length: document.getElementById('brLength').value,
             emojiLevel: document.getElementById('brEmoji').value,
+            formalityLevel: document.getElementById('brFormalityLevel').value,
+            addressStyle: document.getElementById('brAddress').value,
             mode: document.getElementById('brPanelMode').value,
             personas: brainPersonaState,
             dials: {
@@ -8364,6 +8376,7 @@
         setV('brName', 'name'); setV('brNick', 'nickname'); setV('brCalls', 'callsYou'); setV('brAge', 'age');
         setV('brGender', 'gender'); setV('brRelationship', 'relationship'); setV('brLanguage', 'language');
         setV('brLength', 'length'); setV('brEmoji', 'emojiLevel'); setV('brNotes', 'notes');
+        setV('brFormalityLevel', 'formalityLevel'); setV('brAddress', 'addressStyle');
         if (s.mode) document.getElementById('brPanelMode').value = s.mode;
         if (s.neverSay) document.getElementById('brNeverSay').value = s.neverSay.join('\n');
         if (s.dials) {
@@ -8404,11 +8417,12 @@
         if (!el) return;
         const l = (p && p.learned) || null;
         if (!l || !l.style) {
-            el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). It also runs automatically in the background for active contacts.</p>' +
+            el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). After that, <b>every reply follows this understanding automatically</b>, and it keeps updating itself in the background as chats continue.</p>' +
                 (brainCurrent && brainCurrent.msgCount ? '<div style="font-size:12px; color:#94a3b8; margin-top:8px;">Messages available: ' + brainCurrent.msgCount + '</div>' : '');
             return;
         }
         el.innerHTML =
+            '<div style="margin-bottom:10px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12px; color:#065f46;">✅ <b>Active:</b> the AI replies according to this understanding on EVERY message to this person, and it re-updates itself automatically as your chats continue (plus 🔄 Learn now any time).</div>' +
             '<div style="margin-bottom:10px;"><b>🎨 Your style with him (imitated on every reply):</b><div style="font-size:13.5px; margin-top:4px;">' + escapeHtml(l.style) + '</div></div>' +
             (l.mood ? '<div style="margin-bottom:10px;"><b>🌡️ His mood pattern:</b> <span style="font-size:13.5px;">' + escapeHtml(l.mood) + '</span></div>' : '') +
             ((l.facts && l.facts.length) ? '<div style="margin-bottom:10px;"><b>🧩 Facts remembered:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.facts.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +

@@ -65,8 +65,23 @@ export const PRESETS = {
   'Angry Customer Handler': [{ name: 'Caring', weight: 60 }, { name: 'Professional', weight: 60 }, { name: 'Direct', weight: 30 }]
 };
 
-export const RELATIONSHIPS = ['family', 'brother', 'sister', 'parent', 'relative', 'close friend', 'friend', 'colleague', 'customer', 'vip customer', 'supplier', 'partner', 'stranger', 'other'];
+export const RELATIONSHIPS = ['family', 'wife', 'husband', 'son', 'daughter', 'mother', 'father', 'child', 'brother', 'sister', 'parent', 'relative', 'close friend', 'friend', 'colleague', 'customer', 'vip customer', 'supplier', 'partner', 'stranger', 'other'];
 export const MODES = { auto: '🤖 Auto-reply', draft_only: '📥 Draft only (you approve)', alert_only: '🔔 Alert only (no AI reply)', silent: '🔇 Silent guard (never replies, alerts you)' };
+
+// Formality style: "not too formal and not too casual" is the NORMAL middle level.
+export const FORMALITY_LEVELS = ['very_casual', 'casual', 'normal', 'formal', 'very_formal'];
+// How the AI addresses the person in Roman Urdu: friends & family = tum (never aap).
+export const ADDRESS_STYLES = ['auto', 'tu', 'tum', 'aap'];
+const FRIENDLY_RELATIONSHIPS = ['family', 'wife', 'husband', 'son', 'daughter', 'mother', 'father', 'child', 'brother', 'sister', 'parent', 'relative', 'close friend', 'friend', 'partner'];
+const RESPECT_PERSONAS = ['Respect', 'ElderRespect'];
+
+const FORMALITY_TEXT = {
+  very_casual: 'VERY CASUAL — talk like best friends / close family: short, relaxed, everyday words. Absolutely NO stiff or formal wording.',
+  casual: 'CASUAL — friendly and easy-going; only light politeness, no stiff words.',
+  normal: 'NORMAL — balanced middle: friendly and natural, NOT too formal and NOT too casual. Respectful but relaxed — never stiff, never rude.',
+  formal: 'FORMAL — polite and proper wording; no slang, no teasing.',
+  very_formal: 'VERY FORMAL — official / business tone with full respect.'
+};
 
 // ---------------------------------------------------------------------------
 // Field sanitizers (server-side clamps — the UI can never break the DB)
@@ -103,6 +118,8 @@ export function sanitizeProfile(raw, existing = {}) {
   p.age = sstr(raw.age != null ? raw.age : existing.age, 6);
   p.gender = sstr(raw.gender != null ? raw.gender : existing.gender, 12);
   p.relationship = sstr(raw.relationship != null ? raw.relationship : existing.relationship, 30).toLowerCase();
+  p.formalityLevel = FORMALITY_LEVELS.includes(raw.formalityLevel || existing.formalityLevel) ? (raw.formalityLevel || existing.formalityLevel) : '';
+  p.addressStyle = ADDRESS_STYLES.includes(raw.addressStyle || existing.addressStyle) ? (raw.addressStyle || existing.addressStyle) : 'auto';
   p.language = sstr(raw.language != null ? raw.language : existing.language, 40) || 'Roman Urdu';
   p.length = ['short', 'medium', 'detailed'].includes(raw.length || existing.length) ? (raw.length || existing.length) : 'short';
   p.emojiLevel = ['none', 'low', 'high'].includes(raw.emojiLevel || existing.emojiLevel) ? (raw.emojiLevel || existing.emojiLevel) : 'low';
@@ -159,12 +176,29 @@ export function buildBrainPromptSection(profile, opts = {}) {
   for (const f of flavors) s += 'FLAVOR (' + f.weight + '%): ' + f.name + ' — ' + (PERSONAS[f.name] || {}).desc + '\n';
   s += 'Blend these naturally into every message. Higher % = stronger influence. If two styles clash, the higher % wins — but NEVER break respect or safety rules.\n';
   s += 'Language: ' + (profile.language || 'Roman Urdu') + ' (never Devanagari script). Reply length: ' + (profile.length || 'short') + '. Emojis: ' + (profile.emojiLevel || 'low') + '.\n';
+  // Formality style: level (explicit) or slider fine-tuning
+  if (profile.formalityLevel) {
+    s += 'FORMALITY STYLE: ' + (FORMALITY_TEXT[profile.formalityLevel] || FORMALITY_TEXT.normal) + '\n';
+  }
   s += 'Tone dials → formality ' + dials.formality + '/100, humor ' + dials.humor + '/100, warmth ' + dials.warmth + '/100, slang ' + dials.slang + '/100.\n';
+  // Addressing rule: tum for friends & family (never aap), unless Respect personas dominate or the owner chose a style.
+  const explicitAddr = profile.addressStyle && profile.addressStyle !== 'auto' ? profile.addressStyle : '';
+  const mainIsRespect = RESPECT_PERSONAS.includes(main.name);
+  const effectiveAddr = explicitAddr || (FRIENDLY_RELATIONSHIPS.includes(profile.relationship) && !mainIsRespect ? 'tum' : '');
+  if (effectiveAddr === 'tum') {
+    s += 'HOW TO ADDRESS HIM (very important): use "tum" in Roman Urdu — tum, tumhara, tumhe, tumko, tumhare. He is friend/family so talk NORMALLY like friends do. NEVER use "aap / aapka / aapko / aapki". Example: "tum kahan ho?" NOT "aap kahan hain?".\n';
+  } else if (effectiveAddr === 'tu') {
+    s += 'HOW TO ADDRESS HIM: very close informal "tu" — tu, tera, tujhe, teri. Never "aap".\n';
+  } else if (effectiveAddr === 'aap') {
+    s += 'HOW TO ADDRESS HIM: always respectful "aap" — aap, aapka, aapko, aapki. Never "tum" or "tu".\n';
+  }
   s += 'BUSINESS PERMISSIONS: products/offers: ' + (perms.canOfferProducts ? 'ALLOWED' : 'NOT ALLOWED — never offer products, packages, prices or services') +
        '; invoices: ' + (perms.canSendInvoice ? 'allowed' : 'NOT allowed') +
        '; price talk: ' + (perms.canTalkPrice ? 'allowed' : 'NOT allowed') + '.\n';
   if (profile.neverSay && profile.neverSay.length) s += 'NEVER write these phrases: ' + profile.neverSay.join(' | ') + '\n';
-  if (learned.style) s += 'How the owner (you) really talks to him — imitate this style: ' + sstr(learned.style, 500) + '\n';
+  if (learned.style) s += 'GROUND TRUTH — this is exactly how the owner really talks to him (auto-learned from the owner\'s own sent messages). Reply according to THIS summary precisely — it overrides generic style rules: ' + sstr(learned.style, 500) + '\n';
+  if (learned.mood) s += 'His usual mood / way of talking: ' + sstr(learned.mood, 200) + '\n';
+  if (learned.topics && learned.topics.length) s += 'Usual topics between you two: ' + learned.topics.slice(0, 6).map(t => sstr(t, 60)).join(', ') + '\n';
   if (learned.facts && learned.facts.length) s += 'Remember about him: ' + learned.facts.slice(0, 8).map(f => sstr(f, 120)).join('; ') + '\n';
   if (learned.promises && learned.promises.length) s += 'Open promises/deals with him (be consistent): ' + learned.promises.slice(0, 5).map(f => sstr(f, 120)).join('; ') + '\n';
   if (profile.notes) s += 'Owner notes about him: ' + sstr(profile.notes, 500) + '\n';
@@ -486,17 +520,22 @@ export function createBrainEngine(db) {
       if (!conf.learningEnabled) return;
       const all = await listBrains(60);
       const now = Date.now();
-      const stale = all.filter(b =>
-        b.learnEnabled !== false &&
-        (!b.lastLearnedAt || (now - b.lastLearnedAt) > 20 * 3600 * 1000)
-      ).slice(0, 2);
-      for (const b of stale) {
+      const candidates = all.filter(b => b.learnEnabled !== false).slice(0, 12);
+      let done = 0;
+      for (const b of candidates) {
+        if (done >= 3) break;
+        const age = b.lastLearnedAt ? (now - b.lastLearnedAt) : Infinity;
+        const dueByTime = !b.lastLearnedAt || age > 20 * 3600 * 1000;
+        if (!dueByTime && age < 90 * 60 * 1000) continue; // adaptive check at most every 90 min per contact
         const messages = await fetchChatMessages(b.jid || b.key, 130);
         if (!messages.length) continue;
         const lastMsgAt = messages[messages.length - 1].timestamp || 0;
-        if (b.lastLearnedAt && lastMsgAt <= b.lastLearnedAt) continue; // nothing new to study
-        console.log('[BRAIN] 🎓 Nightly-style learning for ' + (b.name || b.key) + '...');
+        if (b.lastLearnedAt && lastMsgAt <= b.lastLearnedAt) continue; // nothing new at all
+        const newOwnerMsgs = messages.filter(m => m.fromMe && (m.timestamp || 0) > (b.lastLearnedAt || 0)).length;
+        if (!dueByTime && newOwnerMsgs < 40) continue; // adaptive: re-understand after 40+ new owner messages
+        console.log('[BRAIN] 🎓 Updating understanding for ' + (b.name || b.key) + ' (' + newOwnerMsgs + ' new owner messages since last learn)...');
         await learnContactStyle(b.jid || b.key, { force: true });
+        done++;
       }
     } catch (e) { console.warn('[BRAIN] learning tick failed:', e.message); }
   }
@@ -515,7 +554,9 @@ export function registerBrainRoutes(app, db) {
     presets: Object.entries(PRESETS).map(([name, personas]) => ({ name, personas })),
     conflicts: CONFLICTS,
     relationships: RELATIONSHIPS,
-    modes: Object.entries(MODES).map(([id, label]) => ({ id, label }))
+    modes: Object.entries(MODES).map(([id, label]) => ({ id, label })),
+    formalityLevels: FORMALITY_LEVELS,
+    addressStyles: ADDRESS_STYLES
   };
 
   app.get('/api/brain/meta', (req, res) => res.json({ ok: true, ...meta }));
