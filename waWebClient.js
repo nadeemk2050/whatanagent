@@ -1035,7 +1035,12 @@ async function processAlignQueueItem(ref, d) {
     if (!sock || waWebState.status !== 'connected') return;   // leave pending - the 45s tick retries
     let msg = String(d.message || '').substring(0, 900);
     msg = await ensureNoDevanagari(msg);   // company-wide NO-HINDI rule
-    await sendWaWebMessage(toJid, msg);
+    console.log('[ALIGN WA] → sending reminder to ' + (isGroup ? ('group "' + (d.toName || '') + '" (' + toJid + ')') : ('+' + rawTarget)) + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 50) + '"') : ''));
+    // Timeout guard: a hanging send (e.g. deleted/unknown group) must NEVER wedge the queue loop
+    await Promise.race([
+      sendWaWebMessage(toJid, msg),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+    ]);
     await setDoc(ref, { status: 'sent', sentAt: Date.now() }, { merge: true });
     console.log('[ALIGN WA] 💬 Reminder sent to ' + (isGroup ? ('group "' + (d.toName || '') + '"') : ('+' + rawTarget)) + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 60) + '"') : ''));
   } catch (e) {
