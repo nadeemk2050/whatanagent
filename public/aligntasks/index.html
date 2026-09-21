@@ -256,8 +256,20 @@
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
             <div class="p-6 space-y-3">
                 <p id="wa-remind-task-text" class="text-sm text-gray-600"></p>
-                <label class="text-sm font-medium text-gray-700">Select the team member to remind</label>
-                <div id="wa-remind-members" class="space-y-1 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
+                <div id="wa-remind-members" class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-sm font-medium text-gray-700">📢 WhatsApp groups <span class="text-xs text-gray-400">(favorites — one or more)</span></label>
+                        <button id="wa-remind-manage-groups" type="button" class="text-xs text-blue-600 font-semibold">⭐ Manage favorites</button>
+                    </div>
+                    <div id="wa-remind-groups" class="space-y-1 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                    <div id="wa-remind-groups-manager" class="hidden mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3">
+                        <input id="wa-remind-group-search" type="text" placeholder="🔍 Search all WhatsApp groups..." class="w-full p-2 border border-gray-300 rounded-lg text-sm" oninput="renderWaGroupManager()">
+                        <div id="wa-remind-groups-list" class="max-h-44 overflow-y-auto mt-2"></div>
+                        <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The groups list comes from the WhatsApp session and auto-updates.</p>
+                    </div>
+                </div>
                 <div class="flex justify-end gap-2 pt-2">
                     <button id="wa-remind-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
                     <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">💬 Send on WhatsApp</button>
@@ -758,48 +770,135 @@
                         const disabled = !m.wa;
                         const checked = (assignee && m.email === assignee) ? 'checked' : '';
                         return '<label class="flex items-center gap-3 p-2 rounded-lg ' + (disabled ? 'opacity-50' : 'hover:bg-gray-50 cursor-pointer') + '">' +
-                            '<input type="radio" name="wa-remind-member" value="' + m.email + '" ' + checked + (disabled ? ' disabled' : '') + ' class="h-4 w-4" />' +
+                            '<input type="checkbox" class="wa-remind-member-cb h-4 w-4" value="' + m.email + '" ' + checked + (disabled ? ' disabled' : '') + ' />' +
                             '<span class="flex-grow text-sm text-gray-800">' + m.name + '</span>' +
                             '<span class="text-xs ' + (m.wa ? 'text-green-600' : 'text-red-400') + '">' + (m.wa ? ('+' + m.wa) : 'no WhatsApp number') + '</span>' +
                             '</label>';
                     }).join('');
-                    const anyChecked = box.querySelector('input[name="wa-remind-member"]:checked');
-                    if (!anyChecked) {
-                        const first = box.querySelector('input[name="wa-remind-member"]:not(:disabled)');
-                        if (first) first.checked = true;
-                    }
                 }
+                document.getElementById('wa-remind-groups-manager').classList.add('hidden');
+                document.getElementById('wa-remind-group-search').value = '';
+                await loadWaRemindFavorites();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
             }
+            // ===== WhatsApp group favorites for task reminders (webapp side) =====
+            let waGroupFavoritesCache = [];
+            let waGroupsIndexCache = [];
+
+            async function loadWaRemindFavorites() {
+                const box = document.getElementById('wa-remind-groups');
+                box.innerHTML = '<p class="text-xs text-gray-400 p-1">Loading favorite groups…</p>';
+                try {
+                    let snap;
+                    try { snap = await db.collection('alignWaGroupFavorites').orderBy('savedAt', 'desc').limit(60).get(); }
+                    catch (e1) { snap = await db.collection('alignWaGroupFavorites').limit(60).get(); }
+                    waGroupFavoritesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) { waGroupFavoritesCache = []; }
+                if (waRemindCtx) waRemindCtx.favorites = waGroupFavoritesCache;
+                box.innerHTML = waGroupFavoritesCache.length ? waGroupFavoritesCache.map(g =>
+                    '<label class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">' +
+                    '<input type="checkbox" class="wa-remind-group-cb h-4 w-4" value="' + String(g.jid || '').replace(/"/g, '&quot;') + '" data-name="' + String(g.name || '').replace(/"/g, '&quot;') + '" />' +
+                    '<span class="flex-grow text-sm text-gray-800">' + (g.name || g.jid) + '</span>' +
+                    '<span class="text-xs text-gray-400">group</span></label>'
+                ).join('') : '<p class="text-xs text-gray-400 p-1">No favorite groups yet — press ⭐ Manage favorites and star the groups you use.</p>';
+            }
+
+            async function openWaGroupsManager() {
+                const panel = document.getElementById('wa-remind-groups-manager');
+                panel.classList.toggle('hidden');
+                if (panel.classList.contains('hidden')) return;
+                const list = document.getElementById('wa-remind-groups-list');
+                list.innerHTML = '<p class="text-xs text-gray-500 p-1">Loading groups from the WhatsApp session…</p>';
+                try {
+                    const snap = await db.doc('appData/alignWaGroupsIndex').get();
+                    const data = snap.exists ? (snap.data() || {}) : {};
+                    waGroupsIndexCache = Array.isArray(data.groups) ? data.groups : [];
+                    if (data.updatedAt) {
+                        const when = new Date(data.updatedAt).toLocaleString();
+                        document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + waGroupsIndexCache.length + ' groups (updated ' + when + ')';
+                    }
+                } catch (e) { waGroupsIndexCache = []; }
+                renderWaGroupManager();
+            }
+
+            function renderWaGroupManager() {
+                const list = document.getElementById('wa-remind-groups-list');
+                const q = (document.getElementById('wa-remind-group-search').value || '').toLowerCase();
+                const favIds = new Set(waGroupFavoritesCache.map(g => String(g.jid)));
+                let groups = waGroupsIndexCache;
+                if (q) groups = groups.filter(g => String(g.name || '').toLowerCase().includes(q));
+                if (!groups.length) {
+                    list.innerHTML = '<p class="text-xs text-gray-500 p-1">' + (waGroupsIndexCache.length ? 'No group matches your search.' : 'Groups list not ready yet — it updates automatically from the WhatsApp session (open WhatsApp Web once if it stays empty).') + '</p>';
+                    return;
+                }
+                list.innerHTML = groups.slice(0, 300).map(g => {
+                    const saved = favIds.has(String(g.jid));
+                    return '<div class="flex items-center gap-2 py-1">' +
+                        '<button type="button" class="wa-fav-star text-lg" data-jid="' + String(g.jid).replace(/"/g, '&quot;') + '" data-name="' + String(g.name || '').replace(/"/g, '&quot;') + '" data-saved="' + (saved ? '1' : '0') + '" title="' + (saved ? 'Remove from favorites' : 'Save to favorites') + '" style="background:none;border:none;cursor:pointer;">' + (saved ? '⭐' : '☆') + '</button>' +
+                        '<span class="text-sm text-gray-700 flex-grow">' + (g.name || g.jid) + '</span></div>';
+                }).join('');
+            }
+
+            async function toggleWaGroupFavorite(jid, name, saved) {
+                try {
+                    const ref = db.collection('alignWaGroupFavorites').doc(String(jid).replace(/[\\/]/g, '_'));
+                    if (saved) { await ref.delete(); }
+                    else { await ref.set({ name: name, jid: jid, savedAt: Date.now(), savedBy: (currentUser && currentUser.email) || '' }); }
+                } catch (e) { alert('❌ ' + e.message); return; }
+                await loadWaRemindFavorites();
+                renderWaGroupManager();
+            }
+
+            document.body.addEventListener('click', e => {
+                const star = e.target.closest('.wa-fav-star');
+                if (star) { toggleWaGroupFavorite(star.getAttribute('data-jid'), star.getAttribute('data-name'), star.getAttribute('data-saved') === '1'); return; }
+                if (e.target.closest('#wa-remind-manage-groups')) { openWaGroupsManager(); }
+            });
+
             async function submitWaRemind() {
                 if (!waRemindCtx) return;
-                const box = document.getElementById('wa-remind-members');
-                const picked = box.querySelector('input[name="wa-remind-member"]:checked');
-                if (!picked) { alert('Please select a team member first.'); return; }
-                const email = String(picked.value || '').toLowerCase();
-                const member = waRemindCtx.members.find(m => m.email === email);
-                if (!member || !member.wa) { alert('This member has no WhatsApp number saved. Add it in Settings → Sub User Management.'); return; }
+                const memberBoxes = Array.from(document.querySelectorAll('#wa-remind-members .wa-remind-member-cb:checked'));
+                const groupBoxes = Array.from(document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb:checked'));
+                if (!memberBoxes.length && !groupBoxes.length) { alert('Select at least one team member or group first.'); return; }
                 const t = waRemindCtx.task || {};
                 const due = t.dueDate ? formatTaskTimestamp(t.dueDate) : '';
-                const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
-                    (due ? ('\n🗓️ Due: ' + due) : '') +
-                    '\n👤 For: ' + member.name +
-                    '\n\nPlease check and update the board when done.';
                 const sendBtn = document.getElementById('wa-remind-send');
                 if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
                 try {
-                    await db.collection('alignWaQueue').add({
-                        target: member.wa,
-                        message: msg,
-                        taskId: waRemindCtx.taskId,
-                        taskTitle: String(t.description || '').substring(0, 80),
-                        toName: member.name,
-                        status: 'pending',
-                        source: 'aligntasks-web',
-                        createdAt: new Date()
-                    });
+                    let sent = 0;
+                    for (const cb of memberBoxes) {
+                        const email = String(cb.value || '').toLowerCase();
+                        const member = (waRemindCtx.members || []).find(m => m.email === email);
+                        if (!member || !member.wa) continue;
+                        const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
+                            (due ? ('\n🗓️ Due: ' + due) : '') +
+                            '\n👤 For: ' + member.name +
+                            '\n\nPlease check and update the board when done.';
+                        await db.collection('alignWaQueue').add({
+                            target: member.wa, targetType: 'member', message: msg,
+                            taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
+                            toName: member.name, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
+                        });
+                        sent++;
+                    }
+                    for (const cb of groupBoxes) {
+                        const jid = cb.value;
+                        const gname = cb.getAttribute('data-name') || jid;
+                        if (!jid) continue;
+                        const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
+                            (due ? ('\n🗓️ Due: ' + due) : '') +
+                            '\n👥 Group reminder' +
+                            '\n\nPlease check and update the board when done.';
+                        await db.collection('alignWaQueue').add({
+                            target: jid, targetType: 'group', message: msg,
+                            taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
+                            toName: gname, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
+                        });
+                        sent++;
+                    }
                     document.getElementById('wa-remind-modal').classList.add('hidden');
                     waRemindCtx = null;
+                    alert('✅ Reminder queued for ' + sent + ' destination' + (sent === 1 ? '' : 's') + '. It will be sent from WhatsApp within seconds. 💬');
                 } catch (e) {
                     alert('❌ ' + (e.message || 'Failed to queue reminder'));
                 } finally {

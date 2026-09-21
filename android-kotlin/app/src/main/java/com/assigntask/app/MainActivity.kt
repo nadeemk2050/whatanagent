@@ -2637,9 +2637,10 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
         WhatsAppTargetsDialog(
             task = task,
             onDismiss = { showWaTargetsPicker = false },
-            onSend = { selected ->
+            onSend = { selected, groups ->
                 showWaTargetsPicker = false
                 sendAlignWhatsAppReminder(waPickerContext, task, selected)
+                groups.forEach { (gname, gjid) -> sendAlignWhatsAppGroupReminder(waPickerContext, task, gname, gjid) }
             }
         )
     }
@@ -2833,13 +2834,84 @@ fun ReminderTargetsDialog(
 
 // The one-tap WhatsApp member picker: shows every team member with their WhatsApp number
 // (like the webapp) and queues the reminder for the chosen member - no typos, no guessing.
+// Queue a WhatsApp reminder for a GROUP (targetType=group) - the Railway server sends it in seconds.
+fun sendAlignWhatsAppGroupReminder(context: android.content.Context, task: Task, groupName: String, groupJid: String) {
+    if (!groupJid.endsWith("@g.us")) {
+        Toast.makeText(context, "❌ Invalid group target", Toast.LENGTH_LONG).show()
+        return
+    }
+    val db = FirebaseFirestore.getInstance()
+    val due = task.dueDate ?: ""
+    val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
+        (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
+        "\n👥 Group reminder" +
+        "\n\nPlease check and update the board when done."
+    db.collection("alignWaQueue").add(
+        mapOf(
+            "target" to groupJid,
+            "targetType" to "group",
+            "message" to msg,
+            "taskId" to task.id,
+            "taskTitle" to task.description.take(80),
+            "toName" to groupName.ifBlank { groupJid },
+            "status" to "pending",
+            "source" to "aligntasks-android",
+            "createdAt" to System.currentTimeMillis()
+        )
+    ).addOnSuccessListener {
+        Toast.makeText(context, "✅ Group reminder queued for " + groupName.ifBlank { groupJid }, Toast.LENGTH_SHORT).show()
+    }.addOnFailureListener { e ->
+        Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+    }
+}
+
 @Composable
-fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<String>) -> Unit) {
+fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<String>, List<Pair<String, String>>) -> Unit) {
     val context = LocalContext.current
     var loading by remember { mutableStateOf(true) }
     var members by remember { mutableStateOf(listOf<Triple<String, String, String>>()) }
-    var selectedEmail by remember { mutableStateOf("") }
+    val selectedEmails = remember { mutableStateMapOf<String, Boolean>() }
+    var groupsLoading by remember { mutableStateOf(true) }
+    var favoriteGroups by remember { mutableStateOf(listOf<Pair<String, String>>()) } // name -> jid
+    val selectedGroups = remember { mutableStateMapOf<String, Boolean>() }               // jid -> checked
+    var showGroupManager by remember { mutableStateOf(false) }
+    var groupQuery by remember { mutableStateOf("") }
+    var allGroups by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     val assigneeDefault = (task.assigneeEmail ?: "").lowercase()
+    val myEmail = FirebaseAuth.getInstance().currentUser?.email?.lowercase() ?: ""
+
+    fun loadFavorites() {
+        FirebaseFirestore.getInstance().collection("alignWaGroupFavorites").limit(60).get()
+            .addOnSuccessListener { snap ->
+                favoriteGroups = snap.documents.mapNotNull { d ->
+                    val v = d.data ?: return@mapNotNull null
+                    val jid = (v["jid"] as? String) ?: d.id
+                    val name = (v["name"] as? String) ?: jid
+                    name to jid
+                }
+                groupsLoading = false
+            }
+            .addOnFailureListener { groupsLoading = false }
+    }
+    fun loadAllGroups() {
+        FirebaseFirestore.getInstance().document("appData/alignWaGroupsIndex").get()
+            .addOnSuccessListener { snap ->
+                val v = snap.data ?: emptyMap()
+                @Suppress("UNCHECKED_CAST")
+                val list = (v["groups"] as? List<Map<String, Any>>) ?: emptyList()
+                allGroups = list.mapNotNull { g ->
+                    val jid = (g["jid"] as? String) ?: return@mapNotNull null
+                    val name = (g["name"] as? String) ?: jid
+                    name to jid
+                }
+            }
+    }
+    fun toggleFavorite(name: String, jid: String, saved: Boolean) {
+        val ref = FirebaseFirestore.getInstance().collection("alignWaGroupFavorites").document(jid.replace("/", "_"))
+        if (saved) ref.delete().addOnSuccessListener { loadFavorites() }
+        else ref.set(mapOf("name" to name, "jid" to jid, "savedBy" to myEmail, "savedAt" to System.currentTimeMillis()))
+            .addOnSuccessListener { loadFavorites() }
+    }
 
     LaunchedEffect(task.id) {
         FirebaseFirestore.getInstance().collection("$REMINDER_BASE/staff").get()
@@ -2856,49 +2928,96 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                 members = list
                 val preferred = list.firstOrNull { it.first == assigneeDefault && it.third.isNotBlank() }
                     ?: list.firstOrNull { it.third.isNotBlank() }
-                selectedEmail = preferred?.first ?: ""
+                if (preferred != null) selectedEmails[preferred.first] = true
                 loading = false
             }
             .addOnFailureListener { e ->
                 Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
                 loading = false
             }
+        loadFavorites()
+        loadAllGroups()
     }
+
+    val favIds = favoriteGroups.map { it.second }.toSet()
+    val filteredAll = allGroups.filter { groupQuery.isBlank() || it.first.contains(groupQuery, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Send WhatsApp Reminder") },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                 Text("\"${task.description.take(70)}\"", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(6.dp))
-                Text("Select the team member to remind", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
+                Text("Team members (select one or more)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                 when {
                     loading -> Text("Loading team members…", style = MaterialTheme.typography.bodySmall)
                     members.isEmpty() -> Text("No team members found. Add them in Add Sub User.", style = MaterialTheme.typography.bodySmall)
-                    else -> Column(modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
-                        members.forEach { (email, name, wa) ->
-                            val hasWa = wa.isNotBlank()
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickable(enabled = hasWa) { selectedEmail = email }
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = selectedEmail == email,
-                                    onClick = { if (hasWa) selectedEmail = email },
-                                    enabled = hasWa
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(name, style = MaterialTheme.typography.bodyMedium)
+                    else -> members.forEach { (email, name, wa) ->
+                        val hasWa = wa.isNotBlank()
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable(enabled = hasWa) { selectedEmails[email] = !(selectedEmails[email] ?: false) }
+                                .padding(vertical = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = selectedEmails[email] == true,
+                                onCheckedChange = { c -> if (hasWa) selectedEmails[email] = c },
+                                enabled = hasWa
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(name, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Text(
+                                text = if (hasWa) "+$wa" else "no WhatsApp number",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (hasWa) androidx.compose.ui.graphics.Color(0xFF10B981) else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("📢 WhatsApp groups (favorites)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showGroupManager = !showGroupManager }) { Text(if (showGroupManager) "Done" else "⭐ Manage", style = MaterialTheme.typography.labelMedium) }
+                }
+                when {
+                    groupsLoading -> Text("Loading favorite groups…", style = MaterialTheme.typography.bodySmall)
+                    favoriteGroups.isEmpty() -> Text("No favorite groups yet — tap ⭐ Manage to star the groups you use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                    else -> favoriteGroups.forEach { (name, jid) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { selectedGroups[jid] = !(selectedGroups[jid] ?: false) }
+                                .padding(vertical = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = selectedGroups[jid] == true, onCheckedChange = { c -> selectedGroups[jid] = c })
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                if (showGroupManager) {
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = groupQuery,
+                        onValueChange = { groupQuery = it },
+                        label = { Text("Search all groups (" + allGroups.size + ")") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    if (allGroups.isEmpty()) {
+                        Text("Groups list not ready yet — it updates automatically from the WhatsApp session.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                    } else {
+                        Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
+                            filteredAll.take(150).forEach { (name, jid) ->
+                                val saved = favIds.contains(jid)
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { toggleFavorite(name, jid, saved) }, modifier = Modifier.size(32.dp)) {
+                                        Text(if (saved) "⭐" else "☆", style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Text(name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                 }
-                                Text(
-                                    text = if (hasWa) "+$wa" else "no WhatsApp number",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (hasWa) androidx.compose.ui.graphics.Color(0xFF10B981) else MaterialTheme.colorScheme.error
-                                )
                             }
                         }
                     }
@@ -2906,10 +3025,15 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
             }
         },
         confirmButton = {
+            val count = selectedEmails.count { it.value } + selectedGroups.count { it.value }
             Button(
-                enabled = selectedEmail.isNotBlank(),
-                onClick = { if (selectedEmail.isNotBlank()) onSend(listOf(selectedEmail)) }
-            ) { Text("💬 Send on WhatsApp") }
+                enabled = count > 0,
+                onClick = {
+                    val emails = members.map { it.first }.filter { selectedEmails[it] == true }
+                    val groups = favoriteGroups.filter { selectedGroups[it.second] == true }
+                    if (emails.isNotEmpty() || groups.isNotEmpty()) onSend(emails, groups)
+                }
+            ) { Text("💬 Send ($count)") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

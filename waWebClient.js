@@ -972,6 +972,7 @@ export async function runDashboardBossCommand(text, opts = {}) {
 //     in-memory tick that WhatsApps the assignee the moment a task's due time arrives (once each).
 let alignNotifyInit = false;
 let alignTickTimer = null;
+let alignGroupsTimer = null;
 let alignQueueUnsub = null;
 let alignTasksUnsubA = null;
 let alignTasksUnsubB = null;
@@ -979,6 +980,7 @@ let alignStaffUnsub = null;
 const alignTasksCache = new Map();     // task id -> { ref, data, src }
 const alignStaffWaMap = new Map();     // email -> { name, wa }
 let alignQueueBusy = false;
+let lastGroupsIndexAt = 0;
 
 function normalizeWaNumber(raw) {
   let d = String(raw || '').replace(/[^0-9]/g, '');
@@ -988,19 +990,54 @@ function normalizeWaNumber(raw) {
   return d;
 }
 
+// 📢 WhatsApp groups index — one small doc both apps read to offer group reminders
+// (kept fresh by this node only: it holds the live session; written at most every 6h).
+export async function refreshWaGroupsIndex(force = false) {
+  if (!globalDb) return 0;
+  if (!force && Date.now() - lastGroupsIndexAt < 6 * 3600 * 1000) return 0;
+  if (waWebState.status !== 'connected') return 0;   // only the live node writes the index
+  try {
+    const groups = [];
+    for (const chat of waWebState.chats.values()) {
+      if (!chat || !chat.isGroup) continue;
+      const name = String(chat.name || '').trim();
+      if (!name || /^[0-9+\-\s]+$/.test(name)) continue;
+      groups.push({ name: name, jid: chat.id });
+    }
+    if (!groups.length) return 0;   // never clobber a good index with an empty one
+    groups.sort((a, b) => a.name.localeCompare(b.name));
+    await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, updatedAt: Date.now() }, { merge: true });
+    lastGroupsIndexAt = Date.now();
+    console.log('[ALIGN WA] 📢 Groups index updated: ' + groups.length + ' WhatsApp groups available for reminders');
+    return groups.length;
+  } catch (e) { console.warn('[ALIGN WA] groups index failed: ' + e.message); return 0; }
+}
+
 async function processAlignQueueItem(ref, d) {
   try {
-    const target = normalizeWaNumber(d.target);
-    if (!target) {
-      await setDoc(ref, { status: 'failed', error: 'no-target', processedAt: Date.now() }, { merge: true });
-      return;
+    const rawTarget = String(d.target || '').trim();
+    const isGroup = d.targetType === 'group' || /@g\.us$/i.test(rawTarget);
+    let toJid = '';
+    if (isGroup) {
+      toJid = /@g\.us$/i.test(rawTarget) ? rawTarget : '';
+      if (!toJid) {
+        await setDoc(ref, { status: 'failed', error: 'bad-group-target', processedAt: Date.now() }, { merge: true });
+        return;
+      }
+    } else {
+      const target = normalizeWaNumber(rawTarget);
+      if (!target) {
+        await setDoc(ref, { status: 'failed', error: 'no-target', processedAt: Date.now() }, { merge: true });
+        return;
+      }
+      toJid = target + '@s.whatsapp.net';
     }
     if (!sock || waWebState.status !== 'connected') return;   // leave pending - the 45s tick retries
     let msg = String(d.message || '').substring(0, 900);
     msg = await ensureNoDevanagari(msg);   // company-wide NO-HINDI rule
-    await sendWaWebMessage(target + '@s.whatsapp.net', msg);
+    await sendWaWebMessage(toJid, msg);
     await setDoc(ref, { status: 'sent', sentAt: Date.now() }, { merge: true });
-    console.log('[ALIGN WA] 💬 Reminder sent to +' + target + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 60) + '"') : ''));
+    console.log('[ALIGN WA] 💬 Reminder sent to ' + (isGroup ? ('group "' + (d.toName || '') + '"') : ('+' + rawTarget)) + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 60) + '"') : ''));
   } catch (e) {
     try { await setDoc(ref, { status: 'failed', error: String((e && e.message) || e).substring(0, 200), processedAt: Date.now() }, { merge: true }); } catch (_) {}
     console.warn('[ALIGN WA] queue item failed:', (e && e.message) || e);
@@ -1085,7 +1122,10 @@ function initAlignNotifySystem(db) {
       });
     }, () => {});
     if (!alignTickTimer) alignTickTimer = setInterval(alignNotifyTick, 45000);
-    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue)');
+    // Keep the groups index fresh for the webapp/Android group reminders (self-throttled to 6h)
+    setTimeout(() => { refreshWaGroupsIndex(true); }, 30000);
+    if (!alignGroupsTimer) alignGroupsTimer = setInterval(() => { refreshWaGroupsIndex(); }, 60 * 60 * 1000);
+    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders)');
   } catch (e) {
     console.warn('[ALIGN WA] init failed:', e.message);
   }
