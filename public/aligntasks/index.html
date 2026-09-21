@@ -67,7 +67,7 @@
                 <div class="flex justify-between items-center mb-4">
                     <div>
                         <h1 class="text-3xl font-bold text-gray-800">AlignTasks</h1>
-                        <p id="app-version-label" class="text-xs text-gray-500 mt-1">Version 1.5</p>
+                        <p id="app-version-label" class="text-xs text-gray-500 mt-1">Version 1.6</p>
                         <div id="user-info-badge" class="mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded"></div>
                     </div>
                     <div class="flex items-center gap-3">
@@ -89,6 +89,7 @@
                                 <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
                                 <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Add Sub Users</button>
                                 <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
+                                <button id="menu-group-updates" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📢 Group Updates</button>
                                 <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
                             </div>
                         </div>
@@ -333,6 +334,44 @@
                 </div>
             </div>
             <div id="scheduled-reminders-list" class="p-4 overflow-y-auto space-y-3"></div>
+        </div>
+    </div>
+    <div id="group-updates-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">📢 WhatsApp Group Updates</h3>
+                <button id="group-updates-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-4">
+                <p class="text-xs text-gray-500">Team updates are sent by the server from your WhatsApp session — the app does not need to stay open.</p>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">💬 Announcement group <span class="text-xs text-gray-400">(⭐ = your favorites)</span></label>
+                    <select id="gu-group" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <option value="">Loading groups…</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">The list comes from the live WhatsApp groups index (auto-updates every 6 hours).</p>
+                </div>
+                <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="gu-instant" class="h-4 w-4 mt-0.5" checked />
+                    <span>✅ <b>Instant completion announcements</b> — when any task is marked Done, the group gets it live: who finished it + how many tasks that member completed today.</span>
+                </label>
+                <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="gu-weekly" class="h-4 w-4 mt-0.5" />
+                    <span>📊 <b>Weekly summary</b> — every week the group gets a summary: who completed how many tasks out of the team total.</span>
+                </label>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-xs text-gray-500">📅 Summary day</label>
+                        <select id="gu-day" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                            <option value="0">Sunday</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6" selected>Saturday</option>
+                        </select></div>
+                    <div><label class="text-xs text-gray-500">⏰ Summary time (Dubai)</label>
+                        <select id="gu-hour" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white"></select></div>
+                </div>
+                <div class="flex justify-between items-center pt-1">
+                    <p id="gu-status" class="text-xs"></p>
+                    <button id="gu-save" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">💾 Save settings</button>
+                </div>
+            </div>
         </div>
     </div>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
@@ -1204,6 +1243,108 @@
                     try { await db.collection('alignWaSchedules').doc(rm.getAttribute('data-id')).delete(); await loadScheduledReminders(); } catch (err) { alert('❌ ' + (err.message || err)); }
                 }
             });
+            // ===== On-device notifications: "task completed" pops up on the phone too (alongside WhatsApp) =====
+            function tsMsLocal(v) {
+                if (!v) return 0;
+                if (typeof v === 'number') return v;
+                if (typeof v.toMillis === 'function') { try { return v.toMillis(); } catch (e) {} }
+                if (typeof v.seconds === 'number') return v.seconds * 1000;
+                if (typeof v._seconds === 'number') return v._seconds * 1000;
+                return 0;
+            }
+            function todayStartMsLocal() { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+            const taskDoneNotifyCache = {};
+            function noteTaskCompletions(src, tasks) {
+                try {
+                    if (!Array.isArray(tasks)) return;
+                    const t0 = todayStartMsLocal();
+                    for (const task of tasks) {
+                        const key = src + ':' + task.id;
+                        const prev = taskDoneNotifyCache[key];
+                        const nowDone = task.status === 'Done';
+                        if (prev && prev !== 'Done' && nowDone && 'Notification' in window && Notification.permission === 'granted') {
+                            const who = String(task.completedBy || task.lastUpdatedBy || 'A team member').split('@')[0];
+                            const myCount = tasks.filter(x => x.status === 'Done' && String(x.completedBy || '') === String(task.completedBy || '') && tsMsLocal(x.completedAt) >= t0).length;
+                            try {
+                                new Notification('✅ Task completed — ' + who, {
+                                    body: String(task.description || '').substring(0, 120) + (myCount ? ('\n📊 ' + who + ' today: ' + myCount + ' ✅') : ''),
+                                    icon: 'icons/192.png',
+                                    tag: key
+                                });
+                            } catch (e) {}
+                        }
+                        taskDoneNotifyCache[key] = task.status || '';
+                    }
+                } catch (e) {}
+            }
+
+            // ===== Group updates settings (assign the announcement group + weekly summary day/time) =====
+            async function openGroupUpdates() {
+                const modal = document.getElementById('group-updates-modal');
+                modal.classList.remove('hidden');
+                const statusEl = document.getElementById('gu-status');
+                statusEl.innerText = '';
+                statusEl.className = 'text-xs';
+                const sel = document.getElementById('gu-group');
+                sel.innerHTML = '<option value="">Loading groups…</option>';
+                let cfg = {};
+                try { const cs = await db.doc('appData/alignAnnounceConfig').get(); cfg = cs.exists ? (cs.data() || {}) : {}; } catch (e) {}
+                let favs = [];
+                try { const fs = await db.collection('alignWaGroupFavorites').orderBy('savedAt', 'desc').limit(60).get(); favs = fs.docs.map(d => d.data() || {}); }
+                catch (e1) { try { const fs2 = await db.collection('alignWaGroupFavorites').limit(60).get(); favs = fs2.docs.map(d => d.data() || {}); } catch (e2) {} }
+                let all = [];
+                try { const gi = await db.doc('appData/alignWaGroupsIndex').get(); all = (gi.exists && Array.isArray((gi.data() || {}).groups)) ? gi.data().groups : []; } catch (e) {}
+                const favJids = new Set(favs.map(f => String(f.jid || '')));
+                const opts = favs.map(f => ({ jid: String(f.jid || ''), label: '⭐ ' + (f.name || f.jid) })).filter(o => o.jid);
+                all.forEach(g => { const jid = String(g.jid || ''); if (jid && !favJids.has(jid)) opts.push({ jid: jid, label: g.name || jid }); });
+                sel.innerHTML = '<option value="">— choose a group —</option>' + opts.map(o => '<option value="' + o.jid.replace(/"/g, '&quot;') + '" data-name="' + waEsc(o.label).replace(/"/g, '&quot;') + '">' + waEsc(o.label) + '</option>').join('');
+                if (cfg.groupJid) {
+                    const curJid = String(cfg.groupJid);
+                    if (!opts.some(o => o.jid === curJid)) {
+                        sel.innerHTML += '<option value="' + curJid.replace(/"/g, '&quot;') + '" data-name="' + waEsc(cfg.groupName || curJid).replace(/"/g, '&quot;') + '">' + waEsc((cfg.groupName || curJid) + ' (current)') + '</option>';
+                    }
+                    sel.value = curJid;
+                }
+                document.getElementById('gu-instant').checked = cfg.instantEnabled !== false;
+                document.getElementById('gu-weekly').checked = !!cfg.weeklyEnabled;
+                document.getElementById('gu-day').value = String(cfg.weeklyDay == null ? 6 : Number(cfg.weeklyDay));
+                document.getElementById('gu-hour').value = String(cfg.weeklyHour == null ? 18 : Number(cfg.weeklyHour));
+            }
+
+            async function saveGroupUpdates() {
+                const statusEl = document.getElementById('gu-status');
+                try {
+                    const sel = document.getElementById('gu-group');
+                    const jid = String(sel.value || '').trim();
+                    if (!jid || !/@g\.us$/i.test(jid)) throw new Error('Choose a WhatsApp group first');
+                    const name = sel.options[sel.selectedIndex] ? String(sel.options[sel.selectedIndex].getAttribute('data-name') || jid).replace(/^⭐ /, '') : jid;
+                    await db.doc('appData/alignAnnounceConfig').set({
+                        groupJid: jid,
+                        groupName: name,
+                        instantEnabled: document.getElementById('gu-instant').checked,
+                        weeklyEnabled: document.getElementById('gu-weekly').checked,
+                        weeklyDay: parseInt(document.getElementById('gu-day').value, 10),
+                        weeklyHour: parseInt(document.getElementById('gu-hour').value, 10),
+                        updatedAt: Date.now(),
+                        updatedBy: (currentUser && currentUser.email) || ''
+                    }, { merge: true });
+                    statusEl.innerText = '✅ Saved — updates will be sent to "' + name + '".';
+                    statusEl.className = 'text-xs text-green-600';
+                } catch (e) {
+                    statusEl.innerText = '❌ ' + (e.message || e);
+                    statusEl.className = 'text-xs text-red-600';
+                }
+            }
+
+            (function () {
+                const sel = document.getElementById('gu-hour');
+                for (let h = 0; h < 24; h++) {
+                    const o = document.createElement('option');
+                    o.value = String(h);
+                    o.text = (h < 10 ? '0' : '') + h + ':00';
+                    sel.appendChild(o);
+                }
+            })();
             if ('Notification' in window && Notification.permission === 'default') {
                 setTimeout(() => { try { Notification.requestPermission(); } catch (e) {} }, 5000);
             }
@@ -1686,6 +1827,8 @@
             document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
             document.getElementById('scheduled-reminders-close').addEventListener('click', closeScheduledReminders);
             document.getElementById('scheduled-refresh').addEventListener('click', loadScheduledReminders);
+            document.getElementById('group-updates-close').addEventListener('click', () => document.getElementById('group-updates-modal').classList.add('hidden'));
+            document.getElementById('gu-save').addEventListener('click', saveGroupUpdates);
 
             // --- Firestore Listeners ---
             function setupFirestoreListeners() {
@@ -1705,7 +1848,11 @@
                 currentUnsubscribes.push(unsub);
 
                 unsub = db.collection(`/artifacts/${appId}/public/data/tasks_for_all`).orderBy("createdAt", "desc").onSnapshot(
-                    snapshot => renderTasksForAll(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))),
+                    snapshot => {
+                        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        noteTaskCompletions('tasks_for_all', tasks);
+                        renderTasksForAll(tasks);
+                    },
                     error => showAppError('Error fetching general tasks.', error)
                 );
                 currentUnsubscribes.push(unsub);
@@ -1720,6 +1867,7 @@
                     unsub = db.collection(`/artifacts/${appId}/public/data/tasks`).orderBy("createdAt", "desc").onSnapshot(async tasksSnap => {
                         const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()}));
                         startAlarmChecker(tasks);
+                        noteTaskCompletions('tasks', tasks);
                         completedCounts.team = tasks.filter(t => t.status === 'Done').length;
                         updateCompletedBadge();
                         const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).orderBy("name").get();
@@ -1744,6 +1892,7 @@
                         tasksSnap => {
                              const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()}));
                              startAlarmChecker(tasks);
+                             noteTaskCompletions('tasks', tasks);
                              completedCounts.team = tasks.filter(t => t.status === 'Done').length;
                              updateCompletedBadge();
                              renderUserIndividualTasks(tasks)
@@ -1881,6 +2030,10 @@
             document.getElementById('menu-scheduled-reminders').addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 openScheduledReminders();
+            });
+            document.getElementById('menu-group-updates').addEventListener('click', () => {
+                accountMenu.classList.add('hidden');
+                openGroupUpdates();
             });
             menuEditProfile.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');

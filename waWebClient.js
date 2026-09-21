@@ -1163,6 +1163,121 @@ async function processDueSchedules() {
   } catch (e) { /* collection may not exist yet - ignore */ }
 }
 
+// ================= GROUP ANNOUNCEMENTS (completion + weekly summary) =================
+// appData/alignAnnounceConfig: { groupJid, groupName, instantEnabled, weeklyEnabled, weeklyDay (0=Sun..6=Sat),
+//   weeklyHour (Dubai), lastWeeklyKey, updatedAt, updatedBy } — set from the AlignTasks webapp (Menu → 📢 Group Updates).
+// Instant: any task transitioning to Done (from ANY client: webapp, Android, WhatsApp) is announced in the group
+//          with that member's daily completed count. Weekly: a who-did-how-many summary on the configured day/time.
+let alignAnnounceConfig = {};
+let alignAnnounceUnsub = null;
+let alignWeeklyBusy = false;
+
+function tsToMs(v) {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'object') {
+    if (typeof v.toMillis === 'function') { try { return v.toMillis(); } catch (e) {} }
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+    if (typeof v._seconds === 'number') return v._seconds * 1000;
+  }
+  return 0;
+}
+function dubaiDayStartMs(nowMs) { return Math.floor((nowMs + 4 * 3600 * 1000) / 86400000) * 86400000 - 4 * 3600 * 1000; }
+
+async function announceTaskCompletion(ref, task) {
+  try {
+    const cfg = alignAnnounceConfig || {};
+    if (!cfg.groupJid || !/@g\.us$/i.test(String(cfg.groupJid))) return;   // no announcement group assigned yet
+    if (cfg.instantEnabled === false) return;
+    if (!sock || waWebState.status !== 'connected') return;
+    const email = String(task.completedBy || '').toLowerCase();
+    const staffEntry = email ? alignStaffWaMap.get(email) : null;
+    const name = (staffEntry && staffEntry.name) || (email ? email.split('@')[0] : 'A team member');
+    const doneMs = tsToMs(task.completedAt) || Date.now();
+    const t0 = dubaiDayStartMs(Date.now());
+    let userCount = 0, teamCount = 0;
+    for (const entry of alignTasksCache.values()) {
+      const v = entry.data || {};
+      if (v.status !== 'Done') continue;
+      const ms = tsToMs(v.completedAt);
+      if (!ms || ms < t0) continue;
+      teamCount++;
+      if (entry.ref && ref && entry.ref.path === ref.path) continue;   // current task counted below (cache still holds its old data)
+      if (email && String(v.completedBy || '').toLowerCase() === email) userCount++;
+    }
+    userCount++; teamCount++;
+    const doneStr = new Date(doneMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const msg = '✅ *Task Completed*\n\n📋 "' + String(task.description || '').substring(0, 140) + '"\n👤 By: *' + name + '*\n🗓️ ' + doneStr + ' (Dubai)\n\n📊 *' + name + '* finished ' + userCount + ' task' + (userCount === 1 ? '' : 's') + ' today.\n🏁 Team total today: ' + teamCount + ' task' + (teamCount === 1 ? '' : 's') + '.';
+    try {
+      await Promise.race([
+        sendWaWebMessage(String(cfg.groupJid), msg),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+      ]);
+      console.log('[ALIGN ANNOUNCE] 📢 Completion announced in "' + (cfg.groupName || cfg.groupJid) + '" — ' + name + ' (' + userCount + ' today, team ' + teamCount + ')');
+    } catch (e) {
+      console.warn('[ALIGN ANNOUNCE] completion send failed: ' + ((e && e.message) || e));
+    }
+    await setDoc(ref, { waAnnounceSentAt: Date.now() }, { merge: true }).catch(() => {});
+  } catch (e) { console.warn('[ALIGN ANNOUNCE] failed: ' + ((e && e.message) || e)); }
+}
+
+async function maybeSendWeeklySummary() {
+  try {
+    const cfg = alignAnnounceConfig || {};
+    if (!cfg.weeklyEnabled) return;
+    if (!cfg.groupJid || !/@g\.us$/i.test(String(cfg.groupJid))) return;
+    if (!sock || waWebState.status !== 'connected') return;
+    if (alignWeeklyBusy) return;
+    const nowDubai = new Date(Date.now() + 4 * 3600 * 1000);
+    const day = nowDubai.getUTCDay();
+    const hour = nowDubai.getUTCHours();
+    const wantDay = (cfg.weeklyDay == null ? 6 : Number(cfg.weeklyDay));
+    const wantHour = (cfg.weeklyHour == null ? 18 : Number(cfg.weeklyHour));
+    const key = nowDubai.toISOString().slice(0, 10) + 'T' + wantHour;
+    if (day !== wantDay || hour !== wantHour) return;
+    if (cfg.lastWeeklyKey === key) return;
+    alignWeeklyBusy = true;
+    try {
+      const t0 = dubaiDayStartMs(Date.now() - 6 * 86400000);
+      const perUser = new Map();
+      let total = 0;
+      for (const entry of alignTasksCache.values()) {
+        const v = entry.data || {};
+        if (v.status !== 'Done') continue;
+        const ms = tsToMs(v.completedAt);
+        if (!ms || ms < t0) continue;
+        total++;
+        const email = String(v.completedBy || '').toLowerCase() || 'unknown';
+        const staffEntry = alignStaffWaMap.get(email);
+        const nm = (staffEntry && staffEntry.name) || (email !== 'unknown' ? email.split('@')[0] : 'Unknown');
+        const cur = perUser.get(email) || { name: nm, count: 0 };
+        cur.count++;
+        perUser.set(email, cur);
+      }
+      const rows = Array.from(perUser.values()).sort((a, b) => b.count - a.count);
+      const fromYmd = dubaiYmd(Date.now() - 6 * 86400000);
+      const toYmd = dubaiYmd(Date.now());
+      let msg = '📊 *Weekly AlignTasks Summary*\n🗓️ ' + fromYmd + ' → ' + toYmd + '\n\n';
+      if (!rows.length) {
+        msg += 'No tasks were completed this week yet — let\'s pick it up! 💪';
+      } else {
+        rows.forEach((r, i) => { msg += (i === 0 ? '🏆 ' : '• ') + r.name + ' — *' + r.count + '* task' + (r.count === 1 ? '' : 's') + '\n'; });
+        msg += '\n✅ *Team total: ' + total + ' task' + (total === 1 ? '' : 's') + ' completed this week*\n🥇 Top performer: *' + rows[0].name + '* (' + rows[0].count + ')';
+      }
+      try {
+        await Promise.race([
+          sendWaWebMessage(String(cfg.groupJid), msg),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+        ]);
+        console.log('[ALIGN ANNOUNCE] 📊 Weekly summary sent to "' + (cfg.groupName || cfg.groupJid) + '" (' + total + ' tasks, ' + rows.length + ' member' + (rows.length === 1 ? '' : 's') + ')');
+      } catch (e) {
+        console.warn('[ALIGN ANNOUNCE] weekly summary send failed: ' + ((e && e.message) || e));
+      }
+      await setDoc(doc(globalDb, 'appData', 'alignAnnounceConfig'), { lastWeeklyKey: key, lastWeeklyAt: Date.now() }, { merge: true }).catch(() => {});
+    } finally { alignWeeklyBusy = false; }
+  } catch (e) { /* ignore */ }
+}
+
 async function alignNotifyTick() {
   try {
     if (!globalDb || waWebState.status !== 'connected') return;
@@ -1214,6 +1329,8 @@ async function alignNotifyTick() {
       alignSchedBusy = true;
       try { await processDueSchedules(); } catch (e) { /* ignore */ } finally { alignSchedBusy = false; }
     }
+    // 4) weekly group summary (configurable day/time, default Saturday 18:00 Dubai)
+    await maybeSendWeeklySummary();
   } catch (e) { /* ignore */ }
 }
 
@@ -1231,7 +1348,13 @@ function initAlignNotifySystem(db) {
     const handleTaskSnap = (snap, src) => {
       snap.docChanges().forEach(ch => {
         if (ch.type === 'removed') { alignTasksCache.delete(ch.doc.id); return; }
-        alignTasksCache.set(ch.doc.id, { ref: ch.doc.ref, data: ch.doc.data() || {}, src: src });
+        const data = ch.doc.data() || {};
+        const prev = alignTasksCache.get(ch.doc.id);
+        // status transition -> Done (from any client: webapp, Android, WhatsApp) = group completion announcement
+        if (ch.type === 'modified' && prev && prev.data && prev.data.status !== 'Done' && data.status === 'Done') {
+          announceTaskCompletion(ch.doc.ref, data).catch(() => {});
+        }
+        alignTasksCache.set(ch.doc.id, { ref: ch.doc.ref, data: data, src: src });
       });
     };
     alignTasksUnsubA = onSnapshot(collection(db, ALIGNTASKS_BASE + '/tasks'), s => handleTaskSnap(s, 'tasks'), () => {});
@@ -1245,11 +1368,15 @@ function initAlignNotifySystem(db) {
         alignStaffWaMap.set(email, { name: String(v.name || '').trim(), wa: normalizeWaNumber(v.whatsappNumber || '') });
       });
     }, () => {});
+    // Announcements config (assigned WhatsApp group + weekly summary schedule) - live from Firestore
+    alignAnnounceUnsub = onSnapshot(doc(db, 'appData', 'alignAnnounceConfig'), ds => {
+      alignAnnounceConfig = ds.exists() ? (ds.data() || {}) : {};
+    }, () => {});
     if (!alignTickTimer) alignTickTimer = setInterval(alignNotifyTick, 45000);
     // Keep the groups index fresh for the webapp/Android group reminders (self-throttled to 6h)
     setTimeout(() => { refreshWaGroupsIndex(true); }, 30000);
     if (!alignGroupsTimer) alignGroupsTimer = setInterval(() => { refreshWaGroupsIndex(); }, 60 * 60 * 1000);
-    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders + scheduled reminders)');
+    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders + scheduled reminders + completion announcements + weekly summaries)');
   } catch (e) {
     console.warn('[ALIGN WA] init failed:', e.message);
   }
