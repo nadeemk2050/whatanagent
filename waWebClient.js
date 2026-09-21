@@ -1049,6 +1049,120 @@ async function processAlignQueueItem(ref, d) {
   }
 }
 
+// ================= SCHEDULED REMINDERS (alignWaSchedules) =================
+// A schedule doc (created from the AlignTasks webapp) looks like:
+// { message, targets:[{type:'member'|'group', id, name}], startAt, repeatMode:'once'|'count'|'until',
+//   repeatEveryMs, repeatCount, repeatUntil, aiRewrite, status:'pending'|'active'|'completed',
+//   sentCount, nextAt, lastSentAt, lastOk, lastFailed, lastMessage, history[] }
+// The 45s tick fires every due occurrence; when aiRewrite is on, the wording is rephrased each time
+// (season/occasion aware) via the same AI chain used everywhere else (Gemini → DeepSeek → Qwen).
+const SCHED_DONE_AT = 9999999999999;   // far-future sentinel keeps finished docs out of the "due" query
+let alignSchedBusy = false;
+
+async function rewriteScheduledReminderText(original, occurrenceNo, whenMs) {
+  try {
+    if (!original) return '';
+    const whenStr = new Date(whenMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const prompt = 'You rewrite short WhatsApp reminders for a Dubai-based company\'s team board (AlignTasks).\n' +
+      'Occurrence #' + occurrenceNo + ', sending now: ' + whenStr + ' (Dubai time).\n' +
+      'Rules:\n' +
+      '- Rewrite the reminder below with slightly different, fresh wording but keep EVERY fact, name, number and the "Due:" info 100% identical.\n' +
+      '- English ONLY — never Hindi/Urdu/Arabic/Devanagari characters.\n' +
+      '- Keep it short (under 400 chars) and WhatsApp-friendly, keep a similar emoji style.\n' +
+      '- If the date clearly matches a season/occasion (weekend, Eid, Ramadan, UAE National Day, New Year, summer etc), you may ONLY add a light, respectful touch — otherwise no occasion talk at all.\n' +
+      '- Never invent facts, amounts, promises or new deadlines.\n' +
+      'Return ONLY the rewritten message text, no quotes, no explanations.\n\nReminder to rewrite:\n"""' + original + '"""';
+    const out = await generateWaWebAutoBotReply('aligntasks-scheduler', 'Rewrite this reminder now.', prompt, null, 'gemini-3.6-flash');
+    const clean = String(out || '').trim().replace(/^["']+|["']+$/g, '');
+    if (clean && clean.length > 10) return clean.substring(0, 800);
+    return '';
+  } catch (e) { console.warn('[ALIGN SCHED] AI rewrite failed: ' + ((e && e.message) || e)); return ''; }
+}
+
+async function processScheduleOccurrence(ref, d) {
+  try {
+    const status = String(d.status || '');
+    if (status !== 'pending' && status !== 'active') return;
+    if (!sock || waWebState.status !== 'connected') return;   // retry on a later tick
+    const now = Date.now();
+    const nextAt = Number(d.nextAt || 0);
+    if (!nextAt || nextAt > now) return;
+    const baseMsg = String(d.message || '').substring(0, 800);
+    const occurrenceNo = (Number(d.sentCount) || 0) + 1;
+    let usedMsg = baseMsg;
+    if (d.aiRewrite) {
+      const rw = await rewriteScheduledReminderText(baseMsg, occurrenceNo, now);
+      if (rw) { usedMsg = rw; console.log('[ALIGN SCHED] 🤖 Occurrence #' + occurrenceNo + ' wording refreshed by AI'); }
+    }
+    usedMsg = await ensureNoDevanagari(usedMsg);
+    const targets = Array.isArray(d.targets) ? d.targets.slice(0, 25) : [];
+    let okCount = 0, failCount = 0;
+    for (const tg of targets) {
+      let toJid = '';
+      let extraLine = '';
+      if (String(tg.type) === 'group') {
+        const gid = String(tg.id || '').trim();
+        if (!/@g\.us$/i.test(gid)) { failCount++; continue; }
+        toJid = gid; extraLine = '\n👥 Group reminder';
+      } else {
+        const num = normalizeWaNumber(tg.id);
+        if (!num) { failCount++; continue; }
+        toJid = num + '@s.whatsapp.net';
+        extraLine = tg.name ? ('\n👤 For: ' + tg.name) : '';
+      }
+      try {
+        await Promise.race([
+          sendWaWebMessage(toJid, usedMsg + extraLine),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+        ]);
+        okCount++;
+      } catch (e) { failCount++; }
+    }
+    const history = Array.isArray(d.history) ? d.history.slice(0, 11) : [];
+    history.unshift({ at: now, occurrence: occurrenceNo, ai: !!d.aiRewrite, sent: okCount, failed: failCount, msg: usedMsg.substring(0, 200) });
+    const mode = String(d.repeatMode || 'once');
+    const interval = Math.max(60000, Number(d.repeatEveryMs) || 86400000);
+    const startAt = Number(d.startAt || nextAt);
+    let gonext = 0;
+    let complete = false;
+    if (mode === 'count') {
+      if (occurrenceNo >= Math.max(1, Number(d.repeatCount) || 1)) complete = true;
+      else gonext = startAt + occurrenceNo * interval;
+    } else if (mode === 'until') {
+      gonext = startAt + occurrenceNo * interval;
+      const until = Number(d.repeatUntil || 0);
+      if (!until || gonext > until) complete = true;
+    } else complete = true;   // 'once'
+    if (!complete && gonext <= now) gonext = now + interval;   // never lag behind after downtime
+    await setDoc(ref, {
+      status: complete ? 'completed' : 'active',
+      sentCount: occurrenceNo,
+      lastSentAt: now,
+      lastOk: okCount,
+      lastFailed: failCount,
+      lastMessage: usedMsg.substring(0, 300),
+      history: history.slice(0, 12),
+      nextAt: complete ? SCHED_DONE_AT : gonext
+    }, { merge: true });
+    const whenNext = complete ? 'done' : new Date(gonext).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    console.log('[ALIGN SCHED] ' + (complete ? '✅ completed' : '🔁 next at ' + whenNext) + ' — occurrence #' + occurrenceNo + ' sent to ' + okCount + '/' + targets.length + ' target(s)' + (failCount ? (' (' + failCount + ' failed)') : '') + (d.taskTitle ? (' — "' + String(d.taskTitle).substring(0, 40) + '"') : ''));
+  } catch (e) {
+    console.warn('[ALIGN SCHED] occurrence failed: ' + ((e && e.message) || e));
+  }
+}
+
+async function processDueSchedules() {
+  try {
+    const now = Date.now();
+    const qs = await getDocs(query(collection(globalDb, 'alignWaSchedules'), where('nextAt', '<=', now), limit(20)));
+    for (const docSnap of qs.docs) {
+      const d = docSnap.data() || {};
+      if (d.status !== 'pending' && d.status !== 'active') continue;
+      await processScheduleOccurrence(docSnap.ref, d);
+    }
+  } catch (e) { /* collection may not exist yet - ignore */ }
+}
+
 async function alignNotifyTick() {
   try {
     if (!globalDb || waWebState.status !== 'connected') return;
@@ -1095,6 +1209,11 @@ async function alignNotifyTick() {
         console.warn('[ALIGN WA] due reminder send failed:', (e && e.message) || e);
       }
     }
+    // 3) scheduled reminders (alignWaSchedules) - fire every due occurrence (once / N times / until a date)
+    if (!alignSchedBusy) {
+      alignSchedBusy = true;
+      try { await processDueSchedules(); } catch (e) { /* ignore */ } finally { alignSchedBusy = false; }
+    }
   } catch (e) { /* ignore */ }
 }
 
@@ -1130,7 +1249,7 @@ function initAlignNotifySystem(db) {
     // Keep the groups index fresh for the webapp/Android group reminders (self-throttled to 6h)
     setTimeout(() => { refreshWaGroupsIndex(true); }, 30000);
     if (!alignGroupsTimer) alignGroupsTimer = setInterval(() => { refreshWaGroupsIndex(); }, 60 * 60 * 1000);
-    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders)');
+    console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders + scheduled reminders)');
   } catch (e) {
     console.warn('[ALIGN WA] init failed:', e.message);
   }

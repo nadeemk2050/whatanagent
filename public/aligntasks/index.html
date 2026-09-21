@@ -88,6 +88,7 @@
                             <div id="account-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
                                 <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
                                 <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Add Sub Users</button>
+                                <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
                                 <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
                             </div>
                         </div>
@@ -252,9 +253,9 @@
         </div>
     </div>
     <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <div class="p-6 space-y-3">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-6 border-b flex justify-between items-center"><h3 id="wa-remind-title" class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
+            <div class="p-6 space-y-3 max-h-[75vh] overflow-y-auto">
                 <p id="wa-remind-task-text" class="text-sm text-gray-600"></p>
                 <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
                 <div id="wa-remind-members" class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
@@ -270,11 +271,68 @@
                         <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The groups list comes from the WhatsApp session and auto-updates.</p>
                     </div>
                 </div>
+                <div class="border border-gray-200 rounded-lg p-3 space-y-1">
+                    <label class="text-sm font-medium text-gray-700">✍️ Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
+                    <textarea id="wa-remind-message" rows="4" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="wa-remind-schedule-toggle" class="h-4 w-4" />
+                        🕓 Schedule for later (pick date, time &amp; repeat)
+                    </label>
+                    <div id="wa-remind-schedule-fields" class="hidden space-y-2 pt-1">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">📅 Date</label><input type="date" id="wa-remind-date" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                            <div><label class="text-xs text-gray-500">⏰ Time</label><input type="time" id="wa-remind-time" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">🔁 Repeat</label>
+                                <select id="wa-remind-repeat" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                    <option value="once">No repeat (once only)</option>
+                                    <option value="count">Repeat N times</option>
+                                    <option value="until">Repeat until a date</option>
+                                </select>
+                            </div>
+                            <div><label class="text-xs text-gray-500">⏱️ Every</label>
+                                <select id="wa-remind-interval" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                    <option value="900000">15 minutes</option>
+                                    <option value="1800000">30 minutes</option>
+                                    <option value="3600000" selected>1 hour</option>
+                                    <option value="7200000">2 hours</option>
+                                    <option value="21600000">6 hours</option>
+                                    <option value="43200000">12 hours</option>
+                                    <option value="86400000">1 day</option>
+                                    <option value="172800000">2 days</option>
+                                    <option value="604800000">1 week</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="wa-remind-count-row" class="hidden"><label class="text-xs text-gray-500">🔂 How many times in total</label><input type="number" id="wa-remind-count" min="2" max="200" value="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div id="wa-remind-until-row" class="hidden"><label class="text-xs text-gray-500">🗓️ Repeat until (date &amp; time)</label><input type="datetime-local" id="wa-remind-until" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" id="wa-remind-ai-rewrite" class="h-4 w-4" />
+                            🤖 AI: change the wording every time (season / occasion aware)
+                        </label>
+                        <p class="text-xs text-gray-400">Times use this device's clock. The server sends automatically — WhatsApp app does not need to stay open. Track, edit or remove it in Menu → 📅 Scheduled Reminders.</p>
+                    </div>
+                </div>
                 <div class="flex justify-end gap-2 pt-2">
                     <button id="wa-remind-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
                     <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">💬 Send on WhatsApp</button>
                 </div>
             </div>
+        </div>
+    </div>
+    <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">📅 Scheduled Reminders</h3>
+                <div class="flex items-center gap-3">
+                    <button id="scheduled-refresh" class="text-sm text-blue-600 font-semibold">↻ Refresh</button>
+                    <button id="scheduled-reminders-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+                </div>
+            </div>
+            <div id="scheduled-reminders-list" class="p-4 overflow-y-auto space-y-3"></div>
         </div>
     </div>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
@@ -779,6 +837,8 @@
                 document.getElementById('wa-remind-groups-manager').classList.add('hidden');
                 document.getElementById('wa-remind-group-search').value = '';
                 await loadWaRemindFavorites();
+                document.getElementById('wa-remind-message').value = waScheduleDefaults();
+                resetWaScheduleFields();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
             }
             // ===== WhatsApp group favorites for task reminders (webapp side) =====
@@ -861,38 +921,65 @@
                 const groupBoxes = Array.from(document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb:checked'));
                 if (!memberBoxes.length && !groupBoxes.length) { alert('Select at least one team member or group first.'); return; }
                 const t = waRemindCtx.task || {};
-                const due = t.dueDate ? formatTaskTimestamp(t.dueDate) : '';
+                const baseMessage = String((document.getElementById('wa-remind-message') || {}).value || '').trim() || waScheduleDefaults();
+                const scheduling = document.getElementById('wa-remind-schedule-toggle').checked;
                 const sendBtn = document.getElementById('wa-remind-send');
-                if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
                 try {
-                    let sent = 0;
+                    const targets = [];
                     for (const cb of memberBoxes) {
                         const email = String(cb.value || '').toLowerCase();
                         const member = (waRemindCtx.members || []).find(m => m.email === email);
                         if (!member || !member.wa) continue;
-                        const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
-                            (due ? ('\n🗓️ Due: ' + due) : '') +
-                            '\n👤 For: ' + member.name +
-                            '\n\nPlease check and update the board when done.';
-                        await db.collection('alignWaQueue').add({
-                            target: member.wa, targetType: 'member', message: msg,
-                            taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
-                            toName: member.name, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
-                        });
-                        sent++;
+                        targets.push({ type: 'member', id: member.wa, name: member.name });
                     }
                     for (const cb of groupBoxes) {
                         const jid = cb.value;
                         const gname = cb.getAttribute('data-name') || jid;
                         if (!jid) continue;
-                        const msg = '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' +
-                            (due ? ('\n🗓️ Due: ' + due) : '') +
-                            '\n👥 Group reminder' +
-                            '\n\nPlease check and update the board when done.';
+                        targets.push({ type: 'group', id: jid, name: gname });
+                    }
+                    if (!targets.length) { alert('The selected people/groups have no WhatsApp target yet.'); return; }
+                    if (scheduling) {
+                        const sched = readWaScheduleForm();
+                        const whenStr = new Date(sched.startAt).toLocaleString();
+                        if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = waScheduleEditId ? '…saving' : '…scheduling'; }
+                        const docData = {
+                            message: baseMessage,
+                            taskId: waRemindCtx.taskId || null,
+                            taskTitle: String(t.description || '').substring(0, 80) || baseMessage.substring(0, 60),
+                            targets: targets,
+                            startAt: sched.startAt,
+                            repeatMode: sched.repeatMode,
+                            repeatEveryMs: sched.repeatEveryMs,
+                            repeatCount: sched.repeatCount,
+                            repeatUntil: sched.repeatUntil,
+                            aiRewrite: sched.aiRewrite,
+                            source: 'aligntasks-web',
+                            createdBy: (currentUser && currentUser.email) || '',
+                            updatedAt: Date.now()
+                        };
+                        if (waScheduleEditId) {
+                            await db.collection('alignWaSchedules').doc(waScheduleEditId).set(Object.assign({}, docData, { nextAt: sched.startAt }), { merge: true });
+                            waScheduleEditId = null;
+                            document.getElementById('wa-remind-modal').classList.add('hidden');
+                            waRemindCtx = null;
+                            alert('✅ Scheduled reminder updated — first send: ' + whenStr + (sched.aiRewrite ? '\n🤖 AI will refresh the wording at every send.' : ''));
+                        } else {
+                            await db.collection('alignWaSchedules').add(Object.assign({}, docData, { status: 'pending', sentCount: 0, nextAt: sched.startAt, history: [], createdAt: Date.now() }));
+                            document.getElementById('wa-remind-modal').classList.add('hidden');
+                            waRemindCtx = null;
+                            alert('✅ Reminder scheduled for ' + whenStr + ' to ' + targets.length + ' destination' + (targets.length === 1 ? '' : 's') + '.' + (sched.aiRewrite ? '\n🤖 AI will refresh the wording at every send.' : '') + '\nTrack, edit or remove it in Menu → 📅 Scheduled Reminders.');
+                        }
+                        return;
+                    }
+                    if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
+                    let sent = 0;
+                    for (const tg of targets) {
+                        const msg = baseMessage + (tg.type === 'group' ? '\n👥 Group reminder' : ('\n👤 For: ' + tg.name));
                         await db.collection('alignWaQueue').add({
-                            target: jid, targetType: 'group', message: msg,
+                            target: tg.id, targetType: tg.type, message: msg,
                             taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
-                            toName: gname, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
+                            toName: tg.name, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
                         });
                         sent++;
                     }
@@ -902,7 +989,7 @@
                 } catch (e) {
                     alert('❌ ' + (e.message || 'Failed to queue reminder'));
                 } finally {
-                    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = '💬 Send on WhatsApp'; }
+                    if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = document.getElementById('wa-remind-schedule-toggle').checked ? (waScheduleEditId ? '💾 Save changes' : '🕓 Schedule reminder') : '💬 Send on WhatsApp'; }
                 }
             }
             let waRemindCtx = null;
@@ -924,6 +1011,197 @@
                 } finally {
                     btn.innerText = orig || '💬 Remind';
                     btn.disabled = false;
+                }
+            });
+            // ===== Scheduled reminders (date/time + repeat N times / until a date + optional AI wording refresh) =====
+            let waScheduleEditId = null;
+            let scheduledRefreshTimer = null;
+
+            function waEsc(s) {
+                return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            }
+            function twoDigit(n) { return (n < 10 ? '0' : '') + n; }
+            function localDateValue(ms) { const d = new Date(ms); return d.getFullYear() + '-' + twoDigit(d.getMonth() + 1) + '-' + twoDigit(d.getDate()); }
+            function localTimeValue(ms) { const d = new Date(ms); return twoDigit(d.getHours()) + ':' + twoDigit(d.getMinutes()); }
+            function localDateTimeValue(ms) { return localDateValue(ms) + 'T' + localTimeValue(ms); }
+
+            function waScheduleDefaults() {
+                const t = waRemindCtx && waRemindCtx.task ? waRemindCtx.task : {};
+                const due = t.dueDate ? formatTaskTimestamp(t.dueDate) : '';
+                return '⏰ Reminder (from AlignTasks):\n📋 "' + String(t.description || '').substring(0, 150) + '"' + (due ? ('\n🗓️ Due: ' + due) : '') + '\n\nPlease check and update the board when done.';
+            }
+
+            function updateWaScheduleRows() {
+                const mode = document.getElementById('wa-remind-repeat').value;
+                document.getElementById('wa-remind-count-row').classList.toggle('hidden', mode !== 'count');
+                document.getElementById('wa-remind-until-row').classList.toggle('hidden', mode !== 'until');
+            }
+
+            function resetWaScheduleFields() {
+                waScheduleEditId = null;
+                document.getElementById('wa-remind-title').innerText = '💬 Send WhatsApp Reminder';
+                document.getElementById('wa-remind-schedule-toggle').checked = false;
+                document.getElementById('wa-remind-schedule-fields').classList.add('hidden');
+                const d = new Date(Date.now() + 10 * 60 * 1000);
+                document.getElementById('wa-remind-date').value = localDateValue(d.getTime());
+                document.getElementById('wa-remind-time').value = localTimeValue(d.getTime());
+                document.getElementById('wa-remind-repeat').value = 'once';
+                document.getElementById('wa-remind-interval').value = '3600000';
+                document.getElementById('wa-remind-count').value = '3';
+                document.getElementById('wa-remind-until').value = '';
+                document.getElementById('wa-remind-ai-rewrite').checked = false;
+                updateWaScheduleRows();
+            }
+
+            function readWaScheduleForm() {
+                const dateVal = document.getElementById('wa-remind-date').value;
+                const timeVal = document.getElementById('wa-remind-time').value;
+                if (!dateVal || !timeVal) throw new Error('Pick the date and time for the reminder');
+                const startAt = new Date(dateVal + 'T' + timeVal).getTime();
+                if (!startAt || isNaN(startAt)) throw new Error('Invalid date/time');
+                if (startAt < Date.now() + 30000) throw new Error('Scheduled time must be at least ~1 minute in the future');
+                const repeatMode = document.getElementById('wa-remind-repeat').value;
+                const repeatEveryMs = parseInt(document.getElementById('wa-remind-interval').value, 10) || 3600000;
+                let repeatCount = 0, repeatUntil = 0;
+                if (repeatMode === 'count') {
+                    repeatCount = parseInt(document.getElementById('wa-remind-count').value, 10) || 0;
+                    if (repeatCount < 2) throw new Error('"Repeat N times" means the total number of sends — 2 or more');
+                }
+                if (repeatMode === 'until') {
+                    const uv = document.getElementById('wa-remind-until').value;
+                    if (!uv) throw new Error('Pick the "repeat until" date & time');
+                    repeatUntil = new Date(uv).getTime();
+                    if (!repeatUntil || repeatUntil <= startAt) throw new Error('"Repeat until" must be after the first send time');
+                }
+                return { startAt, repeatMode, repeatEveryMs, repeatCount, repeatUntil, aiRewrite: document.getElementById('wa-remind-ai-rewrite').checked };
+            }
+
+            document.getElementById('wa-remind-schedule-toggle').addEventListener('change', () => {
+                const on = document.getElementById('wa-remind-schedule-toggle').checked;
+                document.getElementById('wa-remind-schedule-fields').classList.toggle('hidden', !on);
+                const btn = document.getElementById('wa-remind-send');
+                if (btn && !btn.disabled) btn.innerText = on ? (waScheduleEditId ? '💾 Save changes' : '🕓 Schedule reminder') : '💬 Send on WhatsApp';
+            });
+            document.getElementById('wa-remind-repeat').addEventListener('change', updateWaScheduleRows);
+
+            async function openWaScheduleEditor(id) {
+                const snap = await db.collection('alignWaSchedules').doc(id).get();
+                if (!snap.exists) { alert('This scheduled reminder no longer exists.'); return; }
+                const d = snap.data() || {};
+                if ((Number(d.sentCount) || 0) > 0) { alert('Only not-yet-sent (pending) reminders can be edited.'); return; }
+                closeScheduledReminders();
+                const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).limit(50).get();
+                const members = [];
+                staffSnap.forEach(sd => {
+                    const v = sd.data() || {};
+                    const email = String(v.email || '').toLowerCase();
+                    if (!email) return;
+                    members.push({ name: v.name || email.split('@')[0], email: email, wa: normalizeWaNumberClient(v.whatsappNumber || '') });
+                });
+                waRemindCtx = { type: null, taskId: d.taskId || null, projectId: null, task: { description: d.taskTitle || '' }, members: members };
+                document.getElementById('wa-remind-task-text').innerText = '✏️ Editing scheduled reminder — "' + String(d.taskTitle || String(d.message || '').substring(0, 80)) + '"';
+                const targetMemberIds = new Set((Array.isArray(d.targets) ? d.targets : []).filter(x => x.type !== 'group').map(x => String(x.id)));
+                const box = document.getElementById('wa-remind-members');
+                box.innerHTML = members.length ? members.map(m => {
+                    const disabled = !m.wa;
+                    const checked = (m.wa && targetMemberIds.has(String(m.wa))) ? 'checked' : '';
+                    return '<label class="flex items-center gap-3 p-2 rounded-lg ' + (disabled ? 'opacity-50' : 'hover:bg-gray-50 cursor-pointer') + '">' +
+                        '<input type="checkbox" class="wa-remind-member-cb h-4 w-4" value="' + m.email + '" ' + checked + (disabled ? ' disabled' : '') + ' />' +
+                        '<span class="flex-grow text-sm text-gray-800">' + m.name + '</span>' +
+                        '<span class="text-xs ' + (m.wa ? 'text-green-600' : 'text-red-400') + '">' + (m.wa ? ('+' + m.wa) : 'no WhatsApp number') + '</span></label>';
+                }).join('') : '<p class="text-sm text-gray-500 p-2">No team members found.</p>';
+                document.getElementById('wa-remind-groups-manager').classList.add('hidden');
+                document.getElementById('wa-remind-group-search').value = '';
+                await loadWaRemindFavorites();
+                const targetGroupIds = new Set((Array.isArray(d.targets) ? d.targets : []).filter(x => x.type === 'group').map(x => String(x.id)));
+                document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb').forEach(cb => { if (targetGroupIds.has(String(cb.value))) cb.checked = true; });
+                document.getElementById('wa-remind-message').value = String(d.message || waScheduleDefaults());
+                waScheduleEditId = id;
+                const startMs = Number(d.startAt || d.nextAt || (Date.now() + 600000));
+                document.getElementById('wa-remind-date').value = localDateValue(startMs);
+                document.getElementById('wa-remind-time').value = localTimeValue(startMs);
+                document.getElementById('wa-remind-repeat').value = d.repeatMode || 'once';
+                if (d.repeatEveryMs) document.getElementById('wa-remind-interval').value = String(d.repeatEveryMs);
+                if (d.repeatCount) document.getElementById('wa-remind-count').value = String(d.repeatCount);
+                document.getElementById('wa-remind-until').value = d.repeatUntil ? localDateTimeValue(Number(d.repeatUntil)) : '';
+                document.getElementById('wa-remind-ai-rewrite').checked = !!d.aiRewrite;
+                updateWaScheduleRows();
+                document.getElementById('wa-remind-schedule-toggle').checked = true;
+                document.getElementById('wa-remind-schedule-fields').classList.remove('hidden');
+                document.getElementById('wa-remind-title').innerText = '🕓 Edit Scheduled Reminder';
+                document.getElementById('wa-remind-send').innerText = '💾 Save changes';
+                document.getElementById('wa-remind-modal').classList.remove('hidden');
+            }
+
+            function openScheduledReminders() {
+                document.getElementById('scheduled-reminders-modal').classList.remove('hidden');
+                loadScheduledReminders();
+                if (scheduledRefreshTimer) clearInterval(scheduledRefreshTimer);
+                scheduledRefreshTimer = setInterval(() => { if (!document.getElementById('scheduled-reminders-modal').classList.contains('hidden')) loadScheduledReminders(); }, 30000);
+            }
+            function closeScheduledReminders() {
+                document.getElementById('scheduled-reminders-modal').classList.add('hidden');
+                if (scheduledRefreshTimer) { clearInterval(scheduledRefreshTimer); scheduledRefreshTimer = null; }
+            }
+            async function loadScheduledReminders() {
+                const list = document.getElementById('scheduled-reminders-list');
+                if (!list) return;
+                try {
+                    let snap;
+                    try { snap = await db.collection('alignWaSchedules').orderBy('createdAt', 'desc').limit(60).get(); }
+                    catch (e1) { snap = await db.collection('alignWaSchedules').limit(60).get(); }
+                    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    if (!items.length) { list.innerHTML = '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → 💬 Remind → tick "🕓 Schedule for later".</p>'; return; }
+                    list.innerHTML = items.map(s => waScheduleCardHTML(s)).join('');
+                } catch (e) {
+                    list.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load scheduled reminders: ' + waEsc(e.message || e) + '</p>';
+                }
+            }
+            function waScheduleCardHTML(s) {
+                const st = String(s.status || 'pending');
+                const targets = Array.isArray(s.targets) ? s.targets : [];
+                const nMembers = targets.filter(x => x.type !== 'group').length;
+                const nGroups = targets.filter(x => x.type === 'group').length;
+                const chip = st === 'completed'
+                    ? '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✅ Sent — finished</span>'
+                    : (st === 'active'
+                        ? '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🔁 Repeating — ' + (Number(s.sentCount) || 0) + ' sent</span>'
+                        : '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">🕓 Pending — created</span>');
+                const when = Number(s.nextAt || 0);
+                const showNext = (st === 'pending' || st === 'active') && when && when < 9999999999990;
+                const nextStr = showNext ? new Date(when).toLocaleString() : '';
+                const lastStr = s.lastSentAt ? new Date(Number(s.lastSentAt)).toLocaleString() : '';
+                const total = Number(s.repeatCount) || 0;
+                const progress = (Number(s.sentCount) || 0) + (total ? ('/' + total) : '') + ' sent';
+                const canEdit = st === 'pending' && !(Number(s.sentCount) || 0);
+                const hist = Array.isArray(s.history) ? s.history.slice(0, 5) : [];
+                return '<div class="border border-gray-200 rounded-xl p-3 space-y-2">' +
+                    '<div class="flex justify-between items-start gap-2 flex-wrap">' +
+                        '<div class="min-w-0">' + chip +
+                            '<div class="text-sm font-semibold text-gray-800 mt-1 break-words">📋 ' + waEsc(String(s.taskTitle || String(s.message || '').substring(0, 80))) + '</div>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-2">' +
+                            (canEdit ? '<button class="wa-sched-edit text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200" data-id="' + s.id + '">✏️ Edit</button>' : '') +
+                            '<button class="wa-sched-remove text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200" data-id="' + s.id + '">🗑 Remove</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="text-xs text-gray-600 space-y-0.5">' +
+                        '<div>🎯 ' + targets.length + ' destination(s) — ' + nMembers + ' member(s), ' + nGroups + ' group(s) · ' + progress + (s.aiRewrite ? ' · 🤖 AI wording each time' : '') + '</div>' +
+                        (nextStr ? '<div>⏰ Next send: <b>' + nextStr + '</b></div>' : '') +
+                        (lastStr ? '<div>📤 Last send: ' + lastStr + ' (' + (Number(s.lastOk) || 0) + ' ok' + ((Number(s.lastFailed) || 0) ? (', ' + s.lastFailed + ' failed') : '') + ')</div>' : '') +
+                    '</div>' +
+                    '<div class="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2 whitespace-pre-wrap break-words">' + waEsc(String(s.message || '').substring(0, 240)) + '</div>' +
+                    (hist.length ? '<div class="text-xs text-gray-500 space-y-0.5">' + hist.map(h => '<div>• #' + (h.occurrence || '?') + ' · ' + new Date(Number(h.at) || 0).toLocaleString() + ' — sent ' + (Number(h.sent) || 0) + ((Number(h.failed) || 0) ? (', failed ' + h.failed) : '') + (h.ai ? ' · 🤖 reworded' : '') + ' · "' + waEsc(String(h.msg || '').substring(0, 60)) + '"</div>').join('') + '</div>' : '') +
+                '</div>';
+            }
+
+            document.body.addEventListener('click', async e => {
+                const ed = e.target.closest('.wa-sched-edit');
+                if (ed) { try { await openWaScheduleEditor(ed.getAttribute('data-id')); } catch (err) { alert('❌ ' + (err.message || err)); } return; }
+                const rm = e.target.closest('.wa-sched-remove');
+                if (rm) {
+                    if (!confirm('Remove this scheduled reminder? It will not be sent anymore.')) return;
+                    try { await db.collection('alignWaSchedules').doc(rm.getAttribute('data-id')).delete(); await loadScheduledReminders(); } catch (err) { alert('❌ ' + (err.message || err)); }
                 }
             });
             if ('Notification' in window && Notification.permission === 'default') {
@@ -1406,6 +1684,8 @@
             document.getElementById('wa-remind-modal-close').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
             document.getElementById('wa-remind-cancel').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
             document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
+            document.getElementById('scheduled-reminders-close').addEventListener('click', closeScheduledReminders);
+            document.getElementById('scheduled-refresh').addEventListener('click', loadScheduledReminders);
 
             // --- Firestore Listeners ---
             function setupFirestoreListeners() {
@@ -1597,6 +1877,10 @@
             menuAddSubusers.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 showMainSection('settings-page');
+            });
+            document.getElementById('menu-scheduled-reminders').addEventListener('click', () => {
+                accountMenu.classList.add('hidden');
+                openScheduledReminders();
             });
             menuEditProfile.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
