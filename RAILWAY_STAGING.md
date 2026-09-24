@@ -1,79 +1,64 @@
-# Railway Replica (staging → production node)
+# Deployment ownership — Render is MAIN, Railway PAUSED (2026-09-24)
 
-> ⚡ **2026-09-12:** this node became the **MAIN production node** (webhook + schedulers). Render is kept as a silent standby — see "Production cutover" below.
+> ⚡ **2026-09-24 cutback executed:** production moved back from Railway to Render.
+> Railway service `whatanagent-staging` has **no running deployment** (compute stopped + GitHub source disconnected).
+> Render (`whatanagent-api`, https://whatanagent.onrender.com) runs the webhook + 60s schedulers + WhatsApp-Web (Baileys) session.
 
-- **URL:** https://whatanagent-staging-production.up.railway.app
-- **Source:** `nadeemk2050/whatanagent` @ `master` — auto-deploys on every push. If a push does not trigger a deploy, re-run: `railway service source connect --repo nadeemk2050/whatanagent --branch master --service whatanagent-staging`
-- **Plan note:** Railway trial (30 days or $5 credit). Always-on (`sleepApplication: false`, no cold starts). After trial: Hobby $5/mo, or stop the service in the dashboard.
+## Current ownership (must always be exactly ONE owner per resource)
 
-## Why there are almost no secrets to mirror
-
-All runtime secrets (WhatsApp token, DeepSeek key, phone number id, verify token, WABA id) live in the **shared Firestore `appData/settings` document**, not in environment variables. Render itself only sets `PORT` (see `render.yaml`), and Railway injects `PORT` automatically — the app listens on whatever port it receives.
-
-Variables used during the 2026-09-12 cutover:
-
-| Variable | Value | Purpose |
+| Resource | Owner | Guard |
 |---|---|---|
-| `STAGING_MODE` | ~~1~~ **removed after cutover** | While set: disables the 60s schedulers on this node. Removed on 2026-09-12 — Railway now OWNS the schedulers |
-| `API_VERSION` | `v20.0` | Same as production default |
-| `DRY_RUN` | *(not set)* | Optional: set to `1` to block ALL outbound sends (logged instead) |
+| Meta webhook | **Render** — `https://whatanagent.onrender.com/webhook` (verify token unchanged: `my_whatsapp_agent_verify_token_2026`) | one callback URL per Meta app |
+| 60s schedulers | **Render** | `appData/runtimeConfig { renderStandby: false }` — live-checked every tick |
+| WhatsApp-Web (Baileys linked device) | **Render** | boot-time check `renderStandby !== false`; Railway/local nodes skip via `STAGING_MODE=1` |
+| Firestore | shared by all nodes | single source of truth (secrets live here, not in env vars) |
 
-## Isolation guarantees (why this can never double-message customers)
-
-1. **One scheduler owner** — exactly one node may run the 60s loops. Since the 2026-09-12 cutover **Railway runs them** (`schedulers:"active"`); Render is gated off by the `appData/runtimeConfig { renderStandby: true }` flag (live-checked on every tick). A local dev instance must also run with `STAGING_MODE=1` to avoid duplicating sends.
-2. **One webhook owner** — Meta WhatsApp Cloud allows ONE callback URL per app. Since the 2026-09-12 cutover it points at Railway (`...up.railway.app/webhook`); Render no longer receives live events.
-3. **Shared Firestore** — both nodes read/write the same DB (same app data), but only production mutates state autonomously (scheduler/webhook). Staging reacts only to direct calls.
-4. **DRY_RUN** — for risky experiments add `DRY_RUN=1` on staging: every outbound text/template is logged (`[DRY-RUN] ... BLOCKED`) instead of sent, and the scheduler stays off.
-
-## Health / monitoring
-
-- `GET /healthz` → `{ ok, role, staging, dryRun, schedulers, uptimeSec }` (`role`: render/railway/local; `schedulers`: active | disabled:staging | disabled:dry-run | disabled:standby)
-- Startup logs show: `[STAGING MODE - schedulers off]` and `[SCHEDULER] DISABLED (staging/dry-run instance)`.
-
-## Testing playbook (parallel validation)
-
-- Replay a webhook payload (use YOUR OWN number as sender) against:
-  `POST https://whatanagent-staging-production.up.railway.app/webhook`
-  The AI replies to that number only — customers are never touched.
-- Harmless smoke tests: `POST /webhook` with `{}` → `EVENT_RECEIVED` (no side effects); `GET /admin.html`; `GET /healthz`.
-- Watch logs live: `railway logs` (or `railway logs --lines 200`).
-
-## Ops commands
+## What was executed (2026-09-24)
 
 ```powershell
-railway status                                   # linked project/deployment
-railway logs --lines 200                         # runtime logs
-railway variable set DRY_RUN=1 --skip-deploys    # enable dry-run
-railway variable delete DRY_RUN --skip-deploys   # disable dry-run
-railway redeploy                                 # manual redeploy
-railway domain list                              # domains
+railway variable set STAGING_MODE=1 --skip-deploys                  # insurance: if it ever boots, it stays harmless
+railway service source disconnect --service whatanagent-staging     # stop auto-deploys from GitHub pushes
+railway down -y                                                     # remove the running deployment (compute stops)
+node setRenderActive.js                                             # Firestore: renderStandby = false (Render becomes active)
+git push                                                            # Render auto-deploy -> fresh boot -> schedulers + WA-Web
 ```
 
-## Production cutover — 2026-09-12 (Railway became the main node)
+Then (USER action): Meta dashboard → WhatsApp → Configuration → Webhook → callback URL `https://whatanagent.onrender.com/webhook` → Verify and save.
 
-Sequence used (exactly one scheduler/webhook owner at every moment):
+## Verify any time
 
-1. Set `appData/runtimeConfig { renderStandby: true }` (Firestore) — Render never runs the 60s schedulers while this flag is set; it is live-checked every tick.
-2. Pushed the standby-gate code → Render auto-deployed → `schedulers:"disabled:standby"`.
-3. Removed `STAGING_MODE` on Railway + `railway redeploy -y` → `schedulers:"active"`.
-4. Meta dashboard: Webhook callback URL switched to `https://whatanagent-staging-production.up.railway.app/webhook` (verify token unchanged) → Verify and save.
-5. Live customer message test.
+- `GET https://whatanagent.onrender.com/healthz` → `role:"render"`, `schedulers:"active"`, `staging:false`, `dryRun:false`
+- `GET https://whatanagent.onrender.com/api/wa-web/status` → connected
+- `railway service status --json` → `deploymentId: null` (paused)
 
-### Rollback to Render (~2 minutes, during the standby window)
+## ⚠️ Render free tier sleeps after ~15 min idle!
 
-1. Firestore: set `appData/runtimeConfig { renderStandby: false }` → Render's schedulers resume within 60 seconds.
-2. Railway: `railway variable set STAGING_MODE=1` then `railway redeploy -y` (retires its schedulers).
-3. Meta dashboard: webhook URL back to `https://whatanagent.onrender.com/webhook` → Verify and save.
+- Cold start = 30-60s, and the 60s schedulers pause while the instance is asleep (reminders/announcements fire on the next wake).
+- Meta webhook verification can fail on the first try if the instance is asleep → just click **Verify** again after a minute.
+- For always-on production either:
+  1. **Free:** external uptime pinger every 5-10 min (UptimeRobot 5-min monitor, cron-job.org, etc.) on `https://whatanagent.onrender.com/healthz` — keeps the instance awake 24/7.
+  2. **Paid:** Render dashboard → service → upgrade instance to **Starter ($7/mo)** → never sleeps.
 
-### After the observation window (3–7 days)
+## Re-activate Railway (reverse cutover, if ever needed)
 
-- Render dashboard → the `whatanagent-api` **web service** → **Settings → Suspend** (or scale to zero). Suspend ONLY this service — leave the project, logs and everything else intact. Do not delete.
-- Optionally keep it suspended as an emergency cold standby.
+```powershell
+node setRenderStandby.js                    # 1. Firestore: renderStandby = true (Render schedulers retire within 60s)
+# 2. Render dashboard -> Manual Deploy -> Restart (so Render RELEASES the WA-Web session)
+railway service source connect --repo nadeemk2050/whatanagent --branch master --service whatanagent-staging
+railway variable delete STAGING_MODE --skip-deploys
+railway redeploy --from-source -y           # 3. Railway boots as main node (schedulers + WA-Web)
+# 4. Meta dashboard: webhook URL -> https://whatanagent-staging-production.up.railway.app/webhook -> Verify and save
+```
 
-### Billing
+## Local development caution
 
-- Upgrade Railway to **Hobby ($5/mo)** before the trial expires (Railway dashboard → account/plan) to keep the number online continuously.
+Render now OWNS the WhatsApp-Web session and the 60s schedulers. Any local run must use `STAGING_MODE=1`, otherwise it would fight the linked device and double-send. (The WA-Web page shows a staging banner when `staging:true`.)
 
-### Daily use
+## Known open issue (2026-09-24)
 
-- Dashboard: https://whatanagent-staging-production.up.railway.app/admin.html (same-origin — no CORS issues).
+- Railway logs showed continuous `RESOURCE_EXHAUSTED: Write stream exhausted maximum allowed queued writes` (Firestore) — a heavy writer is saturating the client write queue. Same code now runs on Render. Investigate: likely auth-session chunk sync / vault sweep / new Align engines. Also the logs contain a raw Signal session dump (private keys!) printed by some debug log — find and remove it.
+
+## History
+
+- 2026-09-12: Railway took over as main node (Render kept as silent standby, `renderStandby:true`).
+- **2026-09-24: cutback to Render; Railway paused** (this file).
