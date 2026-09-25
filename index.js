@@ -1687,26 +1687,42 @@ app.get('/api/dashboard-stats', async (req, res) => {
       });
     } catch (e) { console.warn('[STATS] contact book read failed:', e.message); }
 
-    // 3) Live WA-Web AI state: paused contacts resolved to REAL phones (LID -> phone)
+    // 3) Live WA-Web AI state: paused contacts resolved to REAL phones (LID -> phone).
+    //    NOTE: the in-memory knowledge base only hydrates AFTER the session restore at boot,
+    //    so the authoritative Firestore doc is preferred (fallback: in-memory).
     let autoReplyEnabled = false, aiModel = '', autoReplyScope = '';
     let aiPaused = 0, aiPausedTotal = 0, aiPausedUnresolved = 0;
     try {
-      const kb = getWaWebKnowledgeBase() || {};
+      let kb = {};
+      try { kb = getWaWebKnowledgeBase() || {}; } catch (e) { /* ignore */ }
+      try {
+        const kbSnap = await getDoc(doc(db, 'appData', 'waWebKnowledgeBase'));
+        if (kbSnap.exists()) kb = { ...kb, ...kbSnap.data() };
+      } catch (e) { console.warn('[STATS] waWebKnowledgeBase doc read failed:', e.message); }
       autoReplyEnabled = kb.autoReplyEnabled === true;
       aiModel = kb.aiModel || '';
       autoReplyScope = kb.autoReplyScope || '';
       const pausedList = Array.isArray(kb.pausedContacts) ? kb.pausedContacts : [];
-      const pausedPhones = new Set();
-      const unresolvedSeen = new Set();
+      const pausedResolved = new Set();   // real phones (mapped, or plain non-@lid entries)
+      const pausedLidUnknown = new Set(); // @lid entries we could not map to a number
       pausedList.forEach(entry => {
+        const digits = norm(entry);
+        if (!digits) return;
+        const isLid = String(entry).endsWith('@lid');
         let p = '';
         try { p = resolveRealPhoneNumber(entry) || ''; } catch (e) { /* ignore */ }
-        if (p) pausedPhones.add(norm(p));
-        else { const d = norm(entry); if (d) unresolvedSeen.add(d); }
+        if (isLid) {
+          if (p && norm(p) !== digits) pausedResolved.add(norm(p)); // real mapping found
+          else pausedLidUnknown.add(digits);                        // unmapped LID - count it, but as LID
+        } else if (p) {
+          pausedResolved.add(norm(p));
+        } else {
+          pausedResolved.add(digits); // plain number JID
+        }
       });
-      aiPausedTotal = pausedPhones.size;
-      pausedPhones.forEach(p => { if (phones.has(p)) aiPaused++; });
-      aiPausedUnresolved = unresolvedSeen.size;
+      aiPausedTotal = new Set([...pausedResolved, ...pausedLidUnknown]).size;
+      pausedResolved.forEach(p => { if (phones.has(p)) aiPaused++; });
+      aiPausedUnresolved = pausedLidUnknown.size;
     } catch (e) { console.warn('[STATS] WA-Web state read failed:', e.message); }
 
     res.json({
