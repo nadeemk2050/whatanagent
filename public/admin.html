@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.6 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Events Calendar: free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (impact dots, forecast/previous, Dubai times, gold-mover stars, filters); gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through) -->
+    <!-- APP VERSION: 2026.09.25.7 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Events Calendar: free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts); gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -5197,16 +5197,24 @@
         function goldLoadEvents() {
             var meta = document.getElementById('goldEventsMeta');
             fetch('/api/gold/events').then(function(r) { return r.json(); }).then(function(d) {
-                if (!d || !d.ok || !d.events) { if (meta) meta.textContent = '⚠️ calendar unavailable'; return; }
+                if (!d || !d.ok || !d.events || !d.events.length) { goldEventsUnavailable(); return; }
                 var now = Date.now();
                 var upcoming = d.events.filter(function(e) { return e.ts >= now; }).length;
-                if (meta) meta.textContent = d.events.length + ' events this week · ' + upcoming + ' upcoming';
+                if (meta) meta.textContent = d.events.length + ' events this week · ' + upcoming + ' upcoming' + (d.stale ? ' · cached copy' : '');
                 var lm = document.getElementById('goldEventsListMeta');
                 if (lm) lm.textContent = '· Dubai time · updated ' + goldEventsDubaiTime(d.fetchedAt || Date.now());
                 window.__goldEventsCache = d.events;
                 goldRenderEventsFilters();
                 goldRenderEvents(d.events);
-            }).catch(function(e) { if (meta) meta.textContent = '⚠️ ' + e.message; });
+            }).catch(function() { goldEventsUnavailable(); });
+        }
+
+        function goldEventsUnavailable() {
+            var meta = document.getElementById('goldEventsMeta');
+            if (meta) meta.textContent = '⚠️ week list busy — auto-retrying';
+            if (window.__goldEventsCache) return; // keep the previously rendered list
+            var host = document.getElementById('goldEventsList');
+            if (host) host.innerHTML = '<div style="text-align:center; color:#667781; padding:18px; font-size:12.5px;">The week list is catching up — the live calendar above already shows all events, impacts and countdowns. This list will appear automatically.</div>';
         }
 
         function goldRenderRanges() {

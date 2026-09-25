@@ -237,15 +237,47 @@ function aggregateSeries(fastPts, hourlyPts, w) {
 
 // --- 📅 Economic events calendar (FREE, no API key): Forex Factory weekly JSON feed ---
 // Covers the current week (Mon–Sun): impact level, forecast + previous values.
+// The feed is rate-limited (HTTP 429 seen with frequent calls), so: refresh at most once an hour,
+// persist the last good copy in Firestore (fresh boots serve instantly), 15-min cooldown after failures.
 const EVENTS_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const EVENTS_CACHE_DOC = ['appData', 'goldEventsCache'];
+const EVENTS_TTL_MS = 60 * 60 * 1000;
+const EVENTS_RETRY_AFTER_MS = 15 * 60 * 1000;
 const GOLD_MOVER_RE = /\b(fed|fomc|powell|interest rate|rate decision|rate statement|cpi|inflation|ppi|pce|non-?farm|payrolls|unemployment|gdp|retail sales|treasury|jolts|durable goods|ism|pmi)\b/i;
 let eventsCache = { at: 0, data: null };
+let eventsNextTryAt = 0;
+let eventsLastError = '';
+
+async function readEventsFromFirestore() {
+  try {
+    const snap = await getDoc(doc(globalDb, ...EVENTS_CACHE_DOC));
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      if (Array.isArray(d.events) && d.events.length) return { at: Number(d.fetchedAt) || 0, data: d.events };
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
 
 async function fetchEconomicEvents() {
   const now = Date.now();
-  if (eventsCache.data && (now - eventsCache.at) < 30 * 60 * 1000) return eventsCache;
+  const fresh = (c) => c && c.data && (now - c.at) < EVENTS_TTL_MS;
+  // 1) fresh in-memory copy
+  if (fresh(eventsCache)) return eventsCache;
+  // 2) stale/missing -> restore last good copy from Firestore (covers fresh boots too)
+  if (!eventsCache.data) {
+    const fsC = await readEventsFromFirestore();
+    if (fsC) eventsCache = fsC;
+  }
+  if (fresh(eventsCache)) return eventsCache;
+  // 3) recent failure -> cooldown (don't hammer a rate-limited feed)
+  if (now < eventsNextTryAt) {
+    if (eventsCache.data) return eventsCache;
+    throw new Error('calendar temporarily unavailable' + (eventsLastError ? ' (' + eventsLastError + ')' : ''));
+  }
+  // 4) refresh from the upstream feed
   try {
-    const r = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (WhatAnAgent economic calendar)' } });
+    const r = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!r.ok) throw new Error('feed HTTP ' + r.status);
     const raw = await r.json();
     const events = (Array.isArray(raw) ? raw : [])
@@ -263,7 +295,12 @@ async function fetchEconomicEvents() {
       .sort((a, b) => a.ts - b.ts);
     if (!events.length) throw new Error('feed returned no events');
     eventsCache = { at: now, data: events };
+    eventsLastError = '';
+    // persist last good copy (max 1 write per hour) so restarts/fresh boots serve instantly
+    try { await setDoc(doc(globalDb, ...EVENTS_CACHE_DOC), { events: events, fetchedAt: now, updatedAt: now }, { merge: true }); } catch (e) { /* ignore */ }
   } catch (e) {
+    eventsLastError = String((e && e.message) || e).slice(0, 120);
+    eventsNextTryAt = now + EVENTS_RETRY_AFTER_MS;
     if (eventsCache.data) return eventsCache; // serve the last good copy
     throw e;
   }
@@ -302,11 +339,11 @@ export function registerGoldRoutes(app, db) {
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
-  // 📅 Economic events this week (free Forex Factory feed, 30-min server cache)
+  // 📅 Economic events this week (free Forex Factory feed, hourly refresh + persistent cache)
   app.get('/api/gold/events', async (req, res) => {
     try {
       const c = await fetchEconomicEvents();
-      res.json({ ok: true, source: 'forexfactory', fetchedAt: c.at, events: c.data || [] });
+      res.json({ ok: true, source: 'forexfactory', fetchedAt: c.at, stale: (Date.now() - c.at) > EVENTS_TTL_MS, events: c.data || [] });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
