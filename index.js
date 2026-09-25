@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -96,6 +97,9 @@ let schedulerState = 'starting';
 })();
 
 const app = express();
+// Gzip every response (the 600KB dashboard HTML shrinks ~5x) - cuts bandwidth + transfer time,
+// keeping the Render free-tier bandwidth pool and CPU pressure low.
+app.use(compression());
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
 

@@ -24,6 +24,11 @@ function dubaiTimeStr(ms) {
   catch (e) { return new Date(ms).toISOString(); }
 }
 
+function dubaiYmd(ms) {
+  try { return new Date(ms + 4 * 3600 * 1000).toISOString().slice(0, 10); }
+  catch (e) { return new Date(ms).toISOString().slice(0, 10); }
+}
+
 async function fetchGoldPrice() {
   // 1) gold-api.com - free, no key, true spot XAU/USD
   try {
@@ -81,10 +86,11 @@ export async function goldMaybePoll(force = false) {
     const ts = now;
 
     // 1) fast series (one point per poll)
+    let pts = [];
     try {
       const fRef = doc(globalDb, ...FAST_DOC);
       const fSnap = await getDoc(fRef);
-      const pts = fSnap.exists() ? (fSnap.data().points || []) : [];
+      pts = fSnap.exists() ? (fSnap.data().points || []) : [];
       pts.push({ t: ts, p: q.price });   // objects - Firestore forbids arrays inside arrays
       await setDoc(fRef, { points: pts.slice(-FAST_CAP), updatedAt: ts }, { merge: true });
     } catch (e) { /* ignore */ }
@@ -128,10 +134,25 @@ export async function goldMaybePoll(force = false) {
     }
     for (const a of alerts) await pushGoldNotification(a);
 
+    // 3b) today's high / low (Dubai calendar day) with the timestamp each extreme was reached -
+    // recomputed from the fast series every poll: backfills the whole tracked day, survives restarts
+    const dayKey = dubaiYmd(ts);
+    const dayStartMs = Date.parse(dayKey + 'T00:00:00+04:00') || 0;
+    let today = { day: dayKey, high: null, low: null };
+    for (const p of pts) {
+      if (!p || typeof p.t !== 'number' || typeof p.p !== 'number') continue;
+      if (p.t < dayStartMs) continue;
+      if (!today.high || p.p > today.high.p) today.high = { p: p.p, ts: p.t };
+      if (!today.low || p.p < today.low.p) today.low = { p: p.p, ts: p.t };
+    }
+    if (!today.high) today.high = { p: q.price, ts: ts };
+    if (!today.low) today.low = { p: q.price, ts: ts };
+
     // 4) save state
     await setDoc(doc(globalDb, ...STATE_DOC), {
       last: { price: q.price, ts: ts, src: q.src, srcTs: q.srcTs },
       lastPollAt: ts,
+      today: today,
       limits: limits.slice(-200),
       history: history.slice(-100),
       updatedAt: ts
@@ -225,6 +246,7 @@ export function registerGoldRoutes(app, db) {
       res.json({
         ok: true,
         last: last.price ? { price: Number(last.price), ts: Number(last.ts) || 0, src: last.src || '', stale: (now - (Number(last.ts) || 0)) > 15 * 60 * 1000 } : null,
+        today: st.today || null,
         limits: Array.isArray(st.limits) ? st.limits : [],
         history: (Array.isArray(st.history) ? st.history : []).slice(-30).reverse(),
         config: st.config || {},

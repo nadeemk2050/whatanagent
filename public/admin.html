@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.3 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; scrollable compact 9px sidebar menu with sticky close button) -->
+    <!-- APP VERSION: 2026.09.25.4 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -58,6 +58,16 @@
         .sidebar-close { position: sticky; top: 8px; display: block; margin: 0 14px 6px auto; width: 34px; height: 34px; font-size: 16px; line-height: 1; cursor: pointer; background: rgba(255,255,255,0.95); border: 1px solid var(--border); border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 5; }
         .menu-item { display: block; padding: 9px 16px; font-size: 9px; font-weight: 500; letter-spacing: 0.2px; line-height: 1.45; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s ease, padding-left 0.15s ease; }
         .menu-item:hover { background: var(--bg-color); padding-left: 20px; }
+
+        /* 🥇 Gold Market live tape (streaming look) */
+        @keyframes goldPulse { 0% { box-shadow: 0 0 0 0 rgba(37,211,102,0.55); } 70% { box-shadow: 0 0 0 8px rgba(37,211,102,0); } 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0); } }
+        .gold-dot-live { width: 8px; height: 8px; border-radius: 50%; background: #25D366; display: inline-block; animation: goldPulse 1.8s infinite; }
+        .gold-tape-item { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fafbfc; font-size: 12px; white-space: nowrap; }
+        .gold-tape-item b { font-size: 14px; }
+        @keyframes goldFlashUp { 0% { background: #d9f2dd; } 100% { background: transparent; } }
+        @keyframes goldFlashDown { 0% { background: #fadbd6; } 100% { background: transparent; } }
+        .gold-flash-up { animation: goldFlashUp 1.4s ease-out; border-radius: 4px; }
+        .gold-flash-down { animation: goldFlashDown 1.4s ease-out; border-radius: 4px; }
         
         /* Content Layout */
         .container { max-width: 800px; margin: 40px auto; padding: 0 20px; transition: max-width 0.3s ease; }
@@ -1223,14 +1233,22 @@
 
         <!-- ===== GOLD MARKET (full screen page view) ===== -->
         <div id="goldPage" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:2500; overflow-y:auto;">
-            <div style="position:sticky; top:0; background:#fff; border-bottom:1px solid var(--border); padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; z-index:5;">
-                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <b style="font-size:17px;">🥇 Gold Market</b>
-                    <span id="goldStatusChip" style="font-size:12px; color:#667781;"></span>
+            <div style="position:sticky; top:0; background:#fff; border-bottom:1px solid var(--border); z-index:5;">
+                <div style="padding:12px 18px 6px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <b style="font-size:17px;">🥇 Gold Market</b>
+                        <span id="goldStatusChip" style="font-size:12px; color:#667781;"></span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button onclick="goldRefreshNow()" style="padding:9px 16px; background:#fff7e0; border:1px solid #b8860b; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#8a6508;">🔄 Refresh</button>
+                        <button onclick="closeGoldPage()" style="padding:9px 16px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">✕ Close</button>
+                    </div>
                 </div>
-                <div style="display:flex; gap:8px;">
-                    <button onclick="goldRefreshNow()" style="padding:9px 16px; background:#fff7e0; border:1px solid #b8860b; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#8a6508;">🔄 Refresh</button>
-                    <button onclick="closeGoldPage()" style="padding:9px 16px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">✕ Close</button>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; padding:0 18px 10px 18px;">
+                    <div class="gold-tape-item" title="Live spot price — updates automatically"><span class="gold-dot-live"></span><span style="color:#667781; font-weight:bold;">LIVE</span><b id="goldTapeLive" style="color:#b8860b;">$—</b></div>
+                    <div class="gold-tape-item" title="Highest price today (Dubai time)">📈 Today High <b id="goldTapeHigh" style="color:#2e7d32;">$—</b><span id="goldTapeHighTime" style="color:#9aa7ad;">—</span></div>
+                    <div class="gold-tape-item" title="Lowest price today (Dubai time)">📉 Today Low <b id="goldTapeLow" style="color:#c62828;">$—</b><span id="goldTapeLowTime" style="color:#9aa7ad;">—</span></div>
+                    <div class="gold-tape-item" style="background:#fff; color:#9aa7ad;" title="Auto refresh countdown">⏱ <span id="goldTapeNext">next in 30s</span></div>
                 </div>
             </div>
             <div style="max-width:980px; margin:0 auto; padding:18px;">
@@ -4940,6 +4958,10 @@
         var goldTvState = 'none';
         var goldTvWaiters = [];
         var goldLastPoints = [];
+        var goldTapePrev = null;
+        var goldTapeCountdown = 30;
+        var goldLastUpdateTs = 0;
+        var goldTickTimer = null;
         var GOLD_RANGES = [['5m', '5 min'], ['10m', '10 min'], ['15m', '15 min'], ['30m', '30 min'], ['1h', '1 hour'], ['24h', '24 hours'], ['1w', '1 week'], ['1M', '1 month']];
 
         function goldFmt(p) { return '$' + Number(p || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -4979,8 +5001,21 @@
             goldLoadPrice();
             goldLoadLimits();
             goldLoadSeries(true);
+            goldTapeCountdown = 30;
             if (goldPollTimer) clearInterval(goldPollTimer);
-            goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldTvState === 'failed') goldLoadSeries(false); }, 60000);
+            goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldTvState === 'failed') goldLoadSeries(false); goldTapeCountdown = 30; }, 30000);
+            if (goldTickTimer) clearInterval(goldTickTimer);
+            goldTickTimer = setInterval(function() {
+                if (goldTapeCountdown > 0) goldTapeCountdown--;
+                var nx = document.getElementById('goldTapeNext');
+                if (nx) nx.textContent = 'next in ' + goldTapeCountdown + 's';
+                var chip = document.getElementById('goldStatusChip');
+                if (chip && goldLastUpdateTs) {
+                    var secs = Math.max(0, Math.round((Date.now() - goldLastUpdateTs) / 1000));
+                    var ago = secs < 90 ? (secs + 's ago') : (Math.round(secs / 60) + 'm ago');
+                    chip.innerHTML = '<span style="color:#2e7d32; font-weight:bold;">● LIVE</span> — updated ' + ago;
+                }
+            }, 1000);
         }
 
         function closeGoldPage() {
@@ -4988,11 +5023,13 @@
             if (p) p.style.display = 'none';
             document.body.style.overflow = '';
             if (goldPollTimer) { clearInterval(goldPollTimer); goldPollTimer = null; }
+            if (goldTickTimer) { clearInterval(goldTickTimer); goldTickTimer = null; }
         }
 
         function goldRefreshNow() {
             var info = document.getElementById('goldChartInfo');
             if (info) info.textContent = '🔄 Fetching fresh price…';
+            goldTapeCountdown = 30;
             fetch('/api/gold/refresh', { method: 'POST' }).then(function() {
                 goldLoadPrice(); goldLoadSeries(false); goldLoadLimits();
             }).catch(function(e) { if (info) info.textContent = '⚠️ ' + e.message; });
@@ -5016,6 +5053,22 @@
                 if (chip) chip.innerHTML = L.stale
                     ? '⚠️ last update ' + when
                     : '<span style="color:#2e7d32; font-weight:bold;">● LIVE</span> — updated ' + when;
+                if (!L.stale) goldLastUpdateTs = L.ts;
+                var tapeLive = document.getElementById('goldTapeLive');
+                if (tapeLive) {
+                    tapeLive.textContent = goldFmt(L.price);
+                    if (goldTapePrev !== null && Number(L.price) !== goldTapePrev) {
+                        tapeLive.classList.remove('gold-flash-up', 'gold-flash-down');
+                        void tapeLive.offsetWidth;
+                        tapeLive.classList.add(Number(L.price) > goldTapePrev ? 'gold-flash-up' : 'gold-flash-down');
+                    }
+                    goldTapePrev = Number(L.price);
+                }
+                function goldClock(ts) { return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+                var tapeH = document.getElementById('goldTapeHigh'), tapeHT = document.getElementById('goldTapeHighTime');
+                if (tapeH && g.today && g.today.high) { tapeH.textContent = goldFmt(g.today.high.p); if (tapeHT) tapeHT.textContent = '· ' + goldClock(g.today.high.ts); }
+                var tapeL = document.getElementById('goldTapeLow'), tapeLT = document.getElementById('goldTapeLowTime');
+                if (tapeL && g.today && g.today.low) { tapeL.textContent = goldFmt(g.today.low.p); if (tapeLT) tapeLT.textContent = '· ' + goldClock(g.today.low.ts); }
             }).catch(function(e) { var meta = document.getElementById('goldPriceMeta'); if (meta) meta.textContent = '⚠️ ' + e.message; });
         }
 
