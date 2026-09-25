@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.2 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands) -->
+    <!-- APP VERSION: 2026.09.25.3 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; scrollable compact 9px sidebar menu with sticky close button) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -49,11 +49,15 @@
         .menu-btn { background: none; border: none; font-size: 24px; cursor: pointer; margin-right: 20px; }
         
         /* Sidebar */
-        .sidebar { position: fixed; top: 0; left: -250px; width: var(--sidebar-width); height: 100%; background: var(--card-bg); box-shadow: 2px 0 5px rgba(0,0,0,0.1); transition: 0.3s; z-index: 3500; padding-top: 60px; }
+        .sidebar { position: fixed; top: 0; left: -250px; width: var(--sidebar-width); height: 100%; background: var(--card-bg); box-shadow: 2px 0 5px rgba(0,0,0,0.1); transition: 0.3s; z-index: 3500; padding: 10px 0 34px 0; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.20) transparent; }
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 6px; }
+        .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
         .sidebar.open { left: 0; }
-        .sidebar-close { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; background: none; border: none; }
-        .menu-item { display: block; padding: 15px 20px; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--border); }
-        .menu-item:hover { background: var(--bg-color); }
+        .sidebar-close { position: sticky; top: 8px; display: block; margin: 0 14px 6px auto; width: 34px; height: 34px; font-size: 16px; line-height: 1; cursor: pointer; background: rgba(255,255,255,0.95); border: 1px solid var(--border); border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 5; }
+        .menu-item { display: block; padding: 9px 16px; font-size: 9px; font-weight: 500; letter-spacing: 0.2px; line-height: 1.45; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.15s ease, padding-left 0.15s ease; }
+        .menu-item:hover { background: var(--bg-color); padding-left: 20px; }
         
         /* Content Layout */
         .container { max-width: 800px; margin: 40px auto; padding: 0 20px; transition: max-width 0.3s ease; }
@@ -268,7 +272,7 @@
             <div class="menu-item" onclick="showSection('dashboard')">🏠 Knowledge Base</div>
             <div class="menu-item" onclick="openWaWebPage()" style="display:flex; justify-content:space-between; align-items:center; background: rgba(37, 211, 102, 0.08); border-left: 4px solid var(--primary);">
                 <span>🟢 WhatsApp Web</span>
-                <span id="waWebNavBadge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
+                <span id="waWebNavBadge" style="font-size:8px; padding:1px 7px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
             </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="showSection('tasks'); loadAiTasks(); loadConditionalTasks();">⏰ Tasks for AI</div>
