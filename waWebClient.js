@@ -793,7 +793,7 @@ function getSelfChatJid() {
 // ================= SHARED BOSS BRAIN (used by BOTH the WhatsApp boss flow AND the dashboard) =================
 // Builds the full executive prompt exactly as the WhatsApp boss flow does - contacts, team, brain memory.
 async function buildBossExecPrompt() {
-  const contactDir = await bossContactDirectory(120);
+  const contactDir = await bossContactDirectory(400);
   const contactLines = contactDir.filter(x => x.name).map(x => '• ' + x.name + (x.company && x.company !== x.name ? ' (' + x.company + ')' : '') + ' → +' + x.phone).join('\n');
   const alignStaff = await alignTasksStaffDirectory();
   const alignStaffLine = alignStaff.length ? ('BOARD TEAM MEMBERS (align tasks to these EXACT names): ' + alignStaff.map(s => s.name).join(', ')) : '';
@@ -847,7 +847,7 @@ async function buildBossExecPrompt() {
     'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and appends the REAL result at the bottom - YOU MUST NEVER write your own result or confirmation (NEVER write phrases like "Added to AlignTasks:", "task added", "entry is set", "assigned to *...*" yourself). Just emit the action block plus one short sentence like "On it, Boss." A false confirmation is a serious error because the app shows exactly what really happened - including failures.\n' +
     '--- UNIVERSAL CONTACT BOOK (ALWAYS use these numbers when the boss names a person) ---\n' +
     (contactLines ? (contactLines + '\n') : '(no saved contacts yet)\n') +
-    'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the Contact Book automatically. If the name is NOT in the list above, ask the boss for the number (or save it with [CONTACT]). NEVER invent a number.\n' +
+    'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the FULL Contact Book automatically. The list above may omit older contacts: even when a name is NOT shown above, STILL output the [TASK] block with that exact name and let the app search. ONLY if the app\'s action result says the contact was not found, then ask the boss for the number. NEVER invent a number.\n' +
     'NEVER claim a message was sent unless the app confirmed it in the action result.\n\n' +
     (alignStaffLine ? (alignStaffLine + '\n\n') : '') +
     (brainCtx ? ('--- BOSS BRAIN (memory of your previous exchanges with the boss) ---\n' + brainCtx + '\n\n') : '') +
@@ -1616,9 +1616,21 @@ async function processBossRemindersAndNotifications() {
       try {
         await sendToBoss('⏰ *Reminder, Boss:* ' + (r.text || ''));
         r.status = 'done';
-      } catch (e) { r.status = 'failed'; r.error = e.message; }
-      r.sentAt = Date.now();
-      rChanged = true;
+        r.sentAt = Date.now();
+        rChanged = true;
+      } catch (e) {
+        const emsg = String((e && e.message) || 'send failed');
+        // Socket reconnecting (typical right after the server wakes)? retry every minute instead of failing
+        if (/reconnecting or offline/i.test(emsg) && (Number(r.socketRetries) || 0) < 15) {
+          r.socketRetries = (Number(r.socketRetries) || 0) + 1;
+          r.runAt = Date.now() + 60 * 1000;
+          rChanged = true;
+        } else {
+          r.status = 'failed'; r.error = emsg;
+          r.sentAt = Date.now();
+          rChanged = true;
+        }
+      }
     }
     if (rChanged) await setDoc(rRef, { items: reminders.slice(-200) }, { merge: true });
 
@@ -1628,10 +1640,21 @@ async function processBossRemindersAndNotifications() {
     let nChanged = false;
     for (const n of notes) {
       if (!n || n.status !== 'pending') continue;
-      try { await sendToBoss(n.text || 'Task update'); n.status = 'done'; }
-      catch (e) { n.status = 'failed'; n.error = e.message; }
-      n.sentAt = Date.now();
-      nChanged = true;
+      if (n.skipUntil && n.skipUntil > now) continue;
+      try { await sendToBoss(n.text || 'Task update'); n.status = 'done'; n.sentAt = Date.now(); nChanged = true; }
+      catch (e) {
+        const emsg = String((e && e.message) || 'send failed');
+        // Socket reconnecting? wait a minute and try again (never lose a notification)
+        if (/reconnecting or offline/i.test(emsg) && (Number(n.socketRetries) || 0) < 15) {
+          n.socketRetries = (Number(n.socketRetries) || 0) + 1;
+          n.skipUntil = Date.now() + 60 * 1000;
+          nChanged = true;
+        } else {
+          n.status = 'failed'; n.error = emsg;
+          n.sentAt = Date.now();
+          nChanged = true;
+        }
+      }
     }
     if (nChanged) await setDoc(nRef, { items: notes.slice(-200) }, { merge: true });
 
@@ -1643,30 +1666,45 @@ async function processBossRemindersAndNotifications() {
     let tChanged = false;
     for (const t of tasks) {
       if (!t || t.taskType !== 'waweb_message' || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
+      let final = false;
       try {
         const jid = String(t.target || '').includes('@') ? t.target : (String(t.target || '') + '@s.whatsapp.net');
         await sendWaWebMessage(jid, t.message || '');
         t.status = 'done';
         t.result = '✅ Sent from the linked personal WhatsApp to +' + t.target + (t.targetName ? ' (' + t.targetName + ')' : '');
+        final = true;
       } catch (e) {
-        t.status = 'failed';
-        t.result = '❌ ' + (e.message || 'send failed');
+        const emsg = String((e && e.message) || 'send failed');
+        // Socket reconnecting (typical right after the server wakes up)? DO NOT kill the task -
+        // retry every minute so the message goes out as soon as WhatsApp Web is back (max ~15 min).
+        if (/reconnecting or offline/i.test(emsg) && (Number(t.socketRetries) || 0) < 15) {
+          t.socketRetries = (Number(t.socketRetries) || 0) + 1;
+          t.runAt = Date.now() + 60 * 1000;
+          t.result = '⏳ Waiting for WhatsApp Web to reconnect (attempt ' + t.socketRetries + '/15)';
+          console.log('[WA-WEB BOSS SEND] deferred (socket reconnecting) -> +' + t.target + ' : attempt ' + t.socketRetries);
+        } else {
+          t.status = 'failed';
+          t.result = '❌ ' + emsg;
+          final = true;
+        }
       }
-      t.executedAt = Date.now();
       tChanged = true;
-      try {
-        const n2Snap = await getDoc(nRef);
-        const items2 = n2Snap.exists() ? (n2Snap.data().items || []) : [];
-        items2.push({
-          id: 'ntf-' + Date.now() + '-w',
-          text: '📤 *Boss message ' + (t.status === 'done' ? 'sent ✅' : 'FAILED ❌') + ':* ' + (t.targetName || ('+' + t.target)) +
-                '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + t.result)),
-          createdAt: Date.now(),
-          status: 'pending'
-        });
-        await setDoc(nRef, { items: items2.slice(-200) }, { merge: true });
-      } catch (e) { /* ignore */ }
-      console.log('[WA-WEB BOSS SEND] ' + t.status + ' -> +' + t.target + ' : ' + String(t.message || '').substring(0, 60));
+      if (final) {
+        t.executedAt = Date.now();
+        try {
+          const n2Snap = await getDoc(nRef);
+          const items2 = n2Snap.exists() ? (n2Snap.data().items || []) : [];
+          items2.push({
+            id: 'ntf-' + Date.now() + '-w',
+            text: '📤 *Boss message ' + (t.status === 'done' ? 'sent ✅' : 'FAILED ❌') + ':* ' + (t.targetName || ('+' + t.target)) +
+                  '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + t.result)),
+            createdAt: Date.now(),
+            status: 'pending'
+          });
+          await setDoc(nRef, { items: items2.slice(-200) }, { merge: true });
+        } catch (e) { /* ignore */ }
+        console.log('[WA-WEB BOSS SEND] ' + t.status + ' -> +' + t.target + ' : ' + String(t.message || '').substring(0, 60));
+      }
     }
     if (tChanged) await setDoc(tRef, { tasks: tasks.slice(-200) }, { merge: true });
   } catch (e) {
@@ -1967,6 +2005,16 @@ function parseMessageContent(msg) {
   if (c.ephemeralMessage) return parseMessageContent({ message: c.ephemeralMessage.message });
   if (c.viewOnceMessage) return parseMessageContent({ message: c.viewOnceMessage.message });
   if (c.viewOnceMessageV2) return parseMessageContent({ message: c.viewOnceMessageV2.message });
+  if (c.viewOnceMessageV2Extension) return parseMessageContent({ message: c.viewOnceMessageV2Extension.message });
+  if (c.documentWithCaptionMessage) return parseMessageContent({ message: c.documentWithCaptionMessage.message });
+  if (c.editedMessage) return parseMessageContent({ message: c.editedMessage.message });
+  // Protocol/notification noise (reactions, receipts, revokes, key distribution, poll votes/
+  // creations, calendar events) is NOT real incoming content - return empty so the caller skips it.
+  if (c.reactionMessage || c.protocolMessage || c.senderKeyDistributionMessage || c.pollUpdateMessage ||
+      c.pollCreationMessage || c.pollCreationMessageV2 || c.pollCreationMessageV3 || c.eventMessage) {
+    return { text: '', mediaType: null, mediaInfo: null };
+  }
+  if (c.messageContextInfo && Object.keys(c).length === 1) return { text: '', mediaType: null, mediaInfo: null };
 
   return { text: '[Message]', mediaType: null, mediaInfo: null };
 }
@@ -3569,6 +3617,12 @@ export async function initWaWeb(db = null) {
               );
               const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
 
+              // Diagnostics: if the Boss sends a message type we cannot parse, remember its RAW shape in
+              // the boss brain so it can be supported (probe: entry with role 'sys' + rawKeys field).
+              if (isBossNumber && text === '[Message]' && !mediaType) {
+                try { await appendBossBrain('sys', 'UNPARSED TYPE from Boss', { rawKeys: Object.keys(msg.message || {}).join('|'), jid: remoteJid || '', fromMe: !!(msg.key && msg.key.fromMe) }); } catch (e) { /* ignore */ }
+              }
+
               // Check if AI is paused for this specific contact
               if (!isBossNumber && isContactAiPaused(remoteJid)) {
                 console.log('[WA-WEB AUTO-REPLY] ⏸️ Skipping auto-reply: AI is PAUSED for contact ' + remoteJid);
@@ -3595,16 +3649,20 @@ export async function initWaWeb(db = null) {
               waWebAutoReplyCooldown.set(remoteJid, Date.now());
 
               // Download media buffer if audio, image, or document
+              // (two attempts - media sent while the server slept needs a re-upload right after reconnect)
               let mediaData = null;
               let transcribedAudioText = '';
               if (hasMedia) {
+                const dlOpts = { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage };
+                let buffer = null;
                 try {
-                  const buffer = await downloadMediaMessage(
-                    msg,
-                    'buffer',
-                    {},
-                    { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage }
-                  );
+                  buffer = await downloadMediaMessage(msg, 'buffer', {}, dlOpts);
+                } catch (d1) {
+                  console.warn('[WA-WEB MULTIMODAL] Download attempt 1 failed: ' + ((d1 && d1.message) || d1) + ' - retrying once');
+                  await new Promise(r => setTimeout(r, 2500));
+                  try { buffer = await downloadMediaMessage(msg, 'buffer', {}, dlOpts); } catch (d2) { console.warn('[WA-WEB MULTIMODAL] Download retry failed: ' + ((d2 && d2.message) || d2)); }
+                }
+                try {
                   if (buffer && buffer.length > 0) {
                     mediaData = {
                       buffer,
@@ -3619,11 +3677,15 @@ export async function initWaWeb(db = null) {
                       transcribedAudioText = await transcribeAudioBuffer(buffer, mediaData.mimetype);
                       if (transcribedAudioText) {
                         console.log('[WA-WEB MULTIMODAL] 🎙️ Transcribed Audio:', transcribedAudioText);
+                      } else if (isBossNumber) {
+                        try { await appendBossBrain('sys', 'AUDIO TRANSCRIBE FAILED', { jid: remoteJid || '', secs: (mediaInfo && mediaInfo.seconds) || 0 }); } catch (e) { /* ignore */ }
                       }
                     }
+                  } else if (isBossNumber) {
+                    try { await appendBossBrain('sys', 'MEDIA DOWNLOAD FAILED', { mediaType: mediaType, jid: remoteJid || '' }); } catch (e) { /* ignore */ }
                   }
                 } catch (mErr) {
-                  console.warn('[WA-WEB MULTIMODAL] Media download warning:', mErr.message);
+                  console.warn('[WA-WEB MULTIMODAL] Media processing warning:', mErr.message);
                 }
               }
 
