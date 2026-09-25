@@ -76,6 +76,9 @@ export async function goldMaybePoll(force = false) {
   if (!globalDb || polling) return null;
   polling = true;
   try {
+    // Keep the FREE events calendar cache warm even when nobody opens the dashboard.
+    // fetchEconomicEvents() self-governs: 1h TTL, 15-min retry cooldown, serve-stale, Firestore persist.
+    fetchEconomicEvents().catch(() => { /* rate-limited now - retried on a later tick */ });
     const st = await readState();
     const cfg = st.config || {};
     const pollSeconds = Math.min(3600, Math.max(30, Number(cfg.pollSeconds) || 60));
