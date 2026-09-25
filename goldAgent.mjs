@@ -235,6 +235,41 @@ function aggregateSeries(fastPts, hourlyPts, w) {
   return norm(fastPts).slice(-120);
 }
 
+// --- 📅 Economic events calendar (FREE, no API key): Forex Factory weekly JSON feed ---
+// Covers the current week (Mon–Sun): impact level, forecast + previous values.
+const EVENTS_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const GOLD_MOVER_RE = /\b(fed|fomc|powell|interest rate|rate decision|rate statement|cpi|inflation|ppi|pce|non-?farm|payrolls|unemployment|gdp|retail sales|treasury|jolts|durable goods|ism|pmi)\b/i;
+let eventsCache = { at: 0, data: null };
+
+async function fetchEconomicEvents() {
+  const now = Date.now();
+  if (eventsCache.data && (now - eventsCache.at) < 30 * 60 * 1000) return eventsCache;
+  try {
+    const r = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (WhatAnAgent economic calendar)' } });
+    if (!r.ok) throw new Error('feed HTTP ' + r.status);
+    const raw = await r.json();
+    const events = (Array.isArray(raw) ? raw : [])
+      .map(e => ({
+        title: String((e && e.title) || '').slice(0, 160),
+        ccy: String((e && e.country) || ''),
+        impact: String((e && e.impact) || 'Low'),
+        date: String((e && e.date) || ''),
+        ts: Date.parse((e && e.date) || '') || 0,
+        forecast: String((e && e.forecast) || ''),
+        previous: String((e && e.previous) || '')
+      }))
+      .filter(e => e.title && e.ts > 0)
+      .map(e => { e.gold = GOLD_MOVER_RE.test(e.title); return e; })
+      .sort((a, b) => a.ts - b.ts);
+    if (!events.length) throw new Error('feed returned no events');
+    eventsCache = { at: now, data: events };
+  } catch (e) {
+    if (eventsCache.data) return eventsCache; // serve the last good copy
+    throw e;
+  }
+  return eventsCache;
+}
+
 export function registerGoldRoutes(app, db) {
   attachGoldDb(db);
 
@@ -264,6 +299,14 @@ export function registerGoldRoutes(app, db) {
       const hourly = hSnap.exists() ? (hSnap.data().points || []) : [];
       const points = aggregateSeries(fast, hourly, w).map(p => [Number(p[0]), Number(p[1])]);
       res.json({ ok: true, w: w, points: points });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 📅 Economic events this week (free Forex Factory feed, 30-min server cache)
+  app.get('/api/gold/events', async (req, res) => {
+    try {
+      const c = await fetchEconomicEvents();
+      res.json({ ok: true, source: 'forexfactory', fetchedAt: c.at, events: c.data || [] });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
@@ -310,6 +353,6 @@ export function registerGoldRoutes(app, db) {
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
-  console.log('[GOLD] 🥇 Gold Market API registered (live XAU/USD spot + one-time price alerts)');
+  console.log('[GOLD] 🥇 Gold Market API registered (live XAU/USD spot + one-time price alerts + events calendar)');
   return { maybePoll: goldMaybePoll };
 }

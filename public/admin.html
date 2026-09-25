@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.5 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show REAL unified figures (chat + contact book, exact leads, live AI active/paused from the WhatsApp pause list) with 60s auto-refresh and click-through navigation) -->
+    <!-- APP VERSION: 2026.09.25.6 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Events Calendar: free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (impact dots, forecast/previous, Dubai times, gold-mover stars, filters); gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1283,6 +1283,27 @@
                     </div>
                     <div id="goldChartInfo" style="font-size:12px; color:#667781; margin-top:6px;"></div>
                     <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">Live chart by TradingView — free real market data: candlesticks, crosshair, zoom, fullscreen &amp; drawing tools.</div>
+                </div>
+                <div class="card" id="goldEventsCard">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <b>📅 Events Calendar — Economic News &amp; Impacts</b>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <span id="goldEventsMeta" style="font-size:11px; color:#9aa7ad;"></span>
+                            <a href="https://www.tradingview.com/economic-calendar/" target="_blank" rel="noopener" style="font-size:12px; color:#b8860b; font-weight:bold; text-decoration:none;">Open full calendar ↗</a>
+                        </div>
+                    </div>
+                    <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">Coming events with impact levels (🔴 high · 🟠 medium · 🟡 low), forecast &amp; previous values. ⭐ = events that usually move gold the most. Live view below is powered by TradingView (free); the list shows this week in Dubai time.</div>
+                    <div id="goldEventsTvWrap" style="height:520px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;">
+                        <iframe id="goldEventsTvFrame" title="Economic calendar by TradingView" style="width:100%; height:100%; border:none;" loading="lazy"></iframe>
+                    </div>
+                    <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">If the calendar view doesn't load on your network, use “Open full calendar ↗” or the list below — it has the same events.</div>
+                    <div style="margin-top:14px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <b style="font-size:14px;">⚡ This Week at a Glance <span style="font-weight:normal; font-size:11px; color:#9aa7ad;" id="goldEventsListMeta"></span></b>
+                            <div id="goldEventsFilters" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                        </div>
+                        <div id="goldEventsList" style="margin-top:10px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;"></div>
+                    </div>
                 </div>
                 <div class="card">
                     <b>🔔 One-Time Price Alerts</b>
@@ -4989,6 +5010,8 @@
         var goldTapeCountdown = 30;
         var goldLastUpdateTs = 0;
         var goldTickTimer = null;
+        var goldEventsTimer = null;
+        var goldEventsFilter = 'all';
         var GOLD_RANGES = [['5m', '5 min'], ['10m', '10 min'], ['15m', '15 min'], ['30m', '30 min'], ['1h', '1 hour'], ['24h', '24 hours'], ['1w', '1 week'], ['1M', '1 month']];
 
         function goldFmt(p) { return '$' + Number(p || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -5028,6 +5051,8 @@
             goldLoadPrice();
             goldLoadLimits();
             goldLoadSeries(true);
+            goldMountEventsFrame();
+            goldLoadEvents();
             goldTapeCountdown = 30;
             if (goldPollTimer) clearInterval(goldPollTimer);
             goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldTvState === 'failed') goldLoadSeries(false); goldTapeCountdown = 30; }, 30000);
@@ -5043,6 +5068,8 @@
                     chip.innerHTML = '<span style="color:#2e7d32; font-weight:bold;">● LIVE</span> — updated ' + ago;
                 }
             }, 1000);
+            if (goldEventsTimer) clearInterval(goldEventsTimer);
+            goldEventsTimer = setInterval(function() { goldLoadEvents(); }, 600000);
         }
 
         function closeGoldPage() {
@@ -5051,6 +5078,7 @@
             document.body.style.overflow = '';
             if (goldPollTimer) { clearInterval(goldPollTimer); goldPollTimer = null; }
             if (goldTickTimer) { clearInterval(goldTickTimer); goldTickTimer = null; }
+            if (goldEventsTimer) { clearInterval(goldEventsTimer); goldEventsTimer = null; }
         }
 
         function goldRefreshNow() {
@@ -5058,7 +5086,7 @@
             if (info) info.textContent = '🔄 Fetching fresh price…';
             goldTapeCountdown = 30;
             fetch('/api/gold/refresh', { method: 'POST' }).then(function() {
-                goldLoadPrice(); goldLoadSeries(false); goldLoadLimits();
+                goldLoadPrice(); goldLoadSeries(false); goldLoadLimits(); goldLoadEvents();
             }).catch(function(e) { if (info) info.textContent = '⚠️ ' + e.message; });
         }
 
@@ -5097,6 +5125,88 @@
                 var tapeL = document.getElementById('goldTapeLow'), tapeLT = document.getElementById('goldTapeLowTime');
                 if (tapeL && g.today && g.today.low) { tapeL.textContent = goldFmt(g.today.low.p); if (tapeLT) tapeLT.textContent = '· ' + goldClock(g.today.low.ts); }
             }).catch(function(e) { var meta = document.getElementById('goldPriceMeta'); if (meta) meta.textContent = '⚠️ ' + e.message; });
+        }
+
+        // ===== 📅 Events Calendar (free sources: Forex Factory weekly feed + TradingView embed) =====
+        function goldEventsDubaiTime(ts) { try { return new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+        function goldEventsDubaiDay(ts) { try { return new Date(ts).toLocaleDateString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short' }); } catch (e) { return ''; } }
+
+        function goldMountEventsFrame() {
+            var f = document.getElementById('goldEventsTvFrame');
+            if (!f) return;
+            if (f.getAttribute('data-mounted') === '1') return;
+            f.setAttribute('data-mounted', '1');
+            var cfg = { colorTheme: 'light', isTransparent: false, width: '100%', height: '520', locale: 'en', importanceFilter: '-1,0,1', countryFilter: 'us,eu,gb,jp,au,ca,ch,cn' };
+            f.src = 'https://s.tradingview.com/embed-widget/events/?locale=en#' + encodeURIComponent(JSON.stringify(cfg));
+        }
+
+        function goldSetEventsFilter(f) {
+            goldEventsFilter = f;
+            goldRenderEventsFilters();
+            if (window.__goldEventsCache) goldRenderEvents(window.__goldEventsCache);
+        }
+
+        function goldRenderEventsFilters() {
+            var host = document.getElementById('goldEventsFilters');
+            if (!host) return;
+            var chips = [['all', 'All'], ['high', '🔴 High only'], ['gold', '⭐ Gold movers']];
+            host.innerHTML = chips.map(function(c) {
+                var active = goldEventsFilter === c[0];
+                return '<button onclick="goldSetEventsFilter(\'' + c[0] + '\')" style="padding:5px 10px; border-radius:14px; font-size:11.5px; font-weight:bold; cursor:pointer; border:1px solid ' + (active ? '#b8860b' : 'var(--border)') + '; background:' + (active ? '#b8860b' : '#fff') + '; color:' + (active ? '#fff' : '#3b4a54') + ';">' + c[1] + '</button>';
+            }).join('');
+        }
+
+        function goldRenderEvents(events) {
+            var host = document.getElementById('goldEventsList');
+            if (!host) return;
+            var list = (events || []).slice();
+            if (goldEventsFilter === 'high') list = list.filter(function(e) { return e.impact === 'High'; });
+            if (goldEventsFilter === 'gold') list = list.filter(function(e) { return e.gold; });
+            if (!list.length) {
+                host.innerHTML = '<div style="text-align:center; color:#667781; padding:18px; font-size:12.5px;">No events match this filter this week.</div>';
+                return;
+            }
+            var now = Date.now();
+            var groups = {}; var order = [];
+            list.forEach(function(e) {
+                var k = goldEventsDubaiDay(e.ts);
+                if (!groups[k]) { groups[k] = []; order.push(k); }
+                groups[k].push(e);
+            });
+            var html = '';
+            order.forEach(function(k) {
+                html += '<div style="font-size:12px; font-weight:bold; color:#667781; margin:10px 10px 4px 10px;">' + goldEsc(k) + '</div>';
+                groups[k].forEach(function(e) {
+                    var dot = e.impact === 'High' ? '#d32f2f' : e.impact === 'Medium' ? '#ef6c00' : (e.impact === 'Holiday' ? '#9e9e9e' : '#f9a825');
+                    var passed = e.ts < now;
+                    var vals = [];
+                    if (e.forecast) vals.push('F: ' + goldEsc(e.forecast));
+                    if (e.previous) vals.push('P: ' + goldEsc(e.previous));
+                    html += '<div style="display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid #f0f2f5; font-size:12.5px;' + (passed ? ' opacity:.55;' : '') + '">'
+                        + '<span style="color:#9aa7ad; min-width:45px; flex:none;">' + goldEventsDubaiTime(e.ts) + '</span>'
+                        + '<span title="' + goldEsc(e.impact || 'Low') + ' impact" style="background:' + dot + '; width:9px; height:9px; border-radius:50%; flex:none;"></span>'
+                        + '<span style="font-weight:bold; min-width:40px; flex:none; color:#3b4a54;">' + goldEsc(e.ccy) + '</span>'
+                        + '<span style="flex:1; color:#3b4a54;">' + (e.gold ? '⭐ ' : '') + goldEsc(e.title) + '</span>'
+                        + '<span style="color:#667781; font-size:11.5px; white-space:nowrap;">' + vals.join(' · ') + '</span>'
+                        + '</div>';
+                });
+            });
+            host.innerHTML = html;
+        }
+
+        function goldLoadEvents() {
+            var meta = document.getElementById('goldEventsMeta');
+            fetch('/api/gold/events').then(function(r) { return r.json(); }).then(function(d) {
+                if (!d || !d.ok || !d.events) { if (meta) meta.textContent = '⚠️ calendar unavailable'; return; }
+                var now = Date.now();
+                var upcoming = d.events.filter(function(e) { return e.ts >= now; }).length;
+                if (meta) meta.textContent = d.events.length + ' events this week · ' + upcoming + ' upcoming';
+                var lm = document.getElementById('goldEventsListMeta');
+                if (lm) lm.textContent = '· Dubai time · updated ' + goldEventsDubaiTime(d.fetchedAt || Date.now());
+                window.__goldEventsCache = d.events;
+                goldRenderEventsFilters();
+                goldRenderEvents(d.events);
+            }).catch(function(e) { if (meta) meta.textContent = '⚠️ ' + e.message; });
         }
 
         function goldRenderRanges() {
