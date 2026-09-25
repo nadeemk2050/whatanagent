@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
 import { brainPromptSectionForJid, getBrainForReply, saveBrainDraft, escalateBrain } from './contactBrain.mjs';
+import { goldBossAction, goldSnapshot } from './goldAgent.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -770,6 +771,7 @@ function stripBossActionBlocks(text) {
     .replace(/\[TASKLIST\]/gi, '')
     .replace(/\[ALIGNTASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[CONTACT:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .replace(/\[GOLD:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .trim();
 }
 
@@ -798,6 +800,14 @@ async function buildBossExecPrompt() {
   const alignStaff = await alignTasksStaffDirectory();
   const alignStaffLine = alignStaff.length ? ('BOARD TEAM MEMBERS (align tasks to these EXACT names): ' + alignStaff.map(s => s.name).join(', ')) : '';
   const brainCtx = await getBossBrainContext(16);
+  let goldSpotLine = '';
+  try {
+    const gs = await goldSnapshot();
+    if (gs && gs.price) {
+      const mins = Math.max(0, Math.round((Date.now() - (gs.ts || 0)) / 60000));
+      goldSpotLine = 'LIVE GOLD SPOT now: $' + Number(gs.price).toFixed(2) + '/oz' + (mins <= 1 ? ' (updated just now)' : (mins < 900 ? ' (updated ' + mins + ' min ago)' : ' (older quote - market may be closed)')) + '.';
+    }
+  } catch (e) { /* ignore */ }
   return 'You are the dedicated AI Executive Assistant obeying your BOSS (Mr. Nadeem UAE +971529244592).\n' +
     'He is commanding you directly from his verified personal phone number via Voice Note or Text.\n' +
     'Obey his instructions with highest priority, precision, and respectful tone.\n' +
@@ -834,6 +844,14 @@ async function buildBossExecPrompt() {
     '  [TASK: {"taskType":"send_template","target":"0501234567","templateName":"name","variables":["a","b"],"runAt":"..."}]\n' +
     '  [TASKLIST] -> list pending tasks\n' +
     '  [TASKCANCEL: {"id":"task-..."}] or {"title":"a few words from the title"} -> cancel a task\n' +
+    '--- GOLD PRICE ALERTS (international spot XAU/USD, $ per troy ounce) ---\n' +
+    (goldSpotLine ? (goldSpotLine + '\n') : '') +
+    'One-time alerts - the app messages the Boss on WhatsApp the moment a limit is HIT, then the alert switches OFF by itself:\n' +
+    '  [GOLD: {"action":"set_buy","price":4200}]   -> alert when the price FALLS to 4200 or below\n' +
+    '  [GOLD: {"action":"set_sell","price":4400}]  -> alert when the price RISES to 4400 or above\n' +
+    '  [GOLD: {"action":"list"}]                   -> show the active + recent gold alerts\n' +
+    '  [GOLD: {"action":"clear"}]                  -> remove all gold alerts ({"which":"buy"|"sell"} optional)\n' +
+    'RULE: a price BELOW the live spot above = set_buy; ABOVE it = set_sell. Boss may also ask for the live price - answer from the LIVE GOLD SPOT line. ONLY the app result confirms an alert - never write your own confirmation.\n' +
     'Contact Book:\n' +
     '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +
     '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
@@ -932,6 +950,10 @@ async function executeBossActionBlocks(replyText) {
     sectionSummary += res.ok
       ? (res.deleted ? ('📇 *Contact removed:* +' + res.deleted + '\n') : ('📇 *Contact saved:* ' + (res.contact.name || '(no name)') + ' — +' + res.contact.phone + '\n'))
       : ('⚠️ ' + res.error + '\n');
+  }
+  for (const g of extractBossActionBlocks(replyText, 'GOLD')) {
+    const res = await goldBossAction(g);
+    sectionSummary += res.ok ? ((res.summary || '🥇 Done.') + '\n') : ('⚠️ Gold: ' + (res.error || 'failed') + '\n');
   }
   if (sectionSummary) replyText = stripBossActionBlocks(replyText || '');
   // Strip any model-invented result claims - only real execution results may reach the boss

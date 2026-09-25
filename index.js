@@ -11,6 +11,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
 import { registerNewsRoutes } from './newsAgent.mjs';
+import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { 
   initWaWeb, 
@@ -102,7 +103,9 @@ app.use(express.json({ limit: '30mb' }));
 registerNotebookRoutes(app, db);
 // Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
 const newsAgent = registerNewsRoutes(app, db);
-// 🧠 Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
+// � Gold Market Agent (live XAU/USD spot + one-time price alerts -> WhatsApp boss notifications)
+const goldAgent = registerGoldRoutes(app, db);
+// �🧠 Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
 const brainEngine = registerBrainRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
@@ -3820,7 +3823,11 @@ function startFollowUpScheduler() {
     if (newsAgent && typeof newsAgent.maybeAutoRefresh === 'function') {
       newsAgent.maybeAutoRefresh();
     }
-    // 🧠 Contact Brain: nightly-style learning — studies YOUR past messages per contact (self-throttled)
+    // � Gold Market: live spot price poll + one-time price alerts (self-throttled)
+    if (goldAgent && typeof goldAgent.maybePoll === 'function') {
+      goldAgent.maybePoll();
+    }
+    // �🧠 Contact Brain: nightly-style learning — studies YOUR past messages per contact (self-throttled)
     if (brainEngine && typeof brainEngine.maybeLearn === 'function') {
       brainEngine.maybeLearn();
     }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.20.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox) -->
+    <!-- APP VERSION: 2026.09.25.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, 8 graph windows (5m/10m/15m/30m/1h/24h/1W/1M), one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -280,6 +280,7 @@
             <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
             <div class="menu-item" onclick="openNewsPage()">📰 News & Info Collection</div>
             <div class="menu-item" onclick="showSection('news'); if (typeof naLoadStatus === 'function') naLoadStatus();">📡 Browsing News Agent</div>
+            <div class="menu-item" onclick="openGoldPage()">🥇 Gold Market</div>
             <div class="menu-item" onclick="showSection('env')">⚙️ Env Settings</div>
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
@@ -1213,6 +1214,53 @@
             <div style="max-width:900px; margin:0 auto; padding:18px;">
                 <div id="newsTabs" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;"></div>
                 <div id="newsContent"></div>
+            </div>
+        </div>
+
+        <!-- ===== GOLD MARKET (full screen page view) ===== -->
+        <div id="goldPage" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:2500; overflow-y:auto;">
+            <div style="position:sticky; top:0; background:#fff; border-bottom:1px solid var(--border); padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; z-index:5;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <b style="font-size:17px;">🥇 Gold Market</b>
+                    <span id="goldStatusChip" style="font-size:12px; color:#667781;"></span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="goldRefreshNow()" style="padding:9px 16px; background:#fff7e0; border:1px solid #b8860b; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#8a6508;">🔄 Refresh</button>
+                    <button onclick="closeGoldPage()" style="padding:9px 16px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">✕ Close</button>
+                </div>
+            </div>
+            <div style="max-width:980px; margin:0 auto; padding:18px;">
+                <div class="card" style="text-align:center;">
+                    <div style="font-size:13px; color:#667781; font-weight:bold;">XAU / USD — International Spot (per troy ounce)</div>
+                    <div id="goldPriceBig" style="font-size:46px; font-weight:800; color:#b8860b; margin:6px 0; letter-spacing:-1px;">—</div>
+                    <div id="goldPriceMeta" style="font-size:12px; color:#667781;">Loading live price…</div>
+                </div>
+                <div class="card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <b>📈 Price Graph</b>
+                        <div id="goldRanges" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                    </div>
+                    <div style="position:relative; height:320px; margin-top:12px;"><canvas id="goldChart"></canvas></div>
+                    <div id="goldChartInfo" style="font-size:12px; color:#667781; margin-top:6px;"></div>
+                </div>
+                <div class="card">
+                    <b>🔔 One-Time Price Alerts</b>
+                    <div style="font-size:12px; color:#667781; margin:5px 0 12px 0; line-height:1.6;">When a limit is HIT the Boss gets a WhatsApp message and the alert turns itself OFF (one-time). You can also set alerts from WhatsApp — e.g. <b>"alert me when gold crosses 4,400"</b> or <b>"tell me if gold falls to 4,200"</b>.</div>
+                    <div id="goldLimitsList"></div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
+                        <select id="goldLimitType" style="padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                            <option value="buy">🔻 BUY — alert when price falls to</option>
+                            <option value="sell">🔺 SELL — alert when price rises to</option>
+                        </select>
+                        <input id="goldLimitPrice" type="number" step="0.01" placeholder="Price $/oz" style="padding:10px; border:1px solid var(--border); border-radius:8px; width:130px; font-size:13px;">
+                        <input id="goldLimitNote" type="text" placeholder="Note (optional)" style="padding:10px; border:1px solid var(--border); border-radius:8px; flex:1; min-width:140px; font-size:13px;">
+                        <button onclick="goldAddLimit()" style="padding:10px 18px; background:#b8860b; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Alert</button>
+                    </div>
+                </div>
+                <div class="card" id="goldHistoryCard" style="display:none;">
+                    <b>🕘 Triggered Alerts</b>
+                    <div id="goldHistoryList" style="margin-top:10px;"></div>
+                </div>
             </div>
         </div>
 
@@ -2608,6 +2656,7 @@
         function showSection(id) {
             try { if (typeof closeWaWebPage === 'function') closeWaWebPage(); } catch(e) { console.warn('[showSection] closeWaWebPage error:', e); }
             try { if (typeof closeNewsPage === 'function') closeNewsPage(); } catch(e) { console.warn('[showSection] closeNewsPage error:', e); }
+            try { if (typeof closeGoldPage === 'function') closeGoldPage(); } catch(e) { console.warn('[showSection] closeGoldPage error:', e); }
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
             const sec = document.getElementById(id + 'Section');
             if (sec) sec.classList.add('active');
@@ -4876,6 +4925,188 @@
             const p = document.getElementById('newsPage');
             if (p) p.style.display = 'none';
             document.body.style.overflow = '';
+        }
+
+        // ===== 🥇 GOLD MARKET =====
+        var goldRange = '1h';
+        var goldPollTimer = null;
+        var goldChartObj = null;
+        var goldChartLibLoaded = false;
+        var GOLD_RANGES = [['5m', '5 min'], ['10m', '10 min'], ['15m', '15 min'], ['30m', '30 min'], ['1h', '1 hour'], ['24h', '24 hours'], ['1w', '1 week'], ['1M', '1 month']];
+
+        function goldFmt(p) { return '$' + Number(p || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+        function goldEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+        function goldLoadChartLib(cb) {
+            if (goldChartLibLoaded || window.Chart) { goldChartLibLoaded = true; cb(); return; }
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
+            s.onload = function() { goldChartLibLoaded = true; cb(); };
+            s.onerror = function() { var el = document.getElementById('goldChartInfo'); if (el) el.textContent = '⚠️ Chart library could not load — check your internet.'; };
+            document.head.appendChild(s);
+        }
+
+        function openGoldPage() {
+            var p = document.getElementById('goldPage');
+            if (!p) return;
+            p.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            var sb = document.getElementById('sidebar');
+            if (sb) sb.classList.remove('open');
+            p.scrollTop = 0;
+            goldRenderRanges();
+            goldLoadPrice();
+            goldLoadLimits();
+            goldLoadSeries();
+            if (goldPollTimer) clearInterval(goldPollTimer);
+            goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldRange === '5m' || goldRange === '10m') goldLoadSeries(); }, 60000);
+        }
+
+        function closeGoldPage() {
+            var p = document.getElementById('goldPage');
+            if (p) p.style.display = 'none';
+            document.body.style.overflow = '';
+            if (goldPollTimer) { clearInterval(goldPollTimer); goldPollTimer = null; }
+        }
+
+        function goldRefreshNow() {
+            var info = document.getElementById('goldChartInfo');
+            if (info) info.textContent = '🔄 Fetching fresh price…';
+            fetch('/api/gold/refresh', { method: 'POST' }).then(function() {
+                goldLoadPrice(); goldLoadSeries(); goldLoadLimits();
+            }).catch(function(e) { if (info) info.textContent = '⚠️ ' + e.message; });
+        }
+
+        function goldLoadPrice() {
+            fetch('/api/gold').then(function(r) { return r.json(); }).then(function(g) {
+                var big = document.getElementById('goldPriceBig');
+                var meta = document.getElementById('goldPriceMeta');
+                var chip = document.getElementById('goldStatusChip');
+                if (!g || !g.ok || !g.last) {
+                    if (big) big.textContent = '—';
+                    if (meta) meta.textContent = 'No price yet — the first fetch happens within a minute.';
+                    return;
+                }
+                var L = g.last;
+                if (big) big.textContent = goldFmt(L.price);
+                var mins = Math.max(0, Math.round((Date.now() - L.ts) / 60000));
+                var when = mins <= 1 ? 'just now' : (mins + ' min ago');
+                if (meta) meta.textContent = 'Source: ' + (L.src || 'spot feed') + ' • Updated ' + when + (L.stale ? ' • ⚠️ market possibly closed (price may be stale)' : '');
+                if (chip) chip.innerHTML = L.stale
+                    ? '⚠️ last update ' + when
+                    : '<span style="color:#2e7d32; font-weight:bold;">● LIVE</span> — updated ' + when;
+            }).catch(function(e) { var meta = document.getElementById('goldPriceMeta'); if (meta) meta.textContent = '⚠️ ' + e.message; });
+        }
+
+        function goldRenderRanges() {
+            var el = document.getElementById('goldRanges');
+            if (!el) return;
+            el.innerHTML = GOLD_RANGES.map(function(r) {
+                var active = r[0] === goldRange;
+                return '<button onclick="goldSetRange(\'' + r[0] + '\')" style="padding:7px 12px; border-radius:16px; cursor:pointer; font-size:12px; font-weight:bold; border:1px solid ' + (active ? '#b8860b' : 'var(--border)') + '; background:' + (active ? '#b8860b' : '#fff') + '; color:' + (active ? '#fff' : 'var(--text-main)') + ';">' + r[1] + '</button>';
+            }).join('');
+        }
+
+        function goldSetRange(w) { goldRange = w; goldRenderRanges(); goldLoadSeries(); }
+
+        function goldLoadSeries() {
+            fetch('/api/gold/series?w=' + encodeURIComponent(goldRange)).then(function(r) { return r.json(); }).then(function(d) {
+                if (!d || !d.ok) throw new Error((d && d.error) || 'series failed');
+                goldLoadChartLib(function() { goldDrawChart(d.points || []); });
+            }).catch(function(e) { var el = document.getElementById('goldChartInfo'); if (el) el.textContent = '⚠️ ' + e.message; });
+        }
+
+        function goldTimeLabel(ts) {
+            var d = new Date(ts);
+            if (goldRange === '1w' || goldRange === '1M') return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function goldDrawChart(points) {
+            var cv = document.getElementById('goldChart');
+            var info = document.getElementById('goldChartInfo');
+            if (!cv) return;
+            if (!points.length) {
+                if (info) info.textContent = 'Collecting data — the graph fills as prices are polled (about every 60 seconds).';
+                if (goldChartObj) { goldChartObj.destroy(); goldChartObj = null; }
+                return;
+            }
+            var labels = points.map(function(p) { return goldTimeLabel(p[0]); });
+            var data = points.map(function(p) { return p[1]; });
+            var last = points[points.length - 1][1];
+            var first = points[0][1];
+            var diff = last - first;
+            var diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' (' + (first ? (diff / first * 100).toFixed(2) : '0') + '%)';
+            var up = diff >= 0;
+            if (info) info.textContent = points.length + ' point(s) • ' + goldFmt(first) + ' → ' + goldFmt(last) + ' • change ' + diffStr;
+            if (goldChartObj) { goldChartObj.destroy(); goldChartObj = null; }
+            goldChartObj = new Chart(cv.getContext('2d'), {
+                type: 'line',
+                data: { labels: labels, datasets: [{ label: 'XAU/USD', data: data, borderColor: up ? '#2e7d32' : '#c62828', backgroundColor: up ? 'rgba(46,125,50,0.10)' : 'rgba(198,40,40,0.10)', fill: true, pointRadius: points.length > 80 ? 0 : 2, borderWidth: 2, tension: 0.25 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(c) { return goldFmt(c.parsed.y); } } } },
+                    scales: { y: { ticks: { callback: function(v) { return '$' + v; } } }, x: { ticks: { maxTicksLimit: 10 } } }
+                }
+            });
+        }
+
+        function goldLoadLimits() {
+            fetch('/api/gold').then(function(r) { return r.json(); }).then(function(g) {
+                if (!g || !g.ok) return;
+                var el = document.getElementById('goldLimitsList');
+                var hC = document.getElementById('goldHistoryCard');
+                var hL = document.getElementById('goldHistoryList');
+                var limits = g.limits || [];
+                var active = limits.filter(function(l) { return l && l.active; });
+                var inactive = limits.filter(function(l) { return l && !l.active; }).slice(-6).reverse();
+                var rows = '';
+                rows += active.length ? active.map(function(l) {
+                    var icon = l.type === 'buy' ? '🔻 BUY' : '🔺 SELL';
+                    var word = l.type === 'buy' ? 'alerts when price falls to' : 'alerts when price rises to';
+                    return '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:#fffdf5;">' +
+                        '<div style="font-size:13px;"><b>' + icon + '</b> ' + word + ' <b>' + goldFmt(l.price) + '/oz</b>' + (l.note ? ' <span style="color:#667781;">— ' + goldEsc(l.note) + '</span>' : '') + '</div>' +
+                        '<button onclick="goldDeleteLimit(\'' + l.id + '\')" title="Remove" style="background:#fdecea; color:#c62828; border:1px solid #f5c6c2; border-radius:8px; padding:6px 10px; cursor:pointer; font-weight:bold;">✕</button>' +
+                        '</div>';
+                }).join('') : '<div style="font-size:13px; color:#667781; padding:6px 0;">No active alerts. Add one below — or tell the Boss bot on WhatsApp.</div>';
+                if (inactive.length) {
+                    rows += '<div style="font-size:12px; color:#667781; margin-top:6px;">Recent:</div>' + inactive.map(function(l) {
+                        var when = l.hitAt ? new Date(l.hitAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                        var status = l.hitAt ? ('✅ HIT at ' + goldFmt(l.hitPrice || 0) + ' — ' + when) : (l.cancelled ? '🗑️ removed' : '⚠️ inactive');
+                        return '<div style="font-size:12px; color:#546e7a; padding:5px 0;">' + (l.type === 'buy' ? '🔻' : '🔺') + ' ' + goldFmt(l.price) + ' — ' + status + (l.note ? ' — ' + goldEsc(l.note) : '') + '</div>';
+                    }).join('');
+                }
+                if (el) el.innerHTML = rows;
+                var hist = g.history || [];
+                if (hC && hL) {
+                    if (hist.length) {
+                        hC.style.display = 'block';
+                        hL.innerHTML = hist.map(function(h) {
+                            return '<div style="font-size:12px; color:#546e7a; padding:6px 0; border-bottom:1px dashed var(--border);">🚨 ' + (h.type === 'buy' ? '🔻 BUY' : '🔺 SELL') + ' ' + goldFmt(h.price) + ' hit at <b>' + goldFmt(h.hitPrice) + '</b> — ' + new Date(h.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + (h.note ? ' — ' + goldEsc(h.note) : '') + '</div>';
+                        }).join('');
+                    } else { hC.style.display = 'none'; }
+                }
+            }).catch(function() { /* ignore */ });
+        }
+
+        function goldAddLimit() {
+            var type = (document.getElementById('goldLimitType') || {}).value || 'buy';
+            var price = Number((document.getElementById('goldLimitPrice') || {}).value);
+            var note = ((document.getElementById('goldLimitNote') || {}).value || '').trim();
+            if (!price) { alert('Enter a target price first.'); return; }
+            fetch('/api/gold/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: type, price: price, note: note }) })
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d || !d.ok) { alert('⚠️ ' + ((d && d.error) || 'Could not save the alert.')); return; }
+                    var pe = document.getElementById('goldLimitPrice'); if (pe) pe.value = '';
+                    var ne = document.getElementById('goldLimitNote'); if (ne) ne.value = '';
+                    goldLoadLimits();
+                }).catch(function(e) { alert('⚠️ ' + e.message); });
+        }
+
+        function goldDeleteLimit(id) {
+            fetch('/api/gold/limits/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) })
+                .then(function() { goldLoadLimits(); }).catch(function() { /* ignore */ });
         }
 
         function newsSwitch(id) { newsActiveTab = id; newsRenderTabs(); newsRenderContent(); }
