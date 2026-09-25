@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, 8 graph windows (5m/10m/15m/30m/1h/24h/1W/1M), one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands) -->
+    <!-- APP VERSION: 2026.09.25.2 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1237,11 +1237,14 @@
                 </div>
                 <div class="card">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                        <b>📈 Price Graph</b>
+                        <b>📈 Live Market Chart — candlesticks (XAU/USD)</b>
                         <div id="goldRanges" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
                     </div>
-                    <div style="position:relative; height:320px; margin-top:12px;"><canvas id="goldChart"></canvas></div>
+                    <div id="goldTvWrap" style="position:relative; height:440px; margin-top:12px;">
+                        <div id="goldTvChart" style="height:100%;"></div>
+                    </div>
                     <div id="goldChartInfo" style="font-size:12px; color:#667781; margin-top:6px;"></div>
+                    <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">Live chart by TradingView — free real market data: candlesticks, crosshair, zoom, fullscreen &amp; drawing tools.</div>
                 </div>
                 <div class="card">
                     <b>🔔 One-Time Price Alerts</b>
@@ -4930,19 +4933,33 @@
         // ===== 🥇 GOLD MARKET =====
         var goldRange = '1h';
         var goldPollTimer = null;
-        var goldChartObj = null;
-        var goldChartLibLoaded = false;
+        var goldTvState = 'none';
+        var goldTvWaiters = [];
+        var goldLastPoints = [];
         var GOLD_RANGES = [['5m', '5 min'], ['10m', '10 min'], ['15m', '15 min'], ['30m', '30 min'], ['1h', '1 hour'], ['24h', '24 hours'], ['1w', '1 week'], ['1M', '1 month']];
 
         function goldFmt(p) { return '$' + Number(p || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
         function goldEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
-        function goldLoadChartLib(cb) {
-            if (goldChartLibLoaded || window.Chart) { goldChartLibLoaded = true; cb(); return; }
+        function goldEnsureTvLib(cb) {
+            if (typeof TradingView !== 'undefined' && TradingView.widget) { cb(true); return; }
+            if (goldTvState === 'failed') { cb(false); return; }
+            goldTvWaiters.push(cb);
+            if (goldTvState === 'loading') return;
+            goldTvState = 'loading';
             var s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
-            s.onload = function() { goldChartLibLoaded = true; cb(); };
-            s.onerror = function() { var el = document.getElementById('goldChartInfo'); if (el) el.textContent = '⚠️ Chart library could not load — check your internet.'; };
+            s.src = 'https://s3.tradingview.com/tv.js';
+            s.onload = function() {
+                var ok = (typeof TradingView !== 'undefined' && TradingView.widget);
+                goldTvState = ok ? 'ready' : 'failed';
+                var w = goldTvWaiters; goldTvWaiters = [];
+                w.forEach(function(f) { try { f(ok); } catch (e) { /* ignore */ } });
+            };
+            s.onerror = function() {
+                goldTvState = 'failed';
+                var w = goldTvWaiters; goldTvWaiters = [];
+                w.forEach(function(f) { try { f(false); } catch (e) { /* ignore */ } });
+            };
             document.head.appendChild(s);
         }
 
@@ -4957,9 +4974,9 @@
             goldRenderRanges();
             goldLoadPrice();
             goldLoadLimits();
-            goldLoadSeries();
+            goldLoadSeries(true);
             if (goldPollTimer) clearInterval(goldPollTimer);
-            goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldRange === '5m' || goldRange === '10m') goldLoadSeries(); }, 60000);
+            goldPollTimer = setInterval(function() { goldLoadPrice(); goldLoadLimits(); if (goldTvState === 'failed') goldLoadSeries(false); }, 60000);
         }
 
         function closeGoldPage() {
@@ -4973,7 +4990,7 @@
             var info = document.getElementById('goldChartInfo');
             if (info) info.textContent = '🔄 Fetching fresh price…';
             fetch('/api/gold/refresh', { method: 'POST' }).then(function() {
-                goldLoadPrice(); goldLoadSeries(); goldLoadLimits();
+                goldLoadPrice(); goldLoadSeries(false); goldLoadLimits();
             }).catch(function(e) { if (info) info.textContent = '⚠️ ' + e.message; });
         }
 
@@ -5007,48 +5024,114 @@
             }).join('');
         }
 
-        function goldSetRange(w) { goldRange = w; goldRenderRanges(); goldLoadSeries(); }
+        function goldSetRange(w) { goldRange = w; goldRenderRanges(); goldLoadSeries(true); }
 
-        function goldLoadSeries() {
-            fetch('/api/gold/series?w=' + encodeURIComponent(goldRange)).then(function(r) { return r.json(); }).then(function(d) {
-                if (!d || !d.ok) throw new Error((d && d.error) || 'series failed');
-                goldLoadChartLib(function() { goldDrawChart(d.points || []); });
-            }).catch(function(e) { var el = document.getElementById('goldChartInfo'); if (el) el.textContent = '⚠️ ' + e.message; });
+        function goldTvConfig() {
+            var map = {
+                '5m': { i: '5' }, '10m': { i: '10' }, '15m': { i: '15' }, '30m': { i: '30' },
+                '1h': { i: '60' }, '24h': { i: '15', r: '1D' }, '1w': { i: '60', r: '5D' }, '1M': { i: 'D', r: '1M' }
+            };
+            return map[goldRange] || { i: '15' };
         }
 
-        function goldTimeLabel(ts) {
-            var d = new Date(ts);
-            if (goldRange === '1w' || goldRange === '1M') return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        function goldMountTv() {
+            var host = document.getElementById('goldTvChart');
+            if (!host) return;
+            var cfg = goldTvConfig();
+            var opts = {
+                container_id: 'goldTvChart',
+                autosize: true,
+                symbol: 'OANDA:XAUUSD',
+                interval: cfg.i,
+                timezone: 'Asia/Dubai',
+                theme: 'light',
+                style: '1',
+                locale: 'en',
+                toolbar_bg: '#f1f3f6',
+                enable_publishing: false,
+                allow_symbol_change: true,
+                hide_side_toolbar: false,
+                withdateranges: true,
+                save_image: true
+            };
+            if (cfg.r) opts.range = cfg.r;
+            host.innerHTML = '';
+            try { new TradingView.widget(opts); }
+            catch (e) { goldDrawFallback(goldLastPoints); }
         }
 
-        function goldDrawChart(points) {
-            var cv = document.getElementById('goldChart');
-            var info = document.getElementById('goldChartInfo');
+        function goldDrawFallback(points) {
+            var wrap = document.getElementById('goldTvWrap');
+            if (!wrap) return;
+            wrap.innerHTML = '<canvas id="goldFallbackCanvas" style="width:100%; height:100%; display:block;"></canvas>';
+            var cv = document.getElementById('goldFallbackCanvas');
             if (!cv) return;
-            if (!points.length) {
-                if (info) info.textContent = 'Collecting data — the graph fills as prices are polled (about every 60 seconds).';
-                if (goldChartObj) { goldChartObj.destroy(); goldChartObj = null; }
+            var dpr = window.devicePixelRatio || 1;
+            var W = wrap.clientWidth || 900, H = wrap.clientHeight || 440;
+            cv.width = W * dpr; cv.height = H * dpr;
+            var ctx = cv.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, W, H);
+            if (!points || points.length < 2) {
+                ctx.fillStyle = '#9aa7ad';
+                ctx.font = '14px sans-serif';
+                ctx.fillText('Collecting data — the chart fills as prices are polled (about every 60 seconds)', 20, H / 2);
                 return;
             }
-            var labels = points.map(function(p) { return goldTimeLabel(p[0]); });
-            var data = points.map(function(p) { return p[1]; });
-            var last = points[points.length - 1][1];
-            var first = points[0][1];
-            var diff = last - first;
-            var diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' (' + (first ? (diff / first * 100).toFixed(2) : '0') + '%)';
-            var up = diff >= 0;
-            if (info) info.textContent = points.length + ' point(s) • ' + goldFmt(first) + ' → ' + goldFmt(last) + ' • change ' + diffStr;
-            if (goldChartObj) { goldChartObj.destroy(); goldChartObj = null; }
-            goldChartObj = new Chart(cv.getContext('2d'), {
-                type: 'line',
-                data: { labels: labels, datasets: [{ label: 'XAU/USD', data: data, borderColor: up ? '#2e7d32' : '#c62828', backgroundColor: up ? 'rgba(46,125,50,0.10)' : 'rgba(198,40,40,0.10)', fill: true, pointRadius: points.length > 80 ? 0 : 2, borderWidth: 2, tension: 0.25 }] },
-                options: {
-                    responsive: true, maintainAspectRatio: false, animation: false,
-                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(c) { return goldFmt(c.parsed.y); } } } },
-                    scales: { y: { ticks: { callback: function(v) { return '$' + v; } } }, x: { ticks: { maxTicksLimit: 10 } } }
+            var vals = points.map(function(p) { return p[1]; });
+            var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+            var pad = Math.max((max - min) * 0.15, 0.5);
+            min -= pad; max += pad;
+            var up = vals[vals.length - 1] >= vals[0];
+            var col = up ? '#2e7d32' : '#c62828';
+            ctx.lineWidth = 1;
+            for (var g = 0; g <= 4; g++) {
+                var gy = 30 + (H - 60) * g / 4;
+                ctx.strokeStyle = '#eceff1';
+                ctx.beginPath(); ctx.moveTo(50, gy); ctx.lineTo(W - 20, gy); ctx.stroke();
+                ctx.fillStyle = '#9aa7ad';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('$' + (max - (max - min) * g / 4).toFixed(2), 4, gy + 4);
+            }
+            function X(i) { return 50 + (W - 70) * i / (points.length - 1); }
+            function Y(v) { return 30 + (H - 60) * (1 - (v - min) / (max - min)); }
+            ctx.beginPath();
+            points.forEach(function(p, i) { var x = X(i), y = Y(p[1]); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+            ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+            ctx.lineTo(X(points.length - 1), H - 30);
+            ctx.lineTo(X(0), H - 30);
+            ctx.closePath();
+            ctx.fillStyle = up ? 'rgba(46,125,50,0.10)' : 'rgba(198,40,40,0.10)';
+            ctx.fill();
+            var lx = X(points.length - 1), ly = Y(vals[vals.length - 1]);
+            ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+            ctx.fillStyle = col; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('$' + vals[vals.length - 1].toFixed(2), Math.min(lx + 8, W - 70), ly - 8);
+        }
+
+        function goldLoadSeries(remountTv) {
+            fetch('/api/gold/series?w=' + encodeURIComponent(goldRange)).then(function(r) { return r.json(); }).then(function(d) {
+                if (!d || !d.ok) throw new Error((d && d.error) || 'series failed');
+                goldLastPoints = d.points || [];
+                var info = document.getElementById('goldChartInfo');
+                if (goldLastPoints.length) {
+                    var first = goldLastPoints[0][1], last = goldLastPoints[goldLastPoints.length - 1][1];
+                    var diff = last - first;
+                    var diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2) + ' (' + (first ? (diff / first * 100).toFixed(2) : '0') + '%)';
+                    if (info) info.textContent = 'Our own live feed: ' + goldLastPoints.length + ' point(s) • ' + goldFmt(first) + ' → ' + goldFmt(last) + ' • change ' + diffStr + ' • ' + goldRange + ' view';
+                } else if (info) {
+                    info.textContent = 'Our own live feed is collecting data…';
                 }
-            });
+                if (!remountTv) { if (goldTvState === 'failed') goldDrawFallback(goldLastPoints); return; }
+                goldEnsureTvLib(function(ok) {
+                    if (ok) goldMountTv();
+                    else {
+                        goldDrawFallback(goldLastPoints);
+                        var el = document.getElementById('goldChartInfo');
+                        if (el) el.textContent = (el.textContent ? el.textContent + ' • ' : '') + 'TradingView is unreachable right now — showing the built-in mini-chart.';
+                    }
+                });
+            }).catch(function(e) { var el = document.getElementById('goldChartInfo'); if (el) el.textContent = '⚠️ ' + e.message; });
         }
 
         function goldLoadLimits() {
