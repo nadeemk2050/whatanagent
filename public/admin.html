@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.4 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button) -->
+    <!-- APP VERSION: 2026.09.25.5 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show REAL unified figures (chat + contact book, exact leads, live AI active/paused from the WhatsApp pause list) with 60s auto-refresh and click-through navigation) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -153,6 +153,11 @@
         /* PWA Install Button style */
         .btn-pwa-install { display: none; background-color: #25d366; color: white; border: none; border-radius: 8px; padding: 10px 15px; font-weight: bold; cursor: pointer; margin-right: 15px; }
 
+        /* Dashboard stat cards (clickable, live-refreshing) */
+        .stat-clickable { cursor: pointer; border-radius: 10px; padding: 8px 6px; transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
+        .stat-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.08); background: #ffffff; }
+        .stat-clickable:active { transform: translateY(0); }
+
         /* Mobile Adaptive View (Media Queries) */
         @media (max-width: 768px) {
             .container { margin: 10px auto; padding: 0 10px; }
@@ -217,11 +222,22 @@
                 document.getElementById('profileUid').innerText = user.uid;
                 if (typeof loadKnowledge === 'function') loadKnowledge();
                 if (typeof loadContacts === 'function') loadContacts();
+                if (typeof loadDashboardStats === 'function') loadDashboardStats();
                 if (typeof loadEnv === 'function') loadEnv();
                 if (typeof loadFAQs === 'function') loadFAQs();
                 if (typeof loadProducts === 'function') loadProducts();
                 if (typeof loadWaWebKnowledgeBase === 'function') loadWaWebKnowledgeBase();
                 if (typeof showBossAiFab === 'function') showBossAiFab(true);
+
+                // Auto-refresh the real dashboard figures every 60s (only while the tab is visible)
+                if (window.__dashStatsTimer) clearInterval(window.__dashStatsTimer);
+                window.__dashStatsTimer = setInterval(function() {
+                    try {
+                        if (document.hidden) return;
+                        const ds = document.getElementById('dashboardSection');
+                        if (ds && ds.classList.contains('active') && typeof loadDashboardStats === 'function') loadDashboardStats();
+                    } catch (e) { }
+                }, 60000);
             } else {
                 document.getElementById('authContainer').style.display = 'flex';
                 document.getElementById('appContainer').style.display = 'none';
@@ -1294,17 +1310,20 @@
             <!-- Dashboard Section -->
             <div id="dashboardSection" class="app-section active">
                 <div class="card" style="display: flex; gap: 20px; justify-content: space-around; flex-wrap: wrap; margin-bottom: 20px;">
-                    <div style="text-align: center; flex: 1; min-width: 120px;">
-                        <h3 style="margin: 0; color: var(--primary); font-size: 28px;" id="statTotalContacts">0</h3>
+                    <div class="stat-clickable" style="text-align: center; flex: 1; min-width: 120px;" onclick="showSection('contactbook')" title="Open Contact Book">
+                        <h3 style="margin: 0; color: var(--primary); font-size: 28px;" id="statTotalContacts">—</h3>
                         <span style="font-size: 14px; color: #667781; font-weight: bold;">Total Contacts</span>
+                        <div id="statTotalContactsSub" style="font-size: 11px; color: #98a1a8; margin-top: 4px;">loading…</div>
                     </div>
-                    <div style="text-align: center; flex: 1; border-left: 1px solid var(--border); border-right: 1px solid var(--border); min-width: 120px; padding: 0 10px;">
-                        <h3 style="margin: 0; color: #2e7d32; font-size: 28px;" id="statCapturedLeads">0</h3>
+                    <div class="stat-clickable" style="text-align: center; flex: 1; border-left: 1px solid var(--border); border-right: 1px solid var(--border); min-width: 120px; padding: 0 10px;" onclick="showSection('leadsbook')" title="Open Leads Book">
+                        <h3 style="margin: 0; color: #2e7d32; font-size: 28px;" id="statCapturedLeads">—</h3>
                         <span style="font-size: 14px; color: #667781; font-weight: bold;">Captured Leads</span>
+                        <div id="statCapturedLeadsSub" style="font-size: 11px; color: #98a1a8; margin-top: 4px;">loading…</div>
                     </div>
-                    <div style="text-align: center; flex: 1; min-width: 120px;">
-                        <h3 style="margin: 0; color: #ef6c00; font-size: 28px;" id="statActiveAI">0 / 0</h3>
+                    <div class="stat-clickable" style="text-align: center; flex: 1; min-width: 120px;" onclick="openWaWebPage()" title="Open WhatsApp Web — manage AI pause per contact">
+                        <h3 style="margin: 0; color: #ef6c00; font-size: 28px;" id="statActiveAI">— / —</h3>
                         <span style="font-size: 14px; color: #667781; font-weight: bold;">AI Active / Paused</span>
+                        <div id="statActiveAISub" style="font-size: 11px; color: #98a1a8; margin-top: 4px;">loading…</div>
                     </div>
                 </div>
 
@@ -2710,6 +2729,8 @@
                     if (typeof naLoadStatus === 'function') naLoadStatus();
                 } else if (id === 'brains') {
                     if (typeof loadBrains === 'function') loadBrains();
+                } else if (id === 'dashboard') {
+                    if (typeof loadDashboardStats === 'function') loadDashboardStats();
                 }
             } catch(loaderErr) {
                 console.warn('[showSection] section loader error:', loaderErr);
@@ -2751,27 +2772,33 @@
             chatContactsCache = contacts;
 
             const numbers = Object.keys(contacts);
-            let total = numbers.length;
-            let leads = 0;
-            let activeAI = 0;
-            let pausedAI = 0;
 
-            numbers.forEach(num => {
-                const info = contacts[num] || {};
-                if (info.leadName || info.leadEmail) leads++;
-                if (info.aiPaused) pausedAI++; else activeAI++;
-            });
-
-            const elTotal = document.getElementById('statTotalContacts');
-            const elLeads = document.getElementById('statCapturedLeads');
-            const elActive = document.getElementById('statActiveAI');
-            if (elTotal) elTotal.innerText = total;
-            if (elLeads) elLeads.innerText = leads;
-            if (elActive) elActive.innerText = `${activeAI} / ${pausedAI}`;
+            // Real, unified stat figures come from the server (chat + book + live WA-Web state)
+            if (typeof loadDashboardStats === 'function') loadDashboardStats();
 
             // Refresh Contact Book view (merges AI chat contacts automatically)
             renderContactBook();
             if (typeof renderChatSidebarFromCache === 'function') renderChatSidebarFromCache();
+        }
+
+        // Fetches REAL dashboard figures: unified contacts (chat + Contact Book),
+        // exact leads, live AI active/paused + auto-reply state from WhatsApp Web
+        async function loadDashboardStats() {
+            try {
+                const res = await fetch('api/dashboard-stats');
+                const s = await res.json();
+                if (!s || !s.ok) return;
+                const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+                setTxt('statTotalContacts', s.totalUnified);
+                setTxt('statCapturedLeads', s.capturedLeads);
+                setTxt('statActiveAI', s.aiActive + ' / ' + s.aiPaused);
+                setTxt('statTotalContactsSub', '💬 ' + s.chatContacts + ' chat · 📇 ' + s.bookContacts + ' book');
+                setTxt('statCapturedLeadsSub', '🎯 with company / email / products');
+                let sub = s.autoReplyEnabled ? '🟢 auto-reply ON' : '🔴 auto-reply OFF';
+                if (s.aiModel) sub += ' · ' + s.aiModel;
+                if (s.aiPausedTotal > s.aiPaused) sub += ' · ' + s.aiPausedTotal + ' paused in WhatsApp';
+                setTxt('statActiveAISub', sub);
+            } catch (e) { console.warn('[STATS] load failed:', e && e.message); }
         }
 
         async function loadEnv() {

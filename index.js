@@ -36,7 +36,8 @@ import {
   buildWaWebKnowledgeSystemPrompt,
   generateWaWebAutoBotReply,
   transcribeAudioBuffer,
-  attachWaWebDb
+  attachWaWebDb,
+  resolveRealPhoneNumber
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1646,6 +1647,86 @@ app.get('/api/contacts', async (req, res) => {
     const docSnap = await getDoc(doc(db, "appData", "contacts"));
     res.json(docSnap.exists() ? docSnap.data() : {});
   } catch (error) { res.json({}); }
+});
+
+// ==========================================================
+// --- DASHBOARD STATS: real unified figures for the stat cards ---
+// Total Contacts = AI-chat contacts ∪ Contact Book (deduped phones)
+// Captured Leads = unified leads (chat lead flags OR book isLead / non-New status)
+// AI Active/Paused = live WA-Web pause list (LIDs resolved to real phones)
+// ==========================================================
+app.get('/api/dashboard-stats', async (req, res) => {
+  try {
+    const norm = (p) => String(p || '').replace(/\D/g, '');
+    const phones = new Set();
+    const leads = new Set();
+    let chatContacts = 0, bookContacts = 0;
+
+    // 1) AI-chat contacts (legacy store, still merged by the Contact Book UI)
+    try {
+      const snap = await getDoc(doc(db, 'appData', 'contacts'));
+      const data = snap.exists() ? (snap.data() || {}) : {};
+      Object.keys(data).forEach(num => {
+        const p = norm(num); if (!p) return;
+        chatContacts++;
+        phones.add(p);
+        const i = data[num] || {};
+        if (i.leadName || i.leadCompany || i.leadProducts || i.leadEmail || i.leadWebsite) leads.add(p);
+      });
+    } catch (e) { console.warn('[STATS] chat contacts read failed:', e.message); }
+
+    // 2) Universal Contact Book (contactBook collection)
+    try {
+      const snap = await getDocs(collection(db, 'contactBook'));
+      snap.docs.forEach(d => {
+        const b = d.data() || {};
+        const p = norm(b.phone || d.id); if (!p) return;
+        bookContacts++;
+        phones.add(p);
+        if (b.isLead || (b.leadStatus && b.leadStatus !== 'New')) leads.add(p);
+      });
+    } catch (e) { console.warn('[STATS] contact book read failed:', e.message); }
+
+    // 3) Live WA-Web AI state: paused contacts resolved to REAL phones (LID -> phone)
+    let autoReplyEnabled = false, aiModel = '', autoReplyScope = '';
+    let aiPaused = 0, aiPausedTotal = 0, aiPausedUnresolved = 0;
+    try {
+      const kb = getWaWebKnowledgeBase() || {};
+      autoReplyEnabled = kb.autoReplyEnabled === true;
+      aiModel = kb.aiModel || '';
+      autoReplyScope = kb.autoReplyScope || '';
+      const pausedList = Array.isArray(kb.pausedContacts) ? kb.pausedContacts : [];
+      const pausedPhones = new Set();
+      const unresolvedSeen = new Set();
+      pausedList.forEach(entry => {
+        let p = '';
+        try { p = resolveRealPhoneNumber(entry) || ''; } catch (e) { /* ignore */ }
+        if (p) pausedPhones.add(norm(p));
+        else { const d = norm(entry); if (d) unresolvedSeen.add(d); }
+      });
+      aiPausedTotal = pausedPhones.size;
+      pausedPhones.forEach(p => { if (phones.has(p)) aiPaused++; });
+      aiPausedUnresolved = unresolvedSeen.size;
+    } catch (e) { console.warn('[STATS] WA-Web state read failed:', e.message); }
+
+    res.json({
+      ok: true,
+      chatContacts,
+      bookContacts,
+      totalUnified: phones.size,
+      capturedLeads: leads.size,
+      aiActive: Math.max(0, phones.size - aiPaused),
+      aiPaused,
+      aiPausedTotal,
+      aiPausedUnresolved,
+      autoReplyEnabled,
+      aiModel,
+      autoReplyScope,
+      generatedAt: Date.now()
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
 // ==========================================================
