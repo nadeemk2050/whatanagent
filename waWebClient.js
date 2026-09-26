@@ -1193,6 +1193,9 @@ async function processDueSchedules() {
 let alignAnnounceConfig = {};
 let alignAnnounceUnsub = null;
 let alignWeeklyBusy = false;
+let alignAnnounceSweepAt = 0;
+let alignAnnounceSweepBusy = false;
+const alignAnnouncedRecently = new Set();   // ref.path dedupe (covers marker-write races)
 
 function tsToMs(v) {
   if (!v) return 0;
@@ -1207,11 +1210,15 @@ function tsToMs(v) {
 function dubaiDayStartMs(nowMs) { return Math.floor((nowMs + 4 * 3600 * 1000) / 86400000) * 86400000 - 4 * 3600 * 1000; }
 
 async function announceTaskCompletion(ref, task) {
+  const pth = (ref && ref.path) || '';
   try {
     const cfg = alignAnnounceConfig || {};
     if (!cfg.groupJid || !/@g\.us$/i.test(String(cfg.groupJid))) return;   // no announcement group assigned yet
     if (cfg.instantEnabled === false) return;
+    if (task && task.waAnnounceSentAt) return;                            // already announced earlier
+    if (pth && alignAnnouncedRecently.has(pth)) return;                   // in-flight / just-sent dedupe
     if (!sock || waWebState.status !== 'connected') return;
+    if (pth) { alignAnnouncedRecently.add(pth); setTimeout(() => alignAnnouncedRecently.delete(pth), 30 * 60 * 1000); }
     const email = String(task.completedBy || '').toLowerCase();
     const staffEntry = email ? alignStaffWaMap.get(email) : null;
     const name = (staffEntry && staffEntry.name) || (email ? email.split('@')[0] : 'A team member');
@@ -1230,16 +1237,20 @@ async function announceTaskCompletion(ref, task) {
     userCount++; teamCount++;
     const doneStr = new Date(doneMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     const msg = '✅ *Task Completed*\n\n📋 "' + String(task.description || '').substring(0, 140) + '"\n👤 By: *' + name + '*\n🗓️ ' + doneStr + ' (Dubai)\n\n📊 *' + name + '* finished ' + userCount + ' task' + (userCount === 1 ? '' : 's') + ' today.\n🏁 Team total today: ' + teamCount + ' task' + (teamCount === 1 ? '' : 's') + '.';
+    let sent = false;
     try {
       await Promise.race([
         sendWaWebMessage(String(cfg.groupJid), msg),
         new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
       ]);
+      sent = true;
       console.log('[ALIGN ANNOUNCE] 📢 Completion announced in "' + (cfg.groupName || cfg.groupJid) + '" — ' + name + ' (' + userCount + ' today, team ' + teamCount + ')');
     } catch (e) {
       console.warn('[ALIGN ANNOUNCE] completion send failed: ' + ((e && e.message) || e));
+      if (pth) alignAnnouncedRecently.delete(pth);   // allow retry (marker NOT written)
     }
-    await setDoc(ref, { waAnnounceSentAt: Date.now() }, { merge: true }).catch(() => {});
+    // write the sent-marker ONLY after a successful send so the catch-up sweep can retry failures
+    if (sent) await setDoc(ref, { waAnnounceSentAt: Date.now() }, { merge: true }).catch(() => {});
   } catch (e) { console.warn('[ALIGN ANNOUNCE] failed: ' + ((e && e.message) || e)); }
 }
 
@@ -1300,10 +1311,44 @@ async function maybeSendWeeklySummary() {
   } catch (e) { /* ignore */ }
 }
 
+// Catch-up scan: announce Done tasks (last 24h) that were never announced — covers completions
+// made while the server was asleep/reconnecting (free-tier era, deploys) or when a send failed.
+// Throttled to one run per 10 min; sends at most 6 announcements per run (newest first).
+async function alignAnnounceCatchUp(firstRun = false) {
+  if (alignAnnounceSweepBusy) return;
+  const now = Date.now();
+  if (!firstRun && (now - alignAnnounceSweepAt) < 10 * 60 * 1000) return;
+  alignAnnounceSweepAt = now;
+  const cfg = alignAnnounceConfig || {};
+  if (!cfg.groupJid || !/@g\.us$/i.test(String(cfg.groupJid))) return;
+  if (cfg.instantEnabled === false) return;
+  if (!sock || waWebState.status !== 'connected') return;
+  const cutoff = now - 24 * 3600 * 1000;
+  const pending = [];
+  for (const entry of alignTasksCache.values()) {
+    const v = entry.data || {};
+    if (v.status !== 'Done' || v.waAnnounceSentAt) continue;
+    const ms = tsToMs(v.completedAt);
+    if (!ms || ms < cutoff) continue;
+    pending.push({ ref: entry.ref, data: v, ms: ms });
+  }
+  if (!pending.length) return;
+  pending.sort((a, b) => a.ms - b.ms);
+  const chosen = pending.slice(-6);   // the most recent 6 (older ones catch up on later sweeps)
+  alignAnnounceSweepBusy = true;
+  console.log('[ALIGN ANNOUNCE] 🔁 catch-up: ' + pending.length + ' unannounced completion(s) found, sending ' + chosen.length);
+  try {
+    for (const item of chosen) {
+      await announceTaskCompletion(item.ref, item.data);
+      await new Promise(r => setTimeout(r, 3000));
+      if (!sock || waWebState.status !== 'connected') break;
+    }
+  } finally { alignAnnounceSweepBusy = false; }
+}
+
 async function alignNotifyTick() {
   try {
-    if (!globalDb || waWebState.status !== 'connected') return;
-    // 1) retry anything the instant listener missed (normally zero extra docs)
+    if (!globalDb || waWebState.status !== 'connected') return;    // 1) retry anything the instant listener missed (normally zero extra docs)
     if (!alignQueueBusy) {
       alignQueueBusy = true;
       try {
@@ -1353,6 +1398,8 @@ async function alignNotifyTick() {
     }
     // 4) weekly group summary (configurable day/time, default Saturday 18:00 Dubai)
     await maybeSendWeeklySummary();
+    // 5) completion announcements catch-up (announces anything missed while offline; throttled)
+    await alignAnnounceCatchUp();
   } catch (e) { /* ignore */ }
 }
 
@@ -1395,6 +1442,8 @@ function initAlignNotifySystem(db) {
       alignAnnounceConfig = ds.exists() ? (ds.data() || {}) : {};
     }, () => {});
     if (!alignTickTimer) alignTickTimer = setInterval(alignNotifyTick, 45000);
+    // First catch-up run shortly after boot: announces completions missed while the server was down
+    setTimeout(() => { alignAnnounceCatchUp(true).catch(() => {}); }, 3 * 60 * 1000);
     // Keep the groups index fresh for the webapp/Android group reminders (self-throttled to 6h)
     setTimeout(() => { refreshWaGroupsIndex(true); }, 30000);
     if (!alignGroupsTimer) alignGroupsTimer = setInterval(() => { refreshWaGroupsIndex(); }, 60 * 60 * 1000);

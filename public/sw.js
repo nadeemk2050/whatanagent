@@ -1,4 +1,4 @@
-const CACHE_NAME = 'whatanagent-v8';
+const CACHE_NAME = 'whatanagent-v9';
 const ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -61,6 +61,15 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy)).catch(() => {});
       }
       return response;
-    }).catch(() => caches.match(e.request))
+    }).catch(() => caches.match(e.request).then((cached) => {
+      if (cached) return cached;
+      // ALWAYS return a real Response - resolving undefined here throws
+      // "Failed to convert value to 'Response'" in every page console.
+      return new Response('Offline — this resource is not cached yet.', {
+        status: 503,
+        statusText: 'Offline',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }))
   );
 });

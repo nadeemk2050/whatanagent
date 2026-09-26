@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v17'; // Change this version number (v2, v3, etc.) every time you deploy
+const CACHE_NAME = 'task-board-cache-v18'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -18,13 +18,24 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache and caching essential assets');
-        return cache.addAll(urlsToCache);
+        return cache.addAll(urlsToCache).catch(err => console.log('Some assets could not be cached (will retry at runtime):', err && err.message));
       })
   );
 });
 
-// Serve cached content when offline, and update cache with new content
+function offlineResponse() {
+  return new Response('You are offline — AlignTasks will load again when the connection returns.', {
+    status: 503,
+    statusText: 'Offline',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+  });
+}
+
+// Serve cached content when offline, and update cache with new content.
+// NOTE: the fetch handler must ALWAYS resolve to a real Response - resolving
+// undefined throws "Failed to convert value to 'Response'" in the page console.
 self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;   // never intercept writes/POSTs
   event.respondWith(
     caches.match(event.request)
       .then(response => {
@@ -39,7 +50,7 @@ self.addEventListener('fetch', event => {
           response => {
             // Check if we received a valid response
             if (!response || response.status !== 200) { // Removed 'basic' check to allow caching CDN files
-              return response;
+              return response || offlineResponse();
             }
 
             const responseToCache = response.clone();
@@ -47,12 +58,20 @@ self.addEventListener('fetch', event => {
             caches.open(CACHE_NAME)
               .then(cache => {
                 cache.put(event.request, responseToCache);
-              });
+              })
+              .catch(() => {});
 
             return response;
           }
-        );
+        ).catch(() => {
+          // Network failed and nothing cached: navigations fall back to the cached app shell
+          if (event.request.mode === 'navigate') {
+            return caches.match('./index.html').then(r => r || offlineResponse());
+          }
+          return offlineResponse();
+        });
       })
+      .catch(() => offlineResponse())
   );
 });
 
