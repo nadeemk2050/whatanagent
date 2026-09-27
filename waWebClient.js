@@ -427,6 +427,36 @@ export async function alignTasksOwnerAdmin() {
   return { uid: '', email: '' };
 }
 
+// 👑 Boss Orders audit trail - the behavioral memory core (Command Center 2.0).
+// Appends 1..n structured entries to appData/bossOrders {items:[…]} (capped 400). Never throws.
+export async function logBossOrder(entries) {
+  if (!globalDb) return;
+  try {
+    const arr = Array.isArray(entries) ? entries : [entries];
+    const ref = doc(globalDb, 'appData', 'bossOrders');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    const now = Date.now();
+    let added = 0;
+    for (const e of arr) {
+      if (!e || !e.text) continue;
+      items.push({
+        id: 'ord-' + now + '-' + Math.random().toString(36).substring(2, 6),
+        ts: e.ts || now,
+        source: e.source || 'whatsapp',
+        kind: e.kind || 'command',
+        text: String(e.text).substring(0, 500),
+        status: e.status || 'ok',
+        meta: e.meta || null,
+        taskPayload: e.taskPayload || null
+      });
+      added++;
+    }
+    if (!added) return;
+    await setDoc(ref, { items: items.slice(-400) }, { merge: true });
+  } catch (e) { /* silent - logging must never break a flow */ }
+}
+
 export async function bossAlignTaskAdd(p) {
   if (!globalDb) return { ok: false, error: 'No database connection' };
   const title = String((p && (p.title || p.task || p.description)) || '').trim();
@@ -793,6 +823,28 @@ function getSelfChatJid() {
 }
 
 // ================= SHARED BOSS BRAIN (used by BOTH the WhatsApp boss flow AND the dashboard) =================
+// 👑 Behavioral memory: recent boss orders audit trail (Command Center 2.0) - 5-min cache
+let bossOrdersCache = { at: 0, block: '' };
+async function getRecentBossOrdersBlock() {
+  const now = Date.now();
+  if (now - bossOrdersCache.at < 5 * 60 * 1000) return bossOrdersCache.block;
+  try {
+    const snap = await getDoc(doc(globalDb, 'appData', 'bossOrders'));
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    const recent = items.slice(-12).reverse();
+    if (!recent.length) { bossOrdersCache = { at: now, block: '' }; return ''; }
+    const lines = recent.map(o => {
+      const d = new Date(o.ts || 0).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return '• ' + d + ' [' + (o.source || '') + ' / ' + (o.kind || '') + '] ' + String(o.text || '').substring(0, 140);
+    }).join('\n');
+    const byKind = {};
+    items.forEach(o => { byKind[o.kind || 'other'] = (byKind[o.kind || 'other'] || 0) + 1; });
+    const stats = Object.keys(byKind).sort((a, b) => byKind[b] - byKind[a]).slice(0, 6).map(k => k + ' × ' + byKind[k]).join(', ');
+    bossOrdersCache = { at: now, block: '--- RECENT BOSS ORDERS (audit trail - your behavioral memory) ---\nLast 12 orders (newest first):\n' + lines + '\nAll-time order mix: ' + stats + '\nUse this to understand the boss\'s working style, priorities and tone. If he says "do it again" or "like last time", find the matching order above and repeat exactly that action.\n\n' };
+  } catch (e) { bossOrdersCache = { at: now, block: '' }; }
+  return bossOrdersCache.block;
+}
+
 // Builds the full executive prompt exactly as the WhatsApp boss flow does - contacts, team, brain memory.
 async function buildBossExecPrompt() {
   const contactDir = await bossContactDirectory(400);
@@ -800,6 +852,7 @@ async function buildBossExecPrompt() {
   const alignStaff = await alignTasksStaffDirectory();
   const alignStaffLine = alignStaff.length ? ('BOARD TEAM MEMBERS (align tasks to these EXACT names): ' + alignStaff.map(s => s.name).join(', ')) : '';
   const brainCtx = await getBossBrainContext(16);
+  const bossOrdersBlock = await getRecentBossOrdersBlock();
   let goldSpotLine = '';
   try {
     const gs = await goldSnapshot();
@@ -852,6 +905,7 @@ async function buildBossExecPrompt() {
     '  [GOLD: {"action":"list"}]                   -> show the active + recent gold alerts\n' +
     '  [GOLD: {"action":"clear"}]                  -> remove all gold alerts ({"which":"buy"|"sell"} optional)\n' +
     'RULE: a price BELOW the live spot above = set_buy; ABOVE it = set_sell. Boss may also ask for the live price - answer from the LIVE GOLD SPOT line. ONLY the app result confirms an alert - never write your own confirmation.\n' +
+    (bossOrdersBlock ? bossOrdersBlock : '') +
     'Contact Book:\n' +
     '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +
     '  [CONTACT: {"phone":"0501234567","delete":true}] -> remove a contact\n' +
@@ -881,17 +935,20 @@ async function executeBossActionBlocks(replyText) {
   const cfgActions = extractBossConfigActions(replyText || '');
   const bizActions = extractBossBusinessActions(replyText || '');
   let cfgSummary = '';
+  const orderLog = [];
   for (const act of cfgActions) {
     const res = await applyBossConfigAction(act);
     if (res.ok && res.applied && res.applied.length) cfgSummary += '⚙️ *Updated (chat bot):* ' + res.applied.join(' · ') + '\n';
     else if (res.error) cfgSummary += '⚠️ ' + res.error + '\n';
     if (res.rejected && res.rejected.length) cfgSummary += '⚠️ Not allowed: ' + res.rejected.join(', ') + '\n';
+    orderLog.push({ source: 'whatsapp', kind: 'config', text: JSON.stringify(act).substring(0, 300), status: res.ok ? 'ok' : 'error' });
   }
   for (const act of bizActions) {
     const res = await applyBossBusinessAction(act);
     if (res.ok && res.applied && res.applied.length) cfgSummary += '⚙️ *Updated (business bot):* ' + res.applied.join(' · ') + '\n';
     else if (res.error) cfgSummary += '⚠️ ' + res.error + '\n';
     if (res.rejected && res.rejected.length) cfgSummary += '⚠️ Not allowed: ' + res.rejected.join(', ') + '\n';
+    orderLog.push({ source: 'whatsapp', kind: 'business', text: JSON.stringify(act).substring(0, 300), status: res.ok ? 'ok' : 'error' });
   }
   if (cfgActions.length || bizActions.length) {
     replyText = stripBossBusinessActions(stripBossConfigActions(replyText || ''));
@@ -905,6 +962,7 @@ async function executeBossActionBlocks(replyText) {
     sectionSummary += res.ok
       ? ('🗓️ *Task scheduled:* ' + dubaiTime(res.task.runAt) + ' (Dubai) — ' + String(res.task.title || '').substring(0, 50) + '\n')
       : ('⚠️ ' + res.error + '\n');
+    orderLog.push({ source: 'whatsapp', kind: 'task', text: 'Schedule task: ' + String((res.ok && res.task.title) || t.title || JSON.stringify(t)).substring(0, 200), status: res.ok ? 'scheduled' : 'error', taskPayload: res.ok ? res.task : null });
   }
   if (/\[TASKLIST\]/i.test(replyText || '')) {
     const res = await bossListTasks();
@@ -919,6 +977,7 @@ async function executeBossActionBlocks(replyText) {
     sectionSummary += res.ok
       ? ('❌ *Cancelled:* ' + (res.task.title || res.task.id) + '\n')
       : ('⚠️ ' + res.error + '\n');
+    orderLog.push({ source: 'whatsapp', kind: 'cancel', text: 'Cancel task: ' + String((res.ok && (res.task.title || res.task.id)) || JSON.stringify(q)).substring(0, 200), status: res.ok ? 'ok' : 'error' });
   }
   for (const a of extractBossActionBlocks(replyText, 'ALIGNTASK')) {
     const act = String((a && a.action) || '').toLowerCase();
@@ -930,6 +989,7 @@ async function executeBossActionBlocks(replyText) {
           ? ('📋 *AlignTasks (General) added:* "' + String(res.task.description).substring(0, 60) + '"' + dueStr + '\n')
           : ('📋 *AlignTasks added:* "' + String(res.task.description).substring(0, 60) + '" → ' + res.assignee.name + dueStr + '\n'))
         : ('⚠️ AlignTasks: ' + res.error + '\n');
+      orderLog.push({ source: 'whatsapp', kind: 'align', text: 'AlignTasks add' + (res.ok && res.assignee ? ' for ' + res.assignee.name : (res.ok && res.general ? ' (general)' : '')) + ': ' + String(a.description || a.task || a.title || JSON.stringify(a)).substring(0, 180), status: res.ok ? 'ok' : 'error' });
     } else if (act === 'list' || act === 'show' || act === 'today') {
       const params = (act === 'today' && !(a && a.when)) ? Object.assign({}, a, { when: 'today' }) : a;
       const res = await bossAlignTaskList(params);
@@ -950,12 +1010,15 @@ async function executeBossActionBlocks(replyText) {
     sectionSummary += res.ok
       ? (res.deleted ? ('📇 *Contact removed:* +' + res.deleted + '\n') : ('📇 *Contact saved:* ' + (res.contact.name || '(no name)') + ' — +' + res.contact.phone + '\n'))
       : ('⚠️ ' + res.error + '\n');
+    orderLog.push({ source: 'whatsapp', kind: 'contact', text: (res.ok && res.deleted ? 'Contact removed: +' + res.deleted : 'Contact saved: ' + String((res.ok && res.contact.name) || JSON.stringify(c)).substring(0, 150)), status: res.ok ? 'ok' : 'error' });
   }
   for (const g of extractBossActionBlocks(replyText, 'GOLD')) {
     const res = await goldBossAction(g);
     sectionSummary += res.ok ? ((res.summary || '🥇 Done.') + '\n') : ('⚠️ Gold: ' + (res.error || 'failed') + '\n');
+    orderLog.push({ source: 'whatsapp', kind: 'gold', text: 'Gold: ' + JSON.stringify(g).substring(0, 200), status: res.ok ? 'ok' : 'error' });
   }
   if (sectionSummary) replyText = stripBossActionBlocks(replyText || '');
+  if (orderLog.length) logBossOrder(orderLog).catch(() => {});
   // Strip any model-invented result claims - only real execution results may reach the boss
   replyText = stripBossClaimedResults(replyText);
 
@@ -980,6 +1043,7 @@ export async function runDashboardBossCommand(text, opts = {}) {
     finalMsg = await ensureNoDevanagari(finalMsg);
     await appendBossBrain('ai', '🖥️ ' + finalMsg);
     console.log('[BOSS DASHBOARD] 🖥️ Executed live order: "' + command.substring(0, 80) + '"');
+    logBossOrder({ source: 'dashboard', kind: 'command', text: (wasVoice ? '🎙️ ' : '') + command, status: 'ok', meta: { reply: finalMsg.substring(0, 200) } }).catch(() => {});
     return { ok: true, reply: finalMsg, wasVoice: wasVoice };
   } catch (e) {
     console.warn('[BOSS DASHBOARD] Error:', e.message);
@@ -1736,6 +1800,10 @@ async function processBossRemindersAndNotifications() {
     const tasks = tSnap.exists() ? (tSnap.data().tasks || []) : [];
     let tChanged = false;
     for (const t of tasks) {
+      // 2026-09-27: waweb_message sending is consolidated in the single Command Center executor
+      // (index.js processAiTasks) so two loops can never double-send the same task.
+      continue;
+      // eslint-disable-next-line no-unreachable
       if (!t || t.taskType !== 'waweb_message' || t.status !== 'pending' || !t.runAt || t.runAt > now) continue;
       let final = false;
       try {

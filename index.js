@@ -37,7 +37,9 @@ import {
   generateWaWebAutoBotReply,
   transcribeAudioBuffer,
   attachWaWebDb,
-  resolveRealPhoneNumber
+  resolveRealPhoneNumber,
+  bossAlignTaskAdd,
+  logBossOrder
 } from './waWebClient.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3447,12 +3449,18 @@ app.get('/api/ai-tasks', async (req, res) => {
 app.post('/api/ai-tasks', async (req, res) => {
   try {
     const b = req.body || {};
-    const runAt = parseInt(b.runAt) || 0;
-    if (!runAt) return res.status(400).json({ error: 'Pick a date & time for the task.' });
-    if (runAt < Date.now() - 30000) return res.status(400).json({ error: 'That time is already in the past - pick a future time.' });
-    const taskType = (b.taskType === 'send_message' || b.taskType === 'send_template') ? b.taskType : 'ai_task';
+    const now = Date.now();
+    const VALID_TYPES = ['send_message', 'send_template', 'ai_task', 'waweb_message', 'align_task'];
+    const taskType = VALID_TYPES.includes(b.taskType) ? b.taskType : 'ai_task';
+    const sch = ccBuildSchedule(b, now);
+    if (sch.error) return res.status(400).json({ error: sch.error });
+    if (!sch.firstRunAt) return res.status(400).json({ error: 'Pick a date & time (or a schedule) for the task.' });
+    if (sch.firstRunAt < now - 30000) return res.status(400).json({ error: 'That time is already in the past - pick a future time.' });
     if (taskType === 'send_message' && (!b.target || !String(b.message || '').trim())) {
       return res.status(400).json({ error: 'Enter the WhatsApp number and the message to send.' });
+    }
+    if (taskType === 'waweb_message' && (!b.target || !String(b.message || '').trim())) {
+      return res.status(400).json({ error: 'Enter the WhatsApp number (or contact name) and the message to send.' });
     }
     if (taskType === 'send_template' && (!b.target || !b.templateName)) {
       return res.status(400).json({ error: 'Template task needs the WhatsApp number and a template.' });
@@ -3460,11 +3468,15 @@ app.post('/api/ai-tasks', async (req, res) => {
     if (taskType === 'ai_task' && !String(b.instruction || '').trim()) {
       return res.status(400).json({ error: 'Write the instruction for the AI.' });
     }
+    if (taskType === 'align_task' && !String(b.title || b.message || '').trim()) {
+      return res.status(400).json({ error: 'Write the task description for the team board.' });
+    }
     const task = {
       id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-      taskType: taskType,
-      title: String(b.title || b.message || b.instruction || b.templateName || '').substring(0, 60),
+      taskType,
+      title: String(b.title || b.message || b.instruction || b.templateName || '').substring(0, 80),
       target: b.target ? normalizePhone(b.target) : '',
+      targetName: String(b.targetName || ''),
       message: String(b.message || ''),
       instruction: String(b.instruction || ''),
       templateName: b.templateName || '',
@@ -3472,18 +3484,126 @@ app.post('/api/ai-tasks', async (req, res) => {
       variables: Array.isArray(b.variables) ? b.variables : [],
       siteKey: b.siteKey || '',
       model: b.model || '',
-      runAt: runAt,
+      assignee: String(b.assignee || ''),
+      dueDate: String(b.dueDate || ''),
+      schedule: sch.schedule,
+      cronText: sch.cronText || '',
+      scheduleText: sch.scheduleText || 'Once',
+      runAt: sch.firstRunAt,
+      nextRunAt: sch.firstRunAt,
+      expiresAt: parseInt(b.expiresAt, 10) || 0,
+      maxFailures: Math.max(1, Math.min(20, parseInt(b.maxFailures, 10) || 5)),
+      runCount: 0,
+      consecutiveFailures: 0,
+      log: [],
       status: 'pending',
       createdBy: 'dashboard',
-      createdAt: Date.now()
+      createdAt: now
     };
     const ref = doc(db, 'appData', 'aiTasks');
     const snap = await getDoc(ref);
     const tasks = snap.exists() ? (snap.data().tasks || []) : [];
     tasks.push(task);
-    await setDoc(ref, { tasks }, { merge: true });
+    await setDoc(ref, { tasks: tasks.slice(-300) }, { merge: true });
+    logBossOrder({ source: 'dashboard', kind: 'task', text: '[' + (task.scheduleText) + '] ' + taskType + ': ' + task.title, status: 'scheduled', meta: { taskId: task.id } }).catch(() => {});
     res.json({ success: true, task });
   } catch (e) { res.status(500).json({ error: 'Failed to save task: ' + e.message }); }
+});
+
+// ⚡ Command Center 2.0 - pause/resume a task (auto-disabled tasks can be re-enabled the same way)
+app.post('/api/ai-tasks/toggle', async (req, res) => {
+  try {
+    const id = String((req.body || {}).id || '');
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    const t = tasks.find(x => x.id === id);
+    if (!t) return res.status(404).json({ error: 'Task not found.' });
+    if (t.status === 'pending' || t.status === 'running') {
+      t.status = 'disabled';
+      t.disabledReason = 'Paused from the Command Center';
+      t.nextRunAt = 0;
+    } else {
+      t.status = 'pending';
+      t.disabledReason = '';
+      t.consecutiveFailures = 0;
+      const next = (t.cronText && t.schedule && t.schedule.type !== 'once') ? cronNextMs(t.cronText, Date.now()) : 0;
+      t.runAt = next || (Date.now() + 60000);
+      t.nextRunAt = t.runAt;
+    }
+    await setDoc(ref, { tasks }, { merge: true });
+    res.json({ success: true, task: t });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ⚡ Command Center 2.0 - run a task immediately (keeps its schedule afterwards)
+app.post('/api/ai-tasks/run-now', async (req, res) => {
+  try {
+    const id = String((req.body || {}).id || '');
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    const t = tasks.find(x => x.id === id);
+    if (!t) return res.status(404).json({ error: 'Task not found.' });
+    t.status = 'pending';
+    t.runAt = Date.now() + 2000;
+    t.nextRunAt = t.runAt;
+    await setDoc(ref, { tasks }, { merge: true });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 👑 Command Center 2.0 - Boss Orders audit trail (searchable behavioral memory core)
+app.get('/api/boss-orders', async (req, res) => {
+  try {
+    const snap = await getDoc(doc(db, 'appData', 'bossOrders'));
+    let items = snap.exists() ? (snap.data().items || []) : [];
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const kind = String(req.query.kind || '').trim().toLowerCase();
+    const limitN = Math.min(300, parseInt(req.query.limit, 10) || 150);
+    const byKind = {};
+    const week = Date.now() - 7 * 86400000;
+    let last7 = 0;
+    items.forEach(it => { const k = it.kind || 'other'; byKind[k] = (byKind[k] || 0) + 1; if ((it.ts || 0) >= week) last7++; });
+    const total = items.length;
+    if (kind) items = items.filter(it => String(it.kind || '').toLowerCase() === kind);
+    if (q) items = items.filter(it => (String(it.text || '') + ' ' + String(it.kind || '') + ' ' + String(it.source || '')).toLowerCase().includes(q));
+    items = items.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limitN);
+    res.json({ ok: true, items, stats: { total, last7, byKind }, kinds: Object.keys(byKind) });
+  } catch (e) { res.json({ ok: false, items: [], stats: { total: 0, last7: 0, byKind: {} }, kinds: [] }); }
+});
+
+// 👑 Re-run a past boss order: task orders are recreated on the scheduler; instructions re-run through the boss brain
+app.post('/api/boss-orders/rerun', async (req, res) => {
+  try {
+    const id = String((req.body || {}).id || '');
+    const snap = await getDoc(doc(db, 'appData', 'bossOrders'));
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    const it = items.find(x => x.id === id);
+    if (!it) return res.status(404).json({ error: 'Order not found.' });
+    if (it.taskPayload && it.taskPayload.taskType) {
+      const tRef = doc(db, 'appData', 'aiTasks');
+      const tSnap = await getDoc(tRef);
+      const tasks = tSnap.exists() ? (tSnap.data().tasks || []) : [];
+      const task = Object.assign({}, it.taskPayload, {
+        id: 'task-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+        status: 'pending',
+        createdAt: Date.now(),
+        createdBy: 'dashboard-rerun',
+        runAt: Date.now() + 60000,
+        nextRunAt: Date.now() + 60000,
+        executedAt: 0, result: '', socketRetries: 0, consecutiveFailures: 0, runCount: 0, log: [],
+        title: 'Re-run: ' + String(it.taskPayload.title || '').substring(0, 70)
+      });
+      tasks.push(task);
+      await setDoc(tRef, { tasks: tasks.slice(-300) }, { merge: true });
+      logBossOrder({ source: 'dashboard', kind: 'task', text: '▶ Re-run scheduled (in 1 min): ' + String(it.text || '').substring(0, 120), status: 'ok', meta: { taskId: task.id } }).catch(() => {});
+      return res.json({ ok: true, mode: 'task', task });
+    }
+    const { runDashboardBossCommand } = await import('./waWebClient.js');
+    const r = await runDashboardBossCommand(String(it.text || ''), {});
+    res.json({ ok: true, mode: 'command', reply: (r && (r.reply || r.error)) || 'done' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/ai-tasks/cancel', async (req, res) => {
@@ -3813,7 +3933,255 @@ async function processFollowUpScheduler() {
 }
 
 // ===== TASKS FOR AI — runs scheduled tasks (send WhatsApp message / AI website job) =====
+// ==========================================================
+// --- ⚡ COMMAND CENTER 2.0: cron-style scheduling engine ---
+// Tiny 5-field cron matcher (min hour dom month dow): *  */n  a-b  a,b,c  a-b/n.
+// All schedules run in Dubai time (Asia/Dubai, fixed +04:00 - no DST).
+// ==========================================================
+const DUBAI_OFFSET_MS = 4 * 3600 * 1000;
+
+function parseCronField(expr, lo, hi) {
+  const set = new Set();
+  for (const partRaw of String(expr || '').split(',')) {
+    const part = partRaw.trim();
+    if (!part) continue;
+    let step = 1;
+    let range = part;
+    const slash = part.indexOf('/');
+    if (slash !== -1) { range = part.slice(0, slash); step = parseInt(part.slice(slash + 1), 10); if (!(step > 0)) return null; }
+    let a, b;
+    if (range === '*') { a = lo; b = hi; }
+    else if (range.includes('-')) { const p = range.split('-'); a = parseInt(p[0], 10); b = parseInt(p[1], 10); }
+    else { a = parseInt(range, 10); b = a; }
+    if (isNaN(a) || isNaN(b) || a < lo || b > hi || a > b) return null;
+    for (let v = a; v <= b; v += step) set.add(v);
+  }
+  return set.size ? set : null;
+}
+
+function parseCron(expr) {
+  const parts = String(expr || '').trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const f = [
+    parseCronField(parts[0], 0, 59),
+    parseCronField(parts[1], 0, 23),
+    parseCronField(parts[2], 1, 31),
+    parseCronField(parts[3], 1, 12),
+    parseCronField(parts[4], 0, 6)
+  ];
+  if (f.some(x => !x)) return null;
+  return { min: f[0], hour: f[1], dom: f[2], month: f[3], dow: f[4], domWild: parts[2] === '*', dowWild: parts[4] === '*' };
+}
+
+// Next fire time (epoch ms) after fromMs, or 0 when nothing fires within ~5 years.
+function cronNextMs(expr, fromMs) {
+  const c = typeof expr === 'string' ? parseCron(expr) : expr;
+  if (!c) return 0;
+  let t = Math.floor(fromMs / 60000) * 60000 + 60000;
+  const cap = t + 5 * 366 * 24 * 60 * 60000;
+  for (; t < cap; t += 60000) {
+    const d = new Date(t + DUBAI_OFFSET_MS);
+    if (!c.min.has(d.getUTCMinutes())) continue;
+    if (!c.hour.has(d.getUTCHours())) continue;
+    if (!c.month.has(d.getUTCMonth() + 1)) continue;
+    const domOk = c.dom.has(d.getUTCDate());
+    const dowOk = c.dow.has(d.getUTCDay());
+    const dayOk = c.domWild ? dowOk : (c.dowWild ? domOk : (domOk || dowOk));
+    if (!dayOk) continue;
+    return t;
+  }
+  return 0;
+}
+
+const CC_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const CC_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function ccFormatDubai(ms) {
+  const d = new Date(ms + DUBAI_OFFSET_MS);
+  return CC_DAYS[d.getUTCDay()] + ', ' + String(d.getUTCDate()).padStart(2, '0') + ' ' + CC_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear() + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ' (Dubai)';
+}
+
+// Build { schedule, cronText, firstRunAt, scheduleText } from the dashboard payload.
+function ccBuildSchedule(b, now) {
+  const s = b.schedule || null;
+  if (!s || !s.type || s.type === 'once') {
+    const runAt = parseInt(s && s.runAt ? s.runAt : b.runAt, 10) || 0;
+    return { schedule: { type: 'once' }, cronText: '', firstRunAt: runAt, scheduleText: 'Once' };
+  }
+  const hh = (v, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.max(0, Math.min(23, n)); };
+  const mm = (v, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : Math.max(0, Math.min(59, n)); };
+  let cron = ''; let text = '';
+  if (s.type === 'interval') {
+    const every = Math.max(1, Math.min(1440, parseInt(s.everyMinutes, 10) || 15));
+    cron = '*/' + every + ' * * * *';
+    text = 'Every ' + every + ' minute' + (every === 1 ? '' : 's');
+  } else if (s.type === 'daily') {
+    const h = hh(s.hour, 9), m = mm(s.minute, 0);
+    cron = m + ' ' + h + ' * * *';
+    text = 'Daily at ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ' Dubai';
+  } else if (s.type === 'weekly') {
+    const wd = Math.max(0, Math.min(6, parseInt(s.weekday, 10) || 0));
+    const h = hh(s.hour, 9), m = mm(s.minute, 0);
+    cron = m + ' ' + h + ' * * ' + wd;
+    text = 'Weekly on ' + CC_DAYS[wd] + ' at ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ' Dubai';
+  } else if (s.type === 'monthly') {
+    const day = Math.max(1, Math.min(31, parseInt(s.monthDay, 10) || 1));
+    const h = hh(s.hour, 9), m = mm(s.minute, 0);
+    cron = m + ' ' + h + ' ' + day + ' * *';
+    text = 'Monthly on day ' + day + ' at ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ' Dubai';
+  } else if (s.type === 'yearly') {
+    const day = Math.max(1, Math.min(31, parseInt(s.monthDay, 10) || 1));
+    const mo = Math.max(1, Math.min(12, parseInt(s.month, 10) || 1));
+    const h = hh(s.hour, 9), m = mm(s.minute, 0);
+    cron = m + ' ' + h + ' ' + day + ' ' + mo + ' *';
+    text = 'Yearly on ' + day + ' ' + CC_MONTHS[mo - 1] + ' at ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ' Dubai';
+  } else if (s.type === 'cron') {
+    cron = String(s.cronText || '').trim();
+    if (!parseCron(cron)) return { error: 'Invalid crontab expression. Use 5 fields, e.g. */15 * * * *' };
+    text = 'Cron: ' + cron + ' (Dubai)';
+  } else {
+    return { error: 'Unknown schedule type' };
+  }
+  const fromMs = (s.startAt && parseInt(s.startAt, 10) > now) ? parseInt(s.startAt, 10) : now;
+  const firstRunAt = cronNextMs(cron, fromMs);
+  if (!firstRunAt) return { error: 'This schedule never fires - check the expression.' };
+  return { schedule: Object.assign({}, s, { cronText: cron }), cronText: cron, firstRunAt: firstRunAt, scheduleText: text };
+}
+
+async function ccNotifyBoss(text) {
+  try {
+    const ref = doc(db, 'appData', 'bossNotifications');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    items.push({ id: 'ntf-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6), text: String(text || '').substring(0, 900), createdAt: Date.now(), status: 'pending' });
+    await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+  } catch (e) { /* ignore */ }
+}
+
+// Executes ONE task and returns { ok, result, hard }. 'hard' errors count as failures.
+async function ccExecuteTask(t) {
+  if (t.taskType === 'send_message' || t.taskType === 'waweb_message') {
+    const target = normalizePhone(t.target || '');
+    if (!target) return { ok: false, hard: true, result: '❌ Missing target number.' };
+    const ok = await sendWaWebMessage(target, t.message || '');
+    if (ok) return { ok: true, result: '✅ Sent to +' + target + (t.targetName ? ' (' + t.targetName + ')' : '') + ' via WhatsApp Web.' };
+    return { ok: false, hard: false, result: '⏳ WhatsApp Web send failed (socket reconnecting?)' };
+  }
+  if (t.taskType === 'send_template') {
+    return { ok: false, hard: true, result: '⚠️ Meta templates are only available for the business bot (businesswhatanagent). Use a normal WhatsApp message task.' };
+  }
+  if (t.taskType === 'ai_task') {
+    const seoSnap = await getDoc(doc(db, 'appData', 'seoAgent'));
+    const sites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
+    const siteKey = t.siteKey || getMainSeoSiteKey(sites);
+    const r = await axios.post('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/seo/ai-chat', {
+      messages: [{ role: 'user', content: t.instruction || '' }],
+      model: t.model === 'gemini' ? 'gemini' : 'deepseek',
+      siteKey: siteKey
+    }, { timeout: 300000 });
+    return { ok: true, result: '🤖 ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500) };
+  }
+  if (t.taskType === 'align_task') {
+    const r = await bossAlignTaskAdd({ title: t.title || t.message || '', assignee: t.assignee || '', due: t.dueDate || '' });
+    if (r && r.ok) {
+      return { ok: true, result: '📋 Team board task created' + (r.general ? ' (General - for all)' : (r.assignee ? ' for ' + r.assignee.name : '')) + ': "' + String(t.title || '').substring(0, 60) + '"' };
+    }
+    return { ok: false, hard: true, result: '❌ ' + ((r && r.error) || 'board task failed') };
+  }
+  return { ok: false, hard: true, result: '❌ Unknown task type: ' + t.taskType };
+}
+
 async function processAiTasks() {
+  try {
+    const ref = doc(db, 'appData', 'aiTasks');
+    const snap = await getDoc(ref);
+    const tasks = snap.exists() ? (snap.data().tasks || []) : [];
+    const now = Date.now();
+    let changed = false;
+
+    for (const t of tasks) {
+      if (!t || t.status !== 'pending') continue;
+      const isCron = t.schedule && t.schedule.type && t.schedule.type !== 'once';
+
+      // expired schedule window → stop before running again
+      if (isCron && t.expiresAt && now > t.expiresAt) {
+        t.status = 'expired'; t.executedAt = now;
+        t.result = '⌛ Schedule window ended (' + ccFormatDubai(t.expiresAt) + ')';
+        t.log = (t.log || []).concat([{ ts: now, ok: false, info: 'expired' }]).slice(-30);
+        changed = true; continue;
+      }
+      if (!t.runAt || t.runAt > now) continue;
+
+      console.log('[AI TASKS] Running ' + t.id + ' (' + t.taskType + '): "' + String(t.title || t.message || t.instruction || '').substring(0, 60) + '"');
+      t.status = 'running'; t.startedAt = now;
+
+      let outcome;
+      try {
+        outcome = await ccExecuteTask(t);
+      } catch (e) {
+        const msg = e.response ? ((e.response.status || '') + ' ' + JSON.stringify(e.response.data || {})) : e.message;
+        outcome = { ok: false, hard: !/reconnecting|offline|send failed/i.test(String(msg)), result: '❌ ' + safeTruncate(sanitizeText(msg), 400) };
+      }
+      t.result = safeTruncate(String(outcome.result || ''), 1200);
+      t.executedAt = Date.now();
+      t.log = (t.log || []).concat([{ ts: t.executedAt, ok: outcome.ok === true, info: safeTruncate(t.result, 300) }]).slice(-30);
+
+      if (outcome.ok) {
+        t.consecutiveFailures = 0;
+        t.socketRetries = 0;
+        t.runCount = (Number(t.runCount) || 0) + 1;
+        if (isCron) {
+          const next = cronNextMs(t.cronText || (t.schedule && t.schedule.cronText) || '', Date.now());
+          if (next && (!t.expiresAt || next <= t.expiresAt)) { t.status = 'pending'; t.runAt = next; t.nextRunAt = next; }
+          else { t.status = 'done'; t.result += '\n⌛ Schedule finished.'; }
+        } else { t.status = 'done'; }
+      } else if (!outcome.hard) {
+        // soft failure (socket reconnecting): retry every minute, do not count as a failure
+        t.socketRetries = (Number(t.socketRetries) || 0) + 1;
+        if (t.socketRetries <= 15) {
+          t.status = 'pending'; t.runAt = Date.now() + 60000;
+          if (isCron) t.nextRunAt = t.runAt;
+          t.result += '\n⏳ Retrying when WhatsApp Web reconnects (' + t.socketRetries + '/15)…';
+        } else {
+          t.status = 'failed';
+          t.result += '\n❌ Gave up after 15 reconnect retries.';
+        }
+      } else {
+        t.socketRetries = 0;
+        const failN = (Number(t.consecutiveFailures) || 0) + 1;
+        t.consecutiveFailures = failN;
+        const failLimit = Number(t.maxFailures) || 5;
+        if (isCron) {
+          const next = cronNextMs(t.cronText || (t.schedule && t.schedule.cronText) || '', Date.now());
+          if (next) { t.status = 'pending'; t.runAt = next; t.nextRunAt = next; }
+          else { t.status = 'failed'; }
+        } else { t.status = 'failed'; }
+        await ccNotifyBoss('❌ *Task failed* (' + failN + '/' + failLimit + '): ' + String(t.title || t.taskType).substring(0, 70) + '\n' + String(t.result || '').substring(0, 350));
+        if (isCron && failN >= failLimit) {
+          t.status = 'disabled';
+          t.disabledReason = 'Auto-disabled after ' + failN + ' consecutive failures';
+          await ccNotifyBoss('⛔ *Task auto-disabled* (' + failN + ' failures in a row): ' + String(t.title || t.taskType).substring(0, 70) + '\nFix the cause, then press ▶ Resume in the Command Center.');
+        }
+      }
+      changed = true;
+
+      // the boss always gets a send report for his own message tasks
+      if (t.taskType === 'waweb_message' && t.status !== 'pending' && t.status !== 'running') {
+        await ccNotifyBoss('📤 *Boss message ' + (t.status === 'done' ? 'sent ✅' : 'FAILED ❌') + ':* ' + (t.targetName || ('+' + t.target)) + '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + String(t.result || '').substring(0, 300))));
+      }
+      // boss-created tasks report their outcome (existing behaviour)
+      if (t.createdBy === 'boss-waweb' && t.status !== 'pending' && t.status !== 'running') {
+        await ccNotifyBoss('🗓️ *Task ' + (t.status === 'done' ? 'completed ✅' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) + (t.result ? '\n' + String(t.result).substring(0, 600) : ''));
+      }
+    }
+
+    if (changed) await setDoc(ref, { tasks: tasks.slice(-300) }, { merge: true });
+  } catch (e) {
+    console.error('[AI TASKS] Runner error:', e.message);
+  }
+}
+
+// (legacy runner kept for reference — superseded by the Command Center 2.0 engine above)
+async function legacyProcessAiTasksOld() {
   try {
     const ref = doc(db, 'appData', 'aiTasks');
     const snap = await getDoc(ref);

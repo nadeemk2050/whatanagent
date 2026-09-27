@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.09.25.7 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Events Calendar: free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts); gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through) -->
+    <!-- APP VERSION: 2026.09.27.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Events Calendar: free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts); gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through; ⚡ COMMAND CENTER 2.0 (menu: Tasks & Command Center 2.0): visual task builder (WhatsApp message / team board task / gold alert / AI prompt), cron-style schedules with LIVE next-run preview + 5-field crontab support (Asia/Dubai locked), schedule expiry, reconnect-retry, failure alerts to boss WhatsApp, auto-disable after N consecutive failures, per-task execution logs, conditional follow-ups + gold price watches with custom messages, and the 👑 History of Boss Orders audit trail with search + one-click re-run — also fed to the boss AI as behavioral memory) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -158,6 +158,19 @@
         .stat-clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.08); background: #ffffff; }
         .stat-clickable:active { transform: translateY(0); }
 
+        /* ⚡ Command Center 2.0 */
+        .cc-chip { padding: 7px 12px; border-radius: 16px; font-size: 12px; font-weight: bold; cursor: pointer; border: 1px solid var(--border); background: #fff; color: #3b4a54; }
+        .cc-chip.active { background: #2b54a8; border-color: #2b54a8; color: #fff; }
+        .cc-card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: #fff; margin-top: 10px; }
+        .cc-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+        .cc-btn { padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; border: 1px solid var(--border); background: #fff; margin-right: 4px; }
+        .cc-btn.primary { background: #2b54a8; border-color: #2b54a8; color: #fff; }
+        .cc-btn.green { background: #e8f5e9; border-color: #a5d6a7; color: #2e7d32; }
+        .cc-btn.red { background: #fdecea; border-color: #ef9a9a; color: #c62828; }
+        .cc-input { padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; box-sizing: border-box; }
+        .cc-inline { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .cc-label { font-size: 12px; font-weight: bold; color: #667781; margin-bottom: 4px; display: block; }
+
         /* Mobile Adaptive View (Media Queries) */
         @media (max-width: 768px) {
             .container { margin: 10px auto; padding: 0 10px; }
@@ -184,7 +197,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
@@ -208,6 +221,7 @@
         window.getDoc = getDoc;
         window.setDoc = setDoc;
         window.doc = doc;
+        window.getDocs = getDocs;
 
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
@@ -301,7 +315,7 @@
                 <span id="waWebNavBadge" style="font-size:8px; padding:1px 7px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
             </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
-            <div class="menu-item" onclick="showSection('tasks'); loadAiTasks(); loadConditionalTasks();">⏰ Tasks for AI</div>
+            <div class="menu-item" onclick="openCommandCenter()">⚡ Tasks & Command Center 2.0</div>
             <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
             <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 Contact Brains</div>
             <div class="menu-item" onclick="window.open('/aligntasks/','_blank')" title="Open the AlignTasks team board (same login as this dashboard)">📋 AlignTasks</div>
@@ -1244,6 +1258,30 @@
             <div style="max-width:900px; margin:0 auto; padding:18px;">
                 <div id="newsTabs" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;"></div>
                 <div id="newsContent"></div>
+            </div>
+        </div>
+
+        <!-- ===== ⚡ COMMAND CENTER 2.0 (full screen page view) ===== -->
+        <div id="ccPage" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:2600; overflow-y:auto;">
+            <div style="position:sticky; top:0; background:#fff; border-bottom:1px solid var(--border); z-index:5;">
+                <div style="padding:12px 18px 10px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <b style="font-size:17px;">⚡ Align Tasks &amp; Command Center 2.0</b>
+                        <span id="ccStatusChip" style="font-size:12px; color:#667781;"></span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button onclick="ccRefreshNow()" style="padding:9px 16px; background:#eef4ff; border:1px solid #3b6fd4; border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px; color:#2b54a8;">🔄 Refresh</button>
+                        <button onclick="closeCommandCenter()" style="padding:9px 16px; background:#f0f2f5; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-weight:bold; font-size:13px;">✕ Close</button>
+                    </div>
+                </div>
+                <div id="ccTabs" style="display:flex; gap:6px; flex-wrap:wrap; padding:0 18px 10px 18px;"></div>
+            </div>
+            <div style="max-width:1000px; margin:0 auto; padding:18px 18px 60px 18px;">
+                <div id="ccTab-new"></div>
+                <div id="ccTab-scheduled" style="display:none;"></div>
+                <div id="ccTab-conditional" style="display:none;"></div>
+                <div id="ccTab-logs" style="display:none;"></div>
+                <div id="ccTab-orders" style="display:none;"></div>
             </div>
         </div>
 
@@ -7970,6 +8008,470 @@
         await fetch('api/conditional-tasks/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, action: action }) });
         loadConditionalTasks();
       } catch (e) { /* ignore */ }
+    }
+
+    // ==================== ⚡ COMMAND CENTER 2.0 (Align Tasks & Command Center) ====================
+    var ccTab = 'new', ccTasksCache = [], ccCondCache = [], ccWatchCache = [], ccOrdersCache = [], ccOrdersStats = null, ccKinds = [], ccStaffCache = null;
+    var ccTickTimer = null, ccAutoTimer = null, ccType = 'waweb_message', ccSchedType = 'once', ccOrdersSeq = 0;
+
+    function ccDubaiFmt(ms) { try { return new Date(ms).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return '—'; } }
+    function ccRel(ms) {
+        if (!ms) return '—';
+        var d = ms - Date.now();
+        var past = d < 0; d = Math.abs(d);
+        var m = Math.floor(d / 60000), h = Math.floor(m / 60), rem = m % 60;
+        var s = past ? 'ago' : '';
+        var str = d < 60000 ? (Math.floor(d / 1000) + 's') : (h > 0 ? (h + 'h ' + rem + 'm') : (m + 'm'));
+        return past ? (str + ' ago') : ('in ' + str);
+    }
+    function ccStatusBadge(s) {
+        var map = { pending: ['⏳ Scheduled', '#fff3e0', '#ef6c00'], running: ['▶️ Running', '#e3f2fd', '#1565c0'], disabled: ['⏸ Paused', '#f0f2f5', '#546e7a'], done: ['✅ Done', '#e8f5e9', '#2e7d32'], failed: ['❌ Failed', '#fdecea', '#c62828'], cancelled: ['✕ Cancelled', '#f0f2f5', '#546e7a'], expired: ['⌛ Expired', '#f3e5f5', '#6a1b9a'], watching: ['👀 Watching', '#e3f2fd', '#1565c0'], fired: ['🎯 Fired', '#e8f5e9', '#2e7d32'], active: ['🟢 Active', '#e8f5e9', '#2e7d32'], paused: ['⏸ Paused', '#f0f2f5', '#546e7a'] };
+        var m = map[s] || [s, '#f0f2f5', '#546e7a'];
+        return '<span class="cc-badge" style="background:' + m[1] + '; color:' + m[2] + ';">' + m[0] + '</span>';
+    }
+    function ccTypeIcon(t) { return t === 'waweb_message' ? '💬' : t === 'align_task' ? '📋' : t === 'ai_task' ? '🤖' : t === 'send_message' ? '💬' : t === 'send_template' ? '📨' : '⚙️'; }
+
+    // ---- client-side cron matcher (mirror of the server engine - used for the LIVE PREVIEW only) ----
+    function ccParseField(expr, lo, hi) {
+        var set = {};
+        String(expr || '').split(',').forEach(function (partRaw) {
+            var part = partRaw.trim(); if (!part) return;
+            var step = 1, range = part, slash = part.indexOf('/');
+            if (slash !== -1) { range = part.slice(0, slash); step = parseInt(part.slice(slash + 1), 10); if (!(step > 0)) return; }
+            var a, b;
+            if (range === '*') { a = lo; b = hi; }
+            else if (range.indexOf('-') !== -1) { var p = range.split('-'); a = parseInt(p[0], 10); b = parseInt(p[1], 10); }
+            else { a = parseInt(range, 10); b = a; }
+            if (isNaN(a) || isNaN(b) || a < lo || b > hi || a > b) return;
+            for (var v = a; v <= b; v += step) set[v] = true;
+        });
+        return Object.keys(set).length ? set : null;
+    }
+    function ccParseCron(expr) {
+        var parts = String(expr || '').trim().split(/\s+/); if (parts.length !== 5) return null;
+        var f = [ccParseField(parts[0], 0, 59), ccParseField(parts[1], 0, 23), ccParseField(parts[2], 1, 31), ccParseField(parts[3], 1, 12), ccParseField(parts[4], 0, 6)];
+        if (f.some(function (x) { return !x; })) return null;
+        return { min: f[0], hour: f[1], dom: f[2], month: f[3], dow: f[4], domWild: parts[2] === '*', dowWild: parts[4] === '*' };
+    }
+    function ccNextMs(c, fromMs) {
+        var t = Math.floor(fromMs / 60000) * 60000 + 60000, cap = t + 5 * 366 * 24 * 60 * 60000;
+        for (; t < cap; t += 60000) {
+            var d = new Date(t + 4 * 3600 * 1000);
+            if (!c.min[d.getUTCMinutes()]) continue;
+            if (!c.hour[d.getUTCHours()]) continue;
+            if (!c.month[d.getUTCMonth() + 1]) continue;
+            var domOk = !!c.dom[d.getUTCDate()], dowOk = !!c.dow[d.getUTCDay()];
+            var dayOk = c.domWild ? dowOk : (c.dowWild ? domOk : (domOk || dowOk));
+            if (!dayOk) continue;
+            return t;
+        }
+        return 0;
+    }
+    function ccCronPreview(expr, count) {
+        var c = ccParseCron(expr); if (!c) return null;
+        var out = [], t = Date.now();
+        for (var i = 0; i < (count || 4); i++) { t = ccNextMs(c, t); if (!t) break; out.push(t); }
+        return out.length ? out : null;
+    }
+
+    function ccRenderTabs() {
+        var host = document.getElementById('ccTabs'); if (!host) return;
+        var tabs = [['new', '➕ New Task'], ['scheduled', '📋 Scheduled'], ['conditional', '🧩 Conditional'], ['logs', '📜 Logs'], ['orders', '👑 Boss Orders']];
+        host.innerHTML = tabs.map(function (t) { return '<button class="cc-chip' + (ccTab === t[0] ? ' active' : '') + '" onclick="ccSwitchTab(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
+    }
+    function ccSwitchTab(t) {
+        ccTab = t; ccRenderTabs();
+        ['new', 'scheduled', 'conditional', 'logs', 'orders'].forEach(function (x) {
+            var el = document.getElementById('ccTab-' + x); if (el) el.style.display = (x === t) ? 'block' : 'none';
+        });
+        if (t === 'new') ccRenderNew();
+        if (t === 'scheduled') ccRenderScheduled();
+        if (t === 'conditional') { ccRenderConditional(); ccLoadConditional(); ccLoadWatches(); }
+        if (t === 'logs') ccRenderLogs();
+        if (t === 'orders') { ccRenderOrders(); ccLoadOrders(); }
+    }
+
+    function openCommandCenter() {
+        var p = document.getElementById('ccPage'); if (!p) return;
+        p.style.display = 'block'; document.body.style.overflow = 'hidden';
+        var sb = document.getElementById('sidebar'); if (sb) sb.classList.remove('open');
+        p.scrollTop = 0;
+        ccRenderTabs(); ccRenderNew();
+        ccLoadTasks(); ccLoadOrders();
+        if (ccTickTimer) clearInterval(ccTickTimer);
+        ccTickTimer = setInterval(function () {
+            document.querySelectorAll('#ccPage [data-cc-rel]').forEach(function (el) {
+                el.textContent = ccRel(parseInt(el.getAttribute('data-cc-rel'), 10) || 0);
+            });
+        }, 1000);
+        if (ccAutoTimer) clearInterval(ccAutoTimer);
+        ccAutoTimer = setInterval(function () {
+            if (document.hidden || !document.getElementById('ccPage') || document.getElementById('ccPage').style.display === 'none') return;
+            if (ccTab === 'scheduled' || ccTab === 'logs') ccLoadTasks();
+            if (ccTab === 'conditional') { ccLoadConditional(); ccLoadWatches(); }
+        }, 30000);
+    }
+    function closeCommandCenter() {
+        var p = document.getElementById('ccPage'); if (p) p.style.display = 'none';
+        document.body.style.overflow = '';
+        if (ccTickTimer) { clearInterval(ccTickTimer); ccTickTimer = null; }
+        if (ccAutoTimer) { clearInterval(ccAutoTimer); ccAutoTimer = null; }
+    }
+    function ccRefreshNow() {
+        var chip = document.getElementById('ccStatusChip'); if (chip) chip.textContent = '🔄 Refreshing…';
+        Promise.all([ccLoadTasks(), ccLoadOrders(), ccLoadConditional(), ccLoadWatches()]).then(function () {
+            if (chip) chip.textContent = 'Updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        });
+    }
+
+    // ---------- data loaders ----------
+    async function ccLoadTasks() {
+        try { var r = await fetch('api/ai-tasks'); ccTasksCache = (await r.json()) || []; } catch (e) { ccTasksCache = []; }
+        if (ccTab === 'scheduled') ccRenderScheduled();
+        if (ccTab === 'logs') ccRenderLogs();
+    }
+    async function ccLoadConditional() {
+        try { var r = await fetch('api/conditional-tasks'); ccCondCache = (await r.json()) || []; } catch (e) { ccCondCache = []; }
+        if (ccTab === 'conditional') ccRenderConditional();
+    }
+    async function ccLoadWatches() {
+        try { var r = await fetch('api/gold/watches'); var d = await r.json(); ccWatchCache = (d && d.watches) || []; } catch (e) { ccWatchCache = []; }
+        if (ccTab === 'conditional') ccRenderConditional();
+    }
+    async function ccLoadOrders() {
+        var q = '', k = '';
+        var qi = document.getElementById('ccOrdersQ'); if (qi) q = qi.value.trim();
+        var ki = document.getElementById('ccOrdersKind'); if (ki) k = ki.value;
+        var seq = ++ccOrdersSeq;
+        try {
+            var r = await fetch('api/boss-orders?limit=150&q=' + encodeURIComponent(q) + '&kind=' + encodeURIComponent(k));
+            var d = await r.json();
+            if (seq !== ccOrdersSeq) return;
+            ccOrdersCache = (d && d.items) || []; ccOrdersStats = (d && d.stats) || null; ccKinds = (d && d.kinds) || [];
+        } catch (e) { ccOrdersCache = []; ccOrdersStats = null; }
+        if (ccTab === 'orders') ccRenderOrders();
+    }
+    async function ccLoadStaff() {
+        if (ccStaffCache) return ccStaffCache;
+        try {
+            var snap = await window.getDocs(window.collection(window.firebaseDb, 'artifacts/1:410197132578:web:97cfc3ae33f39ed3df917b/public/data/staff'));
+            ccStaffCache = snap.docs.map(function (d) { var v = d.data() || {}; return { name: String(v.name || '').trim(), email: String(v.email || '').toLowerCase() }; }).filter(function (s) { return s.name; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+        } catch (e) { ccStaffCache = []; }
+        return ccStaffCache;
+    }
+
+    // ---------- TAB: NEW TASK (visual builder + crontab preview) ----------
+    function ccRenderNew() {
+        var host = document.getElementById('ccTab-new'); if (!host) return;
+        var types = [['waweb_message', '💬 WhatsApp Message'], ['align_task', '📋 Team Board Task'], ['gold_alert', '🥇 Gold Alert'], ['ai_task', '🤖 AI Prompt']];
+        var h = '';
+        h += '<div class="cc-card"><b>1) What should happen?</b><div class="cc-inline" style="margin-top:10px;">';
+        h += types.map(function (t) { return '<button class="cc-chip' + (ccType === t[0] ? ' active' : '') + '" onclick="ccSetType(\'' + t[0] + '\')">' + t[1] + '</button>'; }).join('');
+        h += '</div><div style="font-size:12px; color:#667781; margin-top:8px;">' + (ccType === 'waweb_message' ? 'Sends from YOUR personal WhatsApp (free, no 24h-window limits). Works with a number or a contact name.' : ccType === 'align_task' ? 'Creates a task on the AlignTasks team board (General or a specific member).' : ccType === 'gold_alert' ? 'One-time price alert — fires instantly the moment spot crosses your price, then turns itself off.' : 'Runs the website AI (SEO workspace) with your instruction — e.g. publish a draft, list pages, research.') + '</div>';
+
+        // dynamic fields
+        h += '<div id="ccFieldsMsg" style="margin-top:14px; display:' + (ccType === 'waweb_message' ? 'block' : 'none') + ';">';
+        h += '<label class="cc-label">Send to (number or contact name)</label><input id="ccFMsgTarget" class="cc-input" style="width:100%; max-width:360px;" placeholder="971501234567 or Fazeelat">';
+        h += '<label class="cc-label" style="margin-top:10px;">Message</label><textarea id="ccFMsgText" class="cc-input" style="width:100%; min-height:90px;" placeholder="Assalam-o-Alaikum! …"></textarea></div>';
+
+        h += '<div id="ccFieldsAlign" style="margin-top:14px; display:' + (ccType === 'align_task' ? 'block' : 'none') + ';">';
+        h += '<label class="cc-label">Task for the team board</label><input id="ccFAlignTitle" class="cc-input" style="width:100%; max-width:520px;" placeholder="e.g. Call scrap supplier about copper price">';
+        h += '<div class="cc-inline" style="margin-top:10px;"><div><label class="cc-label">Assign to</label><select id="ccFAlignAssignee" class="cc-input" style="min-width:200px;"><option value="">General — For All</option></select></div>';
+        h += '<div><label class="cc-label">Due (optional)</label><input id="ccFAlignDue" type="datetime-local" class="cc-input"></div></div></div>';
+
+        h += '<div id="ccFieldsGold" style="margin-top:14px; display:' + (ccType === 'gold_alert' ? 'block' : 'none') + ';">';
+        h += '<div class="cc-inline"><div><label class="cc-label">Direction</label><select id="ccFGoldDir" class="cc-input"><option value="buy">📉 Falls to / below (buy zone)</option><option value="sell">📈 Rises to / above (sell zone)</option></select></div>';
+        h += '<div><label class="cc-label">Price $/oz</label><input id="ccFGoldPrice" class="cc-input" type="number" step="0.1" placeholder="4300" style="width:130px;"></div></div>';
+        h += '<label class="cc-label" style="margin-top:10px;">Note (optional)</label><input id="ccFGoldNote" class="cc-input" style="width:100%; max-width:420px;" placeholder="e.g. Buy 100g if it drops here"></div>';
+
+        h += '<div id="ccFieldsAi" style="margin-top:14px; display:' + (ccType === 'ai_task' ? 'block' : 'none') + ';">';
+        h += '<label class="cc-label">AI instruction</label><textarea id="ccFAiText" class="cc-input" style="width:100%; min-height:80px;" placeholder="e.g. Draft a news post about gold hitting a new record and save it as a draft"></textarea></div>';
+
+        h += '</div>';
+
+        // schedule card
+        h += '<div class="cc-card" id="ccSchedCard" style="display:' + (ccType === 'gold_alert' ? 'none' : 'block') + ';"><b>2) When should it run?</b>';
+        var sc = [['once', 'Once'], ['interval', 'Every X minutes'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly'], ['cron', 'Custom crontab']];
+        h += '<div class="cc-inline" style="margin-top:10px;">' + sc.map(function (s) { return '<button class="cc-chip' + (ccSchedType === s[0] ? ' active' : '') + '" onclick="ccSetSched(\'' + s[0] + '\')">' + s[1] + '</button>'; }).join('') + '</div>';
+        h += '<div id="ccSchedInputs" style="margin-top:12px;"></div>';
+        h += '<div id="ccSchedPreview" style="margin-top:12px; background:#f7f9fc; border:1px dashed #c9d4e5; border-radius:8px; padding:10px; font-size:12.5px; color:#3b4a54;"></div>';
+        h += '<div style="margin-top:10px;" class="cc-inline"><div><label class="cc-label">Stop after (optional)</label><input id="ccFExpires" type="datetime-local" class="cc-input"></div>';
+        h += '<div><label class="cc-label">Auto-disable after N failures</label><input id="ccFMaxFail" class="cc-input" type="number" min="1" max="20" value="5" style="width:80px;"></div></div>';
+        h += '<div style="font-size:11px; color:#9aa7ad; margin-top:6px;">Timezone: Asia/Dubai (GMT+4) — locked.</div></div>';
+
+        h += '<div class="cc-card" style="text-align:right;"><button class="cc-btn primary" style="padding:12px 26px; font-size:14px;" onclick="ccCreateTask()">🚀 Create Task</button></div>';
+        host.innerHTML = h;
+        ccRenderSchedInputs();
+        ccUpdatePreview();
+        if (ccType === 'align_task') ccLoadStaff().then(function () {
+            var sel = document.getElementById('ccFAlignAssignee'); if (!sel) return;
+            sel.innerHTML = '<option value="">General — For All</option>' + ccStaffCache.map(function (s) { return '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>'; }).join('');
+        });
+    }
+    function ccSetType(t) { ccType = t; ccRenderNew(); }
+    function ccSetSched(t) { ccSchedType = t; ccRenderSchedInputs(); ccUpdatePreview(); }
+    function ccRenderSchedInputs() {
+        var host = document.getElementById('ccSchedInputs'); if (!host) return;
+        var h = '';
+        if (ccSchedType === 'once') h = '<div class="cc-inline"><div><label class="cc-label">Run at (your local time)</label><input id="ccFOnce" type="datetime-local" class="cc-input"></div></div>';
+        else if (ccSchedType === 'interval') h = '<div class="cc-inline"><div><label class="cc-label">Every X minutes</label><input id="ccFEvery" type="number" min="1" max="1440" value="15" class="cc-input" style="width:110px;"></div></div>';
+        else if (ccSchedType === 'daily') h = '<div class="cc-inline"><div><label class="cc-label">Time (Dubai)</label><input id="ccFHourD" type="number" min="0" max="23" value="9" class="cc-input" style="width:70px;"> : <input id="ccFMinD" type="number" min="0" max="59" value="0" class="cc-input" style="width:70px;"></div></div>';
+        else if (ccSchedType === 'weekly') h = '<div class="cc-inline"><div><label class="cc-label">Day</label><select id="ccFWeekDay" class="cc-input"><option>Sunday</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option selected>Saturday</option></select></div><div><label class="cc-label">Time (Dubai)</label><input id="ccFHourW" type="number" min="0" max="23" value="9" class="cc-input" style="width:70px;"> : <input id="ccFMinW" type="number" min="0" max="59" value="0" class="cc-input" style="width:70px;"></div></div>';
+        else if (ccSchedType === 'monthly') h = '<div class="cc-inline"><div><label class="cc-label">Day of month</label><input id="ccFMonthDay" type="number" min="1" max="31" value="1" class="cc-input" style="width:80px;"></div><div><label class="cc-label">Time (Dubai)</label><input id="ccFHourM" type="number" min="0" max="23" value="9" class="cc-input" style="width:70px;"> : <input id="ccFMinM" type="number" min="0" max="59" value="0" class="cc-input" style="width:70px;"></div></div>';
+        else if (ccSchedType === 'yearly') h = '<div class="cc-inline"><div><label class="cc-label">Month</label><select id="ccFYearMonth" class="cc-input"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></div><div><label class="cc-label">Day</label><input id="ccFYearDay" type="number" min="1" max="31" value="1" class="cc-input" style="width:70px;"></div><div><label class="cc-label">Time (Dubai)</label><input id="ccFYearHour" type="number" min="0" max="23" value="9" class="cc-input" style="width:70px;"> : <input id="ccFYearMin" type="number" min="0" max="59" value="0" class="cc-input" style="width:70px;"></div></div>';
+        else if (ccSchedType === 'cron') h = '<div class="cc-inline"><div><label class="cc-label">Crontab (min hour day-of-month month day-of-week)</label><input id="ccFCron" class="cc-input" style="width:270px; font-family:monospace;" value="*/15 * * * *" placeholder="*/15 * * * *"></div><div style="font-size:11.5px; color:#9aa7ad; max-width:260px;">Examples: <b>0 9 * * *</b> = daily 09:00 · <b>30 8 * * 0</b> = Sunday 08:30 · <b>0 */2 * * *</b> = every 2 hours</div></div>';
+        host.innerHTML = h;
+        host.querySelectorAll('input, select').forEach(function (el) { el.addEventListener('input', ccUpdatePreview); el.addEventListener('change', ccUpdatePreview); });
+    }
+    function ccBuildCronFromForm() {
+        var v = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+        var n = function (id, d) { var x = parseInt(v(id), 10); return isNaN(x) ? d : x; };
+        if (ccSchedType === 'interval') { var every = Math.max(1, Math.min(1440, n('ccFEvery', 15))); return { cron: '*/' + every + ' * * * *', text: 'Every ' + every + ' minutes' }; }
+        if (ccSchedType === 'daily') return { cron: n('ccFMinD', 0) + ' ' + n('ccFHourD', 9) + ' * * *', text: 'Daily at ' + String(n('ccFHourD', 9)).padStart(2, '0') + ':' + String(n('ccFMinD', 0)).padStart(2, '0') + ' Dubai' };
+        if (ccSchedType === 'weekly') { var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; var di = days.indexOf(v('ccFWeekDay')); if (di < 0) di = 6; return { cron: n('ccFMinW', 0) + ' ' + n('ccFHourW', 9) + ' * * ' + di, text: 'Weekly on ' + days[di] + ' ' + String(n('ccFHourW', 9)).padStart(2, '0') + ':' + String(n('ccFMinW', 0)).padStart(2, '0') }; }
+        if (ccSchedType === 'monthly') return { cron: n('ccFMinM', 0) + ' ' + n('ccFHourM', 9) + ' ' + n('ccFMonthDay', 1) + ' * *', text: 'Monthly on day ' + n('ccFMonthDay', 1) };
+        if (ccSchedType === 'yearly') return { cron: n('ccFYearMin', 0) + ' ' + n('ccFYearHour', 9) + ' ' + n('ccFYearDay', 1) + ' ' + n('ccFYearMonth', 1) + ' *', text: 'Yearly' };
+        if (ccSchedType === 'cron') return { cron: v('ccFCron').trim(), text: 'Cron' };
+        return null;
+    }
+    function ccUpdatePreview() {
+        var box = document.getElementById('ccSchedPreview'); if (!box) return;
+        if (ccSchedType === 'once') {
+            var el = document.getElementById('ccFOnce'); var ms = el && el.value ? new Date(el.value).getTime() : 0;
+            box.innerHTML = ms ? ('🕐 Runs once: <b>' + ccDubaiFmt(ms) + '</b> (' + ccRel(ms) + ')') : '🕐 Pick a date &amp; time for the one-time run.';
+            return;
+        }
+        var built = ccBuildCronFromForm(); if (!built) { box.textContent = 'Complete the schedule fields…'; return; }
+        if (!/^\S+\s+\S+\s+\S+\s+\S+\s+\S+$/.test(built.cron)) { box.innerHTML = '⚠️ Crontab must have 5 fields (e.g. <b>*/15 * * * *</b>)'; return; }
+        var next = ccCronPreview(built.cron, 4);
+        if (!next) { box.innerHTML = '⚠️ This expression never fires — please check it.'; return; }
+        box.innerHTML = '⏰ <b>' + esc(built.text) + '</b> — next runs (Dubai time):<br>' + next.map(function (t) { return '• ' + ccDubaiFmt(t) + ' <span style="color:#98a1a8;">(' + ccRel(t) + ')</span>'; }).join('<br>');
+    }
+
+    async function ccCreateTask() {
+        var v = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        try {
+            if (ccType === 'gold_alert') {
+                var price = parseFloat(v('ccFGoldPrice'));
+                if (!(price > 300 && price < 50000)) return toastMsg('❌ Enter a gold price between 300 and 50,000 $/oz');
+                var r0 = await fetch('api/gold/limits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: v('ccFGoldDir') || 'buy', price: price, note: v('ccFGoldNote') }) });
+                var d0 = await r0.json();
+                if (d0 && d0.ok) { toastMsg('✅ Gold alert set at $' + price + ' (one-time)'); ccSwitchTab('scheduled'); }
+                else toastMsg('❌ ' + ((d0 && d0.error) || 'failed'));
+                return;
+            }
+            var payload = { taskType: ccType, maxFailures: parseInt(v('ccFMaxFail'), 10) || 5 };
+            var expires = v('ccFExpires') ? new Date(v('ccFExpires')).getTime() : 0; if (expires) payload.expiresAt = expires;
+            if (ccType === 'waweb_message') {
+                if (!v('ccFMsgTarget')) return toastMsg('❌ Who should get the message? Enter a number or contact name.');
+                if (!v('ccFMsgText')) return toastMsg('❌ Write the message first.');
+                payload.target = v('ccFMsgTarget'); payload.message = v('ccFMsgText'); payload.title = v('ccFMsgText').substring(0, 60);
+            } else if (ccType === 'align_task') {
+                if (!v('ccFAlignTitle')) return toastMsg('❌ Write the task description.');
+                payload.title = v('ccFAlignTitle'); payload.assignee = v('ccFAlignAssignee'); payload.dueDate = v('ccFAlignDue');
+            } else if (ccType === 'ai_task') {
+                if (!v('ccFAiText')) return toastMsg('❌ Write the AI instruction.');
+                payload.instruction = v('ccFAiText'); payload.title = v('ccFAiText').substring(0, 60);
+            }
+            if (ccSchedType === 'once') {
+                var once = v('ccFOnce'); if (!once) return toastMsg('❌ Pick the date & time for the one-time run.');
+                payload.runAt = new Date(once).getTime();
+                payload.schedule = { type: 'once' };
+            } else {
+                var built = ccBuildCronFromForm();
+                if (!built || !ccCronPreview(built.cron, 1)) return toastMsg('❌ The schedule is invalid — check the preview box.');
+                payload.schedule = ccSchedType === 'cron' ? { type: 'cron', cronText: built.cron } : ccBuildSchedulePayload();
+            }
+            var r = await fetch('api/ai-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            var d = await r.json();
+            if (d && d.success) { toastMsg('✅ Task created — ' + (d.task.scheduleText || '')); ccSwitchTab('scheduled'); ccLoadTasks(); ccLoadOrders(); }
+            else toastMsg('❌ ' + ((d && d.error) || 'Failed'));
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+    function ccBuildSchedulePayload() {
+        var v = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+        var n = function (id, d) { var x = parseInt(v(id), 10); return isNaN(x) ? d : x; };
+        if (ccSchedType === 'interval') return { type: 'interval', everyMinutes: Math.max(1, Math.min(1440, n('ccFEvery', 15))) };
+        if (ccSchedType === 'daily') return { type: 'daily', hour: n('ccFHourD', 9), minute: n('ccFMinD', 0) };
+        if (ccSchedType === 'weekly') { var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; var di = days.indexOf(v('ccFWeekDay')); return { type: 'weekly', weekday: di < 0 ? 6 : di, hour: n('ccFHourW', 9), minute: n('ccFMinW', 0) }; }
+        if (ccSchedType === 'monthly') return { type: 'monthly', monthDay: n('ccFMonthDay', 1), hour: n('ccFHourM', 9), minute: n('ccFMinM', 0) };
+        if (ccSchedType === 'yearly') return { type: 'yearly', month: n('ccFYearMonth', 1), monthDay: n('ccFYearDay', 1), hour: n('ccFYearHour', 9), minute: n('ccFYearMin', 0) };
+        return { type: 'once' };
+    }
+
+    // ---------- TAB: SCHEDULED ----------
+    function ccRenderScheduled() {
+        var host = document.getElementById('ccTab-scheduled'); if (!host) return;
+        var live = ccTasksCache.filter(function (t) { return t.status === 'pending' || t.status === 'running' || t.status === 'disabled'; });
+        var h = '<div class="cc-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;"><b>📋 Scheduled &amp; Running</b><span style="font-size:12px; color:#667781;">' + live.length + ' task(s) — auto-refreshes every 30s</span></div>';
+        if (!live.length) h += '<div class="cc-card" style="text-align:center; color:#667781;">No scheduled tasks yet — create one in the ➕ New Task tab.</div>';
+        live.sort(function (a, b) { return (a.runAt || 0) - (b.runAt || 0); }).forEach(function (t) {
+            h += '<div class="cc-card">';
+            h += '<div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;"><b>' + ccTypeIcon(t.taskType) + ' ' + esc(String(t.title || t.message || t.instruction || '').substring(0, 80)) + '</b>' + ccStatusBadge(t.status) + '</div>';
+            h += '<div style="font-size:12.5px; color:#3b4a54; margin-top:6px;">⏰ ' + esc(t.scheduleText || 'Once') + (t.status === 'pending' ? ' · next <b data-cc-rel="' + t.runAt + '">' + ccRel(t.runAt) + '</b>' : '') + '</div>';
+            if (t.target) h += '<div style="font-size:12.5px; color:#667781; margin-top:3px;">➡️ ' + esc((t.targetName ? t.targetName + ' ' : '') + '+' + t.target) + '</div>';
+            if (t.assignee || t.taskType === 'align_task') h += '<div style="font-size:12.5px; color:#667781; margin-top:3px;">📋 ' + esc(t.assignee || 'General (For All)') + '</div>';
+            h += '<div style="font-size:12px; color:#9aa7ad; margin-top:4px;">Runs: ' + (t.runCount || 0) + (t.consecutiveFailures ? ' · ⚠️ ' + t.consecutiveFailures + ' consecutive failure(s)' : '') + (t.disabledReason ? ' · ' + esc(t.disabledReason) : '') + (t.expiresAt ? ' · stops ' + ccDubaiFmt(t.expiresAt) : '') + '</div>';
+            h += '<div style="margin-top:10px;">';
+            h += '<button class="cc-btn green" onclick="ccTaskAction(\'' + t.id + '\',\'runnow\')">▶ Run now</button>';
+            h += (t.status === 'disabled' ? '<button class="cc-btn" onclick="ccTaskAction(\'' + t.id + '\',\'toggle\')">🔁 Resume</button>' : '<button class="cc-btn" onclick="ccTaskAction(\'' + t.id + '\',\'toggle\')">⏸ Pause</button>');
+            h += '<button class="cc-btn" onclick="ccTaskAction(\'' + t.id + '\',\'cancel\')">✕ Cancel</button>';
+            h += '<button class="cc-btn red" onclick="ccTaskAction(\'' + t.id + '\',\'delete\')">🗑 Delete</button>';
+            h += '</div></div>';
+        });
+        host.innerHTML = h;
+    }
+    async function ccTaskAction(id, action) {
+        if ((action === 'cancel' || action === 'delete') && !confirm('Are you sure you want to ' + action + ' this task?')) return;
+        var url = action === 'runnow' ? 'api/ai-tasks/run-now' : action === 'toggle' ? 'api/ai-tasks/toggle' : action === 'cancel' ? 'api/ai-tasks/cancel' : 'api/ai-tasks/delete';
+        try {
+            var r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+            var d = await r.json();
+            toastMsg(d && d.error ? ('❌ ' + d.error) : '✅ Done');
+            ccLoadTasks();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- TAB: CONDITIONAL ----------
+    function ccRenderConditional() {
+        var host = document.getElementById('ccTab-conditional'); if (!host) return;
+        var h = '';
+        h += '<div class="cc-card"><b>🧩 Follow-up until reply</b><div style="font-size:12px; color:#667781; margin:6px 0 10px 0;">Sends a message, waits for an answer, retries if silent, escalates to you if there is still no reply. The AI understands the member\'s reply (or use fixed replies).</div>';
+        h += '<div class="cc-inline"><div><label class="cc-label">Send to (number or name)</label><input id="ccFTarget" class="cc-input" style="width:210px;" placeholder="971501234567"></div>';
+        h += '<div><label class="cc-label">Wait for reply (minutes)</label><input id="ccFWait" class="cc-input" type="number" value="10" min="1" style="width:110px;"></div>';
+        h += '<div><label class="cc-label">Retry if silent after (minutes)</label><input id="ccFRetry" class="cc-input" type="number" value="10" min="1" style="width:120px;"></div>';
+        h += '<div><label class="cc-label">Max retries</label><input id="ccFRetries" class="cc-input" type="number" value="3" min="0" max="10" style="width:80px;"></div></div>';
+        h += '<label class="cc-label" style="margin-top:10px;">Message</label><textarea id="ccFCondMsg" class="cc-input" style="width:100%; min-height:70px;" placeholder="Assalam-o-Alaikum! Please confirm the copper stock report today."></textarea>';
+        h += '<div class="cc-inline" style="margin-top:10px;"><div><label class="cc-label">When they reply</label><select id="ccFOnReply" class="cc-input"><option value="ai">🤖 AI understands &amp; answers naturally</option><option value="map">📋 Send fixed replies (write below)</option><option value="log">📝 Just log it (no auto reply)</option></select></div>';
+        h += '<div><label class="cc-label">Active hours (Dubai)</label><input id="ccFActiveFrom" class="cc-input" type="number" value="8" min="0" max="23" style="width:70px;"> to <input id="ccFActiveTo" class="cc-input" type="number" value="22" min="1" max="24" style="width:70px;"></div>';
+        h += '<label style="font-size:12.5px; display:flex; gap:6px; align-items:center;"><input id="ccFNotifyBoss" type="checkbox" checked> Notify me on every reply / escalation</label></div>';
+        h += '<div style="text-align:right; margin-top:10px;"><button class="cc-btn primary" onclick="ccCreateConditional()">➕ Create follow-up</button></div></div>';
+
+        h += '<div class="cc-card"><b>🥇 Gold price watch</b><div style="font-size:12px; color:#667781; margin:6px 0 10px 0;">A conditional on the international spot price — fires once when the condition is met, sends your message (and always notifies you), then turns itself off.</div>';
+        h += '<div class="cc-inline"><div><label class="cc-label">Condition</label><select id="ccWOp" class="cc-input"><option value="above">📈 Rises above</option><option value="below">📉 Falls below</option><option value="cross_up">↗ Crosses up through</option><option value="cross_down">↘ Crosses down through</option></select></div>';
+        h += '<div><label class="cc-label">Price $/oz</label><input id="ccWPrice" class="cc-input" type="number" step="0.1" placeholder="4300" style="width:120px;"></div></div>';
+        h += '<label class="cc-label" style="margin-top:10px;">Message to send (optional — default is a gold alert text)</label><textarea id="ccWMsg" class="cc-input" style="width:100%; min-height:60px;" placeholder="Gold hit my target — time to buy!"></textarea>';
+        h += '<div class="cc-inline" style="margin-top:10px;"><div><label class="cc-label">Also send to (optional number/group)</label><input id="ccWTarget" class="cc-input" style="width:260px;" placeholder="971501234567 … leave empty for you only"></div>';
+        h += '<div style="text-align:right; flex:1;"><button class="cc-btn primary" onclick="ccCreateWatch()">👀 Add gold watch</button></div></div>';
+        h += '<div id="ccWatchList" style="margin-top:12px;"></div></div>';
+
+        var live = ccCondCache.filter(function (c) { return c.status !== 'done'; });
+        var doneN = ccCondCache.length - live.length;
+        h += '<div class="cc-card"><b>🔀 Active follow-ups (' + live.length + ')</b>' + (doneN ? ' <span style="font-size:12px; color:#9aa7ad;">· ' + doneN + ' completed</span>' : '') + '</div>';
+        if (!live.length) h += '<div class="cc-card" style="text-align:center; color:#667781;">No active follow-ups.</div>';
+        live.slice(0, 50).forEach(function (c) {
+            var stage = c.stage === 'awaiting_reply' ? '⏳ awaiting reply' : c.stage === 'pending_send' ? '📤 will send' : esc(c.stage || '');
+            h += '<div class="cc-card"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;"><b>💬 ' + esc(String(c.title || c.message || '').substring(0, 80)) + '</b>' + ccStatusBadge(c.status) + '</div>';
+            h += '<div style="font-size:12.5px; color:#3b4a54; margin-top:6px;">➡️ ' + esc(c.target) + ' · ' + stage + (c.nextActionAt ? ' · next <b data-cc-rel="' + c.nextActionAt + '">' + ccRel(c.nextActionAt) + '</b>' : '') + ' · attempts ' + (c.attempts || 0) + '/' + ((c.maxRetries || 0) + 1) + '</div>';
+            h += '<div style="margin-top:10px;"><button class="cc-btn" onclick="ccCondAction(\'' + c.id + '\',\'' + (c.status === 'paused' ? 'resume' : 'pause') + '\')">' + (c.status === 'paused' ? '🔁 Resume' : '⏸ Pause') + '</button>';
+            h += '<button class="cc-btn green" onclick="ccCondAction(\'' + c.id + '\',\'run_now\')">▶ Send now</button>';
+            h += '<button class="cc-btn" onclick="ccCondAction(\'' + c.id + '\',\'complete\')">✅ Mark done</button>';
+            h += '<button class="cc-btn red" onclick="ccCondAction(\'' + c.id + '\',\'delete\')">🗑 Delete</button></div></div>';
+        });
+        host.innerHTML = h;
+        ccRenderWatches();
+    }
+    function ccRenderWatches() {
+        var host = document.getElementById('ccWatchList'); if (!host) return;
+        if (!ccWatchCache.length) { host.innerHTML = '<div style="text-align:center; color:#9aa7ad; font-size:12.5px;">No gold watches yet.</div>'; return; }
+        var opL = { above: 'rises above', below: 'falls below', cross_up: 'crosses up through', cross_down: 'crosses down through' };
+        host.innerHTML = ccWatchCache.slice(0, 20).map(function (w) {
+            return '<div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; border-top:1px solid #f0f2f5; padding:8px 0;">' +
+                '<span style="font-size:12.5px;">🥇 ' + (opL[w.op] || w.op) + ' <b>$' + w.price + '</b>' + (w.message ? ' — ' + esc(String(w.message).substring(0, 60)) : '') + (w.target ? ' → ' + esc(w.target) : '') + (w.status === 'fired' ? ' <span style="color:#2e7d32;">(fired at $' + w.firedPrice + ')</span>' : '') + '</span>' +
+                '<span>' + ccStatusBadge(w.status) + ' <button class="cc-btn red" style="margin-left:6px;" onclick="ccDeleteWatch(\'' + w.id + '\')">🗑</button></span></div>';
+        }).join('');
+    }
+    async function ccCreateConditional() {
+        var v = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        try {
+            if (!v('ccFTarget')) return toastMsg('❌ Who should receive it?');
+            if (!v('ccFCondMsg')) return toastMsg('❌ Write the message.');
+            var body = { target: v('ccFTarget'), message: v('ccFCondMsg'), waitMinutes: parseInt(v('ccFWait'), 10) || 10, retryAfterMinutes: parseInt(v('ccFRetry'), 10) || 10, maxRetries: parseInt(v('ccFRetries'), 10) || 3, onReplyMode: v('ccFOnReply') || 'ai', activeFrom: parseInt(v('ccFActiveFrom'), 10) || 0, activeTo: parseInt(v('ccFActiveTo'), 10) || 24, notifyBoss: !!(document.getElementById('ccFNotifyBoss') || {}).checked };
+            var r = await fetch('api/conditional-tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            var d = await r.json();
+            if (d && d.success) { toastMsg('✅ Follow-up created'); ccLoadConditional(); }
+            else toastMsg('❌ ' + ((d && d.error) || 'failed'));
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+    async function ccCreateWatch() {
+        var v = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+        try {
+            var price = parseFloat(v('ccWPrice'));
+            if (!(price > 300 && price < 50000)) return toastMsg('❌ Enter a gold price between 300 and 50,000 $/oz');
+            var r = await fetch('api/gold/watches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: v('ccWOp') || 'above', price: price, message: v('ccWMsg'), target: v('ccWTarget') }) });
+            var d = await r.json();
+            if (d && d.ok) { toastMsg('👀 Gold watch armed at $' + price); ccLoadWatches(); }
+            else toastMsg('❌ ' + ((d && d.error) || 'failed'));
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+    async function ccCondAction(id, action) {
+        if (action === 'delete' && !confirm('Delete this follow-up?')) return;
+        try {
+            var r = await fetch('api/conditional-tasks/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, action: action }) });
+            var d = await r.json();
+            toastMsg(d && d.error ? ('❌ ' + d.error) : '✅ Done');
+            ccLoadConditional();
+        } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+    async function ccDeleteWatch(id) {
+        if (!confirm('Delete this gold watch?')) return;
+        try { await fetch('api/gold/watches/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }); ccLoadWatches(); } catch (e) { toastMsg('❌ ' + e.message); }
+    }
+
+    // ---------- TAB: LOGS ----------
+    function ccRenderLogs() {
+        var host = document.getElementById('ccTab-logs'); if (!host) return;
+        var groups = [['done', '✅ Done'], ['failed', '❌ Failed'], ['expired', '⌛ Expired'], ['cancelled', '✕ Cancelled'], ['disabled', '⏸ Paused / auto-disabled']];
+        var h = '';
+        groups.forEach(function (g) {
+            var items = ccTasksCache.filter(function (t) { return t.status === g[0]; }).sort(function (a, b) { return (b.executedAt || b.createdAt || 0) - (a.executedAt || a.createdAt || 0); });
+            if (!items.length) return;
+            h += '<div class="cc-card"><b>' + g[1] + ' (' + items.length + ')</b></div>';
+            items.slice(0, 40).forEach(function (t) {
+                var logLines = (t.log || []).slice(-8).map(function (l) { return '<div style="font-size:11.5px; color:' + (l.ok ? '#2e7d32' : '#c62828') + ';">' + (l.ok ? '✔' : '✘') + ' ' + ccDubaiFmt(l.ts) + ' — ' + esc(String(l.info || '').substring(0, 160)) + '</div>'; }).join('');
+                h += '<div class="cc-card"><details><summary style="cursor:pointer;"><b>' + ccTypeIcon(t.taskType) + ' ' + esc(String(t.title || t.taskType).substring(0, 80)) + '</b> <span style="font-size:11.5px; color:#9aa7ad;">· ' + esc(t.scheduleText || 'Once') + (t.executedAt ? ' · last run ' + ccDubaiFmt(t.executedAt) : '') + '</span></summary>';
+                if (t.result) h += '<div style="font-size:12.5px; color:#3b4a54; margin-top:8px; white-space:pre-wrap;">' + esc(String(t.result).substring(0, 700)) + '</div>';
+                if (logLines) h += '<div style="margin-top:8px; border-top:1px dashed #e3e8ee; padding-top:6px;">' + logLines + '</div>';
+                h += '</details></div>';
+            });
+        });
+        if (!h) h = '<div class="cc-card" style="text-align:center; color:#667781;">No finished tasks yet.</div>';
+        host.innerHTML = h;
+    }
+
+    // ---------- TAB: BOSS ORDERS ----------
+    function ccRenderOrders() {
+        var host = document.getElementById('ccTab-orders'); if (!host) return;
+        var st = ccOrdersStats || { total: 0, last7: 0, byKind: {} };
+        var kindChips = Object.keys(st.byKind || {}).sort(function (a, b) { return st.byKind[b] - st.byKind[a]; }).slice(0, 8).map(function (k) {
+            return '<span class="cc-badge" style="background:#eef4ff; color:#2b54a8; margin-right:4px;">' + esc(k) + ' × ' + st.byKind[k] + '</span>';
+        }).join('');
+        var h = '<div class="cc-card"><div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; align-items:center;"><b>👑 History of Boss Orders</b><span style="font-size:12px; color:#667781;">Total: <b>' + st.total + '</b> · Last 7 days: <b>' + st.last7 + '</b></span></div>';
+        h += '<div style="margin-top:8px;">' + (kindChips || '<span style="font-size:12px; color:#9aa7ad;">Orders will appear here as the boss gives commands (WhatsApp or dashboard).</span>') + '</div>';
+        h += '<div class="cc-inline" style="margin-top:12px;"><input id="ccOrdersQ" class="cc-input" style="flex:1; min-width:200px;" placeholder="🔍 Search orders (task, message, gold, contact…)" oninput="ccOrdersDebounced()">';
+        h += '<select id="ccOrdersKind" class="cc-input" onchange="ccLoadOrders()"><option value="">All kinds</option>' + (ccKinds || []).map(function (k) { return '<option value="' + esc(k) + '">' + esc(k) + '</option>'; }).join('') + '</select></div></div>';
+        if (!ccOrdersCache.length) h += '<div class="cc-card" style="text-align:center; color:#667781;">No orders found' + ((document.getElementById('ccOrdersQ') || {}).value ? ' for this search' : ' yet') + '.</div>';
+        var srcIcon = { whatsapp: '📱 WhatsApp', dashboard: '🖥️ Dashboard', board: '📋 Board' };
+        ccOrdersCache.forEach(function (o) {
+            var canRerun = !!(o.taskPayload && o.taskPayload.taskType);
+            h += '<div class="cc-card"><div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;"><span style="font-size:12px; color:#9aa7ad;">' + ccDubaiFmt(o.ts) + ' · ' + (srcIcon[o.source] || esc(o.source)) + '</span>' + ccStatusBadge(o.status === 'error' ? 'failed' : (o.status === 'scheduled' ? 'pending' : (o.status === 'watching' ? 'watching' : 'done'))) + '</div>';
+            h += '<div style="font-size:13px; color:#3b4a54; margin-top:6px; white-space:pre-wrap;">' + (o.kind === 'task' ? '💬 ' : o.kind === 'gold' ? '🥇 ' : o.kind === 'config' ? '⚙️ ' : o.kind === 'contact' ? '📇 ' : o.kind === 'align' ? '📋 ' : '🗣️ ') + esc(String(o.text || '').substring(0, 280)) + '</div>';
+            h += '<div style="margin-top:8px;"><span class="cc-badge" style="background:#f0f2f5; color:#546e7a;">' + esc(o.kind || 'command') + '</span> ';
+            h += '<button class="cc-btn" onclick="ccRerunOrder(\'' + o.id + '\',' + (canRerun ? 'true' : 'false') + ')">▶ Re-run</button></div></div>';
+        });
+        host.innerHTML = h;
+    }
+    var ccOrdersDebT = null;
+    function ccOrdersDebounced() { if (ccOrdersDebT) clearTimeout(ccOrdersDebT); ccOrdersDebT = setTimeout(ccLoadOrders, 350); }
+    async function ccRerunOrder(id, asTask) {
+        if (!confirm(asTask ? 'Re-run this order? A new task will be scheduled to run in 1 minute.' : 'Re-run this order through the boss AI now?')) return;
+        try {
+            toastMsg('▶ Re-running…');
+            var r = await fetch('api/boss-orders/rerun', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+            var d = await r.json();
+            if (d && d.ok) { toastMsg(d.mode === 'task' ? '✅ Task scheduled — check the Scheduled tab' : '✅ ' + String(d.reply || '').substring(0, 120)); ccLoadOrders(); ccLoadTasks(); }
+            else toastMsg('❌ ' + ((d && d.error) || 'failed'));
+        } catch (e) { toastMsg('❌ ' + e.message); }
     }
 
     // ==================== COLLAPSIBLE HEADS (Tasks for AI - auto-hidden, click to open) ====================

@@ -4,7 +4,8 @@
 // The 60s scheduler tick on the ACTIVE node calls maybePoll(). One-time alerts auto-disable when
 // they fire and are delivered to the Boss through the existing appData/bossNotifications -> WhatsApp
 // delivery loop (so exactly one node ever sends them).
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import { sendWaWebMessage, logBossOrder } from './waWebClient.js';
 
 let globalDb = null;
 export function attachGoldDb(db) { if (db) globalDb = db; }
@@ -139,6 +140,7 @@ export async function goldMaybePoll(force = false) {
 
     // 3b) today's high / low (Dubai calendar day) with the timestamp each extreme was reached -
     // recomputed from the fast series every poll: backfills the whole tracked day, survives restarts
+    evaluateGoldWatches(q.price).catch(() => {});
     const dayKey = dubaiYmd(ts);
     const dayStartMs = Date.parse(dayKey + 'T00:00:00+04:00') || 0;
     let today = { day: dayKey, high: null, low: null };
@@ -310,6 +312,54 @@ async function fetchEconomicEvents() {
   return eventsCache;
 }
 
+// --- 🥇 Command Center 2.0: Gold price watches (conditional "if spot crosses a price..." automation) ---
+// Stored in the top-level goldWatches collection. Evaluated on every fresh poll; once fired the watch
+// turns itself off (one-time). The boss is always notified via the notifications delivery loop, and a
+// custom message is sent to the optional target number/group from the linked WhatsApp session.
+const WATCH_COLL = 'goldWatches';
+let watchesCache = { at: 0, list: null };
+let watchesBusy = false;
+
+async function evaluateGoldWatches(price) {
+  if (!globalDb || watchesBusy) return;
+  watchesBusy = true;
+  try {
+    const now = Date.now();
+    if (!watchesCache.list || (now - watchesCache.at) > 60 * 1000) {
+      const snap = await getDocs(collection(globalDb, WATCH_COLL));
+      watchesCache = { at: now, list: snap.docs.map(d => Object.assign({ id: d.id, ref: d.ref }, d.data() || {})) };
+    }
+    const active = (watchesCache.list || []).filter(w => w.status === 'watching');
+    for (const w of active) {
+      const target0 = Number(w.price);
+      let fired = false;
+      if (w.op === 'above' && price >= target0) fired = true;
+      else if (w.op === 'below' && price <= target0) fired = true;
+      else if (w.op === 'cross_up' && Number(w.lastPrice) > 0 && Number(w.lastPrice) < target0 && price >= target0) fired = true;
+      else if (w.op === 'cross_down' && Number(w.lastPrice) > 0 && Number(w.lastPrice) > target0 && price <= target0) fired = true;
+      if (!fired) {
+        if (w.op === 'cross_up' || w.op === 'cross_down') {
+          try { await setDoc(w.ref, { lastPrice: price }, { merge: true }); w.lastPrice = price; } catch (e) { /* ignore */ }
+        }
+        continue;
+      }
+      const opLabel = w.op === 'above' ? 'rose above' : (w.op === 'below' ? 'fell below' : (w.op === 'cross_up' ? 'crossed up through' : 'crossed down through'));
+      const fallback = '🥇 Gold alert: spot is now $' + Number(price).toFixed(2) + '/oz — it has ' + opLabel + ' $' + target0 + '.';
+      const msgText = String(w.message || '').trim() || fallback;
+      try { await pushGoldNotification(msgText + '\n(Watch set at $' + target0 + ')'); } catch (e) { /* ignore */ }
+      const target = String(w.target || '').trim();
+      if (target) {
+        const jid = target.includes('@') ? target : (target.replace(/[^0-9]/g, '') + '@s.whatsapp.net');
+        try { await sendWaWebMessage(jid, msgText); console.log('[GOLD WATCH] 📤 sent to ' + jid); }
+        catch (e) { console.warn('[GOLD WATCH] send failed: ' + ((e && e.message) || e)); }
+      }
+      try { await setDoc(w.ref, { status: 'fired', firedAt: now, firedPrice: price }, { merge: true }); } catch (e) { /* ignore */ }
+      w.status = 'fired';
+      console.log('[GOLD WATCH] 🎯 Fired: ' + w.op + ' $' + target0 + ' (price $' + price + ')');
+    }
+  } catch (e) { /* ignore */ } finally { watchesBusy = false; }
+}
+
 export function registerGoldRoutes(app, db) {
   attachGoldDb(db);
 
@@ -347,6 +397,49 @@ export function registerGoldRoutes(app, db) {
     try {
       const c = await fetchEconomicEvents();
       res.json({ ok: true, source: 'forexfactory', fetchedAt: c.at, stale: (Date.now() - c.at) > EVENTS_TTL_MS, events: c.data || [] });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 🥇 Gold price watches (Command Center 2.0 conditional triggers)
+  app.get('/api/gold/watches', async (req, res) => {
+    try {
+      const snap = await getDocs(collection(db, WATCH_COLL));
+      const watches = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {})).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      res.json({ ok: true, watches });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post('/api/gold/watches', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const op = ['above', 'below', 'cross_up', 'cross_down'].includes(b.op) ? b.op : 'above';
+      const price = Number(b.price);
+      if (!(price > MIN_PRICE && price < MAX_PRICE)) return res.status(400).json({ ok: false, error: 'price must be between ' + MIN_PRICE + ' and ' + MAX_PRICE });
+      const ref = doc(collection(db, WATCH_COLL));
+      const w = {
+        op, price,
+        message: String(b.message || '').substring(0, 500),
+        target: String(b.target || '').trim(),
+        once: true,
+        status: 'watching',
+        createdBy: 'dashboard',
+        createdAt: Date.now(),
+        lastPrice: 0
+      };
+      await setDoc(ref, w);
+      watchesCache.at = 0;
+      logBossOrder({ source: 'dashboard', kind: 'gold', text: 'Gold watch: ' + op.replace('_', ' ') + ' $' + price + (w.message ? ' — ' + w.message.substring(0, 120) : '') + (w.target ? ' → ' + w.target : ''), status: 'watching' }).catch(() => {});
+      res.json({ ok: true, id: ref.id, watch: Object.assign({ id: ref.id }, w) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post('/api/gold/watches/delete', async (req, res) => {
+    try {
+      const id = String((req.body || {}).id || '');
+      if (!id) return res.status(400).json({ ok: false, error: 'id required' });
+      await deleteDoc(doc(db, WATCH_COLL, id));
+      watchesCache.at = 0;
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
