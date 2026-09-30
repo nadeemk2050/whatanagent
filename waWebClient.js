@@ -2919,7 +2919,7 @@ async function clearFirestoreSession(db) {
 //      thousands of individual stream writes.
 //   4. SHELL-SAFE: chats restored as shells (archive not loaded yet) are never rewritten, so
 //      their archived conversations can never be clobbered with an empty array.
-const FULL_VAULT_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;  // safety-net full sweep: every 6h
+const FULL_VAULT_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;  // safety-net full sweep: every 12h (was 6h - halves re-upload traffic)
 const VAULT_BATCH_SIZE = 400;                             // Firestore hard limit: 500 writes/commit
 const RESTORE_RECENT_CHATS = 80;                          // boot: only newest N chats get messages
 
@@ -2939,7 +2939,9 @@ function buildChatVaultPayload(c) {
     timestamp: m.timestamp || Date.now(),
     mediaType: m.mediaType || null,
     mediaInfo: m.mediaInfo ? {
-      thumbnail: m.mediaInfo.thumbnail || null,
+      // BANDWIDTH FIX (2026-09-30): jpeg thumbnails are base64 and inflate EVERY vault re-upload
+      // (x200 messages per doc). Keep only tiny ones (<=2000 chars); large ones are dropped.
+      thumbnail: (m.mediaInfo.thumbnail && m.mediaInfo.thumbnail.length <= 2000) ? m.mediaInfo.thumbnail : null,
       caption: m.mediaInfo.caption || '',
       fileName: m.mediaInfo.fileName || '',
       mimetype: m.mediaInfo.mimetype || '',
@@ -3192,11 +3194,14 @@ export async function searchWaWebHistory(query) {
   return results;
 }
 
+// BANDWIDTH FIX (2026-09-30): 5s -> 45s debounce. A busy chat used to re-upload its ENTIRE vault
+// doc (up to 200 messages + thumbnails) every few seconds of activity - at scale that was ~19GB/month
+// of service-initiated traffic. 45s coalesces bursts into at most ~1 write per chat per 45s.
 function scheduleHistorySaveToFirestore() {
   if (historySaveTimeout) clearTimeout(historySaveTimeout);
   historySaveTimeout = setTimeout(() => {
     saveHistoryToFirestore();
-  }, 5000);
+  }, 45000);
 }
 
 
