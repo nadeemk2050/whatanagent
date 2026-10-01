@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.10.01.1 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Gold Events Calendar (renamed): free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts) — the boss AI now receives this calendar in its prompt, so he can ask about upcoming events, impacts and forecasts from WhatsApp or the dashboard boss chat anytime; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through; ⚡ COMMAND CENTER 2.0 (menu: Tasks & Command Center 2.0): visual task builder (WhatsApp message / team board task / gold alert / AI prompt), cron-style schedules with LIVE next-run preview + 5-field crontab support (Asia/Dubai locked), schedule expiry, reconnect-retry, failure alerts to boss WhatsApp, auto-disable after N consecutive failures, per-task execution logs, conditional follow-ups + gold price watches with custom messages, and the 👑 History of Boss Orders audit trail with search + one-click re-run — also fed to the boss AI as behavioral memory) -->
+    <!-- APP VERSION: 2026.10.01.2 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Gold Events Calendar (renamed): free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts) — the boss AI now receives this calendar in its prompt, so he can ask about upcoming events, impacts and forecasts from WhatsApp or the dashboard boss chat anytime; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through; ⚡ COMMAND CENTER 2.0 (menu: Tasks & Command Center 2.0): visual task builder (WhatsApp message / team board task / gold alert / AI prompt), cron-style schedules with LIVE next-run preview + 5-field crontab support (Asia/Dubai locked), schedule expiry, reconnect-retry, failure alerts to boss WhatsApp, auto-disable after N consecutive failures, per-task execution logs, conditional follow-ups + gold price watches with custom messages, and the 👑 History of Boss Orders audit trail with search + one-click re-run — also fed to the boss AI as behavioral memory; 🥇 Gold page sections (Events Calendar / This Week at a Glance / Price Alerts / Triggered Alerts) are now COLLAPSIBLE — click any heading to show or hide, state remembered, TradingView calendar lazy-mounts only when opened; each day header in This Week at a Glance is clickable to reveal that day's events (with per-day event counts)) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -1323,43 +1323,58 @@
                     <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">Live chart by TradingView — free real market data: candlesticks, crosshair, zoom, fullscreen &amp; drawing tools.</div>
                 </div>
                 <div class="card" id="goldEventsCard">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                        <b>📅 Gold Events Calendar — Economic News &amp; Impacts</b>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; cursor:pointer;" onclick="goldToggleSection('events')" title="Click to show / hide">
+                        <b><span id="goldEventsChev" style="display:inline-block; transition:transform .15s;">▶</span> 📅 Gold Events Calendar — Economic News &amp; Impacts</b>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                             <span id="goldEventsMeta" style="font-size:11px; color:#9aa7ad;"></span>
-                            <a href="https://www.tradingview.com/economic-calendar/" target="_blank" rel="noopener" style="font-size:12px; color:#b8860b; font-weight:bold; text-decoration:none;">Open full calendar ↗</a>
+                            <a href="https://www.tradingview.com/economic-calendar/" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px; color:#b8860b; font-weight:bold; text-decoration:none;">Open full calendar ↗</a>
                         </div>
                     </div>
-                    <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">Coming events with impact levels (🔴 high · 🟠 medium · 🟡 low), forecast &amp; previous values. ⭐ = events that usually move gold the most. Live view below is powered by TradingView (free); the list shows this week in Dubai time.</div>
-                    <div id="goldEventsTvWrap" style="height:520px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;">
-                        <iframe id="goldEventsTvFrame" title="Economic calendar by TradingView" style="width:100%; height:100%; border:none;" loading="lazy"></iframe>
-                    </div>
-                    <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">If the calendar view doesn't load on your network, use “Open full calendar ↗” or the list below — it has the same events.</div>
-                    <div style="margin-top:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                            <b style="font-size:14px;">⚡ This Week at a Glance <span style="font-weight:normal; font-size:11px; color:#9aa7ad;" id="goldEventsListMeta"></span></b>
-                            <div id="goldEventsFilters" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                    <div id="goldEventsBody" style="display:none;">
+                        <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">Coming events with impact levels (🔴 high · 🟠 medium · 🟡 low), forecast &amp; previous values. ⭐ = events that usually move gold the most. Live view below is powered by TradingView (free); the list shows this week in Dubai time.</div>
+                        <div id="goldEventsTvWrap" style="height:520px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;">
+                            <iframe id="goldEventsTvFrame" title="Economic calendar by TradingView" style="width:100%; height:100%; border:none;" loading="lazy"></iframe>
                         </div>
-                        <div id="goldEventsList" style="margin-top:10px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;"></div>
+                        <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">If the calendar view doesn't load on your network, use “Open full calendar ↗” or the list below — it has the same events.</div>
+                        <div style="margin-top:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; cursor:pointer;" onclick="goldToggleSection('glance')" title="Click to show / hide">
+                                <b style="font-size:14px;"><span id="goldGlanceChev" style="display:inline-block; transition:transform .15s;">▶</span> ⚡ This Week at a Glance <span style="font-weight:normal; font-size:11px; color:#9aa7ad;" id="goldEventsListMeta"></span></b>
+                                <span id="goldGlanceCount" style="font-size:11px; color:#9aa7ad;"></span>
+                            </div>
+                            <div id="goldGlanceBody" style="display:none;">
+                                <div id="goldEventsFilters" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+                                <div id="goldEventsList" style="margin-top:10px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="card">
-                    <b>🔔 One-Time Price Alerts</b>
-                    <div style="font-size:12px; color:#667781; margin:5px 0 12px 0; line-height:1.6;">When a limit is HIT the Boss gets a WhatsApp message and the alert turns itself OFF (one-time). You can also set alerts from WhatsApp — e.g. <b>"alert me when gold crosses 4,400"</b> or <b>"tell me if gold falls to 4,200"</b>.</div>
-                    <div id="goldLimitsList"></div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
-                        <select id="goldLimitType" style="padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
-                            <option value="buy">🔻 BUY — alert when price falls to</option>
-                            <option value="sell">🔺 SELL — alert when price rises to</option>
-                        </select>
-                        <input id="goldLimitPrice" type="number" step="0.01" placeholder="Price $/oz" style="padding:10px; border:1px solid var(--border); border-radius:8px; width:130px; font-size:13px;">
-                        <input id="goldLimitNote" type="text" placeholder="Note (optional)" style="padding:10px; border:1px solid var(--border); border-radius:8px; flex:1; min-width:140px; font-size:13px;">
-                        <button onclick="goldAddLimit()" style="padding:10px 18px; background:#b8860b; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Alert</button>
+                <div class="card" id="goldAlertsCard">
+                    <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goldToggleSection('alerts')" title="Click to show / hide">
+                        <b><span id="goldAlertsChev" style="display:inline-block; transition:transform .15s;">▶</span> 🔔 One-Time Price Alerts</b>
+                        <span id="goldAlertsCount" style="font-size:11px; color:#9aa7ad;"></span>
+                    </div>
+                    <div id="goldAlertsBody" style="display:none;">
+                        <div style="font-size:12px; color:#667781; margin:5px 0 12px 0; line-height:1.6;">When a limit is HIT the Boss gets a WhatsApp message and the alert turns itself OFF (one-time). You can also set alerts from WhatsApp — e.g. <b>"alert me when gold crosses 4,400"</b> or <b>"tell me if gold falls to 4,200"</b>.</div>
+                        <div id="goldLimitsList"></div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center;">
+                            <select id="goldLimitType" style="padding:10px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+                                <option value="buy">🔻 BUY — alert when price falls to</option>
+                                <option value="sell">🔺 SELL — alert when price rises to</option>
+                            </select>
+                            <input id="goldLimitPrice" type="number" step="0.01" placeholder="Price $/oz" style="padding:10px; border:1px solid var(--border); border-radius:8px; width:130px; font-size:13px;">
+                            <input id="goldLimitNote" type="text" placeholder="Note (optional)" style="padding:10px; border:1px solid var(--border); border-radius:8px; flex:1; min-width:140px; font-size:13px;">
+                            <button onclick="goldAddLimit()" style="padding:10px 18px; background:#b8860b; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Alert</button>
+                        </div>
                     </div>
                 </div>
                 <div class="card" id="goldHistoryCard" style="display:none;">
-                    <b>🕘 Triggered Alerts</b>
-                    <div id="goldHistoryList" style="margin-top:10px;"></div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="goldToggleSection('history')" title="Click to show / hide">
+                        <b><span id="goldHistoryChev" style="display:inline-block; transition:transform .15s;">▶</span> 🕘 Triggered Alerts</b>
+                        <span id="goldHistoryCount" style="font-size:11px; color:#9aa7ad;"></span>
+                    </div>
+                    <div id="goldHistoryBody" style="display:none;">
+                        <div id="goldHistoryList" style="margin-top:10px;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -5089,7 +5104,7 @@
             goldLoadPrice();
             goldLoadLimits();
             goldLoadSeries(true);
-            goldMountEventsFrame();
+            goldApplyAllSections();
             goldLoadEvents();
             goldTapeCountdown = 30;
             if (goldPollTimer) clearInterval(goldPollTimer);
@@ -5168,6 +5183,35 @@
         // ===== 📅 Events Calendar (free sources: Forex Factory weekly feed + TradingView embed) =====
         function goldEventsDubaiTime(ts) { try { return new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
         function goldEventsDubaiDay(ts) { try { return new Date(ts).toLocaleDateString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short' }); } catch (e) { return ''; } }
+        function goldEventsDubaiDayKey(ts) { try { return new Date(ts + 4 * 3600 * 1000).toISOString().slice(0, 10); } catch (e) { return 'x'; } }
+        var goldEventsOpenDays = {};
+        function goldToggleDay(k) {
+            goldEventsOpenDays[k] = !goldEventsOpenDays[k];
+            var el = document.getElementById('goldDay_' + k);
+            if (el) el.style.display = goldEventsOpenDays[k] ? 'block' : 'none';
+            var chev = document.getElementById('goldDayChev_' + k);
+            if (chev) chev.style.transform = goldEventsOpenDays[k] ? 'rotate(90deg)' : 'none';
+        }
+
+        // ===== 🗂️ Collapsible gold-page sections (headings clickable; state remembered) + lazy calendar mount =====
+        var GOLD_SECTION_BODY = { events: 'goldEventsBody', glance: 'goldGlanceBody', alerts: 'goldAlertsBody', history: 'goldHistoryBody' };
+        var GOLD_SECTION_CHEV = { events: 'goldEventsChev', glance: 'goldGlanceChev', alerts: 'goldAlertsChev', history: 'goldHistoryChev' };
+        function goldSectionOpen(id) { try { return localStorage.getItem('goldOpen_' + id) === '1'; } catch (e) { return false; } }
+        function goldApplySection(id) {
+            var body = document.getElementById(GOLD_SECTION_BODY[id]);
+            if (!body) return;
+            var open = goldSectionOpen(id);
+            body.style.display = open ? 'block' : 'none';
+            var chev = document.getElementById(GOLD_SECTION_CHEV[id]);
+            if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'none';
+            if (id === 'events' && open) goldMountEventsFrame();   // mount the TradingView calendar only when visible
+        }
+        function goldToggleSection(id) {
+            var open = !goldSectionOpen(id);
+            try { localStorage.setItem('goldOpen_' + id, open ? '1' : '0'); } catch (e) { /* ignore */ }
+            goldApplySection(id);
+        }
+        function goldApplyAllSections() { Object.keys(GOLD_SECTION_BODY).forEach(goldApplySection); }
 
         function goldMountEventsFrame() {
             var f = document.getElementById('goldEventsTvFrame');
@@ -5207,14 +5251,20 @@
             var now = Date.now();
             var groups = {}; var order = [];
             list.forEach(function(e) {
-                var k = goldEventsDubaiDay(e.ts);
+                var k = goldEventsDubaiDayKey(e.ts);
                 if (!groups[k]) { groups[k] = []; order.push(k); }
                 groups[k].push(e);
             });
             var html = '';
             order.forEach(function(k) {
-                html += '<div style="font-size:12px; font-weight:bold; color:#667781; margin:10px 10px 4px 10px;">' + goldEsc(k) + '</div>';
-                groups[k].forEach(function(e) {
+                var evs = groups[k];
+                var isOpen = !!goldEventsOpenDays[k];
+                var label = goldEventsDubaiDay(evs[0].ts);
+                html += '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin:10px 10px 4px 10px; cursor:pointer;" onclick="goldToggleDay(\'' + k + '\')" title="Click to show / hide this day\'s events">'
+                    + '<div style="font-size:12px; font-weight:bold; color:#667781;"><span id="goldDayChev_' + k + '" style="display:inline-block; transition:transform .15s;' + (isOpen ? ' transform:rotate(90deg);' : '') + '">▶</span> ' + goldEsc(label) + '</div>'
+                    + '<span style="font-size:11px; color:#9aa7ad;">' + evs.length + ' event' + (evs.length === 1 ? '' : 's') + '</span></div>';
+                html += '<div id="goldDay_' + k + '" style="display:' + (isOpen ? 'block' : 'none') + ';">';
+                evs.forEach(function(e) {
                     var dot = e.impact === 'High' ? '#d32f2f' : e.impact === 'Medium' ? '#ef6c00' : (e.impact === 'Holiday' ? '#9e9e9e' : '#f9a825');
                     var passed = e.ts < now;
                     var vals = [];
@@ -5228,6 +5278,7 @@
                         + '<span style="color:#667781; font-size:11.5px; white-space:nowrap;">' + vals.join(' · ') + '</span>'
                         + '</div>';
                 });
+                html += '</div>';
             });
             host.innerHTML = html;
         }
@@ -5241,6 +5292,8 @@
                 if (meta) meta.textContent = d.events.length + ' events this week · ' + upcoming + ' upcoming' + (d.stale ? ' · cached copy' : '');
                 var lm = document.getElementById('goldEventsListMeta');
                 if (lm) lm.textContent = '· Dubai time · updated ' + goldEventsDubaiTime(d.fetchedAt || Date.now());
+                var gc = document.getElementById('goldGlanceCount');
+                if (gc) gc.textContent = d.events.length + ' events · ' + upcoming + ' upcoming';
                 window.__goldEventsCache = d.events;
                 goldRenderEventsFilters();
                 goldRenderEvents(d.events);
@@ -5383,6 +5436,8 @@
                 var limits = g.limits || [];
                 var active = limits.filter(function(l) { return l && l.active; });
                 var inactive = limits.filter(function(l) { return l && !l.active; }).slice(-6).reverse();
+                var ac = document.getElementById('goldAlertsCount');
+                if (ac) ac.textContent = active.length ? (active.length + ' active') : 'none active';
                 var rows = '';
                 rows += active.length ? active.map(function(l) {
                     var icon = l.type === 'buy' ? '🔻 BUY' : '🔺 SELL';
@@ -5401,9 +5456,12 @@
                 }
                 if (el) el.innerHTML = rows;
                 var hist = g.history || [];
+                var hc = document.getElementById('goldHistoryCount');
+                if (hc) hc.textContent = hist.length ? (hist.length + ' triggered') : '';
                 if (hC && hL) {
                     if (hist.length) {
                         hC.style.display = 'block';
+                        goldApplySection('history');
                         hL.innerHTML = hist.map(function(h) {
                             return '<div style="font-size:12px; color:#546e7a; padding:6px 0; border-bottom:1px dashed var(--border);">🚨 ' + (h.type === 'buy' ? '🔻 BUY' : '🔺 SELL') + ' ' + goldFmt(h.price) + ' hit at <b>' + goldFmt(h.hitPrice) + '</b> — ' + new Date(h.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + (h.note ? ' — ' + goldEsc(h.note) : '') + '</div>';
                         }).join('');
