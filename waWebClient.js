@@ -919,7 +919,12 @@ async function buildBossExecPrompt() {
     '  (target may be a CONTACT NAME from the Contact Book, or a full number)\n' +
     '  Use "send_message" ONLY if the boss explicitly wants it sent from the BUSINESS number:\n' +
     '  [TASK: {"taskType":"send_message","target":"0501234567","message":"...","runAt":"2026-09-15T11:00:00+04:00","title":"..."}]\n' +
-    '  [TASK: {"taskType":"ai_task","instruction":"Publish a blog about X on the website","runAt":"2026-09-15T11:00:00+04:00"}]\n' +
+    '  *** WEBSITE / SEO AGENT JOBS: to change ANY website saved in the SEO workspace ALWAYS use taskType "ai_task" - write the instruction as a clear order. The SEO agent can: publish / update / delete pages, create and edit blog posts and articles, add or replace content anywhere on a page, upload images and add them to pages, create categories, add / edit / remove navigation menu items, post to the Facebook page, and more. It uses the same site credentials saved in the SEO Agent ENV. ***\n' +
+    '  [TASK: {"taskType":"ai_task","instruction":"Publish a blog about X on the website","runAt":"<ISO now+60s with +04:00>","title":"..."}]\n' +
+    '  [TASK: {"taskType":"ai_task","instruction":"Create a new page titled Scrap Prices Today with content: ... and publish it live","runAt":"<ISO now+60s with +04:00>"}]\n' +
+    '  [TASK: {"taskType":"ai_task","instruction":"Add a menu item named Blog linking to https://alshaabalwaseem.com/blog/ in the main menu","runAt":"<ISO now+60s with +04:00>"}]\n' +
+    '  [TASK: {"taskType":"ai_task","instruction":"Delete the page titled X","runAt":"<ISO now+60s with +04:00>"}]\n' +
+    '  (when the boss names one of his websites, add "siteKey":"www.alshaabalwaseem.com" to the ai_task JSON - otherwise the main site is used)\n' +
     '  [TASK: {"taskType":"send_template","target":"0501234567","templateName":"name","variables":["a","b"],"runAt":"..."}]\n' +
     '  [TASKLIST] -> list pending tasks\n' +
     '  [TASKCANCEL: {"id":"task-..."}] or {"title":"a few words from the title"} -> cancel a task\n' +
