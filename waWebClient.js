@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
 import { brainPromptSectionForJid, getBrainForReply, saveBrainDraft, escalateBrain } from './contactBrain.mjs';
-import { goldBossAction, goldSnapshot } from './goldAgent.mjs';
+import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -845,6 +845,31 @@ async function getRecentBossOrdersBlock() {
   return bossOrdersCache.block;
 }
 
+// --- 📅 Gold Events Calendar context for the boss AI (economic events, Dubai time) ---
+let bossEventsCache = { at: 0, block: '' };
+async function getBossEventsBlock() {
+  const now = Date.now();
+  if (now - bossEventsCache.at < 5 * 60 * 1000) return bossEventsCache.block;
+  try {
+    const list = await goldEventsSnapshot();
+    if (!Array.isArray(list) || !list.length) { bossEventsCache = { at: now, block: '' }; return ''; }
+    const upcoming = list.filter(e => e && e.ts >= now - 30 * 60 * 1000);
+    const fmt = (e) => new Date(e.ts).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const imp = (e) => (e.impact === 'High' ? '🔴 HIGH' : (e.impact === 'Medium' ? '🟠 MEDIUM' : '🟡 low'));
+    const line = (e) => '• ' + fmt(e) + ' — ' + imp(e) + ' | ' + (e.ccy || '') + ' ' + e.title + (e.forecast ? ' | forecast ' + e.forecast : '') + (e.previous ? ' | previous ' + e.previous : '') + (e.gold ? ' ⭐moves-gold' : '');
+    const next24 = upcoming.filter(e => e.ts < now + 24 * 3600 * 1000).slice(0, 12);
+    const next7 = upcoming.filter(e => e.ts >= now + 24 * 3600 * 1000 && e.ts < now + 7 * 86400000 && (e.impact === 'High' || e.gold)).slice(0, 12);
+    const highN = upcoming.filter(e => e.ts < now + 7 * 86400000 && e.impact === 'High').length;
+    let block = '--- 📅 GOLD EVENTS CALENDAR (economic events that move gold - same data as the dashboard Gold Events Calendar) ---\n';
+    block += 'This week: ' + upcoming.length + ' events tracked · ' + highN + ' high-impact in the next 7 days.\n';
+    block += 'Next 24 hours:\n' + (next24.length ? next24.map(line).join('\n') : '(none)') + '\n';
+    block += 'Key events this week (🔴 high-impact + ⭐ gold movers, next 7 days):\n' + (next7.length ? next7.map(line).join('\n') : '(none)') + '\n';
+    block += 'Use this to answer the boss about economic news & dates (CPI, Fed/FOMC, NFP, GDP…), their impact levels, forecast/previous values, and why they move gold. Times are Dubai. If he asks about an event outside this window, tell him this is the weekly window and he can open the Gold Events Calendar in the dashboard for the full view. Never invent events or values - only use what is listed here.\n\n';
+    bossEventsCache = { at: now, block };
+  } catch (e) { bossEventsCache = { at: now, block: '' }; }
+  return bossEventsCache.block;
+}
+
 // Builds the full executive prompt exactly as the WhatsApp boss flow does - contacts, team, brain memory.
 async function buildBossExecPrompt() {
   const contactDir = await bossContactDirectory(400);
@@ -853,6 +878,7 @@ async function buildBossExecPrompt() {
   const alignStaffLine = alignStaff.length ? ('BOARD TEAM MEMBERS (align tasks to these EXACT names): ' + alignStaff.map(s => s.name).join(', ')) : '';
   const brainCtx = await getBossBrainContext(16);
   const bossOrdersBlock = await getRecentBossOrdersBlock();
+  const eventsBlock = await getBossEventsBlock();
   let goldSpotLine = '';
   try {
     const gs = await goldSnapshot();
@@ -905,6 +931,7 @@ async function buildBossExecPrompt() {
     '  [GOLD: {"action":"list"}]                   -> show the active + recent gold alerts\n' +
     '  [GOLD: {"action":"clear"}]                  -> remove all gold alerts ({"which":"buy"|"sell"} optional)\n' +
     'RULE: a price BELOW the live spot above = set_buy; ABOVE it = set_sell. Boss may also ask for the live price - answer from the LIVE GOLD SPOT line. ONLY the app result confirms an alert - never write your own confirmation.\n' +
+    (eventsBlock ? eventsBlock : '') +
     (bossOrdersBlock ? bossOrdersBlock : '') +
     'Contact Book:\n' +
     '  [CONTACT: {"phone":"0501234567","name":"...","company":"...","email":"...","city":"...","website":"...","leadStatus":"...","notes":"..."}]\n' +

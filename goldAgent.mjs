@@ -312,6 +312,23 @@ async function fetchEconomicEvents() {
   return eventsCache;
 }
 
+// Boss AI helper: return the current events list WITHOUT triggering an upstream fetch
+// (memory cache first, then the Firestore-persisted copy). 10-min memo to avoid re-reads.
+let eventsBossSnapshotCache = { at: 0, list: null };
+export async function goldEventsSnapshot() {
+  const now = Date.now();
+  if (eventsBossSnapshotCache.list && (now - eventsBossSnapshotCache.at) < 10 * 60 * 1000) return eventsBossSnapshotCache.list;
+  let list = eventsCache.data || null;
+  if (!list) {
+    try {
+      const snap = await getDoc(doc(globalDb, ...EVENTS_CACHE_DOC));
+      if (snap.exists()) list = (snap.data() || {}).events || null;
+    } catch (e) { /* ignore */ }
+  }
+  if (list && list.length) eventsBossSnapshotCache = { at: now, list };
+  return list || null;
+}
+
 // --- 🥇 Command Center 2.0: Gold price watches (conditional "if spot crosses a price..." automation) ---
 // Stored in the top-level goldWatches collection. Evaluated on every fresh poll; once fired the watch
 // turns itself off (one-time). The boss is always notified via the notifications delivery loop, and a
