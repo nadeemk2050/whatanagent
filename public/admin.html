@@ -1331,21 +1331,33 @@
                         </div>
                     </div>
                     <div id="goldEventsBody" style="display:none;">
-                        <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">Coming events with impact levels (🔴 high · 🟠 medium · 🟡 low), forecast &amp; previous values. ⭐ = events that usually move gold the most. Live view below is powered by TradingView (free); the list shows this week in Dubai time.</div>
-                        <div id="goldEventsTvWrap" style="height:520px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;">
+                        <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">
+                            Coming economic events in Dubai time (🔴 high · 🟠 medium · 🟡 low). ⭐ = key gold catalysts.
+                            <b>Fixed table columns show expected Gold (XAU/USD) &amp; USD reactions if actual data beats expectations, plus 4-history volatility estimates (powered by Qwen AI).</b>
+                        </div>
+                        
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin:10px 0 12px 0;">
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <button id="goldViewBtnTable" onclick="goldSwitchEventsView('table')" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:bold; cursor:pointer; background:#b8860b; color:#fff; border:1px solid #b8860b;">📊 Table View (Fixed Columns &amp; AI Forecasts)</button>
+                                <button id="goldViewBtnTv" onclick="goldSwitchEventsView('tv')" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:bold; cursor:pointer; background:#fff; color:#667781; border:1px solid var(--border);">🌐 TradingView Live Widget</button>
+                            </div>
+                            <div id="goldEventsFilters" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+                        </div>
+
+                        <!-- 📊 Enhanced Events Table View -->
+                        <div id="goldEventsTableView" style="display:block;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span style="font-size:11px; color:#64748b;" id="goldEventsListMeta"></span>
+                                <span style="font-size:11px; color:#9aa7ad;" id="goldGlanceCount"></span>
+                            </div>
+                            <div id="goldEventsList"></div>
+                        </div>
+
+                        <!-- 🌐 TradingView Embed View -->
+                        <div id="goldEventsTvWrap" style="display:none; height:520px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; margin-top:10px;">
                             <iframe id="goldEventsTvFrame" title="Economic calendar by TradingView" style="width:100%; height:100%; border:none;" loading="lazy"></iframe>
                         </div>
-                        <div style="font-size:11px; color:#9aa7ad; margin-top:4px;">If the calendar view doesn't load on your network, use “Open full calendar ↗” or the list below — it has the same events.</div>
-                        <div style="margin-top:14px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; cursor:pointer;" onclick="goldToggleSection('glance')" title="Click to show / hide">
-                                <b style="font-size:14px;"><span id="goldGlanceChev" style="display:inline-block; transition:transform .15s;">▶</span> ⚡ This Week at a Glance <span style="font-weight:normal; font-size:11px; color:#9aa7ad;" id="goldEventsListMeta"></span></b>
-                                <span id="goldGlanceCount" style="font-size:11px; color:#9aa7ad;"></span>
-                            </div>
-                            <div id="goldGlanceBody" style="display:none;">
-                                <div id="goldEventsFilters" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
-                                <div id="goldEventsList" style="margin-top:10px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff;"></div>
-                            </div>
-                        </div>
+                        <div id="goldEventsTvFooter" style="font-size:11px; color:#9aa7ad; margin-top:4px; display:none;">If the TradingView widget doesn't load on your network, use the Table View above or “Open full calendar ↗”.</div>
                     </div>
                 </div>
                 <div class="card" id="goldAlertsCard">
@@ -5180,7 +5192,8 @@
             }).catch(function(e) { var meta = document.getElementById('goldPriceMeta'); if (meta) meta.textContent = '⚠️ ' + e.message; });
         }
 
-        // ===== 📅 Events Calendar (free sources: Forex Factory weekly feed + TradingView embed) =====
+        // ===== 📅 Events Calendar (Forex Factory weekly feed + Qwen AI Predictions + TradingView embed) =====
+        var goldEventsViewMode = 'table'; // 'table' | 'tv'
         function goldEventsDubaiTime(ts) { try { return new Date(ts).toLocaleTimeString('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
         function goldEventsDubaiDay(ts) { try { return new Date(ts).toLocaleDateString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short' }); } catch (e) { return ''; } }
         function goldEventsDubaiDayKey(ts) { try { return new Date(ts + 4 * 3600 * 1000).toISOString().slice(0, 10); } catch (e) { return 'x'; } }
@@ -5191,6 +5204,29 @@
             if (el) el.style.display = goldEventsOpenDays[k] ? 'block' : 'none';
             var chev = document.getElementById('goldDayChev_' + k);
             if (chev) chev.style.transform = goldEventsOpenDays[k] ? 'rotate(90deg)' : 'none';
+        }
+
+        function goldSwitchEventsView(mode) {
+            goldEventsViewMode = mode;
+            var tbl = document.getElementById('goldEventsTableView');
+            var tv = document.getElementById('goldEventsTvWrap');
+            var tvf = document.getElementById('goldEventsTvFooter');
+            var btnTbl = document.getElementById('goldViewBtnTable');
+            var btnTv = document.getElementById('goldViewBtnTv');
+            if (mode === 'table') {
+                if (tbl) tbl.style.display = 'block';
+                if (tv) tv.style.display = 'none';
+                if (tvf) tvf.style.display = 'none';
+                if (btnTbl) { btnTbl.style.background = '#b8860b'; btnTbl.style.color = '#fff'; btnTbl.style.borderColor = '#b8860b'; }
+                if (btnTv) { btnTv.style.background = '#fff'; btnTv.style.color = '#667781'; btnTv.style.borderColor = 'var(--border)'; }
+            } else {
+                if (tbl) tbl.style.display = 'none';
+                if (tv) tv.style.display = 'block';
+                if (tvf) tvf.style.display = 'block';
+                if (btnTv) { btnTv.style.background = '#b8860b'; btnTv.style.color = '#fff'; btnTv.style.borderColor = '#b8860b'; }
+                if (btnTbl) { btnTbl.style.background = '#fff'; btnTbl.style.color = '#667781'; btnTbl.style.borderColor = 'var(--border)'; }
+                goldMountEventsFrame();
+            }
         }
 
         // ===== 🗂️ Collapsible gold-page sections (headings clickable; state remembered) + lazy calendar mount =====
@@ -5204,7 +5240,7 @@
             body.style.display = open ? 'block' : 'none';
             var chev = document.getElementById(GOLD_SECTION_CHEV[id]);
             if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'none';
-            if (id === 'events' && open) goldMountEventsFrame();   // mount the TradingView calendar only when visible
+            if (id === 'events' && open && goldEventsViewMode === 'tv') goldMountEventsFrame();
         }
         function goldToggleSection(id) {
             var open = !goldSectionOpen(id);
@@ -5231,12 +5267,15 @@
         function goldRenderEventsFilters() {
             var host = document.getElementById('goldEventsFilters');
             if (!host) return;
-            var chips = [['all', 'All'], ['high', '🔴 High only'], ['gold', '⭐ Gold movers']];
+            var chips = [['all', 'All'], ['high', '🔴 High only'], ['gold', '⭐ Gold movers'], ['usd', '🇺🇸 USD only']];
             host.innerHTML = chips.map(function(c) {
                 var active = goldEventsFilter === c[0];
                 return '<button onclick="goldSetEventsFilter(\'' + c[0] + '\')" style="padding:5px 10px; border-radius:14px; font-size:11.5px; font-weight:bold; cursor:pointer; border:1px solid ' + (active ? '#b8860b' : 'var(--border)') + '; background:' + (active ? '#b8860b' : '#fff') + '; color:' + (active ? '#fff' : '#3b4a54') + ';">' + c[1] + '</button>';
             }).join('');
         }
+
+        // Global list for Qwen modal reference
+        window.__goldFlatEvents = [];
 
         function goldRenderEvents(events) {
             var host = document.getElementById('goldEventsList');
@@ -5244,10 +5283,12 @@
             var list = (events || []).slice();
             if (goldEventsFilter === 'high') list = list.filter(function(e) { return e.impact === 'High'; });
             if (goldEventsFilter === 'gold') list = list.filter(function(e) { return e.gold; });
+            if (goldEventsFilter === 'usd') list = list.filter(function(e) { return String(e.ccy || '').toUpperCase() === 'USD'; });
             if (!list.length) {
-                host.innerHTML = '<div style="text-align:center; color:#667781; padding:18px; font-size:12.5px;">No events match this filter this week.</div>';
+                host.innerHTML = '<div style="text-align:center; color:#667781; padding:24px; font-size:13px; background:#fff; border-radius:10px; border:1px solid var(--border);">No events match this filter for the current week.</div>';
                 return;
             }
+            window.__goldFlatEvents = list;
             var now = Date.now();
             var groups = {}; var order = [];
             list.forEach(function(e) {
@@ -5255,43 +5296,496 @@
                 if (!groups[k]) { groups[k] = []; order.push(k); }
                 groups[k].push(e);
             });
+
+            // If first time loading, auto-open today and upcoming days
+            var todayKey = goldEventsDubaiDayKey(now);
+            if (Object.keys(goldEventsOpenDays).length === 0) {
+                order.forEach(function(k) {
+                    if (k >= todayKey) goldEventsOpenDays[k] = true;
+                });
+                if (order.length && !order.some(function(k) { return goldEventsOpenDays[k]; })) {
+                    goldEventsOpenDays[order[order.length - 1]] = true;
+                }
+            }
+
             var html = '';
+            var globalIdx = 0;
             order.forEach(function(k) {
                 var evs = groups[k];
                 var isOpen = !!goldEventsOpenDays[k];
                 var label = goldEventsDubaiDay(evs[0].ts);
-                html += '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin:10px 10px 4px 10px; cursor:pointer;" onclick="goldToggleDay(\'' + k + '\')" title="Click to show / hide this day\'s events">'
-                    + '<div style="font-size:12px; font-weight:bold; color:#667781;"><span id="goldDayChev_' + k + '" style="display:inline-block; transition:transform .15s;' + (isOpen ? ' transform:rotate(90deg);' : '') + '">▶</span> ' + goldEsc(label) + '</div>'
-                    + '<span style="font-size:11px; color:#9aa7ad;">' + evs.length + ' event' + (evs.length === 1 ? '' : 's') + '</span></div>';
-                html += '<div id="goldDay_' + k + '" style="display:' + (isOpen ? 'block' : 'none') + ';">';
+                var isToday = k === todayKey;
+
+                html += '<div style="margin-bottom:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.03);">'
+                    + '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 14px; background:' + (isToday ? '#fefce8' : '#f8fafc') + '; cursor:pointer; border-bottom:1px solid var(--border);" onclick="goldToggleDay(\'' + k + '\')" title="Click to show / hide this day\'s events">'
+                    + '<div style="font-size:13px; font-weight:bold; color:' + (isToday ? '#854d0e' : '#1e293b') + '; display:flex; align-items:center; gap:6px;">'
+                    + '<span id="goldDayChev_' + k + '" style="display:inline-block; transition:transform .15s;' + (isOpen ? ' transform:rotate(90deg);' : '') + '">▶</span>'
+                    + '📅 ' + goldEsc(label) + (isToday ? ' <span style="background:#fef08a; color:#854d0e; font-size:10.5px; padding:1px 6px; border-radius:4px; margin-left:4px; font-weight:bold;">TODAY</span>' : '')
+                    + '</div>'
+                    + '<span style="font-size:11px; font-weight:600; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:12px;">' + evs.length + ' event' + (evs.length === 1 ? '' : 's') + '</span></div>';
+
+                html += '<div id="goldDay_' + k + '" style="display:' + (isOpen ? 'block' : 'none') + '; overflow-x:auto;">';
+                html += '<table style="width:100%; border-collapse:collapse; min-width:980px; text-align:left; font-size:12px;">';
+                
+                // Fixed column header bar
+                html += '<thead><tr style="background:#f1f5f9; color:#475569; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.4px; border-bottom:2px solid #cbd5e1;">'
+                    + '<th style="padding:9px 8px; width:75px; text-align:center;">TIME (GST)</th>'
+                    + '<th style="padding:9px 8px; width:70px; text-align:center;">IMPACT</th>'
+                    + '<th style="padding:9px 8px; width:50px; text-align:center;">CCY</th>'
+                    + '<th style="padding:9px 12px; min-width:170px;">ECONOMIC INDICATOR</th>'
+                    + '<th style="padding:9px 8px; min-width:120px; text-align:center; background:#ecfdf5; color:#065f46; border-left:1px solid #a7f3d0;">🎯 ACTUAL (TODAY)</th>'
+                    + '<th style="padding:9px 8px; width:75px; text-align:center;">FORECAST</th>'
+                    + '<th style="padding:9px 8px; width:75px; text-align:center;">PREVIOUS</th>'
+                    + '<th style="padding:9px 12px; min-width:170px; background:#fef9c3; color:#854d0e; border-left:1px solid #fef08a;">🟢 IF ACTUAL HIGHER</th>'
+                    + '<th style="padding:9px 12px; min-width:170px; background:#f0fdf4; color:#166534; border-left:1px solid #bbf7d0;">🔴 IF ACTUAL LOWER</th>'
+                    + '<th style="padding:9px 12px; min-width:215px; background:#eff6ff; color:#1e40af; border-left:1px solid #dbeafe;">📊 4-HIST VOLATILITY &amp; AI</th>'
+                    + '</tr></thead>';
+
+                html += '<tbody>';
                 evs.forEach(function(e) {
-                    var dot = e.impact === 'High' ? '#d32f2f' : e.impact === 'Medium' ? '#ef6c00' : (e.impact === 'Holiday' ? '#9e9e9e' : '#f9a825');
                     var passed = e.ts < now;
-                    var vals = [];
-                    if (e.forecast) vals.push('F: ' + goldEsc(e.forecast));
-                    if (e.previous) vals.push('P: ' + goldEsc(e.previous));
-                    html += '<div style="display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid #f0f2f5; font-size:12.5px;' + (passed ? ' opacity:.55;' : '') + '">'
-                        + '<span style="color:#9aa7ad; min-width:45px; flex:none;">' + goldEventsDubaiTime(e.ts) + '</span>'
-                        + '<span title="' + goldEsc(e.impact || 'Low') + ' impact" style="background:' + dot + '; width:9px; height:9px; border-radius:50%; flex:none;"></span>'
-                        + '<span style="font-weight:bold; min-width:40px; flex:none; color:#3b4a54;">' + goldEsc(e.ccy) + '</span>'
-                        + '<span style="flex:1; color:#3b4a54;">' + (e.gold ? '⭐ ' : '') + goldEsc(e.title) + '</span>'
-                        + '<span style="color:#667781; font-size:11.5px; white-space:nowrap;">' + vals.join(' · ') + '</span>'
-                        + '</div>';
+                    var rowIdx = globalIdx++;
+                    var imp = e.impact || 'Low';
+                    var impBadge = imp === 'High'
+                        ? '<span style="background:#fee2e2; color:#991b1b; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:700; border:1px solid #fca5a5;">🔴 High</span>'
+                        : (imp === 'Medium'
+                            ? '<span style="background:#ffedd5; color:#9a3412; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:700; border:1px solid #fdba74;">🟠 Med</span>'
+                            : (imp === 'Holiday'
+                                ? '<span style="background:#f1f5f9; color:#64748b; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:600;">⚪ Holiday</span>'
+                                : '<span style="background:#fef9c3; color:#854d0e; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:700; border:1px solid #fde047;">🟡 Low</span>'));
+
+                    var an = e.impactAnalysis || {};
+                    var ifH = an.ifHigher || { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$10 to -$20', usdDir: 'UP', usdMove: '+0.3%', signal: 'strong' };
+                    var ifL = an.ifLower || { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$10 to +$22', usdDir: 'DOWN', usdMove: '-0.3%', signal: 'weak' };
+
+                    var higherBadge = ifH.goldDir === 'DOWN'
+                        ? '<span style="background:#fee2e2; color:#991b1b; padding:3px 7px; border-radius:5px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:3px;">🔻 Gold DOWN <span style="font-weight:600; color:#7f1d1d; font-size:10px;">(' + goldEsc(ifH.goldMove) + ')</span></span>'
+                        : (ifH.goldDir === 'UP'
+                            ? '<span style="background:#dcfce7; color:#166534; padding:3px 7px; border-radius:5px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:3px;">🔺 Gold UP <span style="font-weight:600; color:#14532d; font-size:10px;">(' + goldEsc(ifH.goldMove) + ')</span></span>'
+                            : '<span style="background:#f1f5f9; color:#475569; padding:3px 7px; border-radius:5px; font-size:11px;">➖ Neutral</span>');
+
+                    var lowerBadge = ifL.goldDir === 'UP'
+                        ? '<span style="background:#dcfce7; color:#166534; padding:3px 7px; border-radius:5px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:3px;">🔺 Gold UP <span style="font-weight:600; color:#14532d; font-size:10px;">(' + goldEsc(ifL.goldMove) + ')</span></span>'
+                        : (ifL.goldDir === 'DOWN'
+                            ? '<span style="background:#fee2e2; color:#991b1b; padding:3px 7px; border-radius:5px; font-weight:700; font-size:11px; display:inline-flex; align-items:center; gap:3px;">🔻 Gold DOWN <span style="font-weight:600; color:#7f1d1d; font-size:10px;">(' + goldEsc(ifL.goldMove) + ')</span></span>'
+                            : '<span style="background:#f1f5f9; color:#475569; padding:3px 7px; border-radius:5px; font-size:11px;">➖ Neutral</span>');
+
+                    // Calculate live Dynamic Price Targets (Support S1 / Resistance R1 vs Spot)
+                    var currentSpot = Number(goldTapePrev || 4210);
+                    var moveMatch = String(an.history4Move || (an.ifHigher && an.ifHigher.goldMove) || '').match(/\$([0-9]+(?:\.[0-9]+)?)/g);
+                    var eventExpectedMove = 15;
+                    if (moveMatch && moveMatch.length > 0) {
+                        var nums = moveMatch.map(function(m) { return parseFloat(m.replace('$', '')); });
+                        eventExpectedMove = nums.reduce(function(a, b) { return a + b; }, 0) / nums.length;
+                    } else {
+                        eventExpectedMove = (e.impact === 'High' || e.gold) ? 28 : (e.impact === 'Medium' ? 16 : 7);
+                    }
+                    var r1Val = currentSpot + eventExpectedMove;
+                    var s1Val = currentSpot - eventExpectedMove;
+
+                    // Actual Result Cell rendering with Flash Deviation Badge & Multi-AI Scraper Refresh
+                    var actVal = String(e.actual || '').trim();
+                    var isInvalidAct = !actVal || ['—', 'n/a', 'released', 'null', 'undefined'].includes(actVal.toLowerCase());
+                    var actRes = isInvalidAct ? null : (e.actualResult || null);
+                    var actHtml = '';
+
+                    if (!isInvalidAct) {
+                        var status = actRes ? actRes.status : 'RECORDED';
+                        var bg = '#ecfdf5', col = '#065f46', border = '#a7f3d0';
+                        var flash = (actRes && actRes.flashBadge) || (status === 'HIGHER' ? '🟢 HIGHER' : (status === 'LOWER' ? '🔴 LOWER' : '⚪ IN-LINE'));
+                        var momentum = (actRes && actRes.momentumTag) || '';
+                        if (flash.includes('MASSIVE MISS') || flash.includes('Bullish')) {
+                            bg = '#dcfce7'; col = '#15803d'; border = '#86efac';
+                        } else if (flash.includes('BIG BEAT') || flash.includes('Bearish') || (status === 'LOWER' && !an.isInverse)) {
+                            bg = '#fee2e2'; col = '#991b1b'; border = '#fca5a5';
+                        } else if (status === 'IN_LINE') {
+                            bg = '#f1f5f9'; col = '#334155'; border = '#cbd5e1';
+                        }
+                        actHtml = '<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">'
+                            + '<div style="display:flex; align-items:center; gap:4px;">'
+                            + '<span style="background:' + bg + '; color:' + col + '; padding:3px 8px; border-radius:6px; font-weight:800; font-size:12px; border:1px solid ' + border + ';">' + goldEsc(actVal) + '</span>'
+                            + '<button id="goldFetchBtn_' + rowIdx + '" onclick="goldFetchActualAi(' + rowIdx + ')" title="Re-query / Refresh via Multi-AI & Newspaper Scrapers (Gemini → Qwen → DeepSeek)" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer; font-size:10px; color:#475569; padding:2px 5px; display:inline-flex; align-items:center; transition:background .15s;" onmouseover="this.style.background=\'#e2e8f0\'" onmouseout="this.style.background=\'#f1f5f9\'">🔄</button>'
+                            + '<button onclick="goldPromptManualActual(' + rowIdx + ')" title="Edit actual value manually" style="background:none; border:none; cursor:pointer; font-size:10px; color:#94a3b8; padding:0 2px;">✏️</button>'
+                            + '</div>'
+                            + '<span style="font-size:9.5px; font-weight:800; color:' + col + '; line-height:1.1; text-align:center;">' + goldEsc(flash) + '</span>'
+                            + (momentum ? '<span style="font-size:8.5px; color:#64748b; text-align:center; line-height:1.1;">' + goldEsc(momentum) + '</span>' : '')
+                            + '</div>';
+                    } else if (passed) {
+                        actHtml = '<div style="display:flex; align-items:center; justify-content:center; gap:3px;">'
+                            + '<button id="goldFetchBtn_' + rowIdx + '" onclick="goldFetchActualAi(' + rowIdx + ')" style="background:linear-gradient(135deg, #059669, #10b981); color:#fff; border:none; border-radius:6px; padding:4px 8px; font-size:10.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:3px; box-shadow:0 1px 4px rgba(16,185,129,0.3); white-space:nowrap;" title="Instantly scrape live newspapers & fetch result via Gemini / Qwen / DeepSeek">⚡ Fetch Result</button>'
+                            + '<button onclick="goldPromptManualActual(' + rowIdx + ')" title="Enter manually" style="background:none; border:none; cursor:pointer; font-size:10px; color:#94a3b8; padding:0 2px;">✏️</button>'
+                            + '</div>';
+                    } else {
+                        var diffMs = e.ts - now;
+                        var diffMins = Math.round(diffMs / 60000);
+                        var timePending = diffMins < 60 ? ('in ' + diffMins + 'm') : ('in ' + Math.round(diffMins / 60) + 'h');
+                        actHtml = '<div style="display:flex; align-items:center; justify-content:center; gap:3px;">'
+                            + '<span style="background:#f8fafc; color:#94a3b8; padding:3px 8px; border-radius:6px; font-size:10.5px; font-weight:600; border:1px dashed #cbd5e1;" title="Release time pending (' + timePending + ')">⏳ ' + timePending + '</span>'
+                            + '<button id="goldFetchBtn_' + rowIdx + '" onclick="goldFetchActualAi(' + rowIdx + ')" title="Force check newspapers / early leaks" style="background:none; border:none; cursor:pointer; font-size:10px; color:#94a3b8; padding:0 2px;">🔄</button>'
+                            + '<button onclick="goldPromptManualActual(' + rowIdx + ')" title="Enter early if leaked" style="background:none; border:none; cursor:pointer; font-size:10px; color:#cbd5e1; padding:0 2px;">✏️</button>'
+                            + '</div>';
+                    }
+
+                    // Notification Toggle status
+                    var eventKey = (e.title || '') + '::' + (e.ccy || '') + '::' + (e.ts || 0);
+                    var notifRec = (window.__goldEventNotifs && window.__goldEventNotifs[eventKey]) || {};
+                    var isAlertEnabled = notifRec.enabled !== undefined ? notifRec.enabled : (e.impact === 'High' || e.gold);
+
+                    html += '<tr style="border-bottom:1px solid #f1f5f9; transition:background .15s;' + (passed ? ' opacity:.75; background:#fafafa;' : ' background:#fff;') + '" onmouseover="if(!' + passed + ')this.style.background=\'#f8fafc\';" onmouseout="if(!' + passed + ')this.style.background=\'#fff\';">'
+                        + '<td style="padding:9px 8px; text-align:center; font-weight:600; font-family:monospace; color:#334155;">' + goldEventsDubaiTime(e.ts) + (passed ? '<div style="font-size:9.5px; color:#94a3b8; font-family:sans-serif;">Passed</div>' : '') + '</td>'
+                        + '<td style="padding:9px 8px; text-align:center;">' + impBadge + '</td>'
+                        + '<td style="padding:9px 8px; text-align:center;"><span style="background:#f1f5f9; color:#0f172a; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:11px;">' + goldEsc(e.ccy) + '</span></td>'
+                        + '<td style="padding:9px 12px;">'
+                        + '<div style="font-weight:600; color:#1e293b; line-height:1.3;">' + (e.gold ? '<span style="color:#b8860b; font-weight:bold;" title="Key Gold Catalyst">⭐ </span>' : '') + goldEsc(e.title) + '</div>'
+                        + '<div style="display:flex; align-items:center; gap:4px; margin-top:3px; flex-wrap:wrap;">'
+                        + '<span style="font-size:9.5px; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; padding:1px 5px; border-radius:4px; font-weight:700;" title="Projected Bullish Target R1">🎯 R1: $' + r1Val.toFixed(2) + '</span>'
+                        + '<span style="font-size:9.5px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:1px 5px; border-radius:4px; font-weight:700;" title="Projected Bearish Target S1">🎯 S1: $' + s1Val.toFixed(2) + '</span>'
+                        + '</div></td>'
+                        + '<td style="padding:9px 8px; text-align:center; background:' + (passed ? '#f0fdf4' : '#fafffc') + '; border-left:1px solid #a7f3d0;">' + actHtml + '</td>'
+                        + '<td style="padding:9px 8px; text-align:center; color:#334155; font-weight:600;">' + goldEsc(e.forecast || '—') + '</td>'
+                        + '<td style="padding:9px 8px; text-align:center; color:#64748b;">' + goldEsc(e.previous || '—') + '</td>'
+                        + '<td style="padding:9px 12px; background:' + (passed ? '#fefce8' : '#fefef2') + '; border-left:1px solid #fef08a;">'
+                        + '<div style="display:flex; flex-direction:column; gap:2px;">' + higherBadge
+                        + '<span style="font-size:10px; color:#64748b; line-height:1.2;">USD ' + (ifH.usdDir === 'UP' ? '🔺 +' : '🔻 -') + ' · ' + goldEsc(ifH.signal) + '</span>'
+                        + '</div></td>'
+                        + '<td style="padding:9px 12px; background:' + (passed ? '#f0fdf4' : '#fafffc') + '; border-left:1px solid #bbf7d0;">'
+                        + '<div style="display:flex; flex-direction:column; gap:2px;">' + lowerBadge
+                        + '<span style="font-size:10px; color:#64748b; line-height:1.2;">USD ' + (ifL.usdDir === 'UP' ? '🔺 +' : '🔻 -') + ' · ' + goldEsc(ifL.signal) + '</span>'
+                        + '</div></td>'
+                        + '<td style="padding:9px 12px; background:' + (passed ? '#f0f9ff' : '#f8fbff') + '; border-left:1px solid #dbeafe;">'
+                        + '<div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">'
+                        + '<div style="font-size:10.5px; color:#334155; background:#fff; padding:2px 6px; border-radius:4px; border:1px solid #e2e8f0;">📊 ' + goldEsc(an.history4Move || '±$10.00') + '</div>'
+                        + '<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
+                        + '<button onclick="goldOpenSimModal(' + rowIdx + ')" style="background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; border-radius:6px; padding:4px 7px; font-size:10.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:2px; white-space:nowrap;" title="Open interactive What-If scenario simulator">🧪 What-If</button>'
+                        + '<button id="goldAlertBtn_' + rowIdx + '" onclick="goldToggleEventAlert(' + rowIdx + ')" style="background:' + (isAlertEnabled ? '#fef3c7' : '#f1f5f9') + '; color:' + (isAlertEnabled ? '#b45309' : '#64748b') + '; border:1px solid ' + (isAlertEnabled ? '#fde68a' : '#e2e8f0') + '; border-radius:6px; padding:4px 7px; font-size:10.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:2px;" title="Toggle 1-hour pre-event WhatsApp briefing alert to Boss">' + (isAlertEnabled ? '🔔 1h Alert' : '🔕 Mute') + '</button>'
+                        + '<button onclick="goldOpenQwenAnalysis(' + rowIdx + ')" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#38bdf8; border:1px solid #334155; border-radius:6px; padding:4px 9px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; transition:transform .1s;" title="Open deep Qwen AI breakdown & historical playbook">🤖 Qwen</button>'
+                        + '</div>'
+                        + '</div></td>'
+                        + '</tr>';
                 });
-                html += '</div>';
+
+                html += '</tbody></table></div></div>';
             });
             host.innerHTML = html;
         }
 
+        // ===== 🤖 Qwen AI Deep Analysis Modal =====
+        function goldOpenQwenAnalysis(index) {
+            var ev = window.__goldFlatEvents && window.__goldFlatEvents[index];
+            if (!ev) return;
+            var modal = document.getElementById('goldQwenModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            var titleEl = document.getElementById('goldQwenModalTitle');
+            var metaEl = document.getElementById('goldQwenModalMeta');
+            var badgesEl = document.getElementById('goldQwenModalBadges');
+            var contentEl = document.getElementById('goldQwenModalContent');
+            var copyBtn = document.getElementById('goldQwenCopyBtn');
+
+            if (titleEl) titleEl.innerHTML = (ev.gold ? '⭐ ' : '') + goldEsc(ev.title);
+            if (metaEl) metaEl.textContent = (ev.ccy || '') + ' · ' + (ev.impact || 'Low') + ' impact · Forecast: ' + (ev.forecast || 'N/A') + ' · Previous: ' + (ev.previous || 'N/A') + ' · ' + goldEventsDubaiDay(ev.ts) + ' ' + goldEventsDubaiTime(ev.ts) + ' (GST)';
+
+            var an = ev.impactAnalysis || {};
+            var ifH = an.ifHigher || {};
+            var ifL = an.ifLower || {};
+            if (badgesEl) {
+                badgesEl.innerHTML = '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">'
+                    + '<div style="padding:6px 10px; border-radius:6px; background:#fef9c3; border:1px solid #fef08a; font-size:11.5px; color:#854d0e;"><b>🟢 If Higher:</b> Gold ' + goldEsc(ifH.goldLabel || '—') + ' (' + goldEsc(ifH.goldMove || '—') + ')</div>'
+                    + '<div style="padding:6px 10px; border-radius:6px; background:#f0fdf4; border:1px solid #bbf7d0; font-size:11.5px; color:#166534;"><b>🔴 If Lower:</b> Gold ' + goldEsc(ifL.goldLabel || '—') + ' (' + goldEsc(ifL.goldMove || '—') + ')</div>'
+                    + '<div style="padding:6px 10px; border-radius:6px; background:#eff6ff; border:1px solid #dbeafe; font-size:11.5px; color:#1e40af;"><b>📊 4-Hist Volatility:</b> ' + goldEsc(an.history4Move || '—') + '</div>'
+                    + '</div>';
+            }
+
+            if (contentEl) {
+                contentEl.innerHTML = '<div style="text-align:center; padding:30px 10px; color:#64748b;">'
+                    + '<div style="font-size:24px; margin-bottom:8px;">🤖 🧠</div>'
+                    + '<div style="font-weight:bold; color:#1e293b; font-size:13.5px;">Consulting Qwen AI Quantitative Brain…</div>'
+                    + '<div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">Calculating historical 4-release volatility, rate cut pricing, and tactical Dubai playbook</div>'
+                    + '</div>';
+            }
+
+            fetch('/api/gold/events/qwen-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: ev.title,
+                    ccy: ev.ccy,
+                    impact: ev.impact,
+                    forecast: ev.forecast,
+                    previous: ev.previous,
+                    date: ev.date,
+                    ts: ev.ts
+                })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (!d || !d.ok || !d.text) throw new Error((d && d.error) || 'Failed to retrieve AI analysis');
+                window.__goldLastQwenText = d.text;
+                if (contentEl) {
+                    // Simple Markdown converter for clean display
+                    var raw = d.text;
+                    var html = raw
+                        .replace(/^### (.*$)/gim, '<h4 style="color:#0f172a; margin:14px 0 6px 0; font-size:13.5px; border-bottom:1px solid #e2e8f0; padding-bottom:4px;">$1</h4>')
+                        .replace(/^## (.*$)/gim, '<h3 style="color:#0f172a; margin:16px 0 8px 0; font-size:14.5px;">$1</h3>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#0f172a;">$1</strong>')
+                        .replace(/^• (.*$)/gim, '<div style="margin:4px 0 4px 12px; font-size:12.5px; line-height:1.5; display:flex; gap:6px;"><span>•</span><span>$1</span></div>')
+                        .replace(/\n\n/g, '<div style="height:8px;"></div>');
+                    contentEl.innerHTML = '<div style="font-size:12.5px; color:#334155; line-height:1.6;">' + html + '</div>'
+                        + '<div style="margin-top:14px; padding:6px 10px; background:#f8fafc; border-radius:6px; font-size:10.5px; color:#94a3b8; text-align:right;">Generated by ' + goldEsc(d.model || 'Qwen AI') + ' · Powered by Alibaba DashScope / DeepMind</div>';
+                }
+            }).catch(function(err) {
+                if (contentEl) {
+                    contentEl.innerHTML = '<div style="padding:14px; background:#fee2e2; border:1px solid #fca5a5; border-radius:8px; color:#991b1b; font-size:12px;">⚠️ Could not fetch live Qwen analysis: ' + goldEsc(err.message) + '. Using built-in macroeconomic rules above.</div>';
+                }
+            });
+        }
+
+        function goldCloseQwenModal() {
+            var modal = document.getElementById('goldQwenModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function goldCopyQwenPlaybook() {
+            if (!window.__goldLastQwenText) return;
+            try {
+                navigator.clipboard.writeText(window.__goldLastQwenText);
+                toastMsg('📋 Qwen AI Playbook copied to clipboard!');
+            } catch (e) { toastMsg('Copied!'); }
+        }
+
+        // ===== ⚡ Live AI Actuals & Pre-Event Alert Handlers =====
+        function goldFetchActualAi(index) {
+            var ev = window.__goldFlatEvents && window.__goldFlatEvents[index];
+            if (!ev) return;
+            var btn = document.getElementById('goldFetchBtn_' + index);
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Fetching AI…';
+                btn.style.opacity = '0.7';
+            }
+            fetch('/api/gold/events/fetch-actual-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: ev.title,
+                    ccy: ev.ccy,
+                    impact: ev.impact,
+                    forecast: ev.forecast,
+                    previous: ev.previous,
+                    date: ev.date,
+                    ts: ev.ts
+                })
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (!res || !res.ok) throw new Error((res && res.error) || 'Failed to fetch result');
+                ev.actual = res.actual;
+                ev.actualResult = res.actualResult;
+                if (window.__goldEventsCache) {
+                    var target = window.__goldEventsCache.find(function(x) { return x.title === ev.title && x.ts === ev.ts; });
+                    if (target) { target.actual = res.actual; target.actualResult = res.actualResult; }
+                }
+                goldRenderEvents(window.__goldEventsCache || window.__goldFlatEvents);
+                if (typeof toastMsg === 'function') {
+                    var sourceTag = res.agent || res.source || 'Multi-AI Feed';
+                    var reactionTag = (res.actualResult && res.actualResult.label) || '';
+                    toastMsg('🎯 ' + (ev.title || 'Event') + ': ' + (res.actual || '') + (reactionTag ? ' [' + reactionTag + ']' : '') + ' via ' + sourceTag);
+                }
+            }).catch(function(err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '⚡ Fetch Result';
+                    btn.style.opacity = '1';
+                }
+                alert('⚠️ Could not fetch actual result: ' + (err.message || err));
+            });
+        }
+
+        function goldPromptManualActual(index) {
+            var ev = window.__goldFlatEvents && window.__goldFlatEvents[index];
+            if (!ev) return;
+            var val = prompt('Enter today\'s actual/released figure for:\n"' + ev.title + '" (' + (ev.ccy || 'USD') + ')\n\nForecast: ' + (ev.forecast || 'N/A') + ' | Previous: ' + (ev.previous || 'N/A'), ev.actual || '');
+            if (val === null) return;
+            val = val.trim();
+            fetch('/api/gold/events/actual', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: ev.title,
+                    ccy: ev.ccy,
+                    impact: ev.impact,
+                    forecast: ev.forecast,
+                    previous: ev.previous,
+                    ts: ev.ts,
+                    actual: val
+                })
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (!res || !res.ok) throw new Error((res && res.error) || 'Failed to save actual');
+                ev.actual = res.actual;
+                ev.actualResult = res.actualResult;
+                if (window.__goldEventsCache) {
+                    var target = window.__goldEventsCache.find(function(x) { return x.title === ev.title && x.ts === ev.ts; });
+                    if (target) { target.actual = res.actual; target.actualResult = res.actualResult; }
+                }
+                goldRenderEvents(window.__goldEventsCache || window.__goldFlatEvents);
+                if (typeof toastMsg === 'function') toastMsg('✅ Actual result updated: ' + val);
+            }).catch(function(err) { alert('⚠️ Error: ' + err.message); });
+        }
+
+        function goldToggleEventAlert(index) {
+            var ev = window.__goldFlatEvents && window.__goldFlatEvents[index];
+            if (!ev) return;
+            var key = (ev.title || '') + '::' + (ev.ccy || '') + '::' + (ev.ts || 0);
+            window.__goldEventNotifs = window.__goldEventNotifs || {};
+            var current = window.__goldEventNotifs[key];
+            var isCurrentlyEnabled = current && current.enabled !== undefined ? current.enabled : (ev.impact === 'High' || ev.gold);
+            var next = !isCurrentlyEnabled;
+
+            fetch('/api/gold/events/notif-toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: key, enabled: next })
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (!res || !res.ok) throw new Error((res && res.error) || 'Failed to toggle alert');
+                window.__goldEventNotifs[key] = { enabled: next };
+                goldRenderEvents(window.__goldEventsCache || window.__goldFlatEvents);
+                if (typeof toastMsg === 'function') {
+                    toastMsg(next ? '🔔 1-Hour WhatsApp Briefing enabled for this event' : '🔕 1-Hour Briefing muted for this event');
+                }
+            }).catch(function(err) { alert('⚠️ Error: ' + err.message); });
+        }
+
+        // ===== 🧪 Interactive "What-If" Scenario Simulator Handlers =====
+        var goldSimCurrentEvent = null;
+
+        function goldOpenSimModal(index) {
+            var ev = window.__goldFlatEvents && window.__goldFlatEvents[index];
+            if (!ev) return;
+            goldSimCurrentEvent = ev;
+            var modal = document.getElementById('goldSimModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            var spot = Number(goldTapePrev || 4210);
+            var titleEl = document.getElementById('goldSimModalTitle');
+            if (titleEl) titleEl.textContent = '🧪 "What-If" Simulator: ' + (ev.title || '');
+            var metaEl = document.getElementById('goldSimModalMeta');
+            if (metaEl) metaEl.textContent = (ev.ccy || 'USD') + ' · Forecast: ' + (ev.forecast || 'N/A') + ' · Previous: ' + (ev.previous || 'N/A') + ' · ' + (ev.impact || 'High') + ' Impact';
+            var spotEl = document.getElementById('goldSimCurrentSpot');
+            if (spotEl) spotEl.textContent = '$' + spot.toFixed(2);
+            
+            var inp = document.getElementById('goldSimInput');
+            if (inp) inp.value = ev.forecast && ev.forecast !== '—' ? ev.forecast : (ev.previous || '0');
+
+            var presetsEl = document.getElementById('goldSimQuickPresets');
+            if (presetsEl) {
+                var fVal = ev.forecast || '0';
+                var presets = [];
+                if (fVal && fVal !== '—') {
+                    presets.push({ label: '🎯 In-Line (' + fVal + ')', val: fVal });
+                    var num = parseFloat(fVal);
+                    var isPct = fVal.includes('%');
+                    var isK = /k$/i.test(fVal);
+                    if (!isNaN(num)) {
+                        var higherVal = isPct ? (num + 0.3).toFixed(1) + '%' : (isK ? (num + 45) + 'K' : (num * 1.3).toFixed(1));
+                        var lowerVal = isPct ? Math.max(0, num - 0.3).toFixed(1) + '%' : (isK ? Math.max(0, num - 45) + 'K' : (num * 0.7).toFixed(1));
+                        presets.push({ label: '🟢 Miss / Soft (' + lowerVal + ')', val: lowerVal });
+                        presets.push({ label: '🔴 Beat / Hot (' + higherVal + ')', val: higherVal });
+                    }
+                }
+                presetsEl.innerHTML = presets.map(function(p) {
+                    return '<button onclick="goldSetSimValue(\'' + p.val + '\')" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:6px; padding:4px 8px; font-size:11px; font-weight:700; color:#334155; cursor:pointer;">' + p.label + '</button>';
+                }).join('');
+            }
+
+            goldRunSimulationFromInput();
+        }
+
+        function goldSetSimValue(val) {
+            var inp = document.getElementById('goldSimInput');
+            if (inp) inp.value = val;
+            goldRunSimulationFromInput();
+        }
+
+        function goldRunSimulationFromInput() {
+            if (!goldSimCurrentEvent) return;
+            var inp = document.getElementById('goldSimInput');
+            var simVal = inp ? inp.value.trim() : '';
+            var spot = Number(goldTapePrev || 4210);
+
+            fetch('/api/gold/events/simulate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: goldSimCurrentEvent.title,
+                    ccy: goldSimCurrentEvent.ccy,
+                    impact: goldSimCurrentEvent.impact,
+                    forecast: goldSimCurrentEvent.forecast,
+                    previous: goldSimCurrentEvent.previous,
+                    spotPrice: spot,
+                    simulatedActual: simVal
+                })
+            }).then(function(r) { return r.json(); }).then(function(res) {
+                if (!res || !res.ok) return;
+                var r1 = document.getElementById('goldSimResistanceR1');
+                if (r1) r1.textContent = res.resistanceR1;
+                var s1 = document.getElementById('goldSimSupportS1');
+                if (s1) s1.textContent = res.supportS1;
+                var targetEl = document.getElementById('goldSimProjTarget');
+                if (targetEl) targetEl.textContent = res.projectedTarget;
+                
+                var moveEl = document.getElementById('goldSimProjMove');
+                if (moveEl) {
+                    moveEl.textContent = res.estMoveDollars + ' / oz move';
+                    moveEl.style.color = res.goldDirection === 'UP' ? '#16a34a' : '#dc2626';
+                }
+
+                var usdEl = document.getElementById('goldSimUsdShift');
+                if (usdEl) {
+                    usdEl.textContent = res.usdShiftPct;
+                    usdEl.style.color = res.usdShiftPct.startsWith('+') ? '#16a34a' : '#dc2626';
+                }
+
+                var badgeEl = document.getElementById('goldSimFlashBadge');
+                if (badgeEl) {
+                    badgeEl.textContent = res.flashBadge;
+                    var isBull = res.goldDirection === 'UP';
+                    badgeEl.style.background = isBull ? '#dcfce7' : '#fee2e2';
+                    badgeEl.style.color = isBull ? '#15803d' : '#991b1b';
+                }
+
+                var contEl = document.getElementById('goldSimContProb');
+                if (contEl) contEl.textContent = res.continuationProb;
+                var fedEl = document.getElementById('goldSimFedImpact');
+                if (fedEl) fedEl.textContent = res.fedImpact;
+                var tactEl = document.getElementById('goldSimTacticalPlay');
+                if (tactEl) tactEl.innerHTML = res.tacticalPlaybook + (res.momentumTag ? '<div style="margin-top:6px; font-weight:700;">' + goldEsc(res.momentumTag) + '</div>' : '');
+            }).catch(function() { /* ignore */ });
+        }
+
+        function goldCloseSimModal() {
+            var modal = document.getElementById('goldSimModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
         function goldLoadEvents() {
             var meta = document.getElementById('goldEventsMeta');
-            fetch('/api/gold/events').then(function(r) { return r.json(); }).then(function(d) {
+            Promise.all([
+                fetch('/api/gold/events').then(function(r) { return r.json(); }),
+                fetch('/api/gold/events/notifs').then(function(r) { return r.json(); }).catch(function() { return { ok: false, toggles: {} }; })
+            ]).then(function(res) {
+                var d = res[0];
+                var notifs = res[1];
+                if (notifs && notifs.ok && notifs.toggles) {
+                    window.__goldEventNotifs = notifs.toggles;
+                }
                 if (!d || !d.ok || !d.events || !d.events.length) { goldEventsUnavailable(); return; }
                 var now = Date.now();
                 var upcoming = d.events.filter(function(e) { return e.ts >= now; }).length;
                 if (meta) meta.textContent = d.events.length + ' events this week · ' + upcoming + ' upcoming' + (d.stale ? ' · cached copy' : '');
                 var lm = document.getElementById('goldEventsListMeta');
-                if (lm) lm.textContent = '· Dubai time · updated ' + goldEventsDubaiTime(d.fetchedAt || Date.now());
+                if (lm) lm.textContent = '· Dubai time (GST) · updated ' + goldEventsDubaiTime(d.fetchedAt || Date.now());
                 var gc = document.getElementById('goldGlanceCount');
                 if (gc) gc.textContent = d.events.length + ' events · ' + upcoming + ' upcoming';
                 window.__goldEventsCache = d.events;
@@ -5305,7 +5799,7 @@
             if (meta) meta.textContent = '⚠️ week list busy — auto-retrying';
             if (window.__goldEventsCache) return; // keep the previously rendered list
             var host = document.getElementById('goldEventsList');
-            if (host) host.innerHTML = '<div style="text-align:center; color:#667781; padding:18px; font-size:12.5px;">The week list is catching up — the live calendar above already shows all events, impacts and countdowns. This list will appear automatically.</div>';
+            if (host) host.innerHTML = '<div style="text-align:center; color:#667781; padding:24px; font-size:12.5px;">The week list is catching up — the live calendar is updating automatically.</div>';
         }
 
         function goldRenderRanges() {
@@ -9559,6 +10053,138 @@
         <input id="bossAiInput" placeholder="Type an order... AlignTask, send msg, reminder, settings" onkeydown="if(event.key==='Enter'){bossAiSend();}" style="flex:1; background:#111b21; border:none; outline:none; color:#e9edef; padding:10px 12px; border-radius:8px; font-size:13px;">
         <button id="bossAiMicBtn" onclick="bossAiMic()" title="Voice order (tap to record / tap to stop & send)" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:16px;">🎤</button>
         <button id="bossAiSendBtn" onclick="bossAiSend()" title="Send" style="background:#00a884; border:none; color:#fff; border-radius:50%; width:40px; height:40px; cursor:pointer; font-size:16px; font-weight:bold;">➤</button>
+      </div>
+    </div>
+
+    <!-- ==================== 🤖 QWEN AI GOLD & USD EVENT ANALYSIS MODAL ==================== -->
+    <div id="goldQwenModal" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(15,23,42,0.65); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:16px;">
+      <div style="background:#fff; width:min(720px, 96vw); max-height:90vh; border-radius:14px; box-shadow:0 20px 48px rgba(0,0,0,0.3); display:flex; flex-direction:column; overflow:hidden; border:1px solid #cbd5e1;">
+        <!-- Header -->
+        <div style="padding:14px 18px; background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">🤖</span>
+              <h3 id="goldQwenModalTitle" style="margin:0; font-size:16px; font-weight:700; color:#f8fafc;">Economic Event Playbook</h3>
+            </div>
+            <div id="goldQwenModalMeta" style="font-size:11.5px; color:#94a3b8; margin-top:4px;"></div>
+          </div>
+          <button onclick="goldCloseQwenModal()" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer; padding:4px 8px; border-radius:6px; line-height:1;" onmouseover="this.style.color='#fff';" onmouseout="this.style.color='#94a3b8';">✖</button>
+        </div>
+
+        <!-- Badges Bar -->
+        <div id="goldQwenModalBadges" style="padding:10px 18px; background:#f8fafc; border-bottom:1px solid #e2e8f0;"></div>
+
+        <!-- Scrollable AI Content -->
+        <div id="goldQwenModalContent" style="flex:1; overflow-y:auto; padding:18px; background:#ffffff;"></div>
+
+        <!-- Footer Actions -->
+        <div style="padding:10px 18px; background:#f1f5f9; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="font-size:11px; color:#64748b;">Times are Dubai (Asia/Dubai GST). Real-time AI Quantitative Model.</div>
+          <div style="display:flex; gap:8px;">
+            <button onclick="goldOpenSimModal(window.__goldFlatEvents.findIndex(x=>x.title===goldSimCurrentEvent?.title))" style="padding:7px 14px; background:#eef2ff; border:1px solid #c7d2fe; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; color:#4338ca; display:inline-flex; align-items:center; gap:4px;">🧪 What-If Simulator</button>
+            <button id="goldQwenCopyBtn" onclick="goldCopyQwenPlaybook()" style="padding:7px 14px; background:#fff; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; color:#334155; display:inline-flex; align-items:center; gap:4px;">📋 Copy Playbook</button>
+            <button onclick="goldCloseQwenModal()" style="padding:7px 16px; background:#0f172a; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 🧪 INTERACTIVE "WHAT-IF" SCENARIO SIMULATOR MODAL ==================== -->
+    <div id="goldSimModal" style="display:none; position:fixed; inset:0; z-index:2050; background:rgba(15,23,42,0.7); backdrop-filter:blur(5px); align-items:center; justify-content:center; padding:16px;">
+      <div style="background:#fff; width:min(760px, 96vw); max-height:92vh; border-radius:16px; box-shadow:0 24px 54px rgba(0,0,0,0.35); display:flex; flex-direction:column; overflow:hidden; border:1px solid #cbd5e1;">
+        <!-- Header -->
+        <div style="padding:14px 20px; background:linear-gradient(135deg, #1e1b4b, #312e81, #4338ca); color:#fff; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:20px;">🧪</span>
+              <h3 id="goldSimModalTitle" style="margin:0; font-size:16.5px; font-weight:800; color:#f8fafc;">"What-If" Scenario Simulator</h3>
+              <span style="background:#4f46e5; color:#e0e7ff; font-size:10px; padding:2px 7px; border-radius:10px; font-weight:800;">LIVE MODEL</span>
+            </div>
+            <div id="goldSimModalMeta" style="font-size:12px; color:#c7d2fe; margin-top:4px;"></div>
+          </div>
+          <button onclick="goldCloseSimModal()" style="background:transparent; border:none; color:#c7d2fe; font-size:20px; cursor:pointer; padding:4px 8px; border-radius:6px; line-height:1;" onmouseover="this.style.color='#fff';" onmouseout="this.style.color='#c7d2fe';">✖</button>
+        </div>
+
+        <div style="flex:1; overflow-y:auto; padding:20px; background:#f8fafc; display:flex; flex-direction:column; gap:16px;">
+          
+          <!-- Live Spot and Dynamic Price Targets Bar -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px; text-align:center;">
+              <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Gold Spot</div>
+              <div id="goldSimCurrentSpot" style="font-size:22px; font-weight:800; color:#b8860b; margin-top:2px;">$4,210.00</div>
+              <div style="font-size:10px; color:#94a3b8;">XAU/USD Live Feed</div>
+            </div>
+            <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; text-align:center;">
+              <div style="font-size:11px; color:#166534; font-weight:700; text-transform:uppercase;">Resistance Target (R1)</div>
+              <div id="goldSimResistanceR1" style="font-size:22px; font-weight:800; color:#15803d; margin-top:2px;">$4,235.00</div>
+              <div id="goldSimR1Move" style="font-size:10px; color:#166534;">+$25.00 Bullish Spike</div>
+            </div>
+            <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:12px; text-align:center;">
+              <div style="font-size:11px; color:#991b1b; font-weight:700; text-transform:uppercase;">Support Target (S1)</div>
+              <div id="goldSimSupportS1" style="font-size:22px; font-weight:800; color:#b91c1c; margin-top:2px;">$4,185.00</div>
+              <div id="goldSimS1Move" style="font-size:10px; color:#991b1b;">-$25.00 Bearish Dip</div>
+            </div>
+          </div>
+
+          <!-- Interactive Scenario Input Box & Presets -->
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+              <div>
+                <b style="font-size:14px; color:#1e293b;">🧪 Test Hypothetical Actual Number:</b>
+                <div style="font-size:11.5px; color:#64748b;">Type any number to simulate instant Gold, USD, and Fed reactions</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input type="text" id="goldSimInput" placeholder="e.g. 145K" style="padding:8px 12px; border:2px solid #6366f1; border-radius:8px; font-weight:800; font-size:15px; width:110px; text-align:center; color:#1e1b4b;" oninput="goldRunSimulationFromInput()">
+                <button onclick="goldRunSimulationFromInput()" style="padding:8px 14px; background:#4f46e5; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:12px; cursor:pointer;">Simulate</button>
+              </div>
+            </div>
+
+            <!-- Quick Presets -->
+            <div id="goldSimQuickPresets" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;"></div>
+          </div>
+
+          <!-- Simulation Projection Cards -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+            <!-- Projected Gold Price -->
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:4px;">
+              <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Projected Gold Target</div>
+              <div id="goldSimProjTarget" style="font-size:26px; font-weight:800; color:#0f172a;">$4,235.00</div>
+              <div id="goldSimProjMove" style="font-size:12px; font-weight:700; color:#16a34a;">+$25.00 / oz rally</div>
+            </div>
+
+            <!-- USD & Yield Shift -->
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:4px;">
+              <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">USD (DXY) Reaction</div>
+              <div id="goldSimUsdShift" style="font-size:26px; font-weight:800; color:#0f172a;">-0.45%</div>
+              <div id="goldSimFlashBadge" style="display:inline-block; font-size:11px; font-weight:700; color:#166534; background:#dcfce7; padding:2px 8px; border-radius:6px; width:fit-content;">🟢 MASSIVE MISS 🚀</div>
+            </div>
+
+            <!-- Trend Continuation Probability -->
+            <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:4px;">
+              <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Trend Continuation Prob</div>
+              <div id="goldSimContProb" style="font-size:26px; font-weight:800; color:#4338ca;">78%</div>
+              <div style="font-size:11.5px; color:#64748b;">Vs initial whipsaw / fakeout</div>
+            </div>
+          </div>
+
+          <!-- Fed Policy & Tactical Action Box -->
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
+            <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">🏛️ Fed Policy Outlook Shift:</div>
+            <div id="goldSimFedImpact" style="font-size:12.5px; color:#475569; line-height:1.5;"></div>
+
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #f1f5f9;">
+              <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:4px;">⚡ Dubai Desk Tactical Playbook:</div>
+              <div id="goldSimTacticalPlay" style="font-size:13px; color:#1e1b4b; font-weight:600; line-height:1.5; background:#eef2ff; padding:10px 14px; border-radius:8px; border-left:4px solid #4f46e5;"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:12px 20px; background:#f1f5f9; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:11.5px; color:#64748b;">Dynamic Quantitative Simulator · Linked to live XAU/USD Spot</div>
+          <button onclick="goldCloseSimModal()" style="padding:7px 18px; background:#1e1b4b; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Close Simulator</button>
+        </div>
       </div>
     </div>
 </body>

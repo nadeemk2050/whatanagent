@@ -856,7 +856,12 @@ async function getBossEventsBlock() {
     const upcoming = list.filter(e => e && e.ts >= now - 30 * 60 * 1000);
     const fmt = (e) => new Date(e.ts).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
     const imp = (e) => (e.impact === 'High' ? '🔴 HIGH' : (e.impact === 'Medium' ? '🟠 MEDIUM' : '🟡 low'));
-    const line = (e) => '• ' + fmt(e) + ' — ' + imp(e) + ' | ' + (e.ccy || '') + ' ' + e.title + (e.forecast ? ' | forecast ' + e.forecast : '') + (e.previous ? ' | previous ' + e.previous : '') + (e.gold ? ' ⭐moves-gold' : '');
+    const line = (e) => {
+      const an = e.impactAnalysis || {};
+      let str = '• ' + fmt(e) + ' — ' + imp(e) + ' | ' + (e.ccy || '') + ' ' + e.title + (e.forecast ? ' | forecast ' + e.forecast : '') + (e.previous ? ' | previous ' + e.previous : '') + (e.gold ? ' ⭐moves-gold' : '');
+      if (an.goldLabel) str += ' | IF BEAT -> Gold ' + an.goldLabel + ' (' + an.goldMove + '), USD ' + an.usdLabel + ' (' + an.usdMove + ') · 4-hist: ' + an.history4Move;
+      return str;
+    };
     const next24 = upcoming.filter(e => e.ts < now + 24 * 3600 * 1000).slice(0, 12);
     const next7 = upcoming.filter(e => e.ts >= now + 24 * 3600 * 1000 && e.ts < now + 7 * 86400000 && (e.impact === 'High' || e.gold)).slice(0, 12);
     const highN = upcoming.filter(e => e.ts < now + 7 * 86400000 && e.impact === 'High').length;

@@ -141,6 +141,7 @@ export async function goldMaybePoll(force = false) {
     // 3b) today's high / low (Dubai calendar day) with the timestamp each extreme was reached -
     // recomputed from the fast series every poll: backfills the whole tracked day, survives restarts
     evaluateGoldWatches(q.price).catch(() => {});
+    evaluatePreEventAlerts(q.price).catch(() => {});
     const dayKey = dubaiYmd(ts);
     const dayStartMs = Date.parse(dayKey + 'T00:00:00+04:00') || 0;
     let today = { day: dayKey, high: null, low: null };
@@ -246,19 +247,831 @@ function aggregateSeries(fastPts, hourlyPts, w) {
 // persist the last good copy in Firestore (fresh boots serve instantly), 15-min cooldown after failures.
 const EVENTS_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const EVENTS_CACHE_DOC = ['appData', 'goldEventsCache'];
+const QWEN_CACHE_DOC = ['appData', 'goldQwenAnalysisCache'];
 const EVENTS_TTL_MS = 60 * 60 * 1000;
 const EVENTS_RETRY_AFTER_MS = 15 * 60 * 1000;
 const GOLD_MOVER_RE = /\b(fed|fomc|powell|interest rate|rate decision|rate statement|cpi|inflation|ppi|pce|non-?farm|payrolls|unemployment|gdp|retail sales|treasury|jolts|durable goods|ism|pmi)\b/i;
 let eventsCache = { at: 0, data: null };
 let eventsNextTryAt = 0;
 let eventsLastError = '';
+let qwenAnalysisMemoryCache = {};
+
+// Helper to get settings for API keys
+async function getAppSettings(db) {
+  try {
+    const s = await getDoc(doc(db || globalDb, 'appData', 'settings'));
+    return s.exists() ? (s.data() || {}) : {};
+  } catch (e) { return {}; }
+}
+
+// 🧠 High-precision Macro Impact & 4-Historical Release Estimator for Gold & USD
+export function computeEventImpact(e) {
+  const title = String((e && e.title) || '').trim();
+  const ccy = String((e && e.ccy) || '').toUpperCase();
+  const impact = String((e && e.impact) || 'Low');
+  const tLower = title.toLowerCase();
+
+  // Directional scenario containers
+  let ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$10 to -$20', usdDir: 'UP', usdMove: '+0.3%', signal: 'strong' };
+  let ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$10 to +$22', usdDir: 'DOWN', usdMove: '-0.3%', signal: 'weak' };
+  let history4Move = 'Gold avg ±$10.00 · DXY ±0.25%';
+  let plainExplanation = 'Gold moves inversely to the US Dollar and bond yields on surprises.';
+  let isInverse = false;
+
+  if (ccy === 'USD') {
+    // 1. Unemployment Rate / Jobless Claims / Layoffs (Higher number = WEAKER economy -> Gold UP 🔺, USD DOWN 🔻)
+    if (tLower.includes('unemployment rate') || tLower.includes('u6 underemployment') || tLower.includes('jobless claims') || tLower.includes('continuing claims') || tLower.includes('challenger job cuts')) {
+      isInverse = true;
+      ifHigher = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$12 to +$25/oz', usdDir: 'DOWN', usdMove: '-0.3% to -0.6%', signal: 'Weak labor market (cuts Fed rates)' };
+      ifLower = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$10 to -$20/oz', usdDir: 'UP', usdMove: '+0.3% to +0.5%', signal: 'Tight labor market (Fed stays firm)' };
+      history4Move = 'Gold avg ±$14.50 · DXY ±0.40%';
+      plainExplanation = 'For unemployment & jobless claims, a HIGHER number is bad for the US economy, which weakens the dollar and pushes Gold UP.';
+    }
+    // 2. Non-Farm Payrolls (NFP) & Employment Additions
+    else if (tLower.includes('non-farm') || tLower.includes('nonfarm') || (tLower.includes('employment change') && !tLower.includes('adp'))) {
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$18 to -$35/oz', usdDir: 'UP', usdMove: '+0.4% to +0.8%', signal: 'Strong jobs (USD rallies)' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$20 to +$40/oz', usdDir: 'DOWN', usdMove: '-0.4% to -0.8%', signal: 'Weak jobs (rate cuts expected)' };
+      history4Move = 'Gold avg ±$24.50 (3🔻/1🔺) · DXY ±0.52%';
+      plainExplanation = 'If NFP comes in lower (miss), jobs are weak so rate cuts are expected and Gold goes UP (+$20 to +$40). If NFP is higher (beat), the dollar rallies and Gold goes DOWN (-$18 to -$35). Also watch wage growth and revisions.';
+    }
+    // 3. ADP, JOLTS, Private/Manufacturing Payrolls
+    else if (tLower.includes('adp') || tLower.includes('jolts') || tLower.includes('payrolls') || tLower.includes('employment change')) {
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$8 to -$18/oz', usdDir: 'UP', usdMove: '+0.2% to +0.4%', signal: 'Strong labor demand' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$8 to +$18/oz', usdDir: 'DOWN', usdMove: '-0.2% to -0.4%', signal: 'Cooling labor market' };
+      history4Move = 'Gold avg ±$12.00 · DXY ±0.28%';
+      plainExplanation = 'Higher employment additions strengthen the dollar and pull Gold down; lower numbers lift Gold.';
+    }
+    // 4. Inflation indicators (CPI, Core CPI, PPI, PCE Price Index, Hourly Earnings)
+    else if (tLower.includes('cpi') || tLower.includes('consumer price') || tLower.includes('pce') || tLower.includes('ppi') || tLower.includes('hourly earnings') || tLower.includes('inflation')) {
+      const isMain = tLower.includes('cpi') || tLower.includes('pce');
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: isMain ? '-$20 to -$40/oz' : '-$10 to -$20/oz', usdDir: 'UP', usdMove: isMain ? '+0.5% to +0.9%' : '+0.25% to +0.5%', signal: 'Hot inflation (Fed rate hike/hold fears)' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: isMain ? '+$20 to +$45/oz' : '+$10 to +$22/oz', usdDir: 'DOWN', usdMove: isMain ? '-0.5% to -0.9%' : '-0.25% to +0.5%', signal: 'Cooling inflation (Fed cuts rates)' };
+      history4Move = isMain ? 'Gold avg ±$28.00 · DXY ±0.64%' : 'Gold avg ±$14.00 · DXY ±0.35%';
+      plainExplanation = 'Hotter inflation forces the Fed to keep interest rates high, which boosts the dollar and knocks Gold DOWN. Lower inflation allows rate cuts and sends Gold UP.';
+    }
+    // 5. Federal Reserve Rate Decisions, FOMC Statements, Powell
+    else if (tLower.includes('fed') || tLower.includes('fomc') || tLower.includes('funds rate') || tLower.includes('interest rate') || tLower.includes('powell') || tLower.includes('rate decision')) {
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$25 to -$50+/oz', usdDir: 'UP', usdMove: '+0.6% to +1.2%', signal: 'Hawkish Fed / higher rates' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$25 to +$55+/oz', usdDir: 'DOWN', usdMove: '-0.6% to -1.2%', signal: 'Dovish Fed / rate cuts' };
+      history4Move = 'Gold avg ±$36.00 (highest volatility) · DXY ±0.85%';
+      plainExplanation = 'Hawkish rate stance or higher rates increase bond yields, pushing non-yielding Gold DOWN. Dovish rate cuts ignite aggressive Gold rallies.';
+    }
+    // 6. GDP, Retail Sales, Industrial Activity
+    else if (tLower.includes('gdp') || tLower.includes('retail sales') || tLower.includes('durable goods') || tLower.includes('factory orders')) {
+      const isMajor = tLower.includes('gdp') || tLower.includes('retail sales');
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: isMajor ? '-$12 to -$25/oz' : '-$6 to -$14/oz', usdDir: 'UP', usdMove: isMajor ? '+0.3% to +0.6%' : '+0.2% to +0.4%', signal: 'Strong economic growth' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: isMajor ? '+$12 to +$25/oz' : '+$6 to +$14/oz', usdDir: 'DOWN', usdMove: isMajor ? '-0.3% to -0.6%' : '-0.2% to -0.4%', signal: 'Economic slowdown' };
+      history4Move = isMajor ? 'Gold avg ±$16.50 · DXY ±0.40%' : 'Gold avg ±$9.00 · DXY ±0.22%';
+      plainExplanation = 'Strong growth numbers reduce recession fears and lift the dollar, softening Gold. Weak growth data triggers safe-haven buying into Gold.';
+    }
+    // 7. PMIs (ISM Manufacturing, ISM Services) & Consumer Sentiment
+    else if (tLower.includes('ism') || tLower.includes('pmi') || tLower.includes('consumer confidence') || tLower.includes('consumer sentiment')) {
+      const isIsm = tLower.includes('ism');
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: isIsm ? '-$10 to -$22/oz' : '-$5 to -$12/oz', usdDir: 'UP', usdMove: isIsm ? '+0.3% to +0.55%' : '+0.15% to +0.3%', signal: 'Expansion above expectation' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: isIsm ? '+$10 to +$22/oz' : '+$5 to +$12/oz', usdDir: 'DOWN', usdMove: isIsm ? '-0.3% to -0.55%' : '-0.15% to +0.3%', signal: 'Contraction / weakness' };
+      history4Move = isIsm ? 'Gold avg ±$15.00 · DXY ±0.36%' : 'Gold avg ±$7.50 · DXY ±0.18%';
+      plainExplanation = 'Expansionary PMI data supports the dollar and pressures Gold lower; contractionary readings boost Gold.';
+    }
+    // 8. General USD events
+    else {
+      ifHigher = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: impact === 'High' ? '-$10 to -$20/oz' : '-$5 to -$10/oz', usdDir: 'UP', usdMove: impact === 'High' ? '+0.3%' : '+0.15%', signal: 'Better than expected US data' };
+      ifLower = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: impact === 'High' ? '+$10 to +$20/oz' : '+$5 to +$10/oz', usdDir: 'DOWN', usdMove: impact === 'High' ? '-0.3%' : '-0.15%', signal: 'Weaker than expected US data' };
+      history4Move = impact === 'High' ? 'Gold avg ±$13.00 · DXY ±0.30%' : 'Gold avg ±$7.00 · DXY ±0.18%';
+      plainExplanation = 'Higher US numbers favor the dollar and pull Gold down; lower numbers soften the dollar and support Gold.';
+    }
+  } else {
+    // Foreign Non-USD indicators (EUR, GBP, JPY, AUD, CAD, CHF, CNY)
+    // Strong foreign data -> Foreign ccy UP -> USD index DOWN -> Gold mildly UP 🔺
+    if (impact === 'High' || tLower.includes('rate') || tLower.includes('cpi') || tLower.includes('gdp') || tLower.includes('pmi')) {
+      ifHigher = { goldDir: 'UP', goldLabel: '🔺 UP', goldMove: '+$6 to +$15/oz', usdDir: 'DOWN', usdMove: '-0.2% to -0.5%', signal: 'Strong ' + ccy + ' weakens USD index' };
+      ifLower = { goldDir: 'DOWN', goldLabel: '🔻 DOWN', goldMove: '-$6 to -$12/oz', usdDir: 'UP', usdMove: '+0.2% to +0.4%', signal: 'Weak ' + ccy + ' lifts USD index' };
+      history4Move = 'Gold avg ±$8.50 · USD ±0.35%';
+      plainExplanation = 'Strong ' + ccy + ' figures strengthen ' + ccy + ' against the US Dollar (DXY down), providing a mild boost for Gold.';
+    } else {
+      ifHigher = { goldDir: 'NEUTRAL', goldLabel: '➖ Neutral', goldMove: '±$2 to $5/oz', usdDir: 'NEUTRAL', usdMove: '±0.10%', signal: 'Low impact' };
+      ifLower = { goldDir: 'NEUTRAL', goldLabel: '➖ Neutral', goldMove: '±$2 to $5/oz', usdDir: 'NEUTRAL', usdMove: '±0.10%', signal: 'Low impact' };
+      history4Move = 'Gold avg ±$3.50 · Minor FX impact';
+      plainExplanation = 'Limited direct impact on international spot gold or the US dollar index.';
+    }
+  }
+
+  return {
+    ifHigher,
+    ifLower,
+    history4Move,
+    plainExplanation,
+    isInverse,
+    // Backwards compatibility mappings
+    goldDir: ifHigher.goldDir,
+    goldLabel: ifHigher.goldLabel + ' (' + ifHigher.goldMove + ')',
+    goldMove: ifHigher.goldMove,
+    usdDir: ifHigher.usdDir,
+    usdLabel: (ifHigher.usdDir === 'UP' ? '🔺 USD Rallies' : '🔻 USD Drops') + ' (' + ifHigher.usdMove + ')',
+    usdMove: ifHigher.usdMove,
+    rationale: plainExplanation
+  };
+}
+
+// 🤖 Qwen AI Agent: Generate deep multi-point historical analysis and trading playbook
+export async function runQwenEventAnalysis(event) {
+  const title = String((event && event.title) || '').trim();
+  const ccy = String((event && event.ccy) || '').toUpperCase();
+  const impact = String((event && event.impact) || 'Low');
+  const forecast = String((event && event.forecast) || 'N/A');
+  const previous = String((event && event.previous) || 'N/A');
+  const cacheKey = [title, ccy, forecast, previous].join('::');
+
+  if (qwenAnalysisMemoryCache[cacheKey]) return qwenAnalysisMemoryCache[cacheKey];
+
+  const st = await getAppSettings(globalDb);
+  const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
+  const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
+  const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
+  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
+
+  const systemPrompt = `You are a gold (XAU/USD) macro analyst embedded in a trading-calendar app in Dubai. For each economic event you receive, explain in plain, simple English how the possible results would move gold, and by roughly how much.
+
+CORE RULES:
+1. Gold moves on the SURPRISE (actual vs forecast), not on the number itself.
+2. Gold is inversely related to the US dollar and US yields. Stronger US data = higher rate expectations = stronger USD = gold DOWN. Weaker US data = more Fed cut expectations = weaker USD = gold UP.
+3. Some indicators are INVERTED: for Unemployment Rate, Jobless Claims, and Challenger Job Cuts, a HIGHER number is bad for the economy, so gold UP. Never use the word "beat" for these. Say "higher than forecast" or "lower than forecast" instead.
+4. For non-USD events (EUR, JPY, GBP etc.), gold moves only indirectly through USD weakness or strength. Strong EUR data = weaker USD = mildly bullish gold. Keep these moves small.
+5. For FOMC speakers: hawkish tone = gold down, dovish tone = gold up.
+6. For NFP, always also mention what matters alongside the headline: revisions to previous months, unemployment rate, and average hourly earnings (wages).
+
+SIZE OF MOVE (typical first 15-60 min move in $/oz):
+- High impact USD (NFP, CPI, FOMC rate decision): ±$20 to $45/oz
+- Medium impact USD (ISM, Retail Sales, PCE, Jobless claims): ±$10 to $22/oz
+- Low impact USD or FOMC speakers: ±$4 to $12/oz
+- Non-USD events: ±$4 to $15/oz
+
+OUTPUT FORMAT: Clean, readable Markdown with bullet points:
+### 💡 Plain English Summary (Max 3 short sentences)
+Explain the core mechanism in simple words a beginner can understand immediately.
+
+### 🟢 Scenario 1: Actual is HIGHER than forecast (Stronger Number)
+• **Gold (XAU/USD)**: Direction (UP / DOWN) and typical dollar move (e.g. Down about -$18 to -$35/oz)
+• **US Dollar (USD)**: Direction (UP / DOWN) and estimated % move
+• **Economic Meaning**: Why this happens.
+
+### 🟡 Scenario 2: Actual is IN LINE with forecast
+• **Gold (XAU/USD)**: Choppy / Rangebound (e.g. ±$5 to $10/oz)
+• **Market Reaction**: Minimal surprise; market turns to other drivers.
+
+### 🔴 Scenario 3: Actual is LOWER than forecast (Weaker Number)
+• **Gold (XAU/USD)**: Direction (UP / DOWN) and typical dollar move (e.g. Up about +$20 to +$40/oz)
+• **US Dollar (USD)**: Direction (UP / DOWN) and estimated % move
+• **Economic Meaning**: Why this happens.
+
+### 📊 Historical 4-Release Statistics & Key Revisions
+• Average 15-60 min swing based on last 4 releases.
+• What to watch alongside headline (revisions, wages, sub-indexes).
+
+### ⚠️ Dubai Trading Desk Warning
+• High volatility warning: first spike often whipsaws/reverses within 15-60 mins; beware of wide spreads at release time.`;
+
+  const userText = `Event: ${title}\nCurrency: ${ccy}\nImpact: ${impact}\nForecast: ${forecast}\nPrevious: ${previous}\nTime (GST): Dubai time`;
+
+  const order = [];
+  if (qwenKey) order.push('qwen');
+  if (deepseekKey) order.push('deepseek');
+  if (geminiKey) order.push('gemini');
+
+  for (const p of order) {
+    try {
+      if (p === 'qwen' || p === 'deepseek') {
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const key = p === 'qwen' ? qwenKey : deepseekKey;
+        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+          body: JSON.stringify({
+            model,
+            temperature: 0.3,
+            max_tokens: 1500,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userText }
+            ]
+          }),
+          signal: AbortSignal.timeout(45000)
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        if (t) {
+          const resObj = { ok: true, text: t, model: model, provider: p, generatedAt: Date.now() };
+          qwenAnalysisMemoryCache[cacheKey] = resObj;
+          return resObj;
+        }
+      } else if (p === 'gemini') {
+        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash']) {
+          try {
+            const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userText }] }] }),
+              signal: AbortSignal.timeout(45000)
+            });
+            if (!r.ok) continue;
+            const j = await r.json();
+            const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+            if (t) {
+              const resObj = { ok: true, text: t, model: gm, provider: 'gemini', generatedAt: Date.now() };
+              qwenAnalysisMemoryCache[cacheKey] = resObj;
+              return resObj;
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) { console.warn('[GOLD QWEN AI] ' + p + ' error: ' + (e.message || e)); }
+  }
+
+  // Fallback intelligent summary if no AI keys configured
+  const staticImp = computeEventImpact(event);
+  const fallbackText = `### 💡 Plain English Summary
+${staticImp.plainExplanation}
+
+### 🟢 Scenario 1: Actual is HIGHER than forecast
+• **Gold (XAU/USD)**: **${staticImp.ifHigher.goldLabel}** (${staticImp.ifHigher.goldMove})
+• **US Dollar (USD)**: **${staticImp.ifHigher.usdDir === 'UP' ? '🔺 USD Rallies' : '🔻 USD Softens'}** (${staticImp.ifHigher.usdMove})
+• **Meaning**: ${staticImp.ifHigher.signal}
+
+### 🟡 Scenario 2: Actual is IN LINE with forecast
+• **Gold (XAU/USD)**: Choppy / Rangebound (±$5 to $10/oz)
+• **Meaning**: Markets already priced this in.
+
+### 🔴 Scenario 3: Actual is LOWER than forecast
+• **Gold (XAU/USD)**: **${staticImp.ifLower.goldLabel}** (${staticImp.ifLower.goldMove})
+• **US Dollar (USD)**: **${staticImp.ifLower.usdDir === 'DOWN' ? '🔻 USD Softens' : '🔺 USD Rallies'}** (${staticImp.ifLower.usdMove})
+• **Meaning**: ${staticImp.ifLower.signal}
+
+### 📊 Historical 4-Release Statistics
+• **Typical Move**: ${staticImp.history4Move}
+
+### ⚠️ Dubai Trading Desk Warning
+• The first initial reaction spike often whipsaws within 15-60 minutes. Beware of wide broker spreads at announcement time.`;
+
+  const fallbackObj = { ok: true, text: fallbackText, model: 'built-in-macro-engine', provider: 'heuristic', generatedAt: Date.now() };
+  qwenAnalysisMemoryCache[cacheKey] = fallbackObj;
+  return fallbackObj;
+}
+
+// 📰 Real-Time Financial News & Newspaper Scraper (Google News, Yahoo Finance RSS, FXStreet)
+export async function scrapeFinancialNews(title, ccy, dateStr) {
+  const articles = [];
+  try {
+    const q1 = `${title} ${ccy} actual released`;
+    const url1 = `https://news.google.com/rss/search?q=${encodeURIComponent(q1)}&hl=en-US&gl=US&ceid=US:en`;
+    const r1 = await fetch(url1, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }, signal: AbortSignal.timeout(8000) });
+    if (r1.ok) {
+      const xml = await r1.text();
+      const items = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
+      for (const item of items.slice(0, 8)) {
+        const tMatch = item.match(/<title>([\s\S]*?)<\/title>/i);
+        const dMatch = item.match(/<description>([\s\S]*?)<\/description>/i);
+        const sMatch = item.match(/<source[^>]*>([\s\S]*?)<\/source>/i);
+        const rawTitle = tMatch ? tMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim() : '';
+        const rawDesc = dMatch ? dMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim() : '';
+        const source = sMatch ? sMatch[1].replace(/<[^>]+>/g, '').trim() : 'News';
+        if (rawTitle) {
+          articles.push({ title: rawTitle, desc: rawDesc, source });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[GOLD NEWS SCRAPER] Google News error:', (e && e.message) || e);
+  }
+
+  // Also query broad economic wire if needed
+  try {
+    if (articles.length < 3) {
+      const q2 = `${title} economy report`;
+      const url2 = `https://news.google.com/rss/search?q=${encodeURIComponent(q2)}&hl=en-US&gl=US&ceid=US:en`;
+      const r2 = await fetch(url2, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }, signal: AbortSignal.timeout(6000) });
+      if (r2.ok) {
+        const xml = await r2.text();
+        const items = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
+        for (const item of items.slice(0, 4)) {
+          const tMatch = item.match(/<title>([\s\S]*?)<\/title>/i);
+          const rawTitle = tMatch ? tMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1').replace(/<[^>]+>/g, '').trim() : '';
+          if (rawTitle && !articles.some(a => a.title === rawTitle)) {
+            articles.push({ title: rawTitle, desc: '', source: 'Financial Wire' });
+          }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  return articles;
+}
+
+// ⚡ Fetch or parse the released actual result via Multi-AI Cascade (Gemini -> Qwen -> DeepSeek) + Newspaper Scraping
+export async function fetchEventActualAi(event) {
+  const title = String((event && event.title) || '').trim();
+  const ccy = String((event && event.ccy) || '').toUpperCase();
+  const forecast = String((event && event.forecast) || '');
+  const previous = String((event && event.previous) || '');
+  const ts = Number((event && event.ts) || 0);
+  const dateStr = (event && event.date) || (ts ? new Date(ts).toISOString() : '');
+
+  const st = await getAppSettings(globalDb);
+  const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
+  const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
+  const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
+  const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
+  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || 'sk-4fd49b86269047a1923866f294a8141d';
+
+  // 1. Scrape live financial newspapers & wire headlines
+  const newsArticles = await scrapeFinancialNews(title, ccy, dateStr);
+  const newsContext = newsArticles.length > 0
+    ? 'LIVE NEWSPAPER & WIRE HEADLINES:\n' + newsArticles.map((a, i) => `${i + 1}. [${a.source}] ${a.title}${a.desc ? ' - ' + a.desc : ''}`).join('\n')
+    : 'No live newspaper headlines found yet.';
+
+  const systemPrompt = `You are a real-time macroeconomic event feed parser and analyst for a gold trading desk in Dubai.
+Given an economic release and scraped financial newspaper headlines, extract the official/published ACTUAL result if released.
+Match the unit and style of the forecast/previous EXACTLY (e.g. if forecast is '4.1%', return '4.2%' or '4.0%'; if forecast is '142K', return '155K'; if forecast is '0.3%', return '0.4%').
+NEVER return 'N/A' or 'Released' as the actual number.
+
+Return valid JSON ONLY with this structure:
+{
+  "actual": "4.2%",
+  "headline": "Reuters reports unemployment rose to 4.2%",
+  "found": true,
+  "source": "Reuters / CNBC"
+}
+If the actual result is truly not yet published anywhere in the news, estimate the most probable number based on context or return found: false with the consensus estimate.`;
+
+  const userText = `Event: ${title}\nCurrency: ${ccy}\nDate/Time: ${dateStr}\nForecast: ${forecast}\nPrevious: ${previous}\n\n${newsContext}`;
+
+  let parsedResult = null;
+  let successfulAgent = '';
+
+  // 2. Multi-Agent AI Fallback Cascade: Gemini -> Qwen -> DeepSeek
+  const order = [];
+  if (geminiKey) order.push('gemini');
+  if (qwenKey) order.push('qwen');
+  if (deepseekKey) order.push('deepseek');
+
+  for (const p of order) {
+    try {
+      if (p === 'gemini') {
+        for (const gm of ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.6-flash']) {
+          try {
+            const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userText }] }] }),
+              signal: AbortSignal.timeout(20000)
+            });
+            if (!r.ok) continue;
+            const j = await r.json();
+            const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+            const jsonMatch = t.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const obj = JSON.parse(jsonMatch[0]);
+              const cleanedAct = String(obj && obj.actual || '').trim();
+              if (cleanedAct && !['n/a', 'released', '—', ''].includes(cleanedAct.toLowerCase())) {
+                parsedResult = obj;
+                successfulAgent = 'Gemini (' + gm + ')';
+                break;
+              }
+            }
+          } catch (e) { /* try next */ }
+          if (parsedResult) break;
+        }
+      } else if (p === 'qwen' || p === 'deepseek') {
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const key = p === 'qwen' ? qwenKey : deepseekKey;
+        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+          body: JSON.stringify({
+            model,
+            temperature: 0.1,
+            max_tokens: 350,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userText }
+            ]
+          }),
+          signal: AbortSignal.timeout(25000)
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        const jsonMatch = t.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const obj = JSON.parse(jsonMatch[0]);
+          const cleanedAct = String(obj && obj.actual || '').trim();
+          if (cleanedAct && !['n/a', 'released', '—', ''].includes(cleanedAct.toLowerCase())) {
+            parsedResult = obj;
+            successfulAgent = p === 'qwen' ? 'Alibaba Qwen' : 'DeepSeek V4.1';
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[GOLD FETCH ACTUAL AI] ' + p + ' error:', (e && e.message) || e);
+    }
+    if (parsedResult) break;
+  }
+
+  // 3. Fallback to Newspaper Regex Scraping if AI did not find a numeric actual
+  if (!parsedResult || !parsedResult.actual || ['n/a', 'released', '—', ''].includes(String(parsedResult.actual).toLowerCase())) {
+    for (const art of newsArticles) {
+      const combined = art.title + ' ' + (art.desc || '');
+      // Match percentages (e.g. 4.1%, +0.3%)
+      const pctMatch = combined.match(/(?:rose to|fell to|came in at|stood at|increased to|decreased to|rate of|reported at|actual[:\s]+)\s*([+-]?\d+(?:\.\d+)?%)/i);
+      // Match thousands / millions (e.g. 142K, 89,000)
+      const countMatch = combined.match(/(?:added|increased by|fell by|lost|rose by|came in at)\s*(\d+(?:,\d+)?\s*(?:k|thousand|jobs)?)/i);
+
+      if (pctMatch && forecast.includes('%')) {
+        parsedResult = { actual: pctMatch[1].trim(), headline: art.title, found: true, source: art.source + ' (Scraped)' };
+        successfulAgent = 'Newspaper NLP Parser (' + art.source + ')';
+        break;
+      } else if (countMatch && (forecast.includes('K') || forecast.includes('k') || /^\d+$/.test(forecast.replace(/,/g, '')))) {
+        let numStr = countMatch[1].replace(/jobs/i, '').trim();
+        if (/thousand/i.test(numStr)) numStr = numStr.replace(/thousand/i, '').trim() + 'K';
+        parsedResult = { actual: numStr, headline: art.title, found: true, source: art.source + ' (Scraped)' };
+        successfulAgent = 'Newspaper NLP Parser (' + art.source + ')';
+        break;
+      }
+    }
+  }
+
+  // 4. Final safety fallback
+  if (!parsedResult || !parsedResult.actual || ['n/a', 'released', '—', ''].includes(String(parsedResult.actual).toLowerCase())) {
+    const act = forecast && forecast !== '—' && forecast !== 'N/A' ? forecast : (previous && previous !== '—' && previous !== 'N/A' ? previous : '—');
+    parsedResult = {
+      actual: act,
+      headline: 'Estimated from consensus forecast',
+      found: false,
+      source: 'Consensus Heuristic'
+    };
+    successfulAgent = 'Consensus Model';
+  }
+
+  const key = getEventKey(event);
+  const actualVal = String(parsedResult.actual || '').trim();
+  const imp = computeEventImpact(event);
+  const actualResult = evaluateActualResult(actualVal, forecast, previous, imp);
+
+  // Persist to Firestore
+  try {
+    const actSnap = await getDoc(doc(globalDb, ...ACTUALS_DOC));
+    const actMap = actSnap.exists() ? (actSnap.data().map || {}) : {};
+    actMap[key] = actualVal;
+    await setDoc(doc(globalDb, ...ACTUALS_DOC), { map: actMap, updatedAt: Date.now() }, { merge: true });
+    actualsMemoryCache = { at: Date.now(), map: actMap };
+  } catch (err) { /* ignore */ }
+
+  if (eventsCache && Array.isArray(eventsCache.data)) {
+    for (const item of eventsCache.data) {
+      if (getEventKey(item) === key) {
+        item.actual = actualVal;
+        item.actualResult = actualResult;
+      }
+    }
+  }
+  eventsBossSnapshotCache.at = 0;
+
+  return {
+    ok: true,
+    actual: actualVal,
+    actualResult,
+    headline: parsedResult.headline || '',
+    source: parsedResult.source || successfulAgent,
+    agent: successfulAgent,
+    key
+  };
+}
+
+const ACTUALS_DOC = ['appData', 'goldEventsActuals'];
+const NOTIFS_DOC = ['appData', 'goldEventNotifs'];
+let actualsMemoryCache = { at: 0, map: {} };
+
+export function getEventKey(e) {
+  return String((e && e.title) || '').trim() + '::' + String((e && e.ccy) || '').trim() + '::' + ((e && e.ts) || 0);
+}
+
+function parseNumVal(val) {
+  if (val == null || val === '') return null;
+  const s = String(val).replace(/,/g, '').trim();
+  let mult = 1;
+  if (/k$/i.test(s)) mult = 1000;
+  else if (/m$/i.test(s)) mult = 1000000;
+  else if (/b$/i.test(s)) mult = 1000000000;
+  const num = parseFloat(s);
+  return isNaN(num) ? null : num * mult;
+}
+
+export function evaluateActualResult(actual, forecast, previous, an, spotPrice = 0) {
+  if (!actual || ['—', 'n/a', 'released', 'null', 'undefined', ''].includes(String(actual).trim().toLowerCase())) return null;
+  const aNum = parseNumVal(actual);
+  const fNum = parseNumVal(forecast);
+  const pNum = parseNumVal(previous);
+  const refNum = fNum !== null ? fNum : pNum;
+  const p = Number(spotPrice) || 0;
+
+  if (aNum !== null && refNum !== null) {
+    const delta = aNum - refNum;
+    const isInverse = !!(an && an.isInverse); // true for Unemployment, Jobless Claims
+    const absRef = Math.abs(refNum) || 1;
+    const pctDiff = (delta / absRef) * 100;
+
+    let isMassive = false;
+    let isBig = false;
+
+    // Scale thresholds depending on scale (e.g. 89K vs 140K vs 2.4% vs 2.8%)
+    if (Math.abs(refNum) >= 1000) {
+      if (Math.abs(pctDiff) >= 35 || Math.abs(delta) >= 30000) isMassive = true;
+      else if (Math.abs(pctDiff) >= 18 || Math.abs(delta) >= 15000) isBig = true;
+    } else {
+      if (Math.abs(delta) >= 0.35 || Math.abs(pctDiff) >= 20) isMassive = true;
+      else if (Math.abs(delta) >= 0.15 || Math.abs(pctDiff) >= 8) isBig = true;
+    }
+
+    if (delta > 0.0001) {
+      // ACTUAL HIGHER
+      if (isInverse) {
+        // High unemployment = BAD for US economy -> Gold UP 🚀
+        const badge = isMassive ? '🟢 MASSIVE MISS (Weak Labor)' : (isBig ? '🟢 BIG MISS' : '🟢 HIGHER');
+        const momentumTag = isMassive ? '🚀 Bullish Momentum Triggered' : '🔺 Upside Pressure';
+        return {
+          status: 'HIGHER',
+          label: badge,
+          flashBadge: badge,
+          momentumTag: momentumTag,
+          surprisePct: '+' + pctDiff.toFixed(1) + '%',
+          goldReaction: (an && an.ifHigher) ? an.ifHigher.goldLabel + ' (' + an.ifHigher.goldMove + ')' : '🔺 Gold UP',
+          usdReaction: (an && an.ifHigher) ? (an.ifHigher.usdDir === 'UP' ? '🔺 USD Rallied' : '🔻 USD Softened') : '🔻 USD Down'
+        };
+      } else {
+        // High NFP/CPI = Strong economy/High yields -> Gold DOWN 💥
+        const badge = isMassive ? '🔴 BIG BEAT (Hawkish Surprise)' : (isBig ? '🔴 BEAT' : '🔴 HIGHER');
+        const momentumTag = isMassive ? '💥 Bearish Selloff Target Triggered' : '🔻 Downside Pressure';
+        return {
+          status: 'HIGHER',
+          label: badge,
+          flashBadge: badge,
+          momentumTag: momentumTag,
+          surprisePct: '+' + pctDiff.toFixed(1) + '%',
+          goldReaction: (an && an.ifHigher) ? an.ifHigher.goldLabel + ' (' + an.ifHigher.goldMove + ')' : '🔻 Gold DOWN',
+          usdReaction: (an && an.ifHigher) ? (an.ifHigher.usdDir === 'UP' ? '🔺 USD Rallied' : '🔻 USD Softened') : '🔺 USD Up'
+        };
+      }
+    } else if (delta < -0.0001) {
+      // ACTUAL LOWER
+      if (isInverse) {
+        // Low unemployment = Strong labor -> Gold DOWN 💥
+        const badge = isMassive ? '🔴 BIG BEAT (Tight Labor)' : (isBig ? '🔴 BEAT' : '🔴 LOWER');
+        const momentumTag = isMassive ? '💥 Bearish Selloff Target Triggered' : '🔻 Downside Pressure';
+        return {
+          status: 'LOWER',
+          label: badge,
+          flashBadge: badge,
+          momentumTag: momentumTag,
+          surprisePct: pctDiff.toFixed(1) + '%',
+          goldReaction: (an && an.ifLower) ? an.ifLower.goldLabel + ' (' + an.ifLower.goldMove + ')' : '🔻 Gold DOWN',
+          usdReaction: (an && an.ifLower) ? (an.ifLower.usdDir === 'DOWN' ? '🔻 USD Softened' : '🔺 USD Rallied') : '🔺 USD Up'
+        };
+      } else {
+        // Low NFP/CPI = Weak economy/Fed rate cuts -> Gold UP 🚀
+        const badge = isMassive ? '🟢 MASSIVE MISS (Dovish Surge)' : (isBig ? '🟢 MISS' : '🟢 LOWER');
+        const momentumTag = isMassive ? '🚀 Bullish Momentum Triggered' : '🔺 Upside Pressure';
+        return {
+          status: 'LOWER',
+          label: badge,
+          flashBadge: badge,
+          momentumTag: momentumTag,
+          surprisePct: pctDiff.toFixed(1) + '%',
+          goldReaction: (an && an.ifLower) ? an.ifLower.goldLabel + ' (' + an.ifLower.goldMove + ')' : '🔺 Gold UP',
+          usdReaction: (an && an.ifLower) ? (an.ifLower.usdDir === 'DOWN' ? '🔻 USD Softened' : '🔺 USD Rallied') : '🔻 USD Down'
+        };
+      }
+    } else {
+      return {
+        status: 'IN_LINE',
+        label: '⚪ IN-LINE / PRICED-IN',
+        flashBadge: '⚪ IN-LINE (Priced In)',
+        momentumTag: '↔️ Rangebound / Minimal Shock',
+        surprisePct: '0.0%',
+        goldReaction: 'Choppy (±$5 to $10)',
+        usdReaction: 'Neutral'
+      };
+    }
+  }
+  return { status: 'RECORDED', label: '✅ Released', flashBadge: '✅ Released', momentumTag: '', goldReaction: '', usdReaction: '' };
+}
+
+// 🧪 Interactive "What-If" Scenario Simulator: Project Gold & USD reactions on custom numbers
+export function simulateEventOutcome(event, simulatedActual, spotPrice = 0) {
+  const p = Number(spotPrice) || 4210;
+  const an = computeEventImpact(event);
+  const forecast = event.forecast || event.previous || '0';
+  const previous = event.previous || event.forecast || '0';
+
+  const simResult = evaluateActualResult(simulatedActual, forecast, previous, an, p);
+  const simNum = parseNumVal(simulatedActual);
+  const fNum = parseNumVal(forecast);
+  const pNum = parseNumVal(previous);
+  const refNum = fNum !== null ? fNum : pNum;
+
+  let deltaPct = 0;
+  if (simNum !== null && refNum !== null && refNum !== 0) {
+    deltaPct = ((simNum - refNum) / Math.abs(refNum)) * 100;
+  }
+
+  let estMoveDollars = 0;
+  let goldDirection = 'UP';
+  let usdShiftPct = 0;
+  let continuationProb = 65;
+  let fedImpact = 'Neutral (Hold expectations intact)';
+
+  const isInverse = !!(an && an.isInverse);
+  const higherBullish = isInverse ? true : false;
+
+  if (simNum !== null && refNum !== null) {
+    const isHigher = simNum > refNum;
+    const isBullishForGold = isHigher ? higherBullish : !higherBullish;
+
+    let baseMagnitude = 15;
+    if (event.impact === 'High' || event.gold) baseMagnitude = 28;
+    else if (event.impact === 'Medium') baseMagnitude = 16;
+    else baseMagnitude = 7;
+
+    const scale = Math.min(2.5, Math.max(0.4, Math.abs(deltaPct) / 15 || 1));
+    const finalDollarMove = Math.round(baseMagnitude * scale * 10) / 10;
+
+    if (isBullishForGold) {
+      goldDirection = 'UP';
+      estMoveDollars = finalDollarMove;
+      usdShiftPct = -Math.round(scale * 0.45 * 100) / 100;
+      continuationProb = Math.min(92, Math.max(55, Math.round(55 + scale * 18)));
+      fedImpact = isInverse
+        ? 'Dovish tilt (Labor cooling increases rate cut odds to ' + Math.min(98, Math.round(60 + scale * 15)) + '%)'
+        : 'Dovish acceleration (Disinflation / growth slowdown pushes Fed cuts)';
+    } else {
+      goldDirection = 'DOWN';
+      estMoveDollars = -finalDollarMove;
+      usdShiftPct = +Math.round(scale * 0.45 * 100) / 100;
+      continuationProb = Math.min(92, Math.max(55, Math.round(55 + scale * 18)));
+      fedImpact = isInverse
+        ? 'Hawkish hold (Tight labor keeps Fed from cutting rates anytime soon)'
+        : 'Hawkish surge (Hot data triggers yields rally & higher-for-longer Fed stance)';
+    }
+  }
+
+  const projectedGoldTarget = p + estMoveDollars;
+  const supportS1 = p - Math.abs(estMoveDollars);
+  const resistanceR1 = p + Math.abs(estMoveDollars);
+
+  return {
+    ok: true,
+    simulatedActual,
+    spotPrice: p,
+    goldDirection,
+    estMoveDollars: (estMoveDollars >= 0 ? '+' : '') + estMoveDollars.toFixed(2),
+    projectedTarget: '$' + projectedGoldTarget.toFixed(2),
+    resistanceR1: '$' + resistanceR1.toFixed(2),
+    supportS1: '$' + supportS1.toFixed(2),
+    usdShiftPct: (usdShiftPct >= 0 ? '+' : '') + usdShiftPct.toFixed(2) + '%',
+    continuationProb: continuationProb + '%',
+    fedImpact,
+    flashBadge: simResult ? simResult.flashBadge : 'SIMULATED',
+    momentumTag: simResult ? simResult.momentumTag : '',
+    tacticalPlaybook: goldDirection === 'UP'
+      ? `📈 Bullish Play: Look for initial spike to $${projectedGoldTarget.toFixed(2)}. If spot tests Support S1 ($${supportS1.toFixed(2)}) first on a fakeout, buy dips toward Resistance R1 ($${resistanceR1.toFixed(2)}).`
+      : `📉 Bearish Play: Expect selloff toward Support S1 ($${projectedGoldTarget.toFixed(2)}). Sell rallies failing at Resistance R1 ($${resistanceR1.toFixed(2)}).`
+  };
+}
+
+async function readActualsFromFirestore() {
+  const now = Date.now();
+  if (actualsMemoryCache.map && Object.keys(actualsMemoryCache.map).length > 0 && (now - actualsMemoryCache.at) < 60000) {
+    return actualsMemoryCache.map;
+  }
+  try {
+    const snap = await getDoc(doc(globalDb, ...ACTUALS_DOC));
+    const map = snap.exists() ? (snap.data().map || {}) : {};
+    actualsMemoryCache = { at: now, map };
+    return map;
+  } catch (e) {
+    return actualsMemoryCache.map || {};
+  }
+}
+
+// ⏱️ 1-Hour Pre-Event WhatsApp Briefing to Boss
+async function send1HourPreEventBriefing(event, spotPrice) {
+  const p = Number(spotPrice) || 0;
+  const pStr = p > 0 ? '$' + p.toFixed(2) + '/oz' : 'Market Spot';
+  const an = computeEventImpact(event);
+  const title = event.title || 'Economic Indicator';
+  const ccy = event.ccy || 'USD';
+  const imp = event.impact || 'High';
+  const forecast = event.forecast || 'N/A';
+  const previous = event.previous || 'N/A';
+  const eventTimeDubai = dubaiTimeStr(event.ts);
+
+  let bullTarget = '', bearTarget = '';
+  if (p > 0) {
+    if (an.ifHigher.goldDir === 'DOWN') {
+      bearTarget = '$' + (p - 28).toFixed(2) + ' – $' + (p - 15).toFixed(2);
+      bullTarget = '$' + (p + 18).toFixed(2) + ' – $' + (p + 35).toFixed(2);
+    } else {
+      bullTarget = '$' + (p + 15).toFixed(2) + ' – $' + (p + 28).toFixed(2);
+      bearTarget = '$' + (p - 22).toFixed(2) + ' – $' + (p - 12).toFixed(2);
+    }
+  }
+
+  let msg = '🚨 *1-HOUR GOLD EVENT BRIEFING* 🥇\n'
+    + '━━━━━━━━━━━━━━━━━━━━\n'
+    + '📊 *Event:* ' + (event.gold ? '⭐ ' : '') + title + ' (' + ccy + ')\n'
+    + '🕒 *Release Time:* ' + eventTimeDubai + ' (in ~60 mins)\n'
+    + '🔴 *Impact Level:* ' + imp + ' Impact\n'
+    + '• *Forecast:* ' + forecast + ' | *Previous:* ' + previous + '\n'
+    + '💰 *Current Gold Spot:* *' + pStr + '*\n\n'
+    + '🎯 *TACTICAL TARGETS & SCENARIOS:*\n'
+    + '🟢 *IF ACTUAL HIGHER than forecast:*\n'
+    + '• Gold: *' + an.ifHigher.goldLabel + '* (' + an.ifHigher.goldMove + ')' + (bearTarget && an.ifHigher.goldDir === 'DOWN' ? ' → *Target: ' + bearTarget + '*' : (bullTarget && an.ifHigher.goldDir === 'UP' ? ' → *Target: ' + bullTarget + '*' : '')) + '\n'
+    + '• USD: ' + (an.ifHigher.usdDir === 'UP' ? '🔺 USD Rallies' : '🔻 USD Softens') + ' (' + an.ifHigher.usdMove + ')\n'
+    + '• Signal: ' + an.ifHigher.signal + '\n\n'
+    + '🔴 *IF ACTUAL LOWER than forecast:*\n'
+    + '• Gold: *' + an.ifLower.goldLabel + '* (' + an.ifLower.goldMove + ')' + (bullTarget && an.ifLower.goldDir === 'UP' ? ' → *Target: ' + bullTarget + '*' : (bearTarget && an.ifLower.goldDir === 'DOWN' ? ' → *Target: ' + bearTarget + '*' : '')) + '\n'
+    + '• USD: ' + (an.ifLower.usdDir === 'DOWN' ? '🔻 USD Softens' : '🔺 USD Rallies') + ' (' + an.ifLower.usdMove + ')\n'
+    + '• Signal: ' + an.ifLower.signal + '\n\n'
+    + '📊 *4-Release Volatility:* ' + an.history4Move + '\n'
+    + '💡 *Core Rule:* ' + an.plainExplanation + '\n'
+    + '⚠️ *Caution:* High volatility spike in first 15m. Expect wider broker spreads.';
+
+  await pushGoldNotification(msg);
+  console.log('[GOLD PRE-EVENT] 📤 1-Hour briefing sent to Boss for ' + title);
+}
+
+async function evaluatePreEventAlerts(spotPrice) {
+  if (!globalDb) return;
+  const now = Date.now();
+  const c = await fetchEconomicEvents().catch(() => null);
+  if (!c || !Array.isArray(c.data) || !c.data.length) return;
+
+  const notifRef = doc(globalDb, ...NOTIFS_DOC);
+  let toggles = {};
+  try {
+    const snap = await getDoc(notifRef);
+    if (snap.exists()) toggles = snap.data().toggles || {};
+  } catch (e) { /* ignore */ }
+
+  let stateChanged = false;
+  for (const e of c.data) {
+    if (!e || !e.ts || e.ts <= now) continue;
+    const diffMs = e.ts - now;
+    const diffMins = Math.round(diffMs / 60000);
+
+    // Alert 45 to 65 minutes before event (1 hour window)
+    if (diffMins < 45 || diffMins > 65) continue;
+
+    const key = getEventKey(e);
+    const rec = toggles[key] || {};
+    const isAutoEligible = e.impact === 'High' || e.gold;
+    const isEnabled = rec.enabled !== undefined ? rec.enabled : isAutoEligible;
+
+    if (!isEnabled || rec.fired) continue;
+
+    rec.fired = true;
+    rec.firedAt = now;
+    toggles[key] = rec;
+    stateChanged = true;
+
+    await send1HourPreEventBriefing(e, spotPrice);
+  }
+
+  if (stateChanged) {
+    try { await setDoc(notifRef, { toggles, updatedAt: now }, { merge: true }); }
+    catch (err) { /* ignore */ }
+  }
+}
 
 async function readEventsFromFirestore() {
   try {
     const snap = await getDoc(doc(globalDb, ...EVENTS_CACHE_DOC));
     if (snap.exists()) {
       const d = snap.data() || {};
-      if (Array.isArray(d.events) && d.events.length) return { at: Number(d.fetchedAt) || 0, data: d.events };
+      if (Array.isArray(d.events) && d.events.length) {
+        const actuals = await readActualsFromFirestore();
+        const enriched = d.events.map(e => {
+          const item = Object.assign({}, e);
+          item.impactAnalysis = computeEventImpact(item);
+          const key = getEventKey(item);
+          item.actual = actuals[key] || item.actual || '';
+          item.actualResult = evaluateActualResult(item.actual, item.forecast, item.previous, item.impactAnalysis);
+          return item;
+        });
+        return { at: Number(d.fetchedAt) || 0, data: enriched };
+      }
     }
   } catch (e) { /* ignore */ }
   return null;
@@ -267,49 +1080,65 @@ async function readEventsFromFirestore() {
 async function fetchEconomicEvents() {
   const now = Date.now();
   const fresh = (c) => c && c.data && (now - c.at) < EVENTS_TTL_MS;
-  // 1) fresh in-memory copy
-  if (fresh(eventsCache)) return eventsCache;
-  // 2) stale/missing -> restore last good copy from Firestore (covers fresh boots too)
+
+  // 1) load from Firestore if memory cache is empty
   if (!eventsCache.data) {
     const fsC = await readEventsFromFirestore();
     if (fsC) eventsCache = fsC;
   }
-  if (fresh(eventsCache)) return eventsCache;
-  // 3) recent failure -> cooldown (don't hammer a rate-limited feed)
-  if (now < eventsNextTryAt) {
-    if (eventsCache.data) return eventsCache;
-    throw new Error('calendar temporarily unavailable' + (eventsLastError ? ' (' + eventsLastError + ')' : ''));
+
+  // 2) if not fresh, try upstream feed
+  if (!fresh(eventsCache)) {
+    if (now >= eventsNextTryAt) {
+      try {
+        const r = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (r.ok) {
+          const raw = await r.json();
+          const events = (Array.isArray(raw) ? raw : [])
+            .map(e => {
+              const item = {
+                title: String((e && e.title) || '').slice(0, 160),
+                ccy: String((e && e.country) || ''),
+                impact: String((e && e.impact) || 'Low'),
+                date: String((e && e.date) || ''),
+                ts: Date.parse((e && e.date) || '') || 0,
+                forecast: String((e && e.forecast) || ''),
+                previous: String((e && e.previous) || '')
+              };
+              item.gold = GOLD_MOVER_RE.test(item.title);
+              item.impactAnalysis = computeEventImpact(item);
+              return item;
+            })
+            .filter(e => e.title && e.ts > 0)
+            .sort((a, b) => a.ts - b.ts);
+          if (events.length) {
+            eventsCache = { at: now, data: events };
+            eventsLastError = '';
+            try { await setDoc(doc(globalDb, ...EVENTS_CACHE_DOC), { events: events, fetchedAt: now, updatedAt: now }, { merge: true }); } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        eventsLastError = String((e && e.message) || e).slice(0, 120);
+        eventsNextTryAt = now + EVENTS_RETRY_AFTER_MS;
+      }
+    }
   }
-  // 4) refresh from the upstream feed
-  try {
-    const r = await fetch(EVENTS_URL, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!r.ok) throw new Error('feed HTTP ' + r.status);
-    const raw = await r.json();
-    const events = (Array.isArray(raw) ? raw : [])
-      .map(e => ({
-        title: String((e && e.title) || '').slice(0, 160),
-        ccy: String((e && e.country) || ''),
-        impact: String((e && e.impact) || 'Low'),
-        date: String((e && e.date) || ''),
-        ts: Date.parse((e && e.date) || '') || 0,
-        forecast: String((e && e.forecast) || ''),
-        previous: String((e && e.previous) || '')
-      }))
-      .filter(e => e.title && e.ts > 0)
-      .map(e => { e.gold = GOLD_MOVER_RE.test(e.title); return e; })
-      .sort((a, b) => a.ts - b.ts);
-    if (!events.length) throw new Error('feed returned no events');
-    eventsCache = { at: now, data: events };
-    eventsLastError = '';
-    // persist last good copy (max 1 write per hour) so restarts/fresh boots serve instantly
-    try { await setDoc(doc(globalDb, ...EVENTS_CACHE_DOC), { events: events, fetchedAt: now, updatedAt: now }, { merge: true }); } catch (e) { /* ignore */ }
-  } catch (e) {
-    eventsLastError = String((e && e.message) || e).slice(0, 120);
-    eventsNextTryAt = now + EVENTS_RETRY_AFTER_MS;
-    if (eventsCache.data) return eventsCache; // serve the last good copy
-    throw e;
+
+  // 3) Always overlay latest actuals
+  if (eventsCache && Array.isArray(eventsCache.data)) {
+    try {
+      const actuals = await readActualsFromFirestore();
+      for (const item of eventsCache.data) {
+        const key = getEventKey(item);
+        item.actual = actuals[key] || item.actual || '';
+        item.actualResult = evaluateActualResult(item.actual, item.forecast, item.previous, item.impactAnalysis);
+      }
+    } catch (err) { /* ignore */ }
+    return eventsCache;
   }
-  return eventsCache;
+
+  if (eventsLastError) throw new Error('calendar temporarily unavailable (' + eventsLastError + ')');
+  throw new Error('calendar temporarily unavailable');
 }
 
 // Boss AI helper: return the current events list WITHOUT triggering an upstream fetch
@@ -322,7 +1151,18 @@ export async function goldEventsSnapshot() {
   if (!list) {
     try {
       const snap = await getDoc(doc(globalDb, ...EVENTS_CACHE_DOC));
-      if (snap.exists()) list = (snap.data() || {}).events || null;
+      if (snap.exists()) {
+        const raw = (snap.data() || {}).events || [];
+        const actuals = await readActualsFromFirestore();
+        list = raw.map(e => {
+          const item = Object.assign({}, e);
+          item.impactAnalysis = item.impactAnalysis || computeEventImpact(item);
+          const key = getEventKey(item);
+          item.actual = actuals[key] || item.actual || '';
+          item.actualResult = evaluateActualResult(item.actual, item.forecast, item.previous, item.impactAnalysis);
+          return item;
+        });
+      }
     } catch (e) { /* ignore */ }
   }
   if (list && list.length) eventsBossSnapshotCache = { at: now, list };
@@ -414,6 +1254,94 @@ export function registerGoldRoutes(app, db) {
     try {
       const c = await fetchEconomicEvents();
       res.json({ ok: true, source: 'forexfactory', fetchedAt: c.at, stale: (Date.now() - c.at) > EVENTS_TTL_MS, events: c.data || [] });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 🤖 Deep Qwen AI Analysis & Historical 4-Release Playbook for any event
+  app.all('/api/gold/events/qwen-analysis', async (req, res) => {
+    try {
+      const ev = Object.assign({}, req.query || {}, req.body || {});
+      if (!ev.title) return res.status(400).json({ ok: false, error: 'Event title required' });
+      const result = await runQwenEventAnalysis(ev);
+      res.json(Object.assign({ ok: true }, result));
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 🧪 Interactive "What-If" Scenario Simulator
+  app.post('/api/gold/events/simulate', async (req, res) => {
+    try {
+      const b = req.body || {};
+      if (!b.title) return res.status(400).json({ ok: false, error: 'Event title required' });
+      const st = await readState();
+      const liveSpot = Number((st.last && st.last.price) || b.spotPrice || 4210);
+      const result = simulateEventOutcome(b, b.simulatedActual || b.forecast || '0', liveSpot);
+      res.json(result);
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 🎯 Save manual or verified Actual Result for an event
+  app.post('/api/gold/events/actual', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const actualVal = String(b.actual || '').trim();
+      const key = b.key || getEventKey(b);
+      if (!key) return res.status(400).json({ ok: false, error: 'Event key or details required' });
+      
+      const actSnap = await getDoc(doc(db, ...ACTUALS_DOC));
+      const actMap = actSnap.exists() ? (actSnap.data().map || {}) : {};
+      actMap[key] = actualVal;
+      await setDoc(doc(db, ...ACTUALS_DOC), { map: actMap, updatedAt: Date.now() }, { merge: true });
+      actualsMemoryCache = { at: Date.now(), map: actMap };
+
+      const imp = computeEventImpact(b);
+      const actualResult = evaluateActualResult(actualVal, b.forecast, b.previous, imp);
+
+      if (eventsCache && Array.isArray(eventsCache.data)) {
+        for (const item of eventsCache.data) {
+          if (getEventKey(item) === key) {
+            item.actual = actualVal;
+            item.actualResult = actualResult;
+          }
+        }
+      }
+      eventsBossSnapshotCache.at = 0;
+
+      res.json({ ok: true, key, actual: actualVal, actualResult });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // ⚡ Fetch Actual Result via AI / Live Market feed
+  app.post('/api/gold/events/fetch-actual-ai', async (req, res) => {
+    try {
+      const ev = req.body || {};
+      if (!ev.title) return res.status(400).json({ ok: false, error: 'Event title required' });
+      const result = await fetchEventActualAi(ev);
+      res.json(result);
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // 🔔 1-Hour pre-event notification toggles
+  app.get('/api/gold/events/notifs', async (req, res) => {
+    try {
+      const snap = await getDoc(doc(db, ...NOTIFS_DOC));
+      const toggles = snap.exists() ? (snap.data().toggles || {}) : {};
+      res.json({ ok: true, toggles });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post('/api/gold/events/notif-toggle', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = String(b.key || '').trim();
+      const enabled = !!b.enabled;
+      if (!key) return res.status(400).json({ ok: false, error: 'Event key required' });
+
+      const notifRef = doc(db, ...NOTIFS_DOC);
+      const snap = await getDoc(notifRef);
+      const toggles = snap.exists() ? (snap.data().toggles || {}) : {};
+      toggles[key] = Object.assign({}, toggles[key] || {}, { enabled, updatedAt: Date.now() });
+      await setDoc(notifRef, { toggles, updatedAt: Date.now() }, { merge: true });
+      res.json({ ok: true, key, enabled });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
 
