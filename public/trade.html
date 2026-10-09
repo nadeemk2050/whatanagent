@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TRADE ACCOUNTS DATA — Purchases & Sales Ledger</title>
+    <title>TRADE ACCOUNTS DATA — Purchases & Sales Ledger + AI Chat Extractor</title>
     <link rel="icon" type="image/png" href="/icon-192.png">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-main: #0b1120;
@@ -25,6 +25,8 @@
             --accent-cyan: #06b6d4;
             --accent-blue: #3b82f6;
             --gold-accent: #f59e0b;
+            --primary: #25D366;
+            --sidebar-bg: #111b21;
         }
 
         * {
@@ -44,20 +46,116 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* ===== Slide-out Sidebar Menu (Matching Admin Dashboard) ===== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -290px;
+            width: 275px;
+            height: 100vh;
+            background: #111b21;
+            box-shadow: 4px 0 25px rgba(0,0,0,0.7);
+            transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 2000;
+            padding: 18px 12px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            overflow-y: auto;
+            border-right: 1px solid #1e293b;
+        }
+        .sidebar.open {
+            left: 0;
+        }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(3px);
+            z-index: 1999;
+        }
+        .sidebar-backdrop.show {
+            display: block;
+        }
+        .sidebar-close {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            font-size: 15px;
+            cursor: pointer;
+            color: #94a3b8;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .sidebar-close:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.15);
+        }
+        .sidebar-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #38bdf8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 12px 12px 12px;
+            border-bottom: 1px solid #1e293b;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .menu-item {
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+        }
+        .menu-item:hover {
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            transform: translateX(3px);
+        }
+        .menu-item.active {
+            background: rgba(6, 182, 212, 0.14);
+            border-left: 4px solid #06b6d4;
+            color: #38bdf8;
+            font-weight: 700;
         }
 
         /* Top Header */
         header {
-            background: rgba(15, 23, 42, 0.9);
+            background: rgba(15, 23, 42, 0.92);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border-color);
-            padding: 12px 24px;
+            padding: 12px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             position: sticky;
             top: 0;
             z-index: 100;
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .brand-area {
@@ -66,11 +164,30 @@
             gap: 12px;
         }
 
+        .menu-hamburger-btn {
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            color: #f8fafc;
+            font-size: 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .menu-hamburger-btn:hover {
+            background: #334155;
+            color: #38bdf8;
+            border-color: #38bdf8;
+        }
+
         .brand-icon {
-            font-size: 26px;
+            font-size: 24px;
             background: linear-gradient(135deg, #059669, #0284c7);
-            width: 44px;
-            height: 44px;
+            width: 42px;
+            height: 42px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -79,7 +196,7 @@
         }
 
         .brand-title {
-            font-size: 19px;
+            font-size: 18px;
             font-weight: 800;
             letter-spacing: -0.5px;
             background: linear-gradient(135deg, #38bdf8, #a7f3d0, #facc15);
@@ -98,22 +215,24 @@
         .nav-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
         .btn {
             font-family: inherit;
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 700;
-            padding: 9px 18px;
-            border-radius: 10px;
+            padding: 8px 16px;
+            border-radius: 9px;
             border: none;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             text-decoration: none;
+            white-space: nowrap;
         }
 
         .btn-buy {
@@ -136,6 +255,16 @@
             box-shadow: 0 6px 20px rgba(244, 63, 94, 0.4);
         }
 
+        .btn-ai-scan {
+            background: linear-gradient(135deg, #6366f1, #0284c7);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+        }
+        .btn-ai-scan:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
         .btn-ghost {
             background: #1e293b;
             color: #cbd5e1;
@@ -148,17 +277,302 @@
 
         /* Container */
         .main-container {
-            flex: 1;
             max-width: 1750px;
-            width: 100%;
             margin: 0 auto;
-            padding: 20px 24px;
+            padding: 16px 20px 40px 20px;
+            width: 100%;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 18px;
         }
 
-        /* KPI Dashboard Bar */
+        /* ===== AI CHAT TRADE SCANNER & CHAT PICKER CARD ===== */
+        .ai-scanner-card {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 27, 75, 0.75));
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 16px;
+            padding: 18px 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ai-scanner-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #38bdf8, #818cf8, #34d399, #f59e0b);
+        }
+
+        .ai-scanner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .ai-scanner-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ai-scanner-title h3 {
+            font-size: 16px;
+            font-weight: 800;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ai-badge {
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid #6366f1;
+            color: #a5b4fc;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .ai-scanner-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .chat-selector-trigger {
+            flex: 1.8;
+            min-width: 260px;
+            background: #0f172a;
+            border: 1.5px solid rgba(99, 102, 241, 0.4);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13.5px;
+            font-weight: 600;
+        }
+        .chat-selector-trigger:hover {
+            border-color: #818cf8;
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.25);
+        }
+
+        .scan-limit-select, .scan-model-select {
+            background: #0f172a;
+            border: 1px solid var(--border-color);
+            color: #cbd5e1;
+            padding: 10px 12px;
+            border-radius: 10px;
+            font-size: 12.5px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .scan-progress-bar {
+            display: none;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            font-size: 12px;
+            color: #38bdf8;
+            align-items: center;
+            gap: 10px;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.04); }
+        }
+
+        .scanning-pulse {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #38bdf8;
+            animation: pulseGlow 1.2s infinite;
+        }
+
+        /* ===== 📥 DRAFTS SECTION (WAITING FOR BOSS CONFIRMATION) ===== */
+        .drafts-card {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(24, 24, 27, 0.9));
+            border: 1.5px solid rgba(245, 158, 11, 0.4);
+            border-radius: 16px;
+            padding: 18px 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .drafts-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .drafts-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .drafts-title h3 {
+            font-size: 16px;
+            font-weight: 800;
+            color: #fef08a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drafts-badge {
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid #f59e0b;
+            color: #fde68a;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11.5px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .drafts-actions-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .draft-item-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .draft-item-card:hover {
+            border-color: #64748b;
+            background: #131d33;
+        }
+
+        .draft-item-card.is-purchase {
+            border-left: 5px solid #10b981;
+        }
+        .draft-item-card.is-sale {
+            border-left: 5px solid #f43f5e;
+        }
+
+        .draft-top-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .draft-type-tag {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .draft-type-tag.buy {
+            background: var(--buy-bg);
+            border: 1px solid var(--buy-border);
+            color: #34d399;
+        }
+        .draft-type-tag.sale {
+            background: var(--sale-bg);
+            border: 1px solid var(--sale-border);
+            color: #fb7185;
+        }
+
+        .draft-source-tag {
+            font-size: 11.5px;
+            color: #94a3b8;
+            background: #1e293b;
+            padding: 2px 8px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .draft-details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px;
+            background: rgba(0,0,0,0.25);
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .draft-detail-col {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .draft-detail-col .label {
+            font-size: 10.5px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .draft-detail-col .val {
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #f8fafc;
+        }
+
+        .draft-evidence-box {
+            background: #090e17;
+            border-left: 3px solid #6366f1;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #cbd5e1;
+            font-style: italic;
+        }
+
+        .draft-bottom-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-top: 4px;
+        }
+
+        /* Top KPI Grid */
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -170,10 +584,13 @@
             border: 1px solid var(--border-color);
             border-radius: 14px;
             padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
             position: relative;
             overflow: hidden;
-            backdrop-filter: blur(10px);
-            transition: transform 0.2s;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            transition: transform 0.2s, border-color 0.2s;
         }
         .kpi-card:hover {
             transform: translateY(-2px);
@@ -181,22 +598,15 @@
 
         .kpi-card.buy-theme {
             border-left: 4px solid var(--buy-emerald);
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(6, 78, 59, 0.2));
         }
-
         .kpi-card.sale-theme {
             border-left: 4px solid var(--sale-rose);
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(136, 19, 55, 0.2));
         }
-
         .kpi-card.balance-theme {
             border-left: 4px solid var(--accent-cyan);
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(8, 145, 178, 0.2));
         }
-
         .kpi-card.profit-theme {
             border-left: 4px solid var(--gold-accent);
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(180, 83, 9, 0.2));
         }
 
         .kpi-header {
@@ -212,29 +622,26 @@
 
         .kpi-main-val {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 24px;
+            font-size: 23px;
             font-weight: 800;
-            margin-top: 6px;
             color: #fff;
+            letter-spacing: -0.5px;
         }
 
         .kpi-sub-val {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-            margin-top: 4px;
-            font-weight: 600;
+            font-size: 12px;
             color: var(--text-muted);
             display: flex;
             align-items: center;
             gap: 6px;
         }
 
-        /* Filter & Search Bar */
+        /* Filter Toolbar */
         .toolbar {
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 10px 16px;
+            border-radius: 14px;
+            padding: 12px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -245,12 +652,13 @@
         .search-box {
             display: flex;
             align-items: center;
+            gap: 8px;
             background: #1e293b;
             border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 6px 12px;
-            gap: 8px;
-            min-width: 280px;
+            padding: 7px 14px;
+            border-radius: 9px;
+            flex: 1;
+            min-width: 220px;
         }
 
         .search-box input {
@@ -258,9 +666,9 @@
             border: none;
             outline: none;
             color: #fff;
-            font-family: inherit;
             font-size: 13px;
             width: 100%;
+            font-family: inherit;
         }
 
         .filter-group {
@@ -273,20 +681,19 @@
         .date-input {
             background: #1e293b;
             border: 1px solid var(--border-color);
-            color: #e2e8f0;
-            padding: 6px 10px;
+            color: #fff;
+            padding: 7px 10px;
             border-radius: 8px;
             font-size: 12px;
-            outline: none;
             font-family: inherit;
+            outline: none;
         }
 
-        /* Dual Sheets Layout */
+        /* Dual Side-by-Side Ledger Sheets */
         .dual-sheets-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            align-items: start;
+            gap: 18px;
         }
 
         @media (max-width: 1100px) {
@@ -302,45 +709,39 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-        }
-
-        .sheet-card.buy-sheet {
-            border-top: 3px solid var(--buy-emerald);
-        }
-
-        .sheet-card.sale-sheet {
-            border-top: 3px solid var(--sale-rose);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
         }
 
         .sheet-header {
-            padding: 14px 20px;
+            padding: 14px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(30, 41, 59, 0.5);
             border-bottom: 1px solid var(--border-color);
+        }
+
+        .sheet-header.buy-header {
+            background: linear-gradient(135deg, rgba(6, 78, 59, 0.4), #0f172a);
+            border-bottom-color: var(--buy-border);
+        }
+
+        .sheet-header.sale-header {
+            background: linear-gradient(135deg, rgba(136, 19, 55, 0.4), #0f172a);
+            border-bottom-color: var(--sale-border);
         }
 
         .sheet-title {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 16px;
+            gap: 8px;
+            font-size: 15px;
             font-weight: 800;
-        }
-
-        .sheet-title.buy-title {
-            color: #34d399;
-        }
-
-        .sheet-title.sale-title {
-            color: #fb7185;
+            letter-spacing: -0.3px;
         }
 
         .sheet-sum-badge {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
+            font-size: 11.5px;
             padding: 4px 10px;
             border-radius: 8px;
             font-weight: 700;
@@ -361,13 +762,13 @@
         /* Table Styles */
         .table-responsive {
             overflow-x: auto;
-            max-height: 540px;
+            max-height: 560px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12.5px;
+            font-size: 12px;
             text-align: left;
         }
 
@@ -384,64 +785,59 @@
             color: var(--text-muted);
             border-bottom: 1px solid var(--border-color);
             text-transform: uppercase;
-            font-size: 11px;
+            font-size: 10.5px;
             letter-spacing: 0.4px;
             white-space: nowrap;
         }
 
         td {
-            padding: 10px 12px;
+            padding: 9px 12px;
             border-bottom: 1px solid rgba(51, 65, 85, 0.4);
             color: #e2e8f0;
             vertical-align: middle;
             white-space: nowrap;
         }
 
-        tbody tr {
-            transition: background 0.15s;
-        }
-
         tbody tr:hover {
-            background: rgba(51, 65, 85, 0.3);
+            background: rgba(30, 41, 59, 0.5);
         }
 
         .tag-item {
-            display: inline-block;
-            background: #1e293b;
+            font-weight: 700;
             color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.3);
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.3);
             padding: 2px 7px;
             border-radius: 6px;
-            font-weight: 700;
-            font-size: 11.5px;
+            font-size: 11px;
         }
 
         .num-font {
             font-family: 'JetBrains Mono', monospace;
-            font-weight: 700;
+            font-weight: 600;
         }
 
         .rate-cell {
-            color: #cbd5e1;
             font-family: 'JetBrains Mono', monospace;
+            color: #facc15;
+            font-weight: 600;
         }
 
         .amount-cell-buy {
-            color: #34d399;
             font-family: 'JetBrains Mono', monospace;
+            color: #34d399;
             font-weight: 800;
         }
 
         .amount-cell-sale {
-            color: #fb7185;
             font-family: 'JetBrains Mono', monospace;
+            color: #fb7185;
             font-weight: 800;
         }
 
         .action-btns {
             display: flex;
-            align-items: center;
-            gap: 6px;
+            gap: 4px;
         }
 
         .btn-icon {
@@ -472,9 +868,9 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.75);
+            background: rgba(0, 0, 0, 0.78);
             backdrop-filter: blur(8px);
-            z-index: 1000;
+            z-index: 3000;
             justify-content: center;
             align-items: center;
             padding: 16px;
@@ -485,9 +881,10 @@
             border: 1px solid var(--border-color);
             border-radius: 18px;
             width: 100%;
-            max-width: 540px;
-            overflow: hidden;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+            max-width: 560px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
             animation: modalPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
@@ -497,11 +894,15 @@
         }
 
         .modal-header {
-            padding: 16px 22px;
+            padding: 16px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: #0f172a;
+            z-index: 10;
         }
 
         .modal-header.buy-header {
@@ -515,10 +916,10 @@
         }
 
         .modal-body {
-            padding: 20px 22px;
+            padding: 18px 20px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 12px;
         }
 
         .form-row {
@@ -530,11 +931,11 @@
         .form-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
         }
 
-        .form-label {
-            font-size: 11.5px;
+        .form-group label {
+            font-size: 11px;
             font-weight: 700;
             color: var(--text-muted);
             text-transform: uppercase;
@@ -545,9 +946,9 @@
             background: #1e293b;
             border: 1px solid var(--border-color);
             color: #fff;
-            padding: 10px 12px;
+            padding: 9px 12px;
             border-radius: 8px;
-            font-size: 13.5px;
+            font-size: 13px;
             font-family: inherit;
             outline: none;
             transition: border-color 0.2s;
@@ -558,27 +959,25 @@
             box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
         }
 
-        /* LIVE AMOUNT CALCULATOR CALLOUT */
         .live-calc-box {
             background: #090e17;
             border: 2px dashed #0284c7;
             border-radius: 12px;
-            padding: 12px 16px;
+            padding: 10px 14px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 4px;
         }
 
         .live-calc-formula {
-            font-size: 11.5px;
+            font-size: 11px;
             color: #94a3b8;
             font-family: 'JetBrains Mono', monospace;
         }
 
         .live-calc-amount {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 900;
             color: #38bdf8;
             letter-spacing: -0.5px;
@@ -588,7 +987,7 @@
             display: flex;
             gap: 6px;
             flex-wrap: wrap;
-            margin-top: 4px;
+            margin-top: 2px;
         }
 
         .chip {
@@ -602,34 +1001,61 @@
             transition: all 0.15s;
         }
         .chip:hover {
-            background: #334155;
-            color: #38bdf8;
-            border-color: #38bdf8;
+            background: var(--accent-cyan);
+            color: #0b1120;
+            font-weight: 700;
         }
 
         .modal-footer {
-            padding: 14px 22px;
-            background: #1e293b;
-            border-top: 1px solid var(--border-color);
+            padding: 14px 20px;
             display: flex;
             justify-content: flex-end;
             gap: 10px;
+            border-top: 1px solid var(--border-color);
+            background: #0b1120;
+            position: sticky;
+            bottom: 0;
+            z-index: 10;
         }
 
-        /* Toast notification */
-        #toast {
+        /* WhatsApp Chat Selection Modal */
+        .chat-modal-list {
+            max-height: 400px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .chat-modal-item {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 10px 14px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .chat-modal-item:hover {
+            background: #334155;
+            border-color: #38bdf8;
+            transform: translateX(3px);
+        }
+
+        /* Toast */
+        .toast {
             position: fixed;
             bottom: 24px;
             right: 24px;
-            background: #0f172a;
-            border: 1px solid var(--accent-cyan);
+            background: #1e293b;
             color: #fff;
+            border: 1px solid var(--accent-cyan);
             padding: 12px 20px;
             border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             display: none;
-            align-items: center;
-            gap: 10px;
             z-index: 9999;
             font-weight: 600;
             font-size: 13px;
@@ -638,30 +1064,73 @@
 </head>
 <body>
 
-    <!-- Header Area -->
+    <!-- Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
+
+    <!-- ===== Slide-out Sidebar Menu (Connected to whole app) ===== -->
+    <div class="sidebar" id="sidebar">
+        <button class="sidebar-close" onclick="toggleSidebar()" title="Close Menu">✕</button>
+        <div class="sidebar-title">
+            <span>⚡ WhatAnAgent Menu</span>
+        </div>
+        <div class="menu-item" onclick="window.location.href='/admin.html'">🏠 Knowledge Base</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#waweb'" style="display:flex; justify-content:space-between; align-items:center; background: rgba(37, 211, 102, 0.08); border-left: 4px solid var(--primary);">
+            <span>🟢 WhatsApp Web</span>
+            <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
+        </div>
+        <div class="menu-item" onclick="window.location.href='/live.html'" style="display:flex; justify-content:space-between; align-items:center; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #ef4444; cursor:pointer;">
+            <span>🔴 Live Streaming Board</span>
+            <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#ef4444; color:#fff; font-weight:bold;">STREAMING</span>
+        </div>
+        <div class="menu-item active" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>📊 Trade Accounts</span>
+            <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#06b6d4; color:#fff; font-weight:bold;">LEDGER</span>
+        </div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#followup'">📅 Follow Ups</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#commandcenter'">⚡ Tasks & Command Center 2.0</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#notebook'">📓 Note Book</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#brains'">🧠 Contact Brains</div>
+        <div class="menu-item" onclick="window.open('/aligntasks/','_blank')">📋 AlignTasks</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#contactbook'">📇 Contact Book</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#leadsbook'">📈 Leads Book</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#seo'">🔎 SEO Agent</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#news'">📰 News & Info Collection</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#gold'">🥇 Gold Market</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#env'">⚙️ Env Settings</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#profile'">👤 My Profile</div>
+        <div class="menu-item" onclick="window.location.href='/admin.html#logout'" style="color: #f43f5e; margin-top: auto;">🚪 Back to Admin</div>
+    </div>
+
+    <!-- Top Header -->
     <header>
         <div class="brand-area">
-            <div class="brand-icon">📈</div>
+            <button class="menu-hamburger-btn" onclick="toggleSidebar()" title="Toggle Menu Drawer">
+                ☰
+            </button>
+            <div class="brand-icon">📊</div>
             <div>
                 <div class="brand-title">TRADE ACCOUNTS DATA</div>
-                <div class="brand-subtitle">Purchases & Sales Live Ledger (TT · Gold · Currency · Items)</div>
+                <div class="brand-subtitle">Purchases & Sales Ledger + AI Chat Extractor</div>
             </div>
         </div>
 
         <div class="nav-actions">
+            <button class="btn btn-ai-scan" onclick="openChatSelectorModal()">
+                <span>🤖 Select WhatsApp Chat & Scan</span>
+            </button>
             <button class="btn btn-buy" onclick="openTradeModal('purchase')">
-                <span>➕ PURCHASE PCS</span>
+                <span>➕ RECORD PURCHASE</span>
             </button>
             <button class="btn btn-sale" onclick="openTradeModal('sale')">
-                <span>➕ SALES PCS</span>
+                <span>➕ RECORD SALE</span>
             </button>
-            <button class="btn btn-ghost" onclick="exportTradeDataToCSV()" title="Export all ledger to CSV">
+            <button class="btn btn-ghost" onclick="exportTradeDataToCSV()" title="Export ledger to CSV">
                 <span>📥 Export CSV</span>
             </button>
-            <a href="/admin.html" class="btn btn-ghost" title="Back to Admin Dashboard">
-                <span>⚙️ Admin</span>
+            <a href="/admin.html" class="btn btn-ghost" title="Admin Dashboard">
+                <span>⚙️ Dashboard</span>
             </a>
-            <a href="/live.html" class="btn btn-ghost" title="Open Live Meeting Board">
+            <a href="/live.html" class="btn btn-ghost" title="Live Board">
                 <span>🔴 Live Board</span>
             </a>
         </div>
@@ -670,7 +1139,83 @@
     <!-- Main Content -->
     <div class="main-container">
 
-        <!-- Top KPI Sums -->
+        <!-- ===== 1. AI CHAT TRADE EXTRACTOR CARD ===== -->
+        <div class="ai-scanner-card">
+            <div class="ai-scanner-header">
+                <div class="ai-scanner-title">
+                    <span style="font-size:20px;">🧠</span>
+                    <h3>AI WhatsApp Chat Trade Extractor</h3>
+                    <span class="ai-badge">Automated Buy &amp; Sell Detection</span>
+                </div>
+                <div style="font-size:12px; color:#94a3b8;">
+                    Select any WhatsApp group or individual chat to extract all past trade deals into draft holding queue.
+                </div>
+            </div>
+
+            <div class="ai-scanner-controls">
+                <div class="chat-selector-trigger" id="selectedChatTrigger" onclick="openChatSelectorModal()">
+                    <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                        <span id="selectedChatIcon">💬</span>
+                        <span id="selectedChatLabel" style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Click to Select WhatsApp Group or Chat...</span>
+                    </div>
+                    <span style="font-size:11px; color:#a5b4fc; background:#1e1b4b; padding:2px 8px; border-radius:6px;">Change ▼</span>
+                </div>
+
+                <select id="scanMessageLimit" class="scan-limit-select" title="Number of chat messages to analyze">
+                    <option value="100">Last 100 Messages</option>
+                    <option value="250" selected>Last 250 Messages</option>
+                    <option value="500">Last 500 Messages (Deep Scan)</option>
+                </select>
+
+                <select id="scanModelSelect" class="scan-model-select" title="AI Model Engine">
+                    <option value="gemini" selected>⚡ Gemini 2.5 Flash</option>
+                    <option value="deepseek">🤖 DeepSeek Chat</option>
+                    <option value="qwen">🌐 Qwen 3.8 Flash</option>
+                    <option value="openai">✨ GPT-4o Mini</option>
+                </select>
+
+                <button class="btn btn-ai-scan" id="runAiScanBtn" onclick="runAiChatScan()">
+                    <span>⚡ Scan &amp; Extract Trades</span>
+                </button>
+            </div>
+
+            <div class="scan-progress-bar" id="scanProgressBar">
+                <div class="scanning-pulse"></div>
+                <span id="scanProgressText">AI is analyzing conversation history and extracting TT/Metal trade transactions...</span>
+            </div>
+        </div>
+
+        <!-- ===== 2. 📥 DRAFTS SECTION (PENDING BOSS CONFIRMATION) ===== -->
+        <div class="drafts-card" id="draftsSection">
+            <div class="drafts-header">
+                <div class="drafts-title">
+                    <span style="font-size:22px;">📥</span>
+                    <h3>Pending Trade Drafts (Waiting for Boss Confirmation)</h3>
+                    <span class="drafts-badge" id="draftsCountBadge">0 Drafts</span>
+                </div>
+
+                <div class="drafts-actions-bar" id="draftsBulkBar" style="display:none;">
+                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#34d399;" onclick="bulkApproveDrafts('purchase')">
+                        <span>🟢 Approve All as Purchases</span>
+                    </button>
+                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#fb7185;" onclick="bulkApproveDrafts('sale')">
+                        <span>🔴 Approve All as Sales</span>
+                    </button>
+                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#f43f5e;" onclick="clearAllDrafts()">
+                        <span>🗑️ Dismiss All</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Drafts Queue Container -->
+            <div id="draftsListContainer" style="display:flex; flex-direction:column; gap:10px;">
+                <div style="text-align:center; padding:24px; color:#64748b; font-size:13px; background:rgba(0,0,0,0.2); border-radius:10px; border:1px dashed #334155;">
+                    No pending trade drafts. Select a WhatsApp group or chat above and click <b>Scan &amp; Extract Trades</b> to automatically populate this queue for review.
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 3. TOP KPI CARDS ===== -->
         <div class="kpi-grid">
             <!-- 1. Total Purchases -->
             <div class="kpi-card buy-theme">
@@ -723,7 +1268,7 @@
             </div>
         </div>
 
-        <!-- Filter & Search Toolbar -->
+        <!-- ===== 4. FILTER & SEARCH TOOLBAR ===== -->
         <div class="toolbar">
             <div class="search-box">
                 <span>🔍</span>
@@ -740,24 +1285,24 @@
                 <button class="btn btn-ghost" style="padding:6px 12px; font-size:12px;" onclick="resetDateFilter()">
                     <span>Reset Date</span>
                 </button>
-                <button class="btn btn-ghost" style="padding:6px 12px; font-size:12px;" onclick="loadTradeEntries(true)">
+                <button class="btn btn-ghost" style="padding:6px 12px; font-size:12px;" onclick="loadTradeEntries(true); loadTradeDrafts(true);">
                     <span>🔄 Refresh</span>
                 </button>
             </div>
         </div>
 
-        <!-- Dual Side-by-Side Sheets -->
+        <!-- ===== 5. DUAL SIDE-BY-SIDE SHEETS ===== -->
         <div class="dual-sheets-container">
 
             <!-- LEFT SHEET: PURCHASES (BUYS) -->
-            <div class="sheet-card buy-sheet">
-                <div class="sheet-header">
-                    <div class="sheet-title buy-title">
+            <div class="sheet-card">
+                <div class="sheet-header buy-header">
+                    <div class="sheet-title">
                         <span>🟢</span>
-                        <span>PURCHASES (BUYS) LEDGER</span>
+                        <span>PURCHASES LEDGER (BUYS)</span>
                     </div>
                     <div class="sheet-sum-badge buy-badge" id="leftBuySummaryBadge">
-                        Qty: 0 PCS · Amount: 0.00 AED
+                        Qty: 0 · Amount: 0.00 AED
                     </div>
                 </div>
 
@@ -766,19 +1311,17 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Item Name</th>
-                                <th>Party / Source</th>
-                                <th style="text-align:right;">Qtty</th>
+                                <th>Item / TT</th>
+                                <th>Vendor / Party</th>
+                                <th style="text-align:right;">Quantity</th>
                                 <th style="text-align:right;">Rate</th>
-                                <th style="text-align:right;">Total Amount</th>
-                                <th style="text-align:center;">Actions</th>
+                                <th style="text-align:right;">Amount</th>
+                                <th style="text-align:center;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="purchaseTableBody">
                             <tr>
-                                <td colspan="7" style="text-align:center; padding:30px; color:#64748b;">
-                                    No purchase entries recorded yet. Click <b>"+ PURCHASE PCS"</b> above.
-                                </td>
+                                <td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Loading purchases...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -786,14 +1329,14 @@
             </div>
 
             <!-- RIGHT SHEET: SALES (SELLS) -->
-            <div class="sheet-card sale-sheet">
-                <div class="sheet-header">
-                    <div class="sheet-title sale-title">
+            <div class="sheet-card">
+                <div class="sheet-header sale-header">
+                    <div class="sheet-title">
                         <span>🔴</span>
-                        <span>SALES (SELLS) LEDGER</span>
+                        <span>SALES LEDGER (SELLS)</span>
                     </div>
                     <div class="sheet-sum-badge sale-badge" id="rightSaleSummaryBadge">
-                        Qty: 0 PCS · Amount: 0.00 AED
+                        Qty: 0 · Amount: 0.00 AED
                     </div>
                 </div>
 
@@ -802,19 +1345,17 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Item Name</th>
-                                <th>Customer / Party</th>
-                                <th style="text-align:right;">Qtty</th>
+                                <th>Item / TT</th>
+                                <th>Buyer / Customer</th>
+                                <th style="text-align:right;">Quantity</th>
                                 <th style="text-align:right;">Rate</th>
-                                <th style="text-align:right;">Total Amount</th>
-                                <th style="text-align:center;">Actions</th>
+                                <th style="text-align:right;">Amount</th>
+                                <th style="text-align:center;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="saleTableBody">
                             <tr>
-                                <td colspan="7" style="text-align:center; padding:30px; color:#64748b;">
-                                    No sales entries recorded yet. Click <b>"+ SALES PCS"</b> above.
-                                </td>
+                                <td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Loading sales...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -825,106 +1366,109 @@
 
     </div>
 
-    <!-- ADD / EDIT TRADE MODAL -->
+    <!-- ===== RECORD / EDIT TRADE MODAL ===== -->
     <div class="modal-overlay" id="tradeModal">
         <div class="modal-card">
-            
             <div class="modal-header" id="modalHeader">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span id="modalIcon" style="font-size:20px;">➕</span>
-                    <span id="modalTitle" style="font-size:16px; font-weight:800;">Add Purchase Entry</span>
+                    <span id="modalIcon">➕</span>
+                    <h3 id="modalTitle" style="font-size:16px; font-weight:800;">Record Trade Entry</h3>
                 </div>
-                <button onclick="closeTradeModal()" style="background:transparent; border:none; color:#94a3b8; font-size:22px; cursor:pointer;" onmouseover="this.style.color='#fff';" onmouseout="this.style.color='#94a3b8';">✖</button>
+                <button class="sidebar-close" onclick="closeTradeModal()" style="position:static; width:26px; height:26px;">✕</button>
             </div>
 
             <div class="modal-body">
                 <input type="hidden" id="editEntryId" value="">
                 <input type="hidden" id="entryType" value="purchase">
 
-                <!-- Row 1: Date & Currency -->
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Date</label>
-                        <input type="date" id="entryDate" class="form-control" required>
+                        <label>Date</label>
+                        <input type="date" id="entryDate" class="form-control">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Currency</label>
-                        <select id="entryCurrency" class="form-control" onchange="calcLiveAmount()">
+                        <label>Currency</label>
+                        <select id="entryCurrency" class="form-control">
                             <option value="AED" selected>AED (UAE Dirham)</option>
                             <option value="USD">USD (US Dollar)</option>
+                            <option value="INR">INR (Indian Rupee)</option>
                             <option value="SAR">SAR (Saudi Riyal)</option>
                             <option value="EUR">EUR (Euro)</option>
-                            <option value="INR">INR (Indian Rupee)</option>
-                            <option value="PKR">PKR (Pakistani Rupee)</option>
                         </select>
                     </div>
                 </div>
 
-                <!-- Row 2: Item Name + Quick Chips -->
                 <div class="form-group">
-                    <label class="form-label">Item Name</label>
-                    <input type="text" id="entryItemName" class="form-control" placeholder="e.g. TT Transfer, Gold Bar 100g, TT Exchange" required>
+                    <label>Item / Commodity Name</label>
+                    <input type="text" id="entryItemName" class="form-control" placeholder="e.g. TT, Gold 995, Copper Scrap, Lead Scrap" list="commonItemsList">
+                    <datalist id="commonItemsList">
+                        <option value="TT">
+                        <option value="Gold 995">
+                        <option value="Gold 9999 (Kilo Bar)">
+                        <option value="Gold Tola (TT Bar)">
+                        <option value="Scrap Copper (Millberry)">
+                        <option value="Scrap Brass (Honey)">
+                        <option value="Scrap Aluminium">
+                        <option value="Scrap Lead">
+                        <option value="Battery Scrap">
+                        <option value="Zinc Scrap">
+                    </datalist>
                     <div class="chips-list">
-                        <span class="chip" onclick="setItemName('TT Transfer')">TT Transfer</span>
-                        <span class="chip" onclick="setItemName('TT USD')">TT USD</span>
-                        <span class="chip" onclick="setItemName('100g Gold Bar')">100g Gold Bar</span>
-                        <span class="chip" onclick="setItemName('1kg Gold Bar')">1kg Gold Bar</span>
-                        <span class="chip" onclick="setItemName('1 Tola TT Bar')">1 Tola TT Bar</span>
-                        <span class="chip" onclick="setItemName('USD Cash')">USD Cash</span>
+                        <span class="chip" onclick="setItemShortcut('TT', 'PCS')">⚡ TT (PCS)</span>
+                        <span class="chip" onclick="setItemShortcut('Gold 995', 'GMS')">🥇 Gold 995 (GMS)</span>
+                        <span class="chip" onclick="setItemShortcut('Gold 9999 (Kilo Bar)', 'BARS')">🥇 Kilo Bar</span>
+                        <span class="chip" onclick="setItemShortcut('Scrap Copper', 'KG')">🔩 Scrap Copper</span>
                     </div>
                 </div>
 
-                <!-- Row 3: Party Name & Unit -->
+                <div class="form-group">
+                    <label id="partyLabel">Party / Vendor / Customer</label>
+                    <input type="text" id="entryPartyName" class="form-control" placeholder="e.g. Al Saham, Emirates Gold, Ali Trader">
+                </div>
+
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label" id="partyLabel">Party / Account / Client</label>
-                        <input type="text" id="entryPartyName" class="form-control" placeholder="e.g. Al Shams Gold, Bank ABC, John">
+                        <label>Quantity</label>
+                        <input type="number" step="any" id="entryQuantity" class="form-control num-font" placeholder="0" oninput="calcLiveAmount()">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Unit Type</label>
-                        <select id="entryUnit" class="form-control" onchange="calcLiveAmount()">
-                            <option value="PCS" selected>PCS (Pieces)</option>
-                            <option value="Grams">Grams (g)</option>
-                            <option value="KGs">KGs (Kilograms)</option>
-                            <option value="TT">TT (Transfers)</option>
-                            <option value="Units">Units</option>
+                        <label>Unit</label>
+                        <select id="entryUnit" class="form-control">
+                            <option value="PCS" selected>PCS (Pieces / TT)</option>
+                            <option value="KG">KG (Kilograms)</option>
+                            <option value="GMS">GMS (Grams)</option>
+                            <option value="TOLAS">TOLAS (11.664g)</option>
+                            <option value="BARS">BARS</option>
+                            <option value="MT">MT (Metric Tons)</option>
+                            <option value="LBS">LBS</option>
                         </select>
                     </div>
                 </div>
 
-                <!-- Row 4: Quantity & Rate -->
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Quantity (Qtty / Pcs)</label>
-                        <input type="number" step="any" id="entryQuantity" class="form-control" placeholder="0" oninput="calcLiveAmount()" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Rate / Unit Price</label>
-                        <input type="number" step="any" id="entryRate" class="form-control" placeholder="0.00" oninput="calcLiveAmount()" required>
-                    </div>
+                <div class="form-group">
+                    <label>Rate / Price Per Unit</label>
+                    <input type="number" step="any" id="entryRate" class="form-control num-font" placeholder="0.00" oninput="calcLiveAmount()">
                 </div>
 
-                <!-- LIVE AMOUNT DISPLAY -->
+                <!-- Live Auto Amount Callout -->
                 <div class="live-calc-box">
                     <div>
-                        <div style="font-size:11px; font-weight:700; color:#38bdf8; text-transform:uppercase;">Live Calculated Total</div>
-                        <div class="live-calc-formula" id="liveCalcFormula">0 PCS × 0.00 =</div>
+                        <div style="font-size:10.5px; font-weight:700; color:#94a3b8; text-transform:uppercase;">Calculated Amount</div>
+                        <div class="live-calc-formula" id="calcFormulaDisplay">0 × 0 =</div>
                     </div>
-                    <div class="live-calc-amount" id="liveCalcTotal">0.00 AED</div>
+                    <div class="live-calc-amount" id="calcAmountDisplay">0.00 AED</div>
                 </div>
 
-                <!-- Row 5: Notes & Ref -->
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Reference / Ref No.</label>
-                        <input type="text" id="entryRefNo" class="form-control" placeholder="e.g. TT-8891, Inv #402">
+                        <label>Ref / TT / Invoice # (Optional)</label>
+                        <input type="text" id="entryRefNo" class="form-control" placeholder="e.g. TT-8491, INV-2026">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Notes / Remarks</label>
-                        <input type="text" id="entryNotes" class="form-control" placeholder="Optional comments...">
+                        <label>Notes / Context (Optional)</label>
+                        <input type="text" id="entryNotes" class="form-control" placeholder="e.g. Paid in cash / booked rate">
                     </div>
                 </div>
-
             </div>
 
             <div class="modal-footer">
@@ -933,69 +1477,111 @@
                     <span>💾 Save Entry</span>
                 </button>
             </div>
+        </div>
+    </div>
 
+    <!-- ===== WHATSAPP CHAT / GROUP SELECTOR MODAL ===== -->
+    <div class="modal-overlay" id="chatSelectorModal">
+        <div class="modal-card" style="max-width:500px;">
+            <div class="modal-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:20px;">💬</span>
+                    <h3 style="font-size:16px; font-weight:800;">Select WhatsApp Chat or Group</h3>
+                </div>
+                <button class="sidebar-close" onclick="closeChatSelectorModal()" style="position:static; width:26px; height:26px;">✕</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="search-box" style="margin-bottom:6px;">
+                    <span>🔍</span>
+                    <input type="text" id="chatModalSearchInput" placeholder="Search contact, phone or group name..." oninput="filterChatModalList()">
+                </div>
+
+                <div class="chat-modal-list" id="chatModalList">
+                    <div style="text-align:center; padding:30px; color:#64748b;">Loading WhatsApp chats...</div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeChatSelectorModal()">Close</button>
+            </div>
         </div>
     </div>
 
     <!-- Toast Notification -->
-    <div id="toast">
-        <span id="toastIcon">✅</span>
-        <span id="toastText">Saved successfully!</span>
-    </div>
+    <div class="toast" id="toastBox">Notification message</div>
 
+    <!-- ===== SCRIPT ===== -->
     <script>
         let allPurchases = [];
         let allSales = [];
+        let allDrafts = [];
         let currentSummary = {};
+        let waChatsCache = [];
+        let activeSelectedChat = null;
 
-        // Format number with commas
+        // Toggle Slide-out Sidebar
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const bd = document.getElementById('sidebarBackdrop');
+            if (!sb) return;
+            const isOpen = sb.classList.contains('open');
+            if (isOpen) {
+                sb.classList.remove('open');
+                if (bd) bd.classList.remove('show');
+            } else {
+                sb.classList.add('open');
+                if (bd) bd.classList.add('show');
+            }
+        }
+
+        // Format Numbers
         function fmt(n, decimals = 2) {
-            if (n === null || n === undefined || isNaN(n)) return '0.00';
-            return parseFloat(n).toLocaleString('en-US', {
-                minimumFractionDigits: decimals,
-                maximumFractionDigits: decimals
-            });
+            const num = parseFloat(n);
+            if (isNaN(num)) return '0.00';
+            return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
         }
 
-        // Show toast
-        function showToast(msg, icon = '✅') {
-            const t = document.getElementById('toast');
-            document.getElementById('toastIcon').textContent = icon;
-            document.getElementById('toastText').textContent = msg;
-            t.style.display = 'flex';
-            setTimeout(() => { t.style.display = 'none'; }, 3500);
+        // Show Toast
+        function showToast(msg, duration = 3000) {
+            const t = document.getElementById('toastBox');
+            if (!t) return;
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => { t.style.display = 'none'; }, duration);
         }
 
-        // Calculate live amount
+        // Shortcut item setter
+        function setItemShortcut(name, unit) {
+            document.getElementById('entryItemName').value = name;
+            document.getElementById('entryUnit').value = unit;
+            calcLiveAmount();
+        }
+
+        // Live Calculate Amount in Modal
         function calcLiveAmount() {
             const q = parseFloat(document.getElementById('entryQuantity').value) || 0;
             const r = parseFloat(document.getElementById('entryRate').value) || 0;
-            const u = document.getElementById('entryUnit').value || 'PCS';
-            const c = document.getElementById('entryCurrency').value || 'AED';
+            const curr = document.getElementById('entryCurrency').value || 'AED';
+            const total = Math.round((q * r) * 100) / 100;
 
-            const total = q * r;
-            document.getElementById('liveCalcFormula').textContent = `${fmt(q, 3)} ${u} × ${fmt(r, 2)} =`;
-            document.getElementById('liveCalcTotal').textContent = `${fmt(total, 2)} ${c}`;
+            document.getElementById('calcFormulaDisplay').textContent = `${q} × ${r} =`;
+            document.getElementById('calcAmountDisplay').textContent = `${fmt(total)} ${curr}`;
         }
 
-        function setItemName(name) {
-            document.getElementById('entryItemName').value = name;
-        }
-
-        // Open modal
+        // Open/Close Manual Modal
         function openTradeModal(type = 'purchase', existing = null) {
             const modal = document.getElementById('tradeModal');
             const header = document.getElementById('modalHeader');
             const submitBtn = document.getElementById('modalSubmitBtn');
-            const entryType = document.getElementById('entryType');
-
-            entryType.value = type;
+            
+            document.getElementById('entryType').value = type;
 
             if (type === 'purchase') {
                 header.className = 'modal-header buy-header';
                 document.getElementById('modalIcon').textContent = '🟢';
                 document.getElementById('modalTitle').textContent = existing ? 'Edit Purchase Entry' : '➕ Record Purchase (Buy)';
-                document.getElementById('partyLabel').textContent = 'Supplier / Source / Bank';
+                document.getElementById('partyLabel').textContent = 'Vendor / Supplier / Party';
                 submitBtn.className = 'btn btn-buy';
             } else {
                 header.className = 'modal-header sale-header';
@@ -1038,7 +1624,7 @@
             document.getElementById('tradeModal').style.display = 'none';
         }
 
-        // Submit Entry
+        // Submit Manual Entry
         async function submitTradeEntry() {
             const editId = document.getElementById('editEntryId').value;
             const type = document.getElementById('entryType').value;
@@ -1133,7 +1719,347 @@
             }
         }
 
-        // Fetch & Render
+        // ===== 💬 WHATSAPP CHAT SELECTOR MODAL & LOGIC =====
+        async function openChatSelectorModal() {
+            const m = document.getElementById('chatSelectorModal');
+            if (m) m.style.display = 'flex';
+            if (waChatsCache.length === 0) {
+                await loadWhatsAppChats();
+            } else {
+                renderChatModalList(waChatsCache);
+            }
+        }
+
+        function closeChatSelectorModal() {
+            const m = document.getElementById('chatSelectorModal');
+            if (m) m.style.display = 'none';
+        }
+
+        async function loadWhatsAppChats() {
+            const host = document.getElementById('chatModalList');
+            try {
+                const res = await fetch('/api/trade/chats');
+                const data = await res.json();
+                if (data.ok && data.chats) {
+                    waChatsCache = data.chats || [];
+                    renderChatModalList(waChatsCache);
+                } else {
+                    host.innerHTML = `<div style="text-align:center; padding:20px; color:#f43f5e;">Could not load chats. Make sure WhatsApp is connected.</div>`;
+                }
+            } catch (e) {
+                host.innerHTML = `<div style="text-align:center; padding:20px; color:#f43f5e;">Error: ${e.message}</div>`;
+            }
+        }
+
+        function renderChatModalList(chats) {
+            const host = document.getElementById('chatModalList');
+            if (!host) return;
+
+            if (!chats || chats.length === 0) {
+                host.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8;">No chats found.</div>`;
+                return;
+            }
+
+            host.innerHTML = chats.map(c => {
+                const isGroup = c.isGroup || (c.id && c.id.includes('@g.us'));
+                const icon = isGroup ? '👥' : '👤';
+                const typeBadge = isGroup ? '<span style="font-size:10px; background:#1e1b4b; color:#a5b4fc; padding:2px 6px; border-radius:4px; font-weight:bold;">GROUP</span>' : '<span style="font-size:10px; background:#064e3b; color:#6ee7b7; padding:2px 6px; border-radius:4px; font-weight:bold;">PRIVATE</span>';
+                
+                return `
+                    <div class="chat-modal-item" onclick="selectChatForScan('${c.id}', '${escapeAttr(c.name || c.id)}', ${isGroup})">
+                        <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
+                            <span style="font-size:18px;">${icon}</span>
+                            <div style="overflow:hidden;">
+                                <div style="font-weight:700; color:#f8fafc; font-size:13px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(c.name || c.id)}</div>
+                                <div style="font-size:11px; color:#94a3b8; font-family:monospace;">${c.phone || c.id}</div>
+                            </div>
+                        </div>
+                        <div>${typeBadge}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterChatModalList() {
+            const q = (document.getElementById('chatModalSearchInput').value || '').toLowerCase().trim();
+            if (!q) {
+                renderChatModalList(waChatsCache);
+                return;
+            }
+            const filtered = waChatsCache.filter(c => 
+                (c.name && c.name.toLowerCase().includes(q)) ||
+                (c.id && c.id.toLowerCase().includes(q)) ||
+                (c.phone && c.phone.includes(q))
+            );
+            renderChatModalList(filtered);
+        }
+
+        function selectChatForScan(chatId, chatName, isGroup) {
+            activeSelectedChat = { id: chatId, name: chatName, isGroup };
+            document.getElementById('selectedChatIcon').textContent = isGroup ? '👥' : '👤';
+            document.getElementById('selectedChatLabel').innerHTML = `<b>${escapeHtml(chatName)}</b> <small style="color:#94a3b8; margin-left:4px;">(${chatId})</small>`;
+            closeChatSelectorModal();
+            showToast(`Selected: ${chatName}`);
+        }
+
+        function escapeHtml(s) {
+            return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        }
+
+        function escapeAttr(s) {
+            return String(s || '').replace(/'/g, "\\'");
+        }
+
+        // ===== 🤖 RUN AI CHAT TRADE SCANNER =====
+        async function runAiChatScan() {
+            if (!activeSelectedChat || !activeSelectedChat.id) {
+                openChatSelectorModal();
+                showToast('Please select a WhatsApp chat or group first.');
+                return;
+            }
+
+            const limit = document.getElementById('scanMessageLimit').value || '250';
+            const model = document.getElementById('scanModelSelect').value || 'gemini';
+            const btn = document.getElementById('runAiScanBtn');
+            const progress = document.getElementById('scanProgressBar');
+            const progressText = document.getElementById('scanProgressText');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳ Scanning Chat...</span>';
+            progress.style.display = 'flex';
+            progressText.textContent = `Analyzing conversation in "${activeSelectedChat.name}" with ${model.toUpperCase()}...`;
+
+            try {
+                const res = await fetch('/api/trade/scan-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chatId: activeSelectedChat.id,
+                        chatName: activeSelectedChat.name,
+                        messageLimit: limit,
+                        preferredModel: model
+                    })
+                });
+
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(`✅ Scan Complete: Found ${data.draftsFound} trade transactions!`, 4000);
+                    await loadTradeDrafts(true);
+                } else {
+                    alert('AI Scan Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Scan network error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>⚡ Scan &amp; Extract Trades</span>';
+                progress.style.display = 'none';
+            }
+        }
+
+        // ===== 📥 DRAFTS MANAGEMENT (FETCH, RENDER, APPROVE, DISMISS) =====
+        async function loadTradeDrafts(forceFresh = false) {
+            try {
+                const res = await fetch(`/api/trade/drafts?fresh=${forceFresh ? 'true' : 'false'}`);
+                const data = await res.json();
+                if (data.ok) {
+                    allDrafts = data.drafts || [];
+                    renderDrafts();
+                }
+            } catch (e) {
+                console.warn('[DRAFTS LOAD ERROR]', e);
+            }
+        }
+
+        function renderDrafts() {
+            const host = document.getElementById('draftsListContainer');
+            const countBadge = document.getElementById('draftsCountBadge');
+            const bulkBar = document.getElementById('draftsBulkBar');
+            if (!host) return;
+
+            countBadge.textContent = `${allDrafts.length} Drafts`;
+
+            if (allDrafts.length === 0) {
+                bulkBar.style.display = 'none';
+                host.innerHTML = `
+                    <div style="text-align:center; padding:24px; color:#64748b; font-size:13px; background:rgba(0,0,0,0.2); border-radius:10px; border:1px dashed #334155;">
+                        No pending trade drafts. Select a WhatsApp group or chat above and click <b>Scan &amp; Extract Trades</b> to automatically populate this queue for review.
+                    </div>
+                `;
+                return;
+            }
+
+            bulkBar.style.display = 'flex';
+
+            host.innerHTML = allDrafts.map(d => {
+                const isBuy = (d.type || 'purchase').toLowerCase() === 'purchase';
+                const typeClass = isBuy ? 'is-purchase' : 'is-sale';
+                const tagClass = isBuy ? 'buy' : 'sale';
+                const typeLabel = isBuy ? '🟢 PROPOSED PURCHASE (BUY)' : '🔴 PROPOSED SALE (SELL)';
+                const amountFormatted = fmt(d.amount || (d.quantity * d.rate));
+
+                return `
+                    <div class="draft-item-card ${typeClass}" id="draftCard_${d.id}">
+                        <div class="draft-top-row">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="draft-type-tag ${tagClass}">${typeLabel}</span>
+                                <span class="draft-source-tag">💬 ${escapeHtml(d.sourceChatName || 'WhatsApp')}</span>
+                                ${d.confidence ? `<span style="font-size:10.5px; color:#a5b4fc;">⚡ ${d.confidence} confidence</span>` : ''}
+                            </div>
+                            <div style="font-size:11.5px; color:#94a3b8; font-family:monospace;">${d.date || ''}</div>
+                        </div>
+
+                        <div class="draft-details-grid">
+                            <div class="draft-detail-col">
+                                <span class="label">Item Name</span>
+                                <span class="val" style="color:#38bdf8;">${escapeHtml(d.itemName || 'TT')}</span>
+                            </div>
+                            <div class="draft-detail-col">
+                                <span class="label">Party / Client</span>
+                                <span class="val">${escapeHtml(d.partyName || 'Counterparty')}</span>
+                            </div>
+                            <div class="draft-detail-col">
+                                <span class="label">Quantity</span>
+                                <span class="val num-font">${fmt(d.quantity, 3)} <small style="color:#94a3b8;">${d.unit || 'PCS'}</small></span>
+                            </div>
+                            <div class="draft-detail-col">
+                                <span class="label">Rate</span>
+                                <span class="val num-font" style="color:#facc15;">${fmt(d.rate, 2)}</span>
+                            </div>
+                            <div class="draft-detail-col">
+                                <span class="label">Calculated Amount</span>
+                                <span class="val num-font" style="color:${isBuy ? '#34d399' : '#fb7185'};">${amountFormatted} <small>${d.currency || 'AED'}</small></span>
+                            </div>
+                            ${d.refNo ? `
+                            <div class="draft-detail-col">
+                                <span class="label">Ref / TT #</span>
+                                <span class="val" style="color:#cbd5e1;">#${escapeHtml(d.refNo)}</span>
+                            </div>` : ''}
+                        </div>
+
+                        ${d.evidenceQuote ? `
+                        <div class="draft-evidence-box">
+                            <span>💬 Quote: "${escapeHtml(d.evidenceQuote)}"</span>
+                        </div>` : ''}
+
+                        <div class="draft-bottom-bar">
+                            <div style="font-size:12px; color:#94a3b8;">
+                                ${d.notes ? `<span>Note: ${escapeHtml(d.notes)}</span>` : ''}
+                            </div>
+
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <button class="btn btn-buy" style="padding:6px 12px; font-size:11.5px;" onclick="approveDraft('${d.id}', 'purchase')">
+                                    <span>🟢 Confirm as BUY</span>
+                                </button>
+                                <button class="btn btn-sale" style="padding:6px 12px; font-size:11.5px;" onclick="approveDraft('${d.id}', 'sale')">
+                                    <span>🔴 Confirm as SELL</span>
+                                </button>
+                                <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px;" onclick="editAndApproveDraft('${d.id}')">
+                                    <span>✏️ Edit</span>
+                                </button>
+                                <button class="btn btn-ghost" style="padding:6px 10px; font-size:11.5px; color:#f43f5e;" onclick="dismissDraft('${d.id}')" title="Dismiss this draft">
+                                    <span>🗑️ Dismiss</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Approve single draft -> Moves into official ledger
+        async function approveDraft(draftId, confirmedType) {
+            try {
+                const res = await fetch(`/api/trade/drafts/${draftId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirmedType })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(`👑 Confirmed as ${confirmedType.toUpperCase()}! Added to ledger.`);
+                    allDrafts = allDrafts.filter(d => d.id !== draftId);
+                    renderDrafts();
+                    loadTradeEntries(true);
+                } else {
+                    alert('Approval error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
+            }
+        }
+
+        // Edit & Approve Draft
+        function editAndApproveDraft(draftId) {
+            const d = allDrafts.find(item => item.id === draftId);
+            if (!d) return;
+            openTradeModal(d.type || 'purchase', {
+                ...d,
+                id: '' // Empty so it saves as new official entry
+            });
+            // Auto dismiss the draft once they save
+            const origSubmit = submitTradeEntry;
+            // When modal closes, dismiss draft
+            dismissDraft(draftId, false);
+        }
+
+        // Dismiss single draft
+        async function dismissDraft(draftId, notify = true) {
+            try {
+                const res = await fetch(`/api/trade/drafts/${draftId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) {
+                    if (notify) showToast('Draft dismissed.');
+                    allDrafts = allDrafts.filter(d => d.id !== draftId);
+                    renderDrafts();
+                }
+            } catch (e) {
+                console.warn('Dismiss error:', e);
+            }
+        }
+
+        // Bulk Approve Drafts
+        async function bulkApproveDrafts(defaultType) {
+            if (allDrafts.length === 0) return;
+            if (!confirm(`Are you sure you want to approve all ${allDrafts.length} drafts as ${defaultType.toUpperCase()}S?`)) return;
+
+            const ids = allDrafts.map(d => d.id);
+            try {
+                const res = await fetch('/api/trade/drafts/bulk-approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ draftIds: ids, defaultType })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast(`Approved ${data.approvedCount} trades!`);
+                    allDrafts = [];
+                    renderDrafts();
+                    loadTradeEntries(true);
+                }
+            } catch (e) {
+                alert('Bulk approve error: ' + e.message);
+            }
+        }
+
+        // Clear all drafts
+        async function clearAllDrafts() {
+            if (allDrafts.length === 0) return;
+            if (!confirm('Are you sure you want to dismiss all pending drafts?')) return;
+            try {
+                const res = await fetch('/api/trade/drafts', { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) {
+                    showToast('All drafts cleared');
+                    allDrafts = [];
+                    renderDrafts();
+                }
+            } catch (e) {
+                alert('Clear error: ' + e.message);
+            }
+        }
+
+        // ===== 📊 OFFICIAL LEDGER FETCH & RENDER =====
         async function loadTradeEntries(forceFresh = false) {
             const dateFrom = document.getElementById('dateFrom').value;
             const dateTo = document.getElementById('dateTo').value;
@@ -1217,10 +2143,10 @@
                     <tr>
                         <td style="color:#94a3b8; font-size:11.5px;">${e.date || ''}</td>
                         <td>
-                            <span class="tag-item">${e.itemName || 'TT'}</span>
-                            ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${e.refNo}</span>` : ''}
+                            <span class="tag-item">${escapeHtml(e.itemName || 'TT')}</span>
+                            ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${escapeHtml(e.refNo)}</span>` : ''}
                         </td>
-                        <td style="font-weight:600;">${e.partyName || '<span style="color:#64748b;">-</span>'}</td>
+                        <td style="font-weight:600;">${escapeHtml(e.partyName || '-')}</td>
                         <td style="text-align:right;" class="num-font">${fmt(e.quantity, 3)} <small style="color:#94a3b8;">${e.unit || 'PCS'}</small></td>
                         <td style="text-align:right;" class="rate-cell">${fmt(e.rate, 2)}</td>
                         <td style="text-align:right;" class="amount-cell-buy">${fmt(e.amount, 2)} <small>${e.currency || 'AED'}</small></td>
@@ -1243,10 +2169,10 @@
                     <tr>
                         <td style="color:#94a3b8; font-size:11.5px;">${e.date || ''}</td>
                         <td>
-                            <span class="tag-item" style="color:#fb7185; border-color:rgba(251,113,133,0.3);">${e.itemName || 'TT'}</span>
-                            ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${e.refNo}</span>` : ''}
+                            <span class="tag-item" style="color:#fb7185; border-color:rgba(251,113,133,0.3);">${escapeHtml(e.itemName || 'TT')}</span>
+                            ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${escapeHtml(e.refNo)}</span>` : ''}
                         </td>
-                        <td style="font-weight:600;">${e.partyName || '<span style="color:#64748b;">-</span>'}</td>
+                        <td style="font-weight:600;">${escapeHtml(e.partyName || '-')}</td>
                         <td style="text-align:right;" class="num-font">${fmt(e.quantity, 3)} <small style="color:#94a3b8;">${e.unit || 'PCS'}</small></td>
                         <td style="text-align:right;" class="rate-cell">${fmt(e.rate, 2)}</td>
                         <td style="text-align:right;" class="amount-cell-sale">${fmt(e.amount, 2)} <small>${e.currency || 'AED'}</small></td>
@@ -1285,6 +2211,7 @@
         // Initial Load
         window.addEventListener('DOMContentLoaded', () => {
             loadTradeEntries();
+            loadTradeDrafts();
         });
     </script>
 </body>
