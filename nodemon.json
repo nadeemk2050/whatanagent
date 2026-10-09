@@ -1,5 +1,5 @@
 {
-  "watch": ["index.js"],
-  "ext": "js",
-  "ignore": ["*.cjs", "public/*", "node_modules/*", "*.json"]
+  "watch": ["index.js", "contactBrain.mjs", "waWebClient.js", "liveMeetingApi.mjs", "liveMeetingWs.mjs", "notebookApi.mjs", "aiTracker.mjs", "goldAgent.mjs"],
+  "ext": "js,mjs,json",
+  "ignore": ["*.cjs", "public/*", "node_modules/*", "auth_info_baileys/*"]
 }

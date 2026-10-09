@@ -133,6 +133,14 @@
         .followup-stats .stat-box h3 { margin: 0; font-size: 24px; }
         .followup-stats .stat-box span { font-size: 12px; color: var(--text-muted); font-weight: bold; }
 
+        /* 🛡️ AI Activity & Control Styles */
+        .ai-pill-active { background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 4px 10px; border-radius: 14px; font-weight: 800; font-size: 11px; display: inline-flex; align-items: center; gap: 5px; }
+        .ai-pill-blocked { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; padding: 4px 10px; border-radius: 14px; font-weight: 800; font-size: 11px; display: inline-flex; align-items: center; gap: 5px; }
+        .ai-filter-tab { padding: 6px 13px; border-radius: 20px; font-size: 11.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: #fff; color: #475569; transition: all .15s; }
+        .ai-filter-tab.active { background: #1e1b4b; color: #38bdf8; border-color: #1e1b4b; }
+        .ai-log-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); transition: all .15s; }
+        .ai-log-card:hover { border-color: #cbd5e1; box-shadow: 0 3px 8px rgba(0,0,0,0.05); }
+
         /* Follow Up Modal */
         .fu-modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center; }
         .fu-modal { background: var(--card-bg); border-radius: 16px; padding: 30px; width:100%; max-width:500px; max-height:90vh; overflow-y:auto; box-sizing:border-box; margin: 20px; }
@@ -191,6 +199,33 @@
             
             .chat-back-btn { display: block; }
         }
+
+        /* 🔴 Live Streaming Discussion Board Styles */
+        .live-tool-btn { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 7px 11px; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap; }
+        .live-tool-btn:hover { background: #334155; color: #fff; border-color: #64748b; }
+        .live-tool-btn.active { background: #ef4444; border-color: #f87171; color: #fff; box-shadow: 0 0 12px rgba(239, 68, 68, 0.45); }
+        .live-color-dot { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.3); transition: transform 0.15s; display: inline-block; }
+        .live-color-dot:hover { transform: scale(1.25); }
+        .live-drawer-tab-btn { flex: 1; padding: 10px 6px; background: #0f172a; border: none; border-bottom: 2px solid transparent; color: #94a3b8; font-size: 11.5px; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.15s; white-space: nowrap; }
+        .live-drawer-tab-btn:hover { color: #f8fafc; background: #1e293b; }
+        .live-drawer-tab-btn.active { color: #38bdf8; border-bottom-color: #38bdf8; background: #1e293b; }
+        .live-sticky-card { position: absolute; width: 170px; min-height: 120px; padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; cursor: grab; display: flex; flex-direction: column; color: #1e293b; }
+        .live-sticky-card:active { cursor: grabbing; }
+        .live-sticky-card .sticky-header { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; margin-bottom: 4px; opacity: 0.85; }
+        .live-sticky-card .sticky-header button { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: bold; color: #1e293b; }
+        .live-sticky-card textarea { flex: 1; background: transparent; border: none; outline: none; resize: none; font-size: 12px; font-family: inherit; color: inherit; font-weight: 600; min-height: 80px; padding: 0; }
+        .live-text-block { position: absolute; padding: 6px 10px; background: rgba(15, 23, 42, 0.85); border: 1px dashed #38bdf8; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: grab; z-index: 100; backdrop-filter: blur(4px); }
+        .live-task-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin-bottom: 8px; transition: all 0.15s; }
+        .live-task-item:hover { border-color: #475569; }
+        .live-task-item.task-done { opacity: 0.55; background: #0f172a; border-color: #1e293b; }
+        .live-poll-card { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+        .live-reaction-bubble { position: absolute; bottom: 80px; display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: floatUpReaction 2.2s ease-out forwards; z-index: 250; }
+        @keyframes floatUpReaction {
+            0% { transform: translateY(0) scale(0.6); opacity: 0; }
+            15% { opacity: 1; transform: translateY(-20px) scale(1.1); }
+            80% { opacity: 1; transform: translateY(-140px) scale(1); }
+            100% { transform: translateY(-200px) scale(0.8); opacity: 0; }
+        }
     </style>
     
     <!-- Firebase SDKs -->
@@ -242,6 +277,15 @@
                 if (typeof loadProducts === 'function') loadProducts();
                 if (typeof loadWaWebKnowledgeBase === 'function') loadWaWebKnowledgeBase();
                 if (typeof showBossAiFab === 'function') showBossAiFab(true);
+
+                // Auto-join Live Meeting Board if ?liveRoom=... or ?room=... parameter is present
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const incomingRoom = urlParams.get('liveRoom') || urlParams.get('room');
+                    if (incomingRoom && typeof openLiveMeetingPage === 'function') {
+                        openLiveMeetingPage(incomingRoom);
+                    }
+                } catch(e) { }
 
                 // Auto-refresh the real dashboard figures every 60s (only while the tab is visible)
                 if (window.__dashStatsTimer) clearInterval(window.__dashStatsTimer);
@@ -314,6 +358,10 @@
                 <span>🟢 WhatsApp Web</span>
                 <span id="waWebNavBadge" style="font-size:8px; padding:1px 7px; border-radius:12px; background:#25D366; color:#fff; font-weight:bold;">Live QR</span>
             </div>
+            <div class="menu-item" onclick="openLiveMeetingPage()" style="display:flex; justify-content:space-between; align-items:center; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #ef4444; cursor:pointer;">
+                <span>🔴 Live Streaming Board</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#ef4444; color:#fff; font-weight:bold; animation: goldPulse 1.8s infinite;">STREAMING</span>
+            </div>
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="openCommandCenter()">⚡ Tasks & Command Center 2.0</div>
             <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
@@ -329,6 +377,629 @@
             <div class="menu-item" onclick="showSection('profile')">👤 My Profile</div>
             <div class="menu-item btn-pwa-install" onclick="installPWA()" style="color: #25d366;">📲 Install App</div>
             <div class="menu-item" onclick="handleLogout()" style="color: red;">🚪 Logout</div>
+        </div>
+
+        <!-- ===== 🔴 LIVE STREAMING DISCUSSION & MEETING BOARD ===== -->
+        <div id="liveMeetingPage" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0a0e17; color:#f1f5f9; z-index:2850; flex-direction:column; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow:hidden;">
+            
+            <!-- Live Board Top Command Bar -->
+            <div style="background:#0f172a; padding:10px 18px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; z-index:100; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="menu-btn" onclick="toggleSidebar()" style="background:none; border:none; color:#e9edef; font-size:22px; cursor:pointer; margin:0; padding:2px;" title="Open Sidebar">☰</button>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:50%; background:#ef4444; animation:goldPulse 1.6s infinite; display:inline-block;"></span>
+                        <h2 id="liveRoomTitleDisplay" style="margin:0; font-size:16px; font-weight:800; color:#f8fafc; letter-spacing:0.3px;">Live Strategy Board</h2>
+                        <span id="liveRoomIdDisplay" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; font-size:11px; font-weight:bold; padding:2px 8px; border-radius:12px; font-family:monospace;">ROOM-849201</span>
+                    </div>
+                    <span id="liveHostNameDisplay" style="font-size:11px; color:#fbbf24; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 8px; border-radius:10px; font-weight:bold;">👑 Host: Admin</span>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <div id="liveMeetingDuration" style="font-size:12px; color:#34d399; background:#064e3b; border:1px solid #059669; padding:4px 10px; border-radius:14px; font-weight:800; font-family:monospace;">⏱️ 00:00</div>
+                    <div id="liveRoomStatusBadge" style="font-size:11.5px; color:#34d399; background:#064e3b; border:1px solid #059669; padding:4px 10px; border-radius:14px; font-weight:bold;">🟢 Active</div>
+                    <div id="liveAssignedCountBadge" style="font-size:11.5px; color:#a78bfa; background:#1e1b4b; border:1px solid #4338ca; padding:4px 10px; border-radius:14px; font-weight:bold;">👥 1 Assigned</div>
+                    <div id="liveMembersCountBadge" style="font-size:11.5px; color:#38bdf8; background:#1e293b; border:1px solid #334155; padding:4px 10px; border-radius:14px; font-weight:bold;">🟢 1 Online</div>
+                    
+                    <button onclick="openJoinRoomModal()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:6px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; box-shadow:0 0 10px rgba(2,132,199,0.35);" title="Paste meeting link or room ID to switch/join">
+                        <span>🚪 Join by Link</span>
+                    </button>
+                    <button onclick="openAssignTeamModal()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(99,102,241,0.35);">
+                        <span>👥 Assign Team</span>
+                    </button>
+                    <button onclick="openNewRoomModal()" style="background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                        <span>➕ New Room</span>
+                    </button>
+                    <button onclick="copyLiveRoomLink()" style="background:#1e293b; border:1px solid #38bdf8; color:#38bdf8; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                        <span>🔗 Copy Link</span>
+                    </button>
+                    <button onclick="openLiveInviteModal()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(16,185,129,0.35);">
+                        <span>📲 WhatsApp Invite</span>
+                    </button>
+                    <button id="liveHostLockBtn" onclick="toggleHostLock()" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        🔓 Board Active
+                    </button>
+                    <button onclick="exportCanvasPNG()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                        📷 Export PNG
+                    </button>
+                    <button onclick="openSaveCheckpointModal()" style="background:linear-gradient(135deg, #4f46e5, #4338ca); border:none; color:#fff; padding:6px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; box-shadow:0 0 10px rgba(79,70,229,0.35);" title="Save a named discussion checkpoint snapshot">
+                        <span>💾 Save Discussion</span>
+                    </button>
+                    <button id="liveFinishRoomBtn" onclick="finishCurrentLiveRoom()" style="background:#991b1b; border:1px solid #ef4444; color:#fff; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Finish and conclude active meeting room for all participants">
+                        <span>⏹️ Finish Room</span>
+                    </button>
+                    <button onclick="closeLiveMeetingPage()" style="background:#dc2626; border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
+                        ✕ Exit Live Board
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Working Workspace (Left Tool Dock + Center Interactive Canvas + Right Tabbed Drawer) -->
+            <div style="flex:1; display:flex; position:relative; overflow:hidden;">
+                
+                <!-- Left Vertical Floating Toolbar -->
+                <div style="width:58px; background:#0f172a; border-right:1px solid #1e293b; display:flex; flex-direction:column; align-items:center; padding:12px 6px; gap:8px; z-index:50; overflow-y:auto;">
+                    <button id="liveTool_pen" class="live-tool-btn active" onclick="setLiveTool('pen')" title="Freehand Pen (P)">✏️</button>
+                    <button id="liveTool_highlighter" class="live-tool-btn" onclick="setLiveTool('highlighter')" title="Highlighter (H)">🖍️</button>
+                    <button id="liveTool_laser" class="live-tool-btn" onclick="setLiveTool('laser')" title="Multi-User Laser Pointer (L)">✨</button>
+                    <button id="liveTool_rect" class="live-tool-btn" onclick="setLiveTool('rect')" title="Rectangle Shape (R)">🔲</button>
+                    <button id="liveTool_circle" class="live-tool-btn" onclick="setLiveTool('circle')" title="Circle Shape (C)">⭕</button>
+                    <button id="liveTool_arrow" class="live-tool-btn" onclick="setLiveTool('arrow')" title="Arrow Connector (A)">➡️</button>
+                    <button id="liveTool_sticky" class="live-tool-btn" onclick="setLiveTool('sticky'); addStickyNote(200, 200);" title="Sticky Note (N)">📝</button>
+                    <button id="liveTool_eraser" class="live-tool-btn" onclick="setLiveTool('eraser')" title="Eraser (E)">🧹</button>
+
+                    <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                    <!-- Color Swatches -->
+                    <div style="display:flex; flex-direction:column; gap:6px; align-items:center;">
+                        <span id="liveColor_ef4444" class="live-color-dot" style="background:#ef4444; transform:scale(1.25);" onclick="setLiveColor('#ef4444')" title="Red"></span>
+                        <span id="liveColor_10b981" class="live-color-dot" style="background:#10b981;" onclick="setLiveColor('#10b981')" title="Green"></span>
+                        <span id="liveColor_38bdf8" class="live-color-dot" style="background:#38bdf8;" onclick="setLiveColor('#38bdf8')" title="Cyan"></span>
+                        <span id="liveColor_f59e0b" class="live-color-dot" style="background:#f59e0b;" onclick="setLiveColor('#f59e0b')" title="Gold"></span>
+                        <span id="liveColor_ffffff" class="live-color-dot" style="background:#ffffff;" onclick="setLiveColor('#ffffff')" title="White"></span>
+                        <span id="liveColor_8b5cf6" class="live-color-dot" style="background:#8b5cf6;" onclick="setLiveColor('#8b5cf6')" title="Purple"></span>
+                    </div>
+
+                    <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                    <!-- Stroke Size Selector -->
+                    <select onchange="setLiveLineWidth(this.value)" style="width:46px; background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-size:10px; font-weight:bold; padding:3px 2px; text-align:center;" title="Stroke Width">
+                        <option value="2">2px</option>
+                        <option value="4" selected>4px</option>
+                        <option value="8">8px</option>
+                        <option value="16">16px</option>
+                    </select>
+
+                    <!-- Background Grid Switcher -->
+                    <select onchange="setLiveBgMode(this.value)" style="width:46px; background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-size:10px; font-weight:bold; padding:3px 2px; text-align:center;" title="Background Grid">
+                        <option value="grid">Grid</option>
+                        <option value="dots">Dots</option>
+                        <option value="plain">Solid</option>
+                    </select>
+
+                    <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                    <button onclick="liveCanvasUndo()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Undo (Ctrl+Z)">↩️</button>
+                    <button onclick="liveCanvasRedo()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Redo (Ctrl+Y)">↪️</button>
+                    <button onclick="liveCanvasClear()" style="background:#3b1818; border:1px solid #ef4444; color:#ef4444; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Clear Board">🗑️</button>
+                </div>
+
+                <!-- Center Interactive Canvas Viewport -->
+                <div id="liveCanvasContainer" style="flex:1; position:relative; overflow:hidden; background:#0a0e17; cursor:crosshair;">
+                    <!-- Base Canvas for Drawings and Shapes -->
+                    <canvas id="liveCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:10;"></canvas>
+                    
+                    <!-- Overlay Canvas for Real-time Laser Pointers & Cursors -->
+                    <canvas id="livePointerOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:20; pointer-events:none;"></canvas>
+
+                    <!-- Sticky Notes & Text Blocks Layer -->
+                    <div id="liveStickyNotesLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:30; pointer-events:none;"></div>
+                    <div id="liveTextBlocksLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:30; pointer-events:none;"></div>
+
+                    <!-- Floating Reaction Bubbles Animation Layer -->
+                    <div id="liveReactionFloatingLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:40; pointer-events:none;"></div>
+                </div>
+
+                <!-- Right Collapsible Multi-Functional Drawer -->
+                <div id="liveRightDrawer" style="width:430px; background:#0f172a; border-left:1px solid #1e293b; display:flex; flex-direction:column; z-index:50;">
+                    
+                    <!-- Drawer Tab Navigation -->
+                    <div style="display:flex; background:#0b1120; border-bottom:1px solid #1e293b;">
+                        <button id="liveDrawerTab_calculations" class="live-drawer-tab-btn active" onclick="switchLiveDrawerTab('calculations')">🧮 Calculations</button>
+                        <button id="liveDrawerTab_checklists" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('checklists')">✅ Checklists</button>
+                        <button id="liveDrawerTab_polls" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('polls')">🗳️ Polls</button>
+                        <button id="liveDrawerTab_members" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('members')">👥 Team &amp; Roles</button>
+                        <button id="liveDrawerTab_ai" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('ai')">🤖 AI Co-Pilot</button>
+                    </div>
+
+                    <!-- TAB 1: 🧮 LIVE CALCULATIONS GRID -->
+                    <div id="liveDrawerPanel_calculations" class="live-drawer-panel" style="flex:1; display:block; overflow-y:auto; padding:14px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <div>
+                                <b style="font-size:14px; color:#f8fafc;">Live Calculation Scratchpad</b>
+                                <div style="font-size:11px; color:#94a3b8;">Multi-user formulas &amp; synchronized pricing</div>
+                            </div>
+                            <div style="display:flex; gap:6px;">
+                                <button onclick="insertGoldPriceToCalc()" style="background:#78350f; border:1px solid #f59e0b; color:#fde68a; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚡ + Gold Spot</button>
+                                <button onclick="addCalcRow()" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">➕ + Row</button>
+                            </div>
+                        </div>
+
+                        <!-- Calculations Table -->
+                        <div style="overflow-x:auto; background:#0b1120; border:1px solid #1e293b; border-radius:8px; margin-bottom:12px;">
+                            <table style="width:100%; border-collapse:collapse; font-size:12px; color:#cbd5e1;">
+                                <thead>
+                                    <tr style="background:#1e293b; color:#94a3b8; font-size:11px; text-transform:uppercase;">
+                                        <th style="padding:8px 6px; text-align:left;">ID</th>
+                                        <th style="padding:8px 6px; text-align:left;">Item / Variable</th>
+                                        <th style="padding:8px 6px; text-align:right;">Value</th>
+                                        <th style="padding:8px 4px; text-align:left;">Unit</th>
+                                        <th style="padding:8px 6px; text-align:left;">Formula</th>
+                                        <th style="padding:8px 6px; text-align:right;">Result</th>
+                                        <th style="padding:8px 4px; text-align:center;">✕</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="liveCalcTableBody">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Grand Total Card -->
+                        <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; font-weight:bold;">Final Calculated Value</div>
+                                <div id="liveCalcGrandTotal" style="font-size:22px; font-weight:800; color:#34d399; margin-top:2px;">14,750.00 AED</div>
+                            </div>
+                            <button onclick="askLiveAiCopilot('audit_math')" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:bold; cursor:pointer;">🤖 Audit with AI</button>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: ✅ SYNCHRONIZED ACTION CHECKLIST -->
+                    <div id="liveDrawerPanel_checklists" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                        <div style="margin-bottom:12px;">
+                            <b style="font-size:14px; color:#f8fafc;">Live Action Items &amp; Task Delegation</b>
+                            <div style="font-size:11px; color:#94a3b8;">Assign tasks directly to team members &amp; sync</div>
+                        </div>
+
+                        <!-- Add Task Input Form -->
+                        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:10px; margin-bottom:14px;">
+                            <input type="text" id="newLiveTaskInput" placeholder="Type new action item & press Enter..." onkeydown="if(event.key==='Enter') addLiveTask();" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; box-sizing:border-box; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; gap:6px;">
+                                <select id="newLiveTaskPriority" style="flex:1; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px; font-weight:600;">
+                                    <option value="Urgent">🔥 Urgent</option>
+                                    <option value="High" selected>🔴 High</option>
+                                    <option value="Medium">🟡 Medium</option>
+                                </select>
+                                <select id="newLiveTaskAssigneeSelect" style="flex:1.4; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:6px 8px; border-radius:6px; font-size:11.5px; font-weight:bold;">
+                                    <option value="Team">👥 Whole Team</option>
+                                </select>
+                                <button onclick="addLiveTask()" style="background:#10b981; border:none; color:#fff; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">+ Add Task</button>
+                            </div>
+                        </div>
+
+                        <!-- Checklist Items Container -->
+                        <div id="liveChecklistContainer"></div>
+                    </div>
+
+                    <!-- TAB 3: 🗳️ LIVE QUICK POLLS & DECISIONS -->
+                    <div id="liveDrawerPanel_polls" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                        <div style="margin-bottom:12px;">
+                            <b style="font-size:14px; color:#f8fafc;">Rapid Team Voting &amp; Consensus</b>
+                            <div style="font-size:11px; color:#94a3b8;">Launch 30-second live polls for instant decisions</div>
+                        </div>
+
+                        <!-- Create Poll Card -->
+                        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:14px;">
+                            <label style="display:block; font-size:11px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Question:</label>
+                            <input type="text" id="newPollQuestion" placeholder="e.g. Agree with 15% discount for Client X?" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; box-sizing:border-box; margin-bottom:8px;">
+                            
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+                                <input type="text" id="newPollOpt1" value="Yes / Approved" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px;">
+                                <input type="text" id="newPollOpt2" value="No / Re-negotiate" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px;">
+                            </div>
+                            <input type="text" id="newPollOpt3" placeholder="Option 3 (Optional)" style="width:100%; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px; box-sizing:border-box; margin-bottom:10px;">
+                            
+                            <button onclick="launchLivePoll()" style="width:100%; background:linear-gradient(135deg, #38bdf8, #6366f1); border:none; color:#fff; padding:8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🚀 Launch Poll for Everyone</button>
+                        </div>
+
+                        <!-- Active Polls List -->
+                        <div id="livePollsContainer"></div>
+                    </div>
+
+                    <!-- TAB 4: 👥 ASSIGNED TEAM ROSTER & PERMISSIONS -->
+                    <div id="liveDrawerPanel_members" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <div>
+                                <b style="font-size:14px; color:#f8fafc;">Assigned Team Roster</b>
+                                <div style="font-size:11px; color:#94a3b8;">Designated roles, duties &amp; live attendance</div>
+                            </div>
+                            <button onclick="openAssignTeamModal()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">+ Assign Member</button>
+                        </div>
+
+                        <!-- Assigned Roster Container -->
+                        <div id="liveAssignedRosterContainer" style="margin-bottom:16px;"></div>
+
+                        <div style="border-top:1px solid #1e293b; padding-top:12px; margin-top:12px;">
+                            <b style="font-size:13px; color:#38bdf8; display:block; margin-bottom:6px;">🟢 Live Connected Attendees</b>
+                            <div id="liveMembersListContainer"></div>
+                        </div>
+
+                        <div style="border-top:1px solid #1e293b; padding-top:12px; margin-top:12px;">
+                            <button onclick="openLiveInviteModal()" style="width:100%; background:#10b981; border:none; color:#fff; padding:9px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">📲 Direct WhatsApp Invite Link</button>
+                        </div>
+                    </div>
+
+                    <!-- TAB 5: 🤖 WHATANAGENT AI BOARD MIND -->
+                    <div id="liveDrawerPanel_ai" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                        <div style="margin-bottom:12px;">
+                            <b style="font-size:14px; color:#f8fafc;">🤖 WhatAnAgent AI Board Mind</b>
+                            <div style="font-size:11px; color:#94a3b8;">Executive minutes, math validation &amp; strategic co-pilot</div>
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                            <button onclick="askLiveAiCopilot('minutes')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); border:none; color:#fff; padding:10px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer; text-align:left;">
+                                📋 Generate Executive Minutes &amp; Next Steps
+                            </button>
+                            <button onclick="askLiveAiCopilot('audit_math')" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; text-align:left;">
+                                🧮 Audit Calculations &amp; Profit Margins
+                            </button>
+                        </div>
+
+                        <div style="margin-bottom:10px;">
+                            <input type="text" id="liveAiCustomPrompt" placeholder="Ask AI anything about this board meeting..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:12px; box-sizing:border-box; margin-bottom:6px;">
+                            <button onclick="askLiveAiCopilot('custom')" style="width:100%; background:#10b981; border:none; color:#fff; padding:7px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">Ask AI Co-Pilot</button>
+                        </div>
+
+                        <!-- AI Response Display Box -->
+                        <div id="liveAiResponseBox"></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Bottom Non-Audio Reaction Ticker & Quick Emojis -->
+            <div style="background:#0f172a; padding:6px 16px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; z-index:100; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; color:#94a3b8; font-weight:bold; text-transform:uppercase;">⚡ Quick Reaction Ticker:</span>
+                    <button onclick="sendLiveReaction('👏')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">👏 Agreed</button>
+                    <button onclick="sendLiveReaction('🔥')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🔥 Brilliant</button>
+                    <button onclick="sendLiveReaction('💡')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">💡 New Idea</button>
+                    <button onclick="sendLiveReaction('❓')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">❓ Question</button>
+                    <button onclick="sendLiveReaction('✅')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">✅ Approved</button>
+                    <button onclick="sendLiveReaction('⚠️')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">⚠️ Caution</button>
+                    <button onclick="sendLiveReaction('🛑')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🛑 Hold</button>
+                </div>
+                <div style="font-size:11px; color:#64748b;">
+                    No Audio / Video Needed · 100% Zero-Latency Visual Sync
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===== MODAL: 👥 ASSIGN TEAM MEMBERS & ROLES ===== -->
+        <div id="liveAssignTeamModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:3850; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:2px solid #6366f1; border-radius:16px; width:100%; max-width:540px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(99,102,241,0.3); overflow:hidden;">
+                
+                <!-- Modal Header -->
+                <div style="background:linear-gradient(135deg, #1e1b4b, #0f172a); padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:24px;">👥</span>
+                        <div>
+                            <b style="font-size:16px; color:#f8fafc;">Assign Team Member to Live Board</b>
+                            <div style="font-size:11px; color:#94a3b8;">Set designated roles, duties &amp; send instant WhatsApp invites</div>
+                        </div>
+                    </div>
+                    <button onclick="closeAssignTeamModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px; background:#0b1120;">
+                    
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">1. Choose from Contact Book (or leave blank for custom):</label>
+                        <select id="liveAssignContactSelect" onchange="onAssignContactSelectChange()" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                            <option value="">-- Choose Contact from Book --</option>
+                        </select>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:10px;">
+                        <div>
+                            <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">👤 Member Name:</label>
+                            <input type="text" id="liveAssignNameInput" placeholder="e.g. Alex Morgan" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:bold; box-sizing:border-box;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">📞 WhatsApp Number:</label>
+                            <input type="text" id="liveAssignPhoneInput" placeholder="971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div>
+                            <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">🎖️ Designated Role / Power:</label>
+                            <select id="liveAssignRoleSelect" style="width:100%; background:#1e293b; border:1px solid #4338ca; color:#fbbf24; padding:9px 10px; border-radius:8px; font-size:13px; font-weight:bold;">
+                                <option value="co-host">👑 Co-Host (Full Controls)</option>
+                                <option value="editor" selected>✏️ Lead Editor (Draw &amp; Math)</option>
+                                <option value="auditor">🧮 Financial Auditor (Pricing &amp; Calculations)</option>
+                                <option value="task_master">🎯 Task Master (Checklists &amp; Flow)</option>
+                                <option value="viewer">👁️ Observer / Viewer (Pointer &amp; Reactions)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">📌 Workspace Focus Area:</label>
+                            <select id="liveAssignSectionSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:9px 10px; border-radius:8px; font-size:13px;">
+                                <option value="all">🌟 All Board Sections</option>
+                                <option value="canvas">🎨 Whiteboard Canvas Only</option>
+                                <option value="calculations">🧮 Calculation Matrix Only</option>
+                                <option value="checklists">✅ Action Checklists Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">🎯 Specific Duty / Task in Meeting:</label>
+                        <input type="text" id="liveAssignDutyInput" placeholder="e.g. Audit supplier quotation and approve margin table" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; box-sizing:border-box;">
+                    </div>
+
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:10px 14px; display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="liveAssignSendWaCheckbox" checked style="width:18px; height:18px; cursor:pointer; accent-color:#10b981;">
+                        <div>
+                            <b style="font-size:12.5px; color:#f8fafc;">📲 Send WhatsApp Assignment Notification</b>
+                            <div style="font-size:11px; color:#94a3b8;">Instantly alerts the teammate with their designated role &amp; direct join link</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Modal Footer -->
+                <div style="background:#1e1b4b; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #334155;">
+                    <div style="font-size:11px; color:#94a3b8;">Saves to live board state &amp; syncs to all screens</div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="closeAssignTeamModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                        <button onclick="submitAssignTeamMember()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(99,102,241,0.4);">
+                            🚀 Assign &amp; Dispatch Alert
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+                    <!-- TAB 5: 🤖 WHATANAGENT AI BOARD MIND -->
+                    <div id="liveDrawerPanel_ai" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                        <div style="margin-bottom:12px;">
+                            <b style="font-size:14px; color:#f8fafc;">🤖 WhatAnAgent AI Board Mind</b>
+                            <div style="font-size:11px; color:#94a3b8;">Executive minutes, math validation & strategic co-pilot</div>
+                        </div>
+
+                        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                            <button onclick="askLiveAiCopilot('minutes')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); border:none; color:#fff; padding:10px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer; text-align:left;">
+                                📋 Generate Executive Minutes & Next Steps
+                            </button>
+                            <button onclick="askLiveAiCopilot('audit_math')" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; text-align:left;">
+                                🧮 Audit Calculations & Profit Margins
+                            </button>
+                        </div>
+
+                        <div style="margin-bottom:10px;">
+                            <input type="text" id="liveAiCustomPrompt" placeholder="Ask AI anything about this board meeting..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:12px; box-sizing:border-box; margin-bottom:6px;">
+                            <button onclick="askLiveAiCopilot('custom')" style="width:100%; background:#10b981; border:none; color:#fff; padding:7px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">Ask AI Co-Pilot</button>
+                        </div>
+
+                        <!-- AI Response Display Box -->
+                        <div id="liveAiResponseBox"></div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Bottom Non-Audio Reaction Ticker & Quick Emojis -->
+            <div style="background:#0f172a; padding:6px 16px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; z-index:100; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; color:#94a3b8; font-weight:bold; text-transform:uppercase;">⚡ Quick Reaction Ticker:</span>
+                    <button onclick="sendLiveReaction('👏')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">👏 Agreed</button>
+                    <button onclick="sendLiveReaction('🔥')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🔥 Brilliant</button>
+                    <button onclick="sendLiveReaction('💡')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">💡 New Idea</button>
+                    <button onclick="sendLiveReaction('❓')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">❓ Question</button>
+                    <button onclick="sendLiveReaction('✅')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">✅ Approved</button>
+                    <button onclick="sendLiveReaction('⚠️')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">⚠️ Caution</button>
+                    <button onclick="sendLiveReaction('🛑')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🛑 Hold</button>
+                </div>
+                <div style="font-size:11px; color:#64748b;">
+                    No Audio / Video Needed · 100% Zero-Latency Visual Sync
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===== MODAL: DIRECT WHATSAPP INVITE DISPATCHER ===== -->
+        <div id="liveInviteModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3800; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:520px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8); overflow:hidden;">
+                <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">📲</span>
+                        <b style="font-size:16px; color:#f8fafc;">Invite Team Member to Live Board</b>
+                    </div>
+                    <button onclick="closeLiveInviteModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Select from Contact Book:</label>
+                        <select id="liveInviteContactSelect" onchange="onLiveInviteContactChange(this.value)" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                            <option value="">-- Choose Contact --</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Or Type Phone Number (with Country Code):</label>
+                        <input type="text" id="liveInvitePhoneInput" placeholder="e.g. 971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:9px 12px; border-radius:8px; font-size:14px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Custom Invitation Message (Optional):</label>
+                        <textarea id="liveInviteNoteInput" rows="2" placeholder="e.g. Please join us to finalize the price and delivery schedule..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:8px; font-size:12.5px; box-sizing:border-box; font-family:inherit; resize:vertical;"></textarea>
+                    </div>
+                </div>
+
+                <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                    <button onclick="closeLiveInviteModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="sendLiveWhatsAppInvite()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 0 12px rgba(16,185,129,0.4);">🚀 Send WhatsApp Invite</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== MODAL: CREATE NEW LIVE MEETING ROOM ===== -->
+        <div id="liveNewRoomModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3800; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:1px solid #f59e0b; border-radius:16px; width:100%; max-width:480px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8); overflow:hidden;">
+                <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">🔴</span>
+                        <b style="font-size:16px; color:#fbbf24;">Create New Live Meeting Board</b>
+                    </div>
+                    <button onclick="closeNewRoomModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Meeting Board Title / Topic:</label>
+                        <input type="text" id="newRoomTitleInput" value="Executive Live Strategy Session" placeholder="e.g. Copper Scrap Pricing & Allocation" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:bold; box-sizing:border-box;">
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Host Security PIN (for full controls):</label>
+                        <input type="text" id="newRoomPinInput" value="1234" placeholder="1234" style="width:100%; background:#1e293b; border:1px solid #334155; color:#fbbf24; padding:9px 12px; border-radius:8px; font-size:13.5px; font-weight:bold; font-family:monospace; box-sizing:border-box;">
+                    </div>
+                </div>
+
+                <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                    <button onclick="closeNewRoomModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="createNewLiveRoom()" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#111827; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 12px rgba(245,158,11,0.4);">🚀 Start Live Board</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== MODAL: JOIN BY LINK OR ROOM ID ===== -->
+        <div id="liveJoinRoomModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:3800; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:500px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+                <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">🚪</span>
+                        <div>
+                            <b style="font-size:15px; color:#f8fafc;">Join Live Meeting Board</b>
+                            <div style="font-size:11px; color:#94a3b8;">Paste invitation link or enter Room ID</div>
+                        </div>
+                    </div>
+                    <button onclick="closeJoinRoomModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Paste Meeting Link or Room ID:</label>
+                        <input type="text" id="liveJoinRoomInput" placeholder="e.g. http://localhost:3000/live?room=173598 or ROOM-173598" style="width:100%; background:#1e293b; border:1px solid #38bdf8; color:#f8fafc; padding:11px 14px; border-radius:8px; font-size:13.5px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                        <div style="font-size:11px; color:#64748b; margin-top:5px;">Works with full links from Live Portal, Admin URL, or simple room numbers (e.g. 173598).</div>
+                    </div>
+
+                    <div style="background:#1e1b4b; border:1px solid #4338ca; border-radius:8px; padding:12px; display:flex; align-items:flex-start; gap:10px;">
+                        <input type="checkbox" id="liveFinishBeforeJoinCheckbox" style="margin-top:3px; cursor:pointer; transform:scale(1.2);">
+                        <label for="liveFinishBeforeJoinCheckbox" style="font-size:12px; color:#c7d2fe; cursor:pointer;">
+                            <b>Finish active room before joining new room</b>
+                            <div style="font-size:11px; color:#a5b4fc; margin-top:2px;">Concludes current session in records so attendees know it has finished.</div>
+                        </label>
+                    </div>
+                </div>
+
+                <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                    <button onclick="closeJoinRoomModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="confirmJoinRoomByLink()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(2,132,199,0.4);">
+                        🚪 Join Room Now
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== MODAL: SAVE DISCUSSION CHECKPOINT ===== -->
+        <div id="liveSaveCheckpointModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:3800; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:1px solid #6366f1; border-radius:16px; width:100%; max-width:480px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+                <div style="background:#1e1b4b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">💾</span>
+                        <div>
+                            <b style="font-size:15px; color:#f8fafc;">Save Discussion Snapshot</b>
+                            <div style="font-size:11px; color:#a5b4fc;">Preserves current whiteboard, formulas, tasks &amp; AI minutes</div>
+                        </div>
+                    </div>
+                    <button onclick="closeSaveCheckpointModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Checkpoint Milestone / Note (Optional):</label>
+                        <textarea id="liveCheckpointNoteInput" rows="3" placeholder="e.g. Finalized supplier allocation, price breakdown locked..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; box-sizing:border-box; font-family:inherit; resize:vertical;"></textarea>
+                    </div>
+                </div>
+
+                <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                    <button onclick="closeSaveCheckpointModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="confirmSaveCheckpoint()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(99,102,241,0.4);">
+                        📌 Save Checkpoint
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== MODAL: SHARE SAVED DISCUSSION ===== -->
+        <div id="liveShareSessionModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:3800; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+            <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:500px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+                <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:22px;">👥</span>
+                        <div>
+                            <b style="font-size:15px; color:#f8fafc;">Share Saved Discussion Access</b>
+                            <div id="liveShareSessionTitleDisplay" style="font-size:11px; color:#38bdf8; font-weight:bold;">Session</div>
+                        </div>
+                    </div>
+                    <button onclick="closeShareSessionModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+                </div>
+
+                <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Select Teammate from Directory:</label>
+                        <select id="liveShareUserSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                            <option value="">-- Choose Registered Teammate --</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Or Enter Email / Phone Directly:</label>
+                        <input type="text" id="liveShareManualEmailInput" placeholder="e.g. colleague@example.com or 971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; box-sizing:border-box;">
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Access Permission Role:</label>
+                        <select id="liveShareRoleSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                            <option value="editor" selected>✏️ Editor (Can view, resume &amp; draw)</option>
+                            <option value="viewer">👁️ Viewer (Read-only observation)</option>
+                            <option value="co-host">👑 Co-Host (Full management rights)</option>
+                        </select>
+                    </div>
+
+                    <div style="background:#1e1b4b; border:1px solid #4338ca; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="liveShareSendWaCheckbox" checked style="cursor:pointer; transform:scale(1.15);">
+                        <label for="liveShareSendWaCheckbox" style="font-size:12px; color:#c7d2fe; cursor:pointer;">
+                            <b>📲 Send instant WhatsApp invitation notification with resume link</b>
+                        </label>
+                    </div>
+                </div>
+
+                <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                    <button onclick="closeShareSessionModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="confirmShareSession()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(2,132,199,0.4);">
+                        🚀 Grant Access
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- ===== WHATSAPP WEB (FULL PAGE EMBEDDED QR & CHAT CLIENT) ===== -->
@@ -377,6 +1048,7 @@
 
                     <button onclick="refreshWaWebState()" title="Refresh / Sync" style="background:#2a3942; border:none; color:#e9edef; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🔄 Sync</button>
                     <button id="waWebLogoutBtn" onclick="disconnectWaWeb()" title="Logout & Unlink" style="display:none; background:#d32f2f; border:none; color:#fff; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🚪 Disconnect</button>
+                    <a href="/trade" target="_blank" style="background:#065f46; border:1px solid #10b981; color:#a7f3d0; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px; text-decoration:none; display:flex; align-items:center; gap:6px;">📈 Trade Accounts</a>
                     <button onclick="closeWaWebPage()" style="background:#00a884; border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px;">✕ Close Fullscreen</button>
                 </div>
             </div>
@@ -535,6 +1207,9 @@
                                 <button onclick="if (waWebCurrentJid) openBrainPanel(waWebCurrentJid); else toastMsg('Open a chat first');" title="🧠 Contact Brain — personality, memory & AI discussion for this person" style="background:#202c33; border:1px solid #a855f7; color:#d8b4fe; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>🧠 Brain</span>
                                 </button>
+                                <button onclick="if (waWebCurrentJid) openChatAiPowersModal(waWebCurrentJid); else toastMsg('Open a chat first');" title="⚡ AI Powers & Modalities — select what AI can process (Voice Notes, Images, Docs, Video, Two-Way Context)" style="background:#1e293b; border:1px solid #38bdf8; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(56,189,248,0.2);">
+                                    <span>⚡ AI Powers</span>
+                                </button>
                                 <button onclick="exportWaWebChat()" id="waExportBtn" title="Export this chat as HTML + JSON inside a zip file" style="background:#202c33; border:1px solid #7c3aed; color:#c4b5fd; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>💾 Export</span>
                                 </button>
@@ -547,6 +1222,9 @@
                                 <button onclick="openWaWebAiCopilotForCurrentChat()" title="Open AI Assistant with this conversation loaded" style="background:linear-gradient(135deg, #059669, #0284c7); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(0,0,0,0.3);">
                                     <span>🤖 Ask AI</span>
                                 </button>
+                                <a href="/trade" target="_blank" title="Open Trade Accounts Data (Purchases & Sales Ledger)" style="background:#1e293b; border:1px solid #10b981; color:#34d399; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; text-decoration:none;">
+                                    <span>📈 Trade Accounts</span>
+                                </a>
                                 <div style="font-size:11px; color:#00a884; font-weight:bold; background:#182229; padding:4px 8px; border-radius:12px; border:1px solid #2a3942;">
                                     🟢 Direct WhatsApp
                                 </div>
@@ -1324,13 +2002,29 @@
                 </div>
                 <div class="card" id="goldEventsCard">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; cursor:pointer;" onclick="goldToggleSection('events')" title="Click to show / hide">
-                        <b><span id="goldEventsChev" style="display:inline-block; transition:transform .15s;">▶</span> 📅 Gold Events Calendar — Economic News &amp; Impacts</b>
-                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <b><span id="goldEventsChev" style="display:inline-block; transition:transform .15s;">▶</span> 📅 Gold Events Calendar — Economic News &amp; Impacts</b>
+                            <span id="aiAutoFetchStatusBadge" style="font-size:11px; padding:2px 8px; border-radius:12px; font-weight:bold; background:#dcfce7; color:#166534; border:1px solid #86efac;">🟢 AI Auto-Fetch: Active</span>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button id="aiAutoFetchHeaderBtn" onclick="event.stopPropagation(); aiToggleAutoFetch();" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:800; cursor:pointer; background:#dc2626; color:#fff; border:none; box-shadow:0 1px 4px rgba(220,38,38,0.25);" title="Stop all background AI data scraping & auto-fetching across the app">🛑 Stop All AI Auto-Fetching</button>
+                            <button id="aiAuditHeaderBtn" onclick="event.stopPropagation(); aiOpenActivityModal();" style="padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:800; cursor:pointer; background:linear-gradient(135deg, #1e1b4b, #312e81); color:#38bdf8; border:1px solid #4338ca; box-shadow:0 1px 4px rgba(49,46,129,0.3);" title="See exact breakdown of what DeepSeek, Gemini, Qwen and other AIs did">🤖 What Did Which AI Do?</button>
                             <span id="goldEventsMeta" style="font-size:11px; color:#9aa7ad;"></span>
                             <a href="https://www.tradingview.com/economic-calendar/" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px; color:#b8860b; font-weight:bold; text-decoration:none;">Open full calendar ↗</a>
                         </div>
                     </div>
                     <div id="goldEventsBody" style="display:none;">
+                        <!-- AI Control & Cost Summary Bar -->
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 14px; margin:8px 0 12px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <div style="font-size:12px; color:#334155; line-height:1.5;">
+                                <b>🛡️ AI Usage &amp; Auto-Fetch Control:</b> Stop unlimited background scraping and inspect DeepSeek, Gemini &amp; Qwen token spend with 1-click transparency.
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button id="aiAutoFetchBodyBtn" onclick="aiToggleAutoFetch()" style="padding:6px 13px; border-radius:8px; font-size:11.5px; font-weight:800; cursor:pointer; background:#dc2626; color:#fff; border:none; box-shadow:0 1px 3px rgba(220,38,38,0.2);">🛑 Stop All AI Auto-Fetching</button>
+                                <button onclick="aiOpenActivityModal()" style="padding:6px 13px; border-radius:8px; font-size:11.5px; font-weight:800; cursor:pointer; background:#1e1b4b; color:#38bdf8; border:1px solid #4338ca;">🔍 What Did Which AI Do? <span id="aiUsageCostBadge" style="background:#38bdf8; color:#0f172a; padding:1px 6px; border-radius:8px; font-size:10px; margin-left:4px; font-weight:800;">$0.00</span></button>
+                            </div>
+                        </div>
+
                         <div style="font-size:12px; color:#667781; margin:5px 0 10px 0; line-height:1.6;">
                             Coming economic events in Dubai time (🔴 high · 🟠 medium · 🟡 low). ⭐ = key gold catalysts.
                             <b>Fixed table columns show expected Gold (XAU/USD) &amp; USD reactions if actual data beats expectations, plus 4-history volatility estimates (powered by Qwen AI).</b>
@@ -2784,6 +3478,7 @@
         }
 
         function showSection(id) {
+            try { if (typeof closeLiveMeetingPage === 'function') closeLiveMeetingPage(); } catch(e) { console.warn('[showSection] closeLiveMeetingPage error:', e); }
             try { if (typeof closeWaWebPage === 'function') closeWaWebPage(); } catch(e) { console.warn('[showSection] closeWaWebPage error:', e); }
             try { if (typeof closeNewsPage === 'function') closeNewsPage(); } catch(e) { console.warn('[showSection] closeNewsPage error:', e); }
             try { if (typeof closeGoldPage === 'function') closeGoldPage(); } catch(e) { console.warn('[showSection] closeGoldPage error:', e); }
@@ -5769,7 +6464,313 @@
             document.body.style.overflow = '';
         }
 
+        // ==================== 🛡️ AI ACTIVITY TRACKER & AUTO-FETCH CONTROL ====================
+        var aiControlState = { stopped: false, stoppedAt: 0, stoppedBy: '' };
+        var aiActivityCache = [];
+        var aiActivityStats = null;
+        var aiActivityFilter = 'all';
+        var aiActivitySearch = '';
+
+        function aiLoadControlState() {
+            fetch('/api/ai/control-state')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d && d.ok !== false) {
+                        aiControlState.stopped = !!d.stopped;
+                        aiControlState.stoppedAt = d.stoppedAt || 0;
+                        aiControlState.stoppedBy = d.stoppedBy || '';
+                        aiUpdateControlUI();
+                    }
+                }).catch(function() {});
+            
+            // Also fetch summary stats to update the cost badge
+            fetch('/api/ai/activity-log?limit=1')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (d && d.stats) {
+                        aiActivityStats = d.stats;
+                        var badge = document.getElementById('aiUsageCostBadge');
+                        if (badge) {
+                            badge.textContent = '$' + (d.stats.totalCostUsd || 0).toFixed(4) + ' · ' + (d.stats.totalCalls || 0) + ' calls';
+                        }
+                    }
+                }).catch(function() {});
+        }
+
+        function aiUpdateControlUI() {
+            var stopped = aiControlState.stopped;
+            var badge = document.getElementById('aiAutoFetchStatusBadge');
+            var headerBtn = document.getElementById('aiAutoFetchHeaderBtn');
+            var bodyBtn = document.getElementById('aiAutoFetchBodyBtn');
+            var modalToggleBtn = document.getElementById('aiModalKillSwitchBtn');
+            var modalStatusPill = document.getElementById('aiModalStatusPill');
+
+            if (badge) {
+                if (stopped) {
+                    badge.style.background = '#fee2e2';
+                    badge.style.color = '#991b1b';
+                    badge.style.border = '1px solid #fca5a5';
+                    badge.innerHTML = '🛑 AI Auto-Fetch: STOPPED';
+                } else {
+                    badge.style.background = '#dcfce7';
+                    badge.style.color = '#166534';
+                    badge.style.border = '1px solid #86efac';
+                    badge.innerHTML = '🟢 AI Auto-Fetch: Active';
+                }
+            }
+
+            var btnTxt = stopped ? '▶️ Resume AI Auto-Fetching' : '🛑 Stop All AI Auto-Fetching';
+            var btnBg = stopped ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #dc2626, #b91c1c)';
+
+            if (headerBtn) {
+                headerBtn.innerHTML = btnTxt;
+                headerBtn.style.background = btnBg;
+            }
+            if (bodyBtn) {
+                bodyBtn.innerHTML = btnTxt;
+                bodyBtn.style.background = btnBg;
+            }
+            if (modalToggleBtn) {
+                modalToggleBtn.innerHTML = stopped ? '▶️ Resume All AI Auto-Fetching' : '🛑 Stop All AI Auto-Fetching';
+                modalToggleBtn.style.background = btnBg;
+            }
+            if (modalStatusPill) {
+                if (stopped) {
+                    modalStatusPill.className = 'ai-pill-blocked';
+                    modalStatusPill.innerHTML = '🛑 Auto-Fetching STOPPED (Credits Safe)';
+                } else {
+                    modalStatusPill.className = 'ai-pill-active';
+                    modalStatusPill.innerHTML = '🟢 AI Auto-Fetch: Active';
+                }
+            }
+        }
+
+        function aiToggleAutoFetch() {
+            var nextStopped = !aiControlState.stopped;
+            var headerBtn = document.getElementById('aiAutoFetchHeaderBtn');
+            if (headerBtn) headerBtn.disabled = true;
+
+            fetch('/api/ai/control-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stopped: nextStopped, user: 'dashboard' })
+            }).then(function(r) { return r.json(); }).then(function(d) {
+                if (headerBtn) headerBtn.disabled = false;
+                if (d && d.ok !== false) {
+                    aiControlState.stopped = !!d.stopped;
+                    aiControlState.stoppedAt = d.stoppedAt || Date.now();
+                    aiUpdateControlUI();
+                    if (typeof toastMsg === 'function') {
+                        toastMsg(nextStopped ? '🛑 All AI Auto-Fetching STOPPED — No background tokens will be spent' : '🟢 AI Auto-Fetching RESUMED');
+                    }
+                    aiLoadActivityLogs();
+                }
+            }).catch(function(e) {
+                if (headerBtn) headerBtn.disabled = false;
+                alert('⚠️ Error updating AI state: ' + e.message);
+            });
+        }
+
+        function aiOpenActivityModal() {
+            var modal = document.getElementById('aiActivityModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            aiLoadControlState();
+            aiLoadActivityLogs();
+        }
+
+        function aiCloseActivityModal() {
+            var modal = document.getElementById('aiActivityModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function aiLoadActivityLogs() {
+            var host = document.getElementById('aiActivityList');
+            if (!host) return;
+
+            fetch('/api/ai/activity-log?limit=250')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d || !d.ok) throw new Error((d && d.error) || 'Failed to load logs');
+                    aiActivityCache = d.logs || [];
+                    aiActivityStats = d.stats || {};
+                    aiControlState.stopped = !!d.stopped;
+                    aiUpdateControlUI();
+                    aiRenderStats(d.stats);
+                    aiRenderActivityLog();
+                }).catch(function(err) {
+                    if (host) {
+                        host.innerHTML = '<div style="text-align:center; padding:30px; color:#dc2626;">⚠️ Error loading AI activity log: ' + goldEsc(err.message) + '</div>';
+                    }
+                });
+        }
+
+        function aiRenderStats(stats) {
+            if (!stats) return;
+            var dsCost = document.getElementById('aiStatDeepseekCost');
+            var dsCalls = document.getElementById('aiStatDeepseekCalls');
+            var gmCost = document.getElementById('aiStatGeminiCost');
+            var gmCalls = document.getElementById('aiStatGeminiCalls');
+            var qwCost = document.getElementById('aiStatQwenCost');
+            var qwCalls = document.getElementById('aiStatQwenCalls');
+            var blCalls = document.getElementById('aiStatBlockedCalls');
+            var totSpent = document.getElementById('aiStatTotalSpent');
+            var badge = document.getElementById('aiUsageCostBadge');
+
+            var ds = stats.byProvider && (stats.byProvider.deepseek || {});
+            var gm = stats.byProvider && (stats.byProvider.gemini || {});
+            var qw = stats.byProvider && (stats.byProvider.qwen || {});
+
+            if (dsCost) dsCost.textContent = '$' + (ds.costUsd || 0).toFixed(4);
+            if (dsCalls) dsCalls.textContent = (ds.count || 0) + ' calls · ' + (ds.tokens || 0).toLocaleString() + ' tokens';
+
+            if (gmCost) gmCost.textContent = '$' + (gm.costUsd || 0).toFixed(4);
+            if (gmCalls) gmCalls.textContent = (gm.count || 0) + ' calls · ' + (gm.tokens || 0).toLocaleString() + ' tokens';
+
+            if (qwCost) qwCost.textContent = '$' + (qw.costUsd || 0).toFixed(4);
+            if (qwCalls) qwCalls.textContent = (qw.count || 0) + ' calls · ' + (qw.tokens || 0).toLocaleString() + ' tokens';
+
+            if (blCalls) blCalls.textContent = (stats.blockedCalls || 0);
+            if (totSpent) totSpent.textContent = 'Total spent: $' + (stats.totalCostUsd || 0).toFixed(4);
+
+            if (badge) {
+                badge.textContent = '$' + (stats.totalCostUsd || 0).toFixed(4) + ' · ' + (stats.totalCalls || 0) + ' calls';
+            }
+
+            // Tab counts
+            var cAll = document.getElementById('aiCountAll'); if (cAll) cAll.textContent = stats.totalCalls || 0;
+            var cDs = document.getElementById('aiCountDeepseek'); if (cDs) cDs.textContent = ds.count || 0;
+            var cGm = document.getElementById('aiCountGemini'); if (cGm) cGm.textContent = gm.count || 0;
+            var cQw = document.getElementById('aiCountQwen'); if (cQw) cQw.textContent = qw.count || 0;
+            var cBl = document.getElementById('aiCountBlocked'); if (cBl) cBl.textContent = stats.blockedCalls || 0;
+
+            var goldCount = 0, brainCount = 0;
+            (stats.byArea && Object.keys(stats.byArea) || []).forEach(function(k) {
+                if (k.toLowerCase().includes('gold')) goldCount += stats.byArea[k].count || 0;
+                if (k.toLowerCase().includes('brain')) brainCount += stats.byArea[k].count || 0;
+            });
+            var cGold = document.getElementById('aiCountGold'); if (cGold) cGold.textContent = goldCount;
+            var cBrain = document.getElementById('aiCountBrain'); if (cBrain) cBrain.textContent = brainCount;
+        }
+
+        function aiSetFilter(f) {
+            aiActivityFilter = f;
+            var tabs = document.querySelectorAll('#aiFilterTabs .ai-filter-tab');
+            tabs.forEach(function(t) { t.classList.remove('active'); });
+            var targetBtn = event && event.target ? event.target.closest('button') : null;
+            if (targetBtn) targetBtn.classList.add('active');
+            aiRenderActivityLog();
+        }
+
+        function aiSetSearch(q) {
+            aiActivitySearch = (q || '').trim().toLowerCase();
+            aiRenderActivityLog();
+        }
+
+        function aiRenderActivityLog() {
+            var host = document.getElementById('aiActivityList');
+            if (!host) return;
+
+            var list = aiActivityCache.slice();
+
+            // Filter
+            if (aiActivityFilter === 'deepseek') list = list.filter(function(x) { return x.provider === 'deepseek'; });
+            else if (aiActivityFilter === 'gemini') list = list.filter(function(x) { return x.provider === 'gemini'; });
+            else if (aiActivityFilter === 'qwen') list = list.filter(function(x) { return x.provider === 'qwen'; });
+            else if (aiActivityFilter === 'gold') list = list.filter(function(x) { return String(x.area || '').toLowerCase().includes('gold'); });
+            else if (aiActivityFilter === 'brain') list = list.filter(function(x) { return String(x.area || '').toLowerCase().includes('brain'); });
+            else if (aiActivityFilter === 'blocked') list = list.filter(function(x) { return x.status === 'blocked'; });
+
+            // Search
+            if (aiActivitySearch) {
+                list = list.filter(function(x) {
+                    return String(x.prompt || '').toLowerCase().includes(aiActivitySearch) ||
+                           String(x.response || '').toLowerCase().includes(aiActivitySearch) ||
+                           String(x.model || '').toLowerCase().includes(aiActivitySearch) ||
+                           String(x.area || '').toLowerCase().includes(aiActivitySearch);
+                });
+            }
+
+            if (!list.length) {
+                host.innerHTML = '<div style="text-align:center; padding:45px 20px; color:#64748b; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">' +
+                    '<div style="font-size:32px; margin-bottom:8px;">📭</div>' +
+                    '<div style="font-weight:700; color:#1e293b; font-size:14px;">No AI Activity matching this filter</div>' +
+                    '<div style="font-size:12px; color:#94a3b8; margin-top:4px;">When AI models process events, learn contacts, or reply to chats, details will appear here.</div>' +
+                    '</div>';
+                return;
+            }
+
+            var html = '';
+            list.forEach(function(item, idx) {
+                var p = item.provider || 'unknown';
+                var provBg = '#f1f5f9', provCol = '#334155';
+                if (p === 'deepseek') { provBg = '#f3e8ff'; provCol = '#6b21a8'; }
+                else if (p === 'gemini') { provBg = '#e0f2fe'; provCol = '#0369a1'; }
+                else if (p === 'qwen') { provBg = '#ffedd5'; provCol = '#c2410c'; }
+                else if (p === 'guard' || p === 'system') { provBg = '#fee2e2'; provCol = '#991b1b'; }
+
+                var statusPill = '';
+                if (item.status === 'blocked') {
+                    statusPill = '<span style="background:#fee2e2; color:#991b1b; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:800; border:1px solid #fca5a5;">🛑 Blocked (0 Cost)</span>';
+                } else if (item.status === 'failed') {
+                    statusPill = '<span style="background:#fee2e2; color:#b91c1c; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:700;">❌ Failed</span>';
+                } else {
+                    statusPill = '<span style="background:#dcfce7; color:#15803d; padding:2px 7px; border-radius:10px; font-size:10.5px; font-weight:700;">✅ Success</span>';
+                }
+
+                var autoPill = item.isAutoFetch
+                    ? '<span style="background:#eef2ff; color:#4338ca; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700;">⚡ Background Auto-Fetch</span>'
+                    : '<span style="background:#f8fafc; color:#64748b; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:600;">👤 Manual / User Triggered</span>';
+
+                var whenStr = item.timestamp ? new Date(item.timestamp).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' (Dubai)' : '—';
+                var costStr = item.costUsd > 0 ? ('$' + Number(item.costUsd).toFixed(5)) : '$0.0000';
+                var latencyStr = item.durationMs ? (item.durationMs + 'ms') : '';
+
+                html += '<div class="ai-log-card">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">' +
+                        '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+                            '<span style="background:' + provBg + '; color:' + provCol + '; padding:3px 9px; border-radius:6px; font-weight:800; font-size:11.5px; text-transform:uppercase;">' + goldEsc(p) + '</span>' +
+                            '<span style="font-weight:700; color:#0f172a; font-size:13px;">' + goldEsc(item.model || 'model') + '</span>' +
+                            '<span style="background:#f1f5f9; color:#475569; padding:2px 7px; border-radius:6px; font-size:11px; font-weight:600;">' + goldEsc(item.area || 'General') + '</span>' +
+                            autoPill +
+                            statusPill +
+                        '</div>' +
+                        '<div style="font-size:11px; color:#64748b; font-weight:600;">🕒 ' + whenStr + '</div>' +
+                    '</div>' +
+
+                    '<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:11.5px; color:#475569; background:#f8fafc; padding:6px 10px; border-radius:6px;">' +
+                        '<span>💰 <b>Cost:</b> <b style="color:#0f172a;">' + costStr + '</b></span>' +
+                        '<span>📊 <b>Tokens:</b> ' + (item.totalTokens || 0).toLocaleString() + ' <span style="color:#94a3b8;">(in: ' + (item.tokensIn || 0) + ', out: ' + (item.tokensOut || 0) + ')</span></span>' +
+                        (latencyStr ? '<span>⚡ <b>Duration:</b> ' + latencyStr + '</span>' : '') +
+                    '</div>' +
+
+                    (item.prompt ? '<div style="margin-top:8px;"><details style="font-size:12px; background:#fafafa; border:1px solid #f1f5f9; border-radius:6px; padding:6px 10px;"><summary style="cursor:pointer; font-weight:700; color:#334155;">📥 Prompt / Input Sent to AI</summary><pre style="white-space:pre-wrap; word-break:break-word; font-family:monospace; font-size:11px; color:#334155; margin:6px 0 0 0; max-height:140px; overflow-y:auto;">' + goldEsc(item.prompt) + '</pre></details></div>' : '') +
+
+                    (item.response ? '<div style="margin-top:6px;"><details open style="font-size:12px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:6px 10px;"><summary style="cursor:pointer; font-weight:700; color:#0f172a;">📤 Response / Result Generated</summary><pre style="white-space:pre-wrap; word-break:break-word; font-family:monospace; font-size:11px; color:#0f172a; margin:6px 0 0 0; max-height:160px; overflow-y:auto; background:#f8fafc; padding:8px; border-radius:4px;">' + goldEsc(item.response) + '</pre></details></div>' : '') +
+
+                    (item.error ? '<div style="margin-top:6px; padding:6px 10px; background:#fee2e2; border-radius:6px; color:#991b1b; font-size:11.5px; font-weight:600;">⚠️ Error: ' + goldEsc(item.error) + '</div>' : '') +
+
+                '</div>';
+            });
+
+            host.innerHTML = html;
+        }
+
+        function aiClearLog() {
+            if (!confirm('Are you sure you want to clear all recorded AI activity logs?')) return;
+            fetch('/api/ai/activity-log/clear', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function() {
+                    aiActivityCache = [];
+                    if (typeof toastMsg === 'function') toastMsg('🗑️ AI Activity Log Cleared');
+                    aiLoadActivityLogs();
+                }).catch(function(e) { alert('⚠️ Error: ' + e.message); });
+        }
+
         function goldLoadEvents() {
+            aiLoadControlState();
             var meta = document.getElementById('goldEventsMeta');
             Promise.all([
                 fetch('/api/gold/events').then(function(r) { return r.json(); }),
@@ -10187,5 +11188,389 @@
         </div>
       </div>
     </div>
+
+    <!-- ==================== 🤖 WHAT DID WHICH AI DO & AUTO-FETCH AUDIT MODAL ==================== -->
+    <div id="aiActivityModal" style="display:none; position:fixed; inset:0; z-index:2100; background:rgba(15,23,42,0.75); backdrop-filter:blur(6px); align-items:center; justify-content:center; padding:16px;">
+      <div style="background:#fff; width:min(920px, 96vw); max-height:92vh; border-radius:16px; box-shadow:0 24px 54px rgba(0,0,0,0.4); display:flex; flex-direction:column; overflow:hidden; border:1px solid #cbd5e1;">
+        
+        <!-- Header -->
+        <div style="padding:16px 20px; background:linear-gradient(135deg, #0f172a, #1e1b4b, #312e81); color:#fff; display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid #334155;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:22px;">🤖</span>
+              <h3 style="margin:0; font-size:17px; font-weight:800; color:#f8fafc;">What Did Which AI Do? — Usage &amp; Activity Log</h3>
+              <span id="aiModalStatusPill" class="ai-pill-active" style="font-size:11px;">🟢 AI Auto-Fetch: Active</span>
+            </div>
+            <div style="font-size:12px; color:#94a3b8; margin-top:4px;">
+              Live tracking of DeepSeek, Gemini, Qwen &amp; OpenAI queries, token spend, exact prompts, responses, and blocked scrapers.
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button id="aiModalKillSwitchBtn" onclick="aiToggleAutoFetch()" style="padding:7px 14px; background:#dc2626; color:#fff; border:none; border-radius:8px; font-size:11.5px; font-weight:800; cursor:pointer; box-shadow:0 2px 6px rgba(220,38,38,0.3);">🛑 Stop All AI Auto-Fetching</button>
+            <button onclick="aiCloseActivityModal()" style="background:transparent; border:none; color:#cbd5e1; font-size:22px; cursor:pointer; padding:2px 8px; border-radius:6px; line-height:1;" onmouseover="this.style.color='#fff';" onmouseout="this.style.color='#cbd5e1';">✖</button>
+          </div>
+        </div>
+
+        <!-- KPI Stats Overview Cards -->
+        <div style="padding:14px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px;">
+          
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">🟣 DeepSeek Spend</span>
+              <span style="font-size:10px; background:#f3e8ff; color:#6b21a8; padding:1px 5px; border-radius:4px; font-weight:bold;">V3 / V4</span>
+            </div>
+            <div id="aiStatDeepseekCost" style="font-size:20px; font-weight:800; color:#6b21a8; margin-top:2px;">$0.0000</div>
+            <div id="aiStatDeepseekCalls" style="font-size:10.5px; color:#64748b;">0 calls · 0 tokens</div>
+          </div>
+
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">🔵 Google Gemini</span>
+              <span style="font-size:10px; background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:4px; font-weight:bold;">Flash</span>
+            </div>
+            <div id="aiStatGeminiCost" style="font-size:20px; font-weight:800; color:#0284c7; margin-top:2px;">$0.0000</div>
+            <div id="aiStatGeminiCalls" style="font-size:10.5px; color:#64748b;">0 calls · 0 tokens</div>
+          </div>
+
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">🟠 Alibaba Qwen</span>
+              <span style="font-size:10px; background:#ffedd5; color:#c2410c; padding:1px 5px; border-radius:4px; font-weight:bold;">3.8-Flash</span>
+            </div>
+            <div id="aiStatQwenCost" style="font-size:20px; font-weight:800; color:#ea580c; margin-top:2px;">$0.0000</div>
+            <div id="aiStatQwenCalls" style="font-size:10.5px; color:#64748b;">0 calls · 0 tokens</div>
+          </div>
+
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">🛑 Calls Blocked</span>
+              <span style="font-size:10px; background:#fee2e2; color:#b91c1c; padding:1px 5px; border-radius:4px; font-weight:bold;">Saved $$</span>
+            </div>
+            <div id="aiStatBlockedCalls" style="font-size:20px; font-weight:800; color:#dc2626; margin-top:2px;">0</div>
+            <div id="aiStatTotalSpent" style="font-size:10.5px; color:#16a34a; font-weight:700;">Total spent: $0.0000</div>
+          </div>
+
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div style="padding:10px 20px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div id="aiFilterTabs" style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="ai-filter-tab active" onclick="aiSetFilter('all')">All (<span id="aiCountAll">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('deepseek')">DeepSeek (<span id="aiCountDeepseek">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('gemini')">Gemini (<span id="aiCountGemini">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('qwen')">Qwen (<span id="aiCountQwen">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('gold')">Gold Events (<span id="aiCountGold">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('brain')">Contact Brain (<span id="aiCountBrain">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('blocked')">🛑 Blocked (<span id="aiCountBlocked">0</span>)</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="text" id="aiSearchInput" placeholder="🔍 Search prompt, response, model..." oninput="aiSetSearch(this.value)" style="padding:6px 12px; border:1px solid var(--border); border-radius:20px; font-size:12px; width:180px;">
+            <button onclick="aiLoadActivityLogs()" title="Refresh Log" style="background:#f1f5f9; border:1px solid #cbd5e1; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px;">🔄</button>
+            <button onclick="aiClearLog()" title="Clear Activity Log" style="background:#fef2f2; border:1px solid #fecaca; color:#dc2626; border-radius:8px; padding:6px 10px; cursor:pointer; font-size:12px; font-weight:700;">🗑️ Clear</button>
+          </div>
+        </div>
+
+        <!-- Activity Log List Container -->
+        <div id="aiActivityList" style="flex:1; overflow-y:auto; padding:16px 20px; background:#f8fafc; display:flex; flex-direction:column; gap:12px;">
+          <div style="text-align:center; color:#64748b; padding:40px 10px;">
+            <div style="font-size:24px; margin-bottom:8px;">⏳</div>
+            <div>Loading AI activity logs...</div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:10px 20px; background:#fff; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:11.5px; color:#64748b;">
+            💡 <b>Tip:</b> If you see unexpected DeepSeek or model charges, click <b>"Stop All AI Auto-Fetching"</b> to immediately halt background scrapers.
+          </div>
+          <button onclick="aiCloseActivityModal()" style="padding:7px 18px; background:#0f172a; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Close Log</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ⚡ MODAL: CHAT AI POWERS & MODALITY PERMISSIONS -->
+    <div id="chatAiPowersModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.78); backdrop-filter:blur(6px); z-index:999999; justify-content:center; align-items:center;">
+      <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:92%; max-width:620px; max-height:90vh; display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,0.6); overflow:hidden; font-family:system-ui, -apple-system, sans-serif; color:#f8fafc;">
+        
+        <!-- Header -->
+        <div style="padding:16px 20px; background:linear-gradient(135deg, #1e293b, #0f172a); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">⚡</span>
+              <span style="font-size:16px; font-weight:800; color:#38bdf8;">Chat AI Powers & Modality Controls</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+              <span id="aiPowersContactName" style="font-size:13px; font-weight:bold; color:#e2e8f0;">Loading Contact...</span>
+              <span id="aiPowersContactJid" style="font-size:11px; background:#1e293b; color:#94a3b8; padding:2px 8px; border-radius:6px; font-family:monospace;"></span>
+            </div>
+          </div>
+          <button onclick="closeChatAiPowersModal()" style="background:transparent; border:none; color:#94a3b8; font-size:22px; cursor:pointer; padding:4px 8px; border-radius:6px; line-height:1;" onmouseover="this.style.color='#fff';" onmouseout="this.style.color='#94a3b8';">✖</button>
+        </div>
+
+        <!-- Body Content -->
+        <div style="padding:18px 22px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:18px;">
+          
+          <!-- 1. AI Operating Mode -->
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:14px 16px;">
+            <div style="font-size:13px; font-weight:700; color:#38bdf8; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <span>🤖 1. AI Operating Mode</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer; font-size:12px;">
+                <input type="radio" name="aiPowerMode" value="auto" id="aiModeAuto">
+                <div>
+                  <div style="font-weight:700; color:#34d399;">🤖 Full Auto-Pilot</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">Replies to contact automatically</div>
+                </div>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer; font-size:12px;">
+                <input type="radio" name="aiPowerMode" value="draft_only" id="aiModeDraft">
+                <div>
+                  <div style="font-weight:700; color:#60a5fa;">📥 Copilot Draft</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">Drafts replies for approval</div>
+                </div>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer; font-size:12px;">
+                <input type="radio" name="aiPowerMode" value="alert_only" id="aiModeAlert">
+                <div>
+                  <div style="font-weight:700; color:#fbbf24;">🔔 Silent Tracker</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">Tracks tasks & alerts owner</div>
+                </div>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer; font-size:12px;">
+                <input type="radio" name="aiPowerMode" value="silent" id="aiModeSilent">
+                <div>
+                  <div style="font-weight:700; color:#f87171;">🔇 Disabled / Off</div>
+                  <div style="font-size:10.5px; color:#94a3b8;">AI never touches this chat</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 2. Allowed Input Modalities -->
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:14px 16px;">
+            <div style="font-size:13px; font-weight:700; color:#38bdf8; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <span>🎛️ 2. Allowed Input Modalities (What can AI process in this chat?)</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              
+              <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:16px;">🎙️</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">Voice Notes & Audio</div>
+                    <div style="font-size:10.5px; color:#94a3b8;">Transcribe & understand incoming & outgoing voice notes</div>
+                  </div>
+                </div>
+                <input type="checkbox" id="aiPowerModAudio" style="width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+              </label>
+
+              <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:16px;">🖼️</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">Photos & Images (Vision & OCR)</div>
+                    <div style="font-size:10.5px; color:#94a3b8;">Analyze product pictures, screenshots & invoices</div>
+                  </div>
+                </div>
+                <input type="checkbox" id="aiPowerModImage" style="width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+              </label>
+
+              <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:16px;">📄</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">PDFs & Documents</div>
+                    <div style="font-size:10.5px; color:#94a3b8;">Extract tables, terms, and agreements from PDF files</div>
+                  </div>
+                </div>
+                <input type="checkbox" id="aiPowerModDoc" style="width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+              </label>
+
+              <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:16px;">🎥</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">Videos</div>
+                    <div style="font-size:10.5px; color:#94a3b8;">Process video captions & visual video content</div>
+                  </div>
+                </div>
+                <input type="checkbox" id="aiPowerModVideo" style="width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+              </label>
+
+              <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:9px 12px; border-radius:8px; border:1px solid #334155; cursor:pointer;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:16px;">🎞️</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:700; color:#f8fafc;">GIFs & Stickers</div>
+                    <div style="font-size:10.5px; color:#94a3b8;">Detect emotional tone and emoji reactions</div>
+                  </div>
+                </div>
+                <input type="checkbox" id="aiPowerModGif" style="width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+              </label>
+
+            </div>
+          </div>
+
+          <!-- 3. Two-Way Context Understanding -->
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:14px 16px;">
+            <div style="font-size:13px; font-weight:700; color:#38bdf8; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <span>🔄 3. Two-Way Dialogue Understanding</span>
+            </div>
+            <label style="display:flex; align-items:center; justify-content:space-between; background:#0f172a; padding:10px 12px; border-radius:8px; border:1px solid #38bdf8; cursor:pointer;">
+              <div>
+                <div style="font-size:12.5px; font-weight:700; color:#38bdf8;">Understand BOTH Sides (You + Contact)</div>
+                <div style="font-size:11px; color:#cbd5e1; margin-top:2px;">
+                  AI evaluates what the contact said AND what YOU replied/promised in voice & text to synthesize full context without contradicting you.
+                </div>
+              </div>
+              <input type="checkbox" id="aiPowerTwoWayContext" checked style="width:18px; height:18px; accent-color:#0284c7; cursor:pointer;">
+            </label>
+          </div>
+
+          <!-- 4. Commercial Permissions -->
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:14px 16px;">
+            <div style="font-size:13px; font-weight:700; color:#38bdf8; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <span>💼 4. Business Permissions</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px;">
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:8px 10px; border-radius:8px; border:1px solid #334155; font-size:11.5px; cursor:pointer;">
+                <input type="checkbox" id="aiPowerPermProducts" style="accent-color:#0284c7;">
+                <span>Offer Products</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:8px 10px; border-radius:8px; border:1px solid #334155; font-size:11.5px; cursor:pointer;">
+                <input type="checkbox" id="aiPowerPermInvoices" style="accent-color:#0284c7;">
+                <span>Send Invoices</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; background:#0f172a; padding:8px 10px; border-radius:8px; border:1px solid #334155; font-size:11.5px; cursor:pointer;">
+                <input type="checkbox" id="aiPowerPermPrice" style="accent-color:#0284c7;">
+                <span>Quote Prices</span>
+              </label>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer Actions -->
+        <div style="padding:14px 20px; background:#1e293b; border-top:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+          <button onclick="closeChatAiPowersModal()" style="padding:8px 16px; background:#334155; color:#e2e8f0; border:none; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+          <button id="saveChatAiPowersBtn" onclick="saveChatAiPowers()" style="padding:9px 24px; background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; border:none; border-radius:8px; font-size:12.5px; font-weight:800; cursor:pointer; box-shadow:0 2px 10px rgba(2,132,199,0.4); display:flex; align-items:center; gap:6px;">
+            <span>💾 Save AI Powers</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      let currentAiPowersJid = '';
+
+      async function openChatAiPowersModal(jid) {
+        if (!jid) jid = typeof waWebCurrentJid !== 'undefined' ? waWebCurrentJid : '';
+        if (!jid) {
+          if (typeof toastMsg === 'function') toastMsg('Please select a chat first');
+          return;
+        }
+        currentAiPowersJid = jid;
+
+        const modal = document.getElementById('chatAiPowersModal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+
+        document.getElementById('aiPowersContactName').textContent = 'Loading...';
+        document.getElementById('aiPowersContactJid').textContent = jid;
+
+        try {
+          const res = await fetch('/api/brain-powers?jid=' + encodeURIComponent(jid));
+          const data = await res.json();
+          if (data && data.ok) {
+            document.getElementById('aiPowersContactName').textContent = data.name || (typeof resolveContactName === 'function' ? resolveContactName(jid) : 'Contact');
+            
+            // Mode
+            const mode = data.mode || 'auto';
+            if (mode === 'auto') document.getElementById('aiModeAuto').checked = true;
+            else if (mode === 'draft_only') document.getElementById('aiModeDraft').checked = true;
+            else if (mode === 'alert_only') document.getElementById('aiModeAlert').checked = true;
+            else document.getElementById('aiModeSilent').checked = true;
+
+            // Modalities
+            const mods = data.modalities || {};
+            document.getElementById('aiPowerModAudio').checked = mods.allowAudio !== false;
+            document.getElementById('aiPowerModImage').checked = mods.allowImage !== false;
+            document.getElementById('aiPowerModDoc').checked = mods.allowDoc !== false;
+            document.getElementById('aiPowerModVideo').checked = mods.allowVideo !== false;
+            document.getElementById('aiPowerModGif').checked = mods.allowGif !== false;
+            document.getElementById('aiPowerTwoWayContext').checked = mods.twoWayContext !== false;
+
+            // Permissions
+            const perms = data.permissions || {};
+            document.getElementById('aiPowerPermProducts').checked = perms.canOfferProducts === true;
+            document.getElementById('aiPowerPermInvoices').checked = perms.canSendInvoice === true;
+            document.getElementById('aiPowerPermPrice').checked = perms.canTalkPrice === true;
+          }
+        } catch (e) {
+          console.warn('[AI POWERS] Load error:', e.message);
+          document.getElementById('aiPowersContactName').textContent = jid;
+        }
+      }
+
+      function closeChatAiPowersModal() {
+        const modal = document.getElementById('chatAiPowersModal');
+        if (modal) modal.style.display = 'none';
+      }
+
+      async function saveChatAiPowers() {
+        if (!currentAiPowersJid) return;
+        const btn = document.getElementById('saveChatAiPowersBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span>⏳ Saving...</span>';
+        btn.disabled = true;
+
+        try {
+          let mode = 'auto';
+          if (document.getElementById('aiModeDraft').checked) mode = 'draft_only';
+          else if (document.getElementById('aiModeAlert').checked) mode = 'alert_only';
+          else if (document.getElementById('aiModeSilent').checked) mode = 'silent';
+
+          const modalities = {
+            allowAudio: document.getElementById('aiPowerModAudio').checked,
+            allowImage: document.getElementById('aiPowerModImage').checked,
+            allowDoc: document.getElementById('aiPowerModDoc').checked,
+            allowVideo: document.getElementById('aiPowerModVideo').checked,
+            allowGif: document.getElementById('aiPowerModGif').checked,
+            twoWayContext: document.getElementById('aiPowerTwoWayContext').checked
+          };
+
+          const permissions = {
+            canOfferProducts: document.getElementById('aiPowerPermProducts').checked,
+            canSendInvoice: document.getElementById('aiPowerPermInvoices').checked,
+            canTalkPrice: document.getElementById('aiPowerPermPrice').checked
+          };
+
+          const res = await fetch('/api/brain-powers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jid: currentAiPowersJid, mode, modalities, permissions })
+          });
+          const data = await res.json();
+          if (data && data.ok) {
+            if (typeof toastMsg === 'function') toastMsg('✅ AI Powers & Modalities saved successfully for ' + currentAiPowersJid);
+            closeChatAiPowersModal();
+          } else {
+            alert('Failed to save: ' + ((data && data.error) || 'Unknown error'));
+          }
+        } catch (e) {
+          alert('Save error: ' + e.message);
+        } finally {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
+      }
+    </script>
+
+    <!-- 🔴 Live Interactive Discussion / Meeting Board Engine -->
+    <script src="/liveMeetingClient.js"></script>
+    <script src="/liveMeetingSessionsClient.js"></script>
 </body>
 </html>

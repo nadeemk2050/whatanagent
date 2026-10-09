@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
 import { brainPromptSectionForJid, getBrainForReply, saveBrainDraft, escalateBrain } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
+import { recordAiCall } from './aiTracker.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -3746,11 +3747,68 @@ export async function initWaWeb(db = null) {
       }
     });
 
+    // Helper: Asynchronously transcribe voice notes (both incoming from contact AND outgoing from owner)
+    async function autoTranscribeMessageAudio(msg) {
+      try {
+        if (!msg || !msg.message) return;
+        const { mediaType, mediaInfo } = parseMessageContent(msg);
+        if (mediaType !== 'audio') return;
+        const jid = msg.key?.remoteJid;
+        if (!jid || jid === 'status@broadcast') return;
+        const msgId = msg.key?.id;
+        if (!msgId) return;
+
+        // Check if brain allows audio for this contact
+        let brain = null;
+        try { brain = await getBrainForReply(jid, resolveContactName(jid)); } catch (e) {}
+        if (brain && brain.modalities && brain.modalities.allowAudio === false) {
+          console.log(`[WA-WEB AUDIO] 🔇 Audio transcription skipped for ${jid} (allowAudio disabled in AI Powers)`);
+          return;
+        }
+
+        const dlOpts = { logger: pino({ level: 'silent' }), reuploadRequest: sock?.updateMediaMessage };
+        let buffer = null;
+        try {
+          buffer = await downloadMediaMessage(msg, 'buffer', {}, dlOpts);
+        } catch (e) {
+          await new Promise(r => setTimeout(r, 2000));
+          try { buffer = await downloadMediaMessage(msg, 'buffer', {}, dlOpts); } catch (e2) {}
+        }
+        if (!buffer || buffer.length === 0) return;
+
+        const mimetype = mediaInfo?.mimetype || 'audio/ogg; codecs=opus';
+        const transcribedText = await transcribeAudioBuffer(buffer, mimetype);
+        if (transcribedText) {
+          const fromMe = Boolean(msg.key.fromMe);
+          console.log(`[WA-WEB AUDIO] 🎙️ Auto-Transcribed ${fromMe ? 'OWNER / YOU (Sent)' : 'CONTACT (Received)'} in ${jid}: "${transcribedText}"`);
+          
+          const chat = waWebState.chats.get(jid);
+          if (chat && chat.messages) {
+            const target = chat.messages.find(m => m.id === msgId);
+            const formatted = `🎙️ [Voice Note]: "${transcribedText}"`;
+            if (target) {
+              target.text = formatted;
+              target.transcribedAudio = transcribedText;
+            }
+            if (chat.messages[chat.messages.length - 1]?.id === msgId) {
+              chat.lastMessage = formatted;
+            }
+            scheduleHistorySaveToFirestore();
+          }
+        }
+      } catch (err) {
+        console.warn('[WA-WEB AUDIO] Auto-transcription error:', err.message);
+      }
+    }
+
     // 4. Live messages incoming
     sock.ev.on('messages.upsert', async (m) => {
       try {
         if (!m.messages || m.messages.length === 0) return;
-        m.messages.forEach(msg => upsertMessageToChat(msg, false));
+        m.messages.forEach(msg => {
+          upsertMessageToChat(msg, false);
+          autoTranscribeMessageAudio(msg);
+        });
 
                 // Auto-Pilot AI Bot check for incoming customer messages
         if (waWebKnowledgeBase && waWebKnowledgeBase.autoReplyEnabled) {
@@ -4419,7 +4477,7 @@ export function triggerWaWebForceSync() {
   return getWaWebSyncStats();
 }
 
-// Helper: Get rich context for AI Copilot on specific chat
+// Helper: Get rich context for AI Copilot and Auto-Reply with full TWO-WAY dialogue understanding
 export function getWaWebChatContext(jid) {
   if (!jid) return null;
   const chat = waWebState.chats.get(jid);
@@ -4427,10 +4485,11 @@ export function getWaWebChatContext(jid) {
 
   const msgs = chat.messages || [];
   const transcript = msgs.map(m => {
-    const time = m.timestamp ? new Date(m.timestamp).toLocaleString('en-US') : '';
-    const sender = m.fromMe ? 'You (Business/User)' : (m.senderName || chat.name || 'Customer');
+    const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const sender = m.fromMe ? '👑 You (Account Owner / Boss)' : ('👤 ' + (m.senderName || chat.name || 'Customer'));
     const mediaNote = m.mediaType ? ' [Media: ' + m.mediaType + (m.mediaInfo && m.mediaInfo.caption ? ' - ' + m.mediaInfo.caption : '') + ']' : '';
-    return '[' + time + '] ' + sender + ': ' + (m.text || '') + mediaNote;
+    const textContent = m.text || (m.transcribedAudio ? `🎙️ [Voice Note]: "${m.transcribedAudio}"` : (mediaNote || '[Empty Message]'));
+    return '[' + time + '] ' + sender + ': ' + textContent;
   }).join('\n');
 
   return {
@@ -4712,13 +4771,16 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       specialGuidance += '\n⚠️ NOTE: This sender is an UNSAVED / NEW contact (' + cleanPhone + '). Per Rule #2, politely and gently ask for their Name, Company Name, Country, and Business Activity so we can register them in our records.';
     }
 
-    systemPrompt = overridePrompt || (knowledgePrompt + '\n--- CONVERSATION CONTEXT ---\n' +
-'Customer Name: ' + (chatContext?.name || 'Customer') + '\n' +
-'Phone / JID: ' + jid + specialGuidance + '\n' +
-'Recent conversation transcript:\n' +
+    systemPrompt = overridePrompt || (knowledgePrompt + '\n--- 🔄 COMPLETE TWO-WAY CONVERSATION CONTEXT ---\n' +
+'Customer / Contact: ' + (chatContext?.name || 'Customer') + ' (' + jid + ')' + specialGuidance + '\n' +
+'Chronological Transcript of BOTH sides (👑 You/Owner + 👤 Contact):\n' +
 (chatContext?.transcript || customerMessage) + '\n' +
-'--- END CONTEXT ---\n' +
-'Task: Compose a natural, professional WhatsApp reply following all business rules. If greeting, address by their name. Do not repeat greeting if already in conversation.');
+'--- END CONTEXT ---\n\n' +
+'🧠 INSTRUCTIONS FOR TWO-WAY UNDERSTANDING:\n' +
+'1. You have the complete history of BOTH what the Contact asked/said and what the Owner/Boss (You) replied/promised in voice & text.\n' +
+'2. Carefully analyze agreements, quotes, commitments, and status updates already delivered by the Owner/Boss.\n' +
+'3. DO NOT contradict what the Owner/Boss said. DO NOT ask questions the contact or Owner/Boss already answered.\n' +
+'4. Synthesize the whole conversation and formulate the most intelligent, helpful, natural WhatsApp response.');
 
     // 🧠 CONTACT BRAIN: per-contact personality, relationship rules, learned style + persona blend
     // (never applied to internal override prompts, e.g. the Boss command brain)
@@ -5007,7 +5069,18 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         model: 'deepseek-chat',
         temperature: 0.4
       });
-      return comp.choices[0]?.message?.content || null;
+      const t = comp.choices[0]?.message?.content || null;
+      recordAiCall({
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: t,
+        tokensIn: comp.usage?.prompt_tokens || 0,
+        tokensOut: comp.usage?.completion_tokens || 0
+      });
+      return t;
     } else if (chosenModel.startsWith('gemini') && geminiKey) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
@@ -5015,21 +5088,42 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const gtxt = (res.response.text() || '').trim();
+      recordAiCall({
+        provider: 'gemini',
+        model: geminiModel,
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: gtxt,
+        tokensIn: res.response.usageMetadata?.promptTokenCount || 0,
+        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0
+      });
       if (gtxt) return gtxt;
       throw new Error('Gemini returned an empty reply');
     } else if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && qwenKey) {
       // Qwen3.8-Flash (Alibaba Model Studio, OpenAI-compatible) - smart multilingual text engine
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+      const qm = chosenModel === 'qwen' ? qwenModelId : chosenModel;
       const comp = await openai.chat.completions.create({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: chosenModel === 'qwen' ? qwenModelId : chosenModel,
+        model: qm,
         temperature: 0.4
       });
       const qtxt = (comp.choices[0]?.message?.content || '').trim();
+      recordAiCall({
+        provider: 'qwen',
+        model: qm,
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: qtxt,
+        tokensIn: comp.usage?.prompt_tokens || 0,
+        tokensOut: comp.usage?.completion_tokens || 0
+      });
       if (qtxt) return qtxt;
       throw new Error('Qwen returned an empty reply');
     } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey) {
@@ -5043,7 +5137,18 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         model: chosenModel || 'gpt-4o-mini',
         temperature: 0.4
       });
-      return comp.choices[0]?.message?.content || null;
+      const t = comp.choices[0]?.message?.content || null;
+      recordAiCall({
+        provider: 'openai',
+        model: chosenModel || 'gpt-4o-mini',
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: t,
+        tokensIn: comp.usage?.prompt_tokens || 0,
+        tokensOut: comp.usage?.completion_tokens || 0
+      });
+      return t;
     } else if (deepseekKey) {
       // Automatic Fallback 1: DeepSeek
       const { default: OpenAI } = await import('openai');
@@ -5053,14 +5158,36 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         model: 'deepseek-chat',
         temperature: 0.4
       });
-      return comp.choices[0]?.message?.content || null;
+      const t = comp.choices[0]?.message?.content || null;
+      recordAiCall({
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback]',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: t,
+        tokensIn: comp.usage?.prompt_tokens || 0,
+        tokensOut: comp.usage?.completion_tokens || 0
+      });
+      return t;
     } else if (geminiKey) {
       // Automatic Fallback 2: Gemini
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
-      return res.response.text() || null;
+      const t = res.response.text() || null;
+      recordAiCall({
+        provider: 'gemini',
+        model: 'gemini-2.5-flash',
+        area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback]',
+        isAutoFetch: false,
+        prompt: customerMessage,
+        response: t,
+        tokensIn: res.response.usageMetadata?.promptTokenCount || 0,
+        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0
+      });
+      return t;
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);

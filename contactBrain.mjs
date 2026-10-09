@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { doc, getDoc, setDoc, getDocs, collection, addDoc, deleteDoc, query, orderBy, limit, where } from 'firebase/firestore';
+import { isAiAutoFetchStopped, recordAiCall } from './aiTracker.mjs';
 
 let brainDb = null;
 export function attachBrainDb(db) { if (db) brainDb = db; }
@@ -141,6 +142,17 @@ export function sanitizeProfile(raw, existing = {}) {
     canSendInvoice: asBool(rp.canSendInvoice != null ? rp.canSendInvoice : ep.canSendInvoice),
     canTalkPrice: asBool(rp.canTalkPrice != null ? rp.canTalkPrice : ep.canTalkPrice)
   };
+  const rm = raw.modalities || {};
+  const em = existing.modalities || {};
+  p.modalities = {
+    allowAudio: asBool(rm.allowAudio != null ? rm.allowAudio : (em.allowAudio != null ? em.allowAudio : true)),
+    allowImage: asBool(rm.allowImage != null ? rm.allowImage : (em.allowImage != null ? em.allowImage : true)),
+    allowVideo: asBool(rm.allowVideo != null ? rm.allowVideo : (em.allowVideo != null ? em.allowVideo : true)),
+    allowDoc: asBool(rm.allowDoc != null ? rm.allowDoc : (em.allowDoc != null ? em.allowDoc : true)),
+    allowGif: asBool(rm.allowGif != null ? rm.allowGif : (em.allowGif != null ? em.allowGif : true)),
+    twoWayContext: asBool(rm.twoWayContext != null ? rm.twoWayContext : (em.twoWayContext != null ? em.twoWayContext : true)),
+    outputVoice: asBool(rm.outputVoice != null ? rm.outputVoice : (em.outputVoice != null ? em.outputVoice : false))
+  };
   const ns = raw.neverSay != null ? raw.neverSay : existing.neverSay;
   p.neverSay = (Array.isArray(ns) ? ns : String(ns || '').split('\n')).map(x => sstr(x, 80).trim()).filter(Boolean).slice(0, 15);
   p.notes = sstr(raw.notes != null ? raw.notes : existing.notes, 1000);
@@ -201,7 +213,17 @@ export function buildBrainPromptSection(profile, opts = {}) {
   if (learned.topics && learned.topics.length) s += 'Usual topics between you two: ' + learned.topics.slice(0, 6).map(t => sstr(t, 60)).join(', ') + '\n';
   if (learned.facts && learned.facts.length) s += 'Remember about him: ' + learned.facts.slice(0, 8).map(f => sstr(f, 120)).join('; ') + '\n';
   if (learned.promises && learned.promises.length) s += 'Open promises/deals with him (be consistent): ' + learned.promises.slice(0, 5).map(f => sstr(f, 120)).join('; ') + '\n';
-  if (profile.notes) s += 'Owner notes about him: ' + sstr(profile.notes, 500) + '\n';
+  if (profile.modalities) {
+    const m = profile.modalities;
+    s += 'MEDIA MODALITIES: Audio/Voice Notes: ' + (m.allowAudio ? 'ALLOWED (transcribe & understand)' : 'DISABLED (ignore audio)') +
+         '; Images: ' + (m.allowImage ? 'ALLOWED (vision & OCR)' : 'DISABLED') +
+         '; Documents: ' + (m.allowDoc ? 'ALLOWED' : 'DISABLED') +
+         '; Video: ' + (m.allowVideo ? 'ALLOWED' : 'DISABLED') +
+         '; GIFs: ' + (m.allowGif ? 'ALLOWED' : 'DISABLED') + '.\n';
+    if (m.twoWayContext !== false) {
+      s += 'TWO-WAY DIALOGUE UNDERSTANDING: ACTIVE — Analyze the complete timeline of BOTH what the contact said and what the Owner/Boss already replied or promised.\n';
+    }
+  }
   s += 'SITUATION AWARENESS: read his last message — if he is angry, sad, stressed or it is an emergency: raise Caring, drop jokes to 0, be gentle. Match his energy; mirror his greeting style.\n';
   s += 'ESCALATION RULE: if the message involves real money problems, a fight, an emergency, sickness or death — reply with exactly: ESCALATE\n';
   s += '[END CONTACT BRAIN]\n';
@@ -399,6 +421,7 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
   if (deepseekKey) order.push('deepseek');
 
   for (const p of order) {
+    const startTime = Date.now();
     try {
       if (p === 'qwen' || p === 'deepseek') {
         const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
@@ -410,9 +433,36 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
           body: JSON.stringify({ model, temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
           signal: AbortSignal.timeout(60000)
         });
-        if (!r.ok) { console.warn('[BRAIN AI] ' + p + ' HTTP ' + r.status); continue; }
+        if (!r.ok) {
+          const errText = await r.text().catch(() => '');
+          recordAiCall({
+            provider: p,
+            model,
+            area: 'Contact Brain',
+            isAutoFetch: false,
+            prompt: user,
+            response: '',
+            error: `HTTP ${r.status}: ${errText.substring(0, 200)}`,
+            durationMs: Date.now() - startTime
+          });
+          console.warn('[BRAIN AI] ' + p + ' HTTP ' + r.status);
+          continue;
+        }
         const j = await r.json();
         const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        const tokensIn = (j.usage && j.usage.prompt_tokens) || 0;
+        const tokensOut = (j.usage && j.usage.completion_tokens) || 0;
+        recordAiCall({
+          provider: p,
+          model,
+          area: 'Contact Brain',
+          isAutoFetch: false,
+          prompt: user,
+          response: t,
+          tokensIn,
+          tokensOut,
+          durationMs: Date.now() - startTime
+        });
         if (t) { console.log('[BRAIN AI] 🧠 answered via ' + model); return t; }
       } else if (p === 'gemini') {
         for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash']) {
@@ -426,6 +476,19 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
             if (!r.ok) continue;
             const j = await r.json();
             const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+            const tokensIn = (j.usageMetadata && j.usageMetadata.promptTokenCount) || 0;
+            const tokensOut = (j.usageMetadata && j.usageMetadata.candidatesTokenCount) || 0;
+            recordAiCall({
+              provider: 'gemini',
+              model: gm,
+              area: 'Contact Brain',
+              isAutoFetch: false,
+              prompt: user,
+              response: t,
+              tokensIn,
+              tokensOut,
+              durationMs: Date.now() - startTime
+            });
             if (t) { console.log('[BRAIN AI] 🧠 answered via ' + gm); return t; }
           } catch (e) { /* next */ }
         }
@@ -513,6 +576,9 @@ export function createBrainEngine(db) {
 
   // Runs a few times/hour max; processes up to 2 stale contacts per pass
   async function maybeLearn() {
+    if (isAiAutoFetchStopped()) {
+      return; // Skip auto-learning when auto-fetch is stopped by user
+    }
     if (Date.now() - lastLearnTick < 60 * 60 * 1000) return;
     lastLearnTick = Date.now();
     try {
@@ -523,6 +589,7 @@ export function createBrainEngine(db) {
       const candidates = all.filter(b => b.learnEnabled !== false).slice(0, 12);
       let done = 0;
       for (const b of candidates) {
+        if (isAiAutoFetchStopped()) break;
         if (done >= 3) break;
         const age = b.lastLearnedAt ? (now - b.lastLearnedAt) : Infinity;
         const dueByTime = !b.lastLearnedAt || age > 20 * 3600 * 1000;
@@ -596,6 +663,55 @@ export function registerBrainRoutes(app, db) {
         return res.json({ ok: true, status: 'sent' });
       }
       return res.status(400).json({ error: 'Unknown action' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get(['/api/brain-powers', '/api/brain/:jid/powers', '/api/brain-powers/:jid'], async (req, res) => {
+    try {
+      const rawJid = req.query?.jid || req.params?.jid || '';
+      const jid = decodeURIComponent(rawJid);
+      if (!jid) return res.status(400).json({ error: 'Missing jid' });
+      let profile = await getBrain(jid, { fresh: true });
+      if (!profile) {
+        profile = sanitizeProfile({ jid });
+      }
+      res.json({
+        ok: true,
+        jid,
+        name: profile.name || '',
+        mode: profile.mode || 'auto',
+        modalities: profile.modalities || {
+          allowAudio: true,
+          allowImage: true,
+          allowVideo: true,
+          allowDoc: true,
+          allowGif: true,
+          twoWayContext: true,
+          outputVoice: false
+        },
+        permissions: profile.permissions || {
+          canOfferProducts: false,
+          canSendInvoice: false,
+          canTalkPrice: false
+        }
+      });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post(['/api/brain-powers', '/api/brain/:jid/powers', '/api/brain-powers/:jid'], async (req, res) => {
+    try {
+      const rawJid = req.body?.jid || req.query?.jid || req.params?.jid || '';
+      const jid = decodeURIComponent(rawJid);
+      if (!jid) return res.status(400).json({ error: 'Missing jid' });
+      const { mode, modalities, permissions } = req.body || {};
+      let profile = await getBrain(jid, { fresh: true });
+      const patch = {};
+      if (mode) patch.mode = mode;
+      if (modalities && typeof modalities === 'object') patch.modalities = modalities;
+      if (permissions && typeof permissions === 'object') patch.permissions = permissions;
+      
+      const saved = await saveBrain(jid, { ...(profile || {}), ...patch });
+      res.json({ ok: true, profile: saved });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

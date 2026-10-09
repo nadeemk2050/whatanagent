@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <title>Live Interactive Board | WhatAnAgent</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔴</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #0a0e17;
+            --card-dark: #0f172a;
+            --border-dark: #1e293b;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --emerald: #10b981;
+            --rose: #ef4444;
+            --amber: #f59e0b;
+            --cyan: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Ambient Glow & Pulse */
+        @keyframes pulseDot {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .live-pulse-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: var(--rose); display: inline-block;
+            animation: pulseDot 1.8s infinite;
+        }
+
+        /* Auth Container */
+        #liveAuthContainer {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: radial-gradient(circle at 50% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 65%), #0a0e17;
+        }
+        .auth-glass-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(16px);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+        }
+        .auth-glass-card h2 { font-size: 24px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.5px; }
+        .auth-glass-card p { color: var(--text-muted); font-size: 13.5px; line-height: 1.5; margin-bottom: 24px; }
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .input-group input {
+            width: 100%; padding: 12px 14px;
+            background: #0b1120; border: 1px solid var(--border-dark);
+            border-radius: 10px; color: #fff; font-size: 14px;
+            outline: none; transition: all 0.2s;
+        }
+        .input-group input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25); }
+        .btn-auth-primary {
+            width: 100%; padding: 14px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            border: none; border-radius: 10px; color: #fff;
+            font-size: 15px; font-weight: 700; cursor: pointer;
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+            transition: all 0.2s;
+        }
+        .btn-auth-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(99, 102, 241, 0.55); }
+        .auth-toggle-link {
+            text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-muted);
+        }
+        .auth-toggle-link span { color: var(--cyan); cursor: pointer; font-weight: 700; text-decoration: underline; }
+
+        /* Lobby View */
+        #liveLobbyContainer {
+            display: none;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 30px 20px 60px 20px;
+        }
+        .lobby-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding-bottom: 24px; border-bottom: 1px solid var(--border-dark);
+            margin-bottom: 30px; flex-wrap: wrap; gap: 15px;
+        }
+        .user-badge {
+            display: flex; align-items: center; gap: 12px;
+            background: var(--card-dark); border: 1px solid var(--border-dark);
+            padding: 8px 16px; border-radius: 30px;
+        }
+        .avatar-circle {
+            width: 36px; height: 36px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--cyan));
+            color: #fff; font-weight: 800; display: flex;
+            align-items: center; justify-content: center; font-size: 15px;
+        }
+        .lobby-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px; margin-bottom: 35px;
+        }
+        .lobby-card {
+            background: var(--card-dark); border: 1px solid var(--border-dark);
+            border-radius: 16px; padding: 24px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .lobby-card:hover { border-color: #334155; transform: translateY(-2px); }
+        .lobby-card h3 { font-size: 18px; font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .lobby-card p { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 18px; }
+
+        /* Board Workspace (Fullscreen) */
+        #liveWorkspaceContainer {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #0a0e17; z-index: 5000; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Tool buttons */
+        .live-tool-btn { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 7px 11px; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+        .live-tool-btn:hover { background: #334155; color: #fff; border-color: #64748b; }
+        .live-tool-btn.active { background: #ef4444; border-color: #f87171; color: #fff; box-shadow: 0 0 12px rgba(239, 68, 68, 0.45); }
+        .live-color-dot { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,0.3); transition: transform 0.15s; display: inline-block; }
+        .live-color-dot:hover { transform: scale(1.25); }
+
+        .live-drawer-tab-btn { flex: 1; padding: 10px 6px; background: #0f172a; border: none; border-bottom: 2px solid transparent; color: #94a3b8; font-size: 11.5px; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.15s; white-space: nowrap; }
+        .live-drawer-tab-btn:hover { color: #f8fafc; background: #1e293b; }
+        .live-drawer-tab-btn.active { color: #38bdf8; border-bottom-color: #38bdf8; background: #1e293b; }
+
+        .live-sticky-card { position: absolute; width: 170px; min-height: 120px; padding: 10px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; cursor: grab; display: flex; flex-direction: column; color: #1e293b; }
+        .live-sticky-card:active { cursor: grabbing; }
+        .live-sticky-card .sticky-header { display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; margin-bottom: 4px; opacity: 0.85; }
+        .live-sticky-card .sticky-header button { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: bold; color: #1e293b; }
+        .live-sticky-card textarea { flex: 1; background: transparent; border: none; outline: none; resize: none; font-size: 12px; font-family: inherit; color: inherit; font-weight: 600; min-height: 80px; padding: 0; }
+        .live-text-block { position: absolute; padding: 6px 10px; background: rgba(15, 23, 42, 0.85); border: 1px dashed #38bdf8; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: grab; z-index: 100; backdrop-filter: blur(4px); }
+
+        .live-task-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin-bottom: 8px; transition: all 0.15s; }
+        .live-task-item:hover { border-color: #475569; }
+        .live-task-item.task-done { opacity: 0.55; background: #0f172a; border-color: #1e293b; }
+        .live-poll-card { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+
+        .live-reaction-bubble { position: absolute; bottom: 80px; display: flex; flex-direction: column; align-items: center; pointer-events: none; animation: floatUpReaction 2.2s ease-out forwards; z-index: 250; }
+        @keyframes floatUpReaction {
+            0% { transform: translateY(0) scale(0.6); opacity: 0; }
+            15% { opacity: 1; transform: translateY(-20px) scale(1.1); }
+            80% { opacity: 1; transform: translateY(-140px) scale(1); }
+            100% { transform: translateY(-200px) scale(0.8); opacity: 0; }
+        }
+
+        .notification { position: fixed; bottom: 30px; right: 30px; background-color: #111b21; border: 1px solid var(--primary); color: white; padding: 14px 22px; border-radius: 12px; transform: translateY(100px); opacity: 0; transition: 0.3s; z-index: 9999; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: 600; font-size: 13.5px; }
+        .notification.show { transform: translateY(0); opacity: 1; }
+    </style>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
+            authDomain: "whatanagent-a1e59.firebaseapp.com",
+            projectId: "whatanagent-a1e59",
+            storageBucket: "whatanagent-a1e59.firebasestorage.app",
+            messagingSenderId: "410197132578",
+            appId: "1:410197132578:web:97cfc3ae33f39ed3df917b"
+        };
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.firebaseAuth = auth;
+        window.firebaseDb = db;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+        window.collection = collection;
+        window.orderBy = orderBy;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.getDocs = getDocs;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut;
+
+        // Auth state listener
+        onAuthStateChanged(auth, async (user) => {
+            const authCard = document.getElementById('liveAuthContainer');
+            const lobbyCard = document.getElementById('liveLobbyContainer');
+
+            if (user) {
+                authCard.style.display = 'none';
+                lobbyCard.style.display = 'block';
+
+                const displayName = user.displayName || user.email.split('@')[0];
+                document.getElementById('liveUserEmailDisplay').innerText = user.email;
+                document.getElementById('liveUserNameDisplay').innerText = displayName;
+                document.getElementById('liveUserAvatar').innerText = displayName[0].toUpperCase();
+
+                localStorage.setItem('whatanagent_live_username', displayName);
+                localStorage.setItem('whatanagent_live_email', user.email);
+
+                // Register user in live board directory
+                try {
+                    await fetch('/api/live-meeting/register-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ uid: user.uid, email: user.email, name: displayName })
+                    });
+                } catch(e) { }
+
+                // Check URL parameter for auto-join
+                const urlParams = new URLSearchParams(window.location.search);
+                const queryRoom = urlParams.get('room') || urlParams.get('liveRoom');
+                if (queryRoom) {
+                    if (typeof openLiveMeetingPage === 'function') {
+                        openLiveMeetingPage(queryRoom);
+                    }
+                } else {
+                    loadLobbyData();
+                }
+            } else {
+                authCard.style.display = 'flex';
+                lobbyCard.style.display = 'none';
+                const workspace = document.getElementById('liveWorkspaceContainer');
+                if (workspace) workspace.style.display = 'none';
+            }
+        });
+    </script>
+</head>
+<body>
+
+    <!-- ==================== 1. STANDALONE AUTH VIEW ==================== -->
+    <div id="liveAuthContainer">
+        <div class="auth-glass-card" id="liveLoginCard">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <span class="live-pulse-dot"></span>
+                <span style="font-size:12px; font-weight:800; color:var(--rose); text-transform:uppercase; letter-spacing:1px;">War Room Live</span>
+            </div>
+            <h2>Live Interactive Board</h2>
+            <p>Sign in with your team credentials to collaborate on live vector whiteboard, formulas, calculations &amp; action checklists.</p>
+            
+            <div id="liveAuthError" style="color:var(--rose); font-size:13px; font-weight:bold; margin-bottom:14px;"></div>
+
+            <form onsubmit="event.preventDefault(); handleLiveLogin();">
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <input type="email" id="liveAuthEmail" placeholder="teammate@company.com" required>
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="liveAuthPassword" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn-auth-primary">Sign In to Live Board</button>
+            </form>
+
+            <div class="auth-toggle-link">
+                Don't have an account? <span onclick="toggleAuthMode('signup')">Sign Up Here</span>
+            </div>
+        </div>
+
+        <div class="auth-glass-card" id="liveSignupCard" style="display:none;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <span class="live-pulse-dot"></span>
+                <span style="font-size:12px; font-weight:800; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">Join Team</span>
+            </div>
+            <h2>Create Collaborator Account</h2>
+            <p>Register as a team member to participate in real-time meetings and strategy sessions.</p>
+            
+            <div id="liveSignupError" style="color:var(--rose); font-size:13px; font-weight:bold; margin-bottom:14px;"></div>
+
+            <form onsubmit="event.preventDefault(); handleLiveSignup();">
+                <div class="input-group">
+                    <label>Email Address</label>
+                    <input type="email" id="liveSignupEmail" placeholder="teammate@company.com" required>
+                </div>
+                <div class="input-group">
+                    <label>Password (min 6 characters)</label>
+                    <input type="password" id="liveSignupPassword" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn-auth-primary">Create Team Account</button>
+            </form>
+
+            <div class="auth-toggle-link">
+                Already registered? <span onclick="toggleAuthMode('login')">Sign In Here</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 2. LOBBY & DASHBOARD VIEW ==================== -->
+    <div id="liveLobbyContainer">
+        <!-- Top Lobby Navigation -->
+        <div class="lobby-header">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span class="live-pulse-dot"></span>
+                <div>
+                    <h1 style="font-size:22px; font-weight:800; letter-spacing:-0.5px;">Live Interactive Board Hub</h1>
+                    <div style="font-size:12.5px; color:var(--text-muted);">Collaborative War Room · Real-time visual synchronization</div>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div class="user-badge">
+                    <div class="avatar-circle" id="liveUserAvatar">U</div>
+                    <div>
+                        <div style="font-size:13px; font-weight:700;" id="liveUserNameDisplay">User</div>
+                        <div style="font-size:11px; color:var(--emerald);" id="liveUserEmailDisplay">online</div>
+                    </div>
+                </div>
+                <button onclick="handleLiveLogout()" style="background:#1e293b; border:1px solid #334155; color:var(--rose); padding:8px 14px; border-radius:10px; font-size:12.5px; font-weight:700; cursor:pointer;">🚪 Sign Out</button>
+            </div>
+        </div>
+
+        <!-- Quick Action Cards Grid -->
+        <div class="lobby-grid">
+            
+            <!-- Card 1: Start New Board -->
+            <div class="lobby-card" style="border-top:3px solid var(--primary);">
+                <h3><span>🚀</span> Start New Live Board</h3>
+                <p>Launch an interactive board with whiteboard, synchronized calculations, and checklists. Invite and assign teammates immediately.</p>
+                
+                <div class="input-group">
+                    <label>Meeting Board Topic:</label>
+                    <input type="text" id="lobbyRoomTitle" value="Live Strategy Session" placeholder="e.g. Copper Scrap Pricing & Allocation">
+                </div>
+                <button onclick="launchBoardFromLobby()" class="btn-auth-primary" style="padding:12px; font-size:14px;">🚀 Launch Meeting Board</button>
+            </div>
+
+            <!-- Card 2: Quick Join via Room ID / Link -->
+            <div class="lobby-card" style="border-top:3px solid var(--cyan);">
+                <h3><span>⚡</span> Join with Room ID or Link</h3>
+                <p>Have an invitation code or link from a teammate? Paste it here to jump straight into the live interactive session.</p>
+                
+                <div class="input-group">
+                    <label>Room ID or Invite Link:</label>
+                    <input type="text" id="lobbyJoinInput" placeholder="ROOM-849201 or https://.../live?room=...">
+                </div>
+                <button onclick="joinBoardFromLobbyInput()" style="width:100%; padding:12px; background:linear-gradient(135deg, var(--cyan), #0284c7); border:none; border-radius:10px; color:#fff; font-size:14px; font-weight:700; cursor:pointer;">👉 Join Session Now</button>
+            </div>
+
+        </div>
+
+        <!-- Section 3: Sessions Assigned To You -->
+        <div style="margin-bottom:35px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <div>
+                    <h2 style="font-size:18px; font-weight:800;">🎯 Live Boards Assigned To You</h2>
+                    <div style="font-size:12.5px; color:var(--text-muted);">Active sessions where you are designated as a collaborator or host</div>
+                </div>
+                <button onclick="loadLobbyData()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 12px; border-radius:8px; font-size:12px; cursor:pointer;">🔄 Refresh</button>
+            </div>
+            
+            <div id="lobbyMyRoomsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px;">
+                <div style="text-align:center; color:var(--text-muted); padding:30px; background:var(--card-dark); border-radius:12px; border:1px solid var(--border-dark);">Loading your live sessions...</div>
+            </div>
+        </div>
+
+        <!-- Section 3b: Saved Discussions & Checkpoints (Snapshots & Resume) -->
+        <div style="margin-bottom:35px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <div>
+                    <h2 style="font-size:18px; font-weight:800;">💾 Saved Discussions &amp; Checkpoints</h2>
+                    <div style="font-size:12.5px; color:var(--text-muted);">Resume your preserved visual discussions, whiteboard formulas, or fork as a copy</div>
+                </div>
+                <button onclick="if(typeof loadSavedDiscussions==='function') loadSavedDiscussions();" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 12px; border-radius:8px; font-size:12px; cursor:pointer;">🔄 Refresh Saved</button>
+            </div>
+            
+            <div id="lobbySavedSessionsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px;">
+                <div style="text-align:center; color:var(--text-muted); padding:20px; background:var(--card-dark); border-radius:12px; border:1px solid var(--border-dark);">Loading saved discussions...</div>
+            </div>
+        </div>
+
+        <!-- Section 4: Registered Team Directory -->
+        <div>
+            <div style="margin-bottom:16px;">
+                <h2 style="font-size:18px; font-weight:800;">👥 Registered Team Members</h2>
+                <div style="font-size:12.5px; color:var(--text-muted);">Teammates available to be assigned to your live boards</div>
+            </div>
+
+            <div id="lobbyRegisteredUsersList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px;"></div>
+        </div>
+    </div>
+
+    <!-- ==================== 3. FULLSCREEN COLLABORATIVE WORKSPACE ==================== -->
+    <div id="liveWorkspaceContainer">
+        <!-- Live Board Top Command Bar -->
+        <div style="background:#0f172a; padding:10px 18px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; z-index:100; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <button onclick="returnToLobby()" style="background:#1e293b; border:1px solid #334155; color:#f8fafc; font-size:13px; cursor:pointer; padding:6px 12px; border-radius:8px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                    <span>⬅</span> Exit to Hub
+                </button>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="live-pulse-dot"></span>
+                    <h2 id="liveRoomTitleDisplay" style="margin:0; font-size:16px; font-weight:800; color:#f8fafc; letter-spacing:0.3px;">Live Strategy Board</h2>
+                    <span id="liveRoomIdDisplay" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; font-size:11px; font-weight:bold; padding:2px 8px; border-radius:12px; font-family:monospace;">ROOM-849201</span>
+                </div>
+                <span id="liveHostNameDisplay" style="font-size:11px; color:#fbbf24; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:3px 8px; border-radius:10px; font-weight:bold;">👑 Host: Admin</span>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <div id="liveMeetingDuration" style="font-size:12px; color:#34d399; background:#064e3b; border:1px solid #059669; padding:4px 10px; border-radius:14px; font-weight:800; font-family:monospace;">⏱️ 00:00</div>
+                <div id="liveRoomStatusBadge" style="font-size:11.5px; color:#34d399; background:#064e3b; border:1px solid #059669; padding:4px 10px; border-radius:14px; font-weight:bold;">🟢 Active</div>
+                <div id="liveAssignedCountBadge" style="font-size:11.5px; color:#a78bfa; background:#1e1b4b; border:1px solid #4338ca; padding:4px 10px; border-radius:14px; font-weight:bold;">👥 1 Assigned</div>
+                <div id="liveMembersCountBadge" style="font-size:11.5px; color:#38bdf8; background:#1e293b; border:1px solid #334155; padding:4px 10px; border-radius:14px; font-weight:bold;">🟢 1 Online</div>
+                
+                <button onclick="openJoinRoomModal()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:6px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; box-shadow:0 0 10px rgba(2,132,199,0.35);" title="Paste meeting link or room ID to switch/join">
+                    <span>🚪 Join by Link</span>
+                </button>
+                <button onclick="openAssignTeamModal()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(99,102,241,0.35);">
+                    <span>👥 Assign Team</span>
+                </button>
+                <button onclick="copyLiveRoomLink()" style="background:#1e293b; border:1px solid #38bdf8; color:#38bdf8; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                    <span>🔗 Copy Link</span>
+                </button>
+                <button onclick="openLiveInviteModal()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(16,185,129,0.35);">
+                    <span>📲 WhatsApp Invite</span>
+                </button>
+                <button id="liveHostLockBtn" onclick="toggleHostLock()" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                    🔓 Board Active
+                </button>
+                <button onclick="exportCanvasPNG()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">
+                    📷 Export PNG
+                </button>
+                <button onclick="openSaveCheckpointModal()" style="background:linear-gradient(135deg, #4f46e5, #4338ca); border:none; color:#fff; padding:6px 13px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:5px; box-shadow:0 0 10px rgba(79,70,229,0.35);" title="Save a named discussion checkpoint snapshot">
+                    <span>💾 Save Discussion</span>
+                </button>
+                <button id="liveFinishRoomBtn" onclick="finishCurrentLiveRoom()" style="background:#991b1b; border:1px solid #ef4444; color:#fff; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Finish and conclude active meeting room for all participants">
+                    <span>⏹️ Finish Room</span>
+                </button>
+                <button onclick="saveAndExitDiscussion()" style="background:#334155; border:1px solid #475569; color:#f8fafc; padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;" title="Save checkpoint and exit to hub">
+                    <span>💾 Save &amp; Exit</span>
+                </button>
+                <button onclick="exitLiveBoardToLobby()" style="background:#dc2626; border:none; color:#fff; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">
+                    ✕ Exit to Lobby
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Working Workspace (Left Tool Dock + Center Interactive Canvas + Right Tabbed Drawer) -->
+        <div style="flex:1; display:flex; position:relative; overflow:hidden;">
+            
+            <!-- Left Vertical Floating Toolbar -->
+            <div style="width:58px; background:#0f172a; border-right:1px solid #1e293b; display:flex; flex-direction:column; align-items:center; padding:12px 6px; gap:8px; z-index:50; overflow-y:auto;">
+                <button id="liveTool_pen" class="live-tool-btn active" onclick="setLiveTool('pen')" title="Freehand Pen (P)">✏️</button>
+                <button id="liveTool_highlighter" class="live-tool-btn" onclick="setLiveTool('highlighter')" title="Highlighter (H)">🖍️</button>
+                <button id="liveTool_laser" class="live-tool-btn" onclick="setLiveTool('laser')" title="Multi-User Laser Pointer (L)">✨</button>
+                <button id="liveTool_rect" class="live-tool-btn" onclick="setLiveTool('rect')" title="Rectangle Shape (R)">🔲</button>
+                <button id="liveTool_circle" class="live-tool-btn" onclick="setLiveTool('circle')" title="Circle Shape (C)">⭕</button>
+                <button id="liveTool_arrow" class="live-tool-btn" onclick="setLiveTool('arrow')" title="Arrow Connector (A)">➡️</button>
+                <button id="liveTool_sticky" class="live-tool-btn" onclick="setLiveTool('sticky'); addStickyNote(200, 200);" title="Sticky Note (N)">📝</button>
+                <button id="liveTool_eraser" class="live-tool-btn" onclick="setLiveTool('eraser')" title="Eraser (E)">🧹</button>
+
+                <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                <!-- Color Swatches -->
+                <div style="display:flex; flex-direction:column; gap:6px; align-items:center;">
+                    <span id="liveColor_ef4444" class="live-color-dot" style="background:#ef4444; transform:scale(1.25);" onclick="setLiveColor('#ef4444')" title="Red"></span>
+                    <span id="liveColor_10b981" class="live-color-dot" style="background:#10b981;" onclick="setLiveColor('#10b981')" title="Green"></span>
+                    <span id="liveColor_38bdf8" class="live-color-dot" style="background:#38bdf8;" onclick="setLiveColor('#38bdf8')" title="Cyan"></span>
+                    <span id="liveColor_f59e0b" class="live-color-dot" style="background:#f59e0b;" onclick="setLiveColor('#f59e0b')" title="Gold"></span>
+                    <span id="liveColor_ffffff" class="live-color-dot" style="background:#ffffff;" onclick="setLiveColor('#ffffff')" title="White"></span>
+                    <span id="liveColor_8b5cf6" class="live-color-dot" style="background:#8b5cf6;" onclick="setLiveColor('#8b5cf6')" title="Purple"></span>
+                </div>
+
+                <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                <!-- Stroke Size Selector -->
+                <select onchange="setLiveLineWidth(this.value)" style="width:46px; background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-size:10px; font-weight:bold; padding:3px 2px; text-align:center;" title="Stroke Width">
+                    <option value="2">2px</option>
+                    <option value="4" selected>4px</option>
+                    <option value="8">8px</option>
+                    <option value="16">16px</option>
+                </select>
+
+                <!-- Background Grid Switcher -->
+                <select onchange="setLiveBgMode(this.value)" style="width:46px; background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:6px; font-size:10px; font-weight:bold; padding:3px 2px; text-align:center;" title="Background Grid">
+                    <option value="grid">Grid</option>
+                    <option value="dots">Dots</option>
+                    <option value="plain">Solid</option>
+                </select>
+
+                <div style="width:80%; height:1px; background:#334155; margin:4px 0;"></div>
+
+                <button onclick="liveCanvasUndo()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Undo (Ctrl+Z)">↩️</button>
+                <button onclick="liveCanvasRedo()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Redo (Ctrl+Y)">↪️</button>
+                <button onclick="liveCanvasClear()" style="background:#3b1818; border:1px solid #ef4444; color:#ef4444; width:36px; height:32px; border-radius:6px; font-size:13px; cursor:pointer;" title="Clear Board">🗑️</button>
+            </div>
+
+            <!-- Center Interactive Canvas Viewport -->
+            <div id="liveCanvasContainer" style="flex:1; position:relative; overflow:hidden; background:#0a0e17; cursor:crosshair;">
+                <canvas id="liveCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:10;"></canvas>
+                <canvas id="livePointerOverlay" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:20; pointer-events:none;"></canvas>
+                <div id="liveStickyNotesLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:30; pointer-events:none;"></div>
+                <div id="liveTextBlocksLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:30; pointer-events:none;"></div>
+                <div id="liveReactionFloatingLayer" style="position:absolute; top:0; left:0; width:100%; height:100%; z-index:40; pointer-events:none;"></div>
+            </div>
+
+            <!-- Right Collapsible Drawer -->
+            <div id="liveRightDrawer" style="width:430px; background:#0f172a; border-left:1px solid #1e293b; display:flex; flex-direction:column; z-index:50;">
+                
+                <!-- Drawer Tab Navigation -->
+                <div style="display:flex; background:#0b1120; border-bottom:1px solid #1e293b;">
+                    <button id="liveDrawerTab_calculations" class="live-drawer-tab-btn active" onclick="switchLiveDrawerTab('calculations')">🧮 Calculations</button>
+                    <button id="liveDrawerTab_checklists" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('checklists')">✅ Checklists</button>
+                    <button id="liveDrawerTab_polls" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('polls')">🗳️ Polls</button>
+                    <button id="liveDrawerTab_members" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('members')">👥 Team &amp; Roles</button>
+                    <button id="liveDrawerTab_ai" class="live-drawer-tab-btn" onclick="switchLiveDrawerTab('ai')">🤖 AI Co-Pilot</button>
+                </div>
+
+                <!-- TAB 1: 🧮 LIVE CALCULATIONS GRID -->
+                <div id="liveDrawerPanel_calculations" class="live-drawer-panel" style="flex:1; display:block; overflow-y:auto; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div>
+                            <b style="font-size:14px; color:#f8fafc;">Live Calculation Scratchpad</b>
+                            <div style="font-size:11px; color:#94a3b8;">Multi-user formulas &amp; synchronized pricing</div>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="insertGoldPriceToCalc()" style="background:#78350f; border:1px solid #f59e0b; color:#fde68a; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚡ + Gold Spot</button>
+                            <button onclick="addCalcRow()" style="background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">➕ + Row</button>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x:auto; background:#0b1120; border:1px solid #1e293b; border-radius:8px; margin-bottom:12px;">
+                        <table style="width:100%; border-collapse:collapse; font-size:12px; color:#cbd5e1;">
+                            <thead>
+                                <tr style="background:#1e293b; color:#94a3b8; font-size:11px; text-transform:uppercase;">
+                                    <th style="padding:8px 6px; text-align:left;">ID</th>
+                                    <th style="padding:8px 6px; text-align:left;">Item / Variable</th>
+                                    <th style="padding:8px 6px; text-align:right;">Value</th>
+                                    <th style="padding:8px 4px; text-align:left;">Unit</th>
+                                    <th style="padding:8px 6px; text-align:left;">Formula</th>
+                                    <th style="padding:8px 6px; text-align:right;">Result</th>
+                                    <th style="padding:8px 4px; text-align:center;">✕</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liveCalcTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-size:11px; color:#94a3b8; text-transform:uppercase; font-weight:bold;">Final Calculated Value</div>
+                            <div id="liveCalcGrandTotal" style="font-size:22px; font-weight:800; color:#34d399; margin-top:2px;">14,750.00 AED</div>
+                        </div>
+                        <button onclick="askLiveAiCopilot('audit_math')" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11.5px; font-weight:bold; cursor:pointer;">🤖 Audit with AI</button>
+                    </div>
+                </div>
+
+                <!-- TAB 2: ✅ SYNCHRONIZED ACTION CHECKLIST -->
+                <div id="liveDrawerPanel_checklists" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                    <div style="margin-bottom:12px;">
+                        <b style="font-size:14px; color:#f8fafc;">Live Action Items &amp; Task Delegation</b>
+                        <div style="font-size:11px; color:#94a3b8;">Assign tasks directly to team members &amp; sync</div>
+                    </div>
+
+                    <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:10px; margin-bottom:14px;">
+                        <input type="text" id="newLiveTaskInput" placeholder="Type new action item & press Enter..." onkeydown="if(event.key==='Enter') addLiveTask();" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; box-sizing:border-box; margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; gap:6px;">
+                            <select id="newLiveTaskPriority" style="flex:1; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px; font-weight:600;">
+                                <option value="Urgent">🔥 Urgent</option>
+                                <option value="High" selected>🔴 High</option>
+                                <option value="Medium">🟡 Medium</option>
+                            </select>
+                            <select id="newLiveTaskAssigneeSelect" style="flex:1.4; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:6px 8px; border-radius:6px; font-size:11.5px; font-weight:bold;">
+                                <option value="Team">👥 Whole Team</option>
+                            </select>
+                            <button onclick="addLiveTask()" style="background:#10b981; border:none; color:#fff; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">+ Add Task</button>
+                        </div>
+                    </div>
+
+                    <div id="liveChecklistContainer"></div>
+                </div>
+
+                <!-- TAB 3: 🗳️ LIVE QUICK POLLS & DECISIONS -->
+                <div id="liveDrawerPanel_polls" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                    <div style="margin-bottom:12px;">
+                        <b style="font-size:14px; color:#f8fafc;">Rapid Team Voting &amp; Consensus</b>
+                        <div style="font-size:11px; color:#94a3b8;">Launch 30-second live polls for instant decisions</div>
+                    </div>
+
+                    <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:12px; margin-bottom:14px;">
+                        <label style="display:block; font-size:11px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Question:</label>
+                        <input type="text" id="newPollQuestion" placeholder="e.g. Agree with 15% discount for Client X?" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:13px; box-sizing:border-box; margin-bottom:8px;">
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+                            <input type="text" id="newPollOpt1" value="Yes / Approved" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px;">
+                            <input type="text" id="newPollOpt2" value="No / Re-negotiate" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px;">
+                        </div>
+                        <input type="text" id="newPollOpt3" placeholder="Option 3 (Optional)" style="width:100%; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:6px 8px; border-radius:6px; font-size:11.5px; box-sizing:border-box; margin-bottom:10px;">
+                        
+                        <button onclick="launchLivePoll()" style="width:100%; background:linear-gradient(135deg, #38bdf8, #6366f1); border:none; color:#fff; padding:8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">🚀 Launch Poll for Everyone</button>
+                    </div>
+
+                    <div id="livePollsContainer"></div>
+                </div>
+
+                <!-- TAB 4: 👥 ASSIGNED TEAM ROSTER & PERMISSIONS -->
+                <div id="liveDrawerPanel_members" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div>
+                            <b style="font-size:14px; color:#f8fafc;">Assigned Team Roster</b>
+                            <div style="font-size:11px; color:#94a3b8;">Designated roles, duties &amp; live attendance</div>
+                        </div>
+                        <button onclick="openAssignTeamModal()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">+ Assign Member</button>
+                    </div>
+
+                    <div id="liveAssignedRosterContainer" style="margin-bottom:16px;"></div>
+
+                    <div style="border-top:1px solid #1e293b; padding-top:12px; margin-top:12px;">
+                        <b style="font-size:13px; color:#38bdf8; display:block; margin-bottom:6px;">🟢 Live Connected Attendees</b>
+                        <div id="liveMembersListContainer"></div>
+                    </div>
+
+                    <div style="border-top:1px solid #1e293b; padding-top:12px; margin-top:12px;">
+                        <button onclick="openLiveInviteModal()" style="width:100%; background:#10b981; border:none; color:#fff; padding:9px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">📲 Direct WhatsApp Invite Link</button>
+                    </div>
+                </div>
+
+                <!-- TAB 5: 🤖 WHATANAGENT AI BOARD MIND -->
+                <div id="liveDrawerPanel_ai" class="live-drawer-panel" style="flex:1; display:none; overflow-y:auto; padding:14px;">
+                    <div style="margin-bottom:12px;">
+                        <b style="font-size:14px; color:#f8fafc;">🤖 WhatAnAgent AI Board Mind</b>
+                        <div style="font-size:11px; color:#94a3b8;">Executive minutes, math validation &amp; strategic co-pilot</div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                        <button onclick="askLiveAiCopilot('minutes')" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); border:none; color:#fff; padding:10px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer; text-align:left;">
+                            📋 Generate Executive Minutes &amp; Next Steps
+                        </button>
+                        <button onclick="askLiveAiCopilot('audit_math')" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; text-align:left;">
+                            🧮 Audit Calculations &amp; Profit Margins
+                        </button>
+                    </div>
+
+                    <div style="margin-bottom:10px;">
+                        <input type="text" id="liveAiCustomPrompt" placeholder="Ask AI anything about this board meeting..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:6px; font-size:12px; box-sizing:border-box; margin-bottom:6px;">
+                        <button onclick="askLiveAiCopilot('custom')" style="width:100%; background:#10b981; border:none; color:#fff; padding:7px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">Ask AI Co-Pilot</button>
+                    </div>
+
+                    <div id="liveAiResponseBox"></div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Bottom Non-Audio Reaction Ticker & Quick Emojis -->
+        <div style="background:#0f172a; padding:6px 16px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; z-index:100; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:11px; color:#94a3b8; font-weight:bold; text-transform:uppercase;">⚡ Quick Reaction Ticker:</span>
+                <button onclick="sendLiveReaction('👏')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">👏 Agreed</button>
+                <button onclick="sendLiveReaction('🔥')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🔥 Brilliant</button>
+                <button onclick="sendLiveReaction('💡')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">💡 New Idea</button>
+                <button onclick="sendLiveReaction('❓')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">❓ Question</button>
+                <button onclick="sendLiveReaction('✅')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">✅ Approved</button>
+                <button onclick="sendLiveReaction('⚠️')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">⚠️ Caution</button>
+                <button onclick="sendLiveReaction('🛑')" style="background:#1e293b; border:1px solid #334155; color:#fff; padding:4px 9px; border-radius:14px; font-size:12px; cursor:pointer;">🛑 Hold</button>
+            </div>
+            <div style="font-size:11px; color:#64748b;">
+                No Audio / Video Needed · 100% Zero-Latency Visual Sync
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 4. MODALS ==================== -->
+    <!-- Modal: Assign Team Members -->
+    <div id="liveAssignTeamModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+        <div style="background:#0f172a; border:2px solid #6366f1; border-radius:16px; width:100%; max-width:540px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(99,102,241,0.3); overflow:hidden;">
+            <div style="background:linear-gradient(135deg, #1e1b4b, #0f172a); padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:24px;">👥</span>
+                    <div>
+                        <b style="font-size:16px; color:#f8fafc;">Assign Team Member to Live Board</b>
+                        <div style="font-size:11px; color:#94a3b8;">Set designated roles, duties &amp; send instant WhatsApp invites</div>
+                    </div>
+                </div>
+                <button onclick="closeAssignTeamModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="padding:20px; display:flex; flex-direction:column; gap:14px; background:#0b1120;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">1. Choose from Registered Users / Contact Book:</label>
+                    <select id="liveAssignContactSelect" onchange="onAssignContactSelectChange()" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                        <option value="">-- Choose Registered Teammate --</option>
+                    </select>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:10px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">👤 Member Name:</label>
+                        <input type="text" id="liveAssignNameInput" placeholder="e.g. Alex Morgan" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:bold; box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">📞 WhatsApp Number:</label>
+                        <input type="text" id="liveAssignPhoneInput" placeholder="971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">🎖️ Designated Role / Power:</label>
+                        <select id="liveAssignRoleSelect" style="width:100%; background:#1e293b; border:1px solid #4338ca; color:#fbbf24; padding:9px 10px; border-radius:8px; font-size:13px; font-weight:bold;">
+                            <option value="co-host">👑 Co-Host (Full Controls)</option>
+                            <option value="editor" selected>✏️ Lead Editor (Draw &amp; Math)</option>
+                            <option value="auditor">🧮 Financial Auditor (Pricing &amp; Calculations)</option>
+                            <option value="task_master">🎯 Task Master (Checklists &amp; Flow)</option>
+                            <option value="viewer">👁️ Observer / Viewer (Pointer &amp; Reactions)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">📌 Workspace Focus Area:</label>
+                        <select id="liveAssignSectionSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#cbd5e1; padding:9px 10px; border-radius:8px; font-size:13px;">
+                            <option value="all">🌟 All Board Sections</option>
+                            <option value="canvas">🎨 Whiteboard Canvas Only</option>
+                            <option value="calculations">🧮 Calculation Matrix Only</option>
+                            <option value="checklists">✅ Action Checklists Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">🎯 Specific Duty / Task in Meeting:</label>
+                    <input type="text" id="liveAssignDutyInput" placeholder="e.g. Audit supplier quotation and approve margin table" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; box-sizing:border-box;">
+                </div>
+
+                <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:10px 14px; display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" id="liveAssignSendWaCheckbox" checked style="width:18px; height:18px; cursor:pointer; accent-color:#10b981;">
+                    <div>
+                        <b style="font-size:12.5px; color:#f8fafc;">📲 Send WhatsApp Assignment Notification</b>
+                        <div style="font-size:11px; color:#94a3b8;">Instantly alerts the teammate with their designated role &amp; direct join link</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:#1e1b4b; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid #334155;">
+                <div style="font-size:11px; color:#94a3b8;">Saves to live board state &amp; syncs to all screens</div>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="closeAssignTeamModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                    <button onclick="submitAssignTeamMember()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(99,102,241,0.4);">
+                        🚀 Assign &amp; Dispatch Alert
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: WhatsApp Invite -->
+    <div id="liveInviteModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+        <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:520px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8); overflow:hidden;">
+            <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">📲</span>
+                    <b style="font-size:16px; color:#f8fafc;">Invite Team Member to Live Board</b>
+                </div>
+                <button onclick="closeLiveInviteModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Select from Registered Users / Book:</label>
+                    <select id="liveInviteContactSelect" onchange="onLiveInviteContactChange(this.value)" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                        <option value="">-- Choose Teammate --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Or Type Phone Number (with Country Code):</label>
+                    <input type="text" id="liveInvitePhoneInput" placeholder="e.g. 971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#38bdf8; padding:9px 12px; border-radius:8px; font-size:14px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:12px; color:#94a3b8; font-weight:bold; margin-bottom:4px;">Custom Invitation Message (Optional):</label>
+                    <textarea id="liveInviteNoteInput" rows="2" placeholder="e.g. Please join us to finalize the price and delivery schedule..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:8px 10px; border-radius:8px; font-size:12.5px; box-sizing:border-box; font-family:inherit; resize:vertical;"></textarea>
+                </div>
+            </div>
+
+            <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                <button onclick="closeLiveInviteModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                <button onclick="sendLiveWhatsAppInvite()" style="background:linear-gradient(135deg, #10b981, #059669); border:none; color:#fff; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer; box-shadow:0 0 12px rgba(16,185,129,0.4);">🚀 Send WhatsApp Invite</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Join by Link or Room ID -->
+    <div id="liveJoinRoomModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+        <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:500px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+            <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">🚪</span>
+                    <div>
+                        <b style="font-size:15px; color:#f8fafc;">Join Live Meeting Board</b>
+                        <div style="font-size:11px; color:#94a3b8;">Paste invitation link or enter Room ID</div>
+                    </div>
+                </div>
+                <button onclick="closeJoinRoomModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Paste Meeting Link or Room ID:</label>
+                    <input type="text" id="liveJoinRoomInput" placeholder="e.g. http://localhost:3000/live?room=173598 or ROOM-173598" style="width:100%; background:#1e293b; border:1px solid #38bdf8; color:#f8fafc; padding:11px 14px; border-radius:8px; font-size:13.5px; font-weight:bold; box-sizing:border-box; font-family:monospace;">
+                    <div style="font-size:11px; color:#64748b; margin-top:5px;">Works with full links from Live Portal, Admin URL, or simple room numbers (e.g. 173598).</div>
+                </div>
+
+                <div style="background:#1e1b4b; border:1px solid #4338ca; border-radius:8px; padding:12px; display:flex; align-items:flex-start; gap:10px;">
+                    <input type="checkbox" id="liveFinishBeforeJoinCheckbox" style="margin-top:3px; cursor:pointer; transform:scale(1.2);">
+                    <label for="liveFinishBeforeJoinCheckbox" style="font-size:12px; color:#c7d2fe; cursor:pointer;">
+                        <b>Finish active room before joining new room</b>
+                        <div style="font-size:11px; color:#a5b4fc; margin-top:2px;">Concludes current session in records so attendees know it has finished.</div>
+                    </label>
+                </div>
+            </div>
+
+            <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                <button onclick="closeJoinRoomModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                <button onclick="confirmJoinRoomByLink()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(2,132,199,0.4);">
+                    🚪 Join Room Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="notification" id="notification">✅ Data Updated</div>
+
+        </div>
+    </div>
+
+    <!-- Modal: Save Discussion Checkpoint -->
+    <div id="liveSaveCheckpointModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+        <div style="background:#0f172a; border:1px solid #6366f1; border-radius:16px; width:100%; max-width:480px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+            <div style="background:#1e1b4b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">💾</span>
+                    <div>
+                        <b style="font-size:15px; color:#f8fafc;">Save Discussion Snapshot</b>
+                        <div style="font-size:11px; color:#a5b4fc;">Creates a preserved checkpoint you can resume or share later</div>
+                    </div>
+                </div>
+                <button onclick="closeSaveCheckpointModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Checkpoint Note / Milestone (Optional):</label>
+                    <textarea id="liveCheckpointNoteInput" rows="3" placeholder="e.g. Approved Q3 markup formula, assigned supplier validation to team..." style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; box-sizing:border-box; font-family:inherit; resize:vertical;"></textarea>
+                </div>
+                <div style="font-size:11.5px; color:#94a3b8; background:rgba(30,41,59,0.5); padding:10px; border-radius:8px; border:1px solid #334155;">
+                    💡 <b>Tip:</b> Checkpoints preserve all drawings, math formulas, tasks &amp; AI minutes without audio/video clutter. Chunked safely below cloud limits.
+                </div>
+            </div>
+
+            <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                <button onclick="closeSaveCheckpointModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                <button onclick="confirmSaveCheckpoint()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(99,102,241,0.4);">
+                    📌 Save Checkpoint
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Share Discussion Access -->
+    <div id="liveShareSessionModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9000; align-items:center; justify-content:center; padding:20px; backdrop-filter:blur(6px);">
+        <div style="background:#0f172a; border:1px solid #38bdf8; border-radius:16px; width:100%; max-width:500px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.85); overflow:hidden;">
+            <div style="background:#1e293b; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">👥</span>
+                    <div>
+                        <b style="font-size:15px; color:#f8fafc;">Share Saved Discussion Access</b>
+                        <div id="liveShareSessionTitleDisplay" style="font-size:11px; color:#38bdf8; font-weight:bold;">Session</div>
+                    </div>
+                </div>
+                <button onclick="closeShareSessionModal()" style="background:none; border:none; color:#94a3b8; font-size:22px; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="padding:20px; display:flex; flex-direction:column; gap:14px;">
+                <div>
+                    <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Select Teammate from Directory:</label>
+                    <select id="liveShareUserSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                        <option value="">-- Choose Registered Teammate --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Or Enter Email / Phone Directly:</label>
+                    <input type="text" id="liveShareManualEmailInput" placeholder="e.g. colleague@example.com or 971501234567" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; box-sizing:border-box;">
+                </div>
+
+                <div>
+                    <label style="display:block; font-size:12px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">Access Permission Role:</label>
+                    <select id="liveShareRoleSelect" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:600;">
+                        <option value="editor" selected>✏️ Editor (Can view, resume &amp; draw)</option>
+                        <option value="viewer">👁️ Viewer (Read-only observation)</option>
+                        <option value="co-host">👑 Co-Host (Full management rights)</option>
+                    </select>
+                </div>
+
+                <div style="background:#1e1b4b; border:1px solid #4338ca; border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" id="liveShareSendWaCheckbox" checked style="cursor:pointer; transform:scale(1.15);">
+                    <label for="liveShareSendWaCheckbox" style="font-size:12px; color:#c7d2fe; cursor:pointer;">
+                        <b>📲 Send instant WhatsApp invitation notification with resume link</b>
+                    </label>
+                </div>
+            </div>
+
+            <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #334155;">
+                <button onclick="closeShareSessionModal()" style="background:#334155; border:none; color:#cbd5e1; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:bold; cursor:pointer;">Cancel</button>
+                <button onclick="confirmShareSession()" style="background:linear-gradient(135deg, #0284c7, #0369a1); border:none; color:#fff; padding:8px 22px; border-radius:8px; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 14px rgba(2,132,199,0.4);">
+                    🚀 Grant Access
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="notification" id="notification">✅ Data Updated</div>
+
+    <!-- Live Client Engine Scripts -->
+    <script src="/liveMeetingClient.js"></script>
+    <script src="/liveMeetingSessionsClient.js"></script>
+
+    <!-- Page Controller Logic -->
+    <script>
+        function toggleAuthMode(mode) {
+            document.getElementById('liveLoginCard').style.display = mode === 'signup' ? 'none' : 'block';
+            document.getElementById('liveSignupCard').style.display = mode === 'signup' ? 'block' : 'none';
+            document.getElementById('liveAuthError').innerText = '';
+            document.getElementById('liveSignupError').innerText = '';
+        }
+
+        async function handleLiveLogin() {
+            const email = document.getElementById('liveAuthEmail').value.trim();
+            const password = document.getElementById('liveAuthPassword').value;
+            const errorEl = document.getElementById('liveAuthError');
+            errorEl.innerText = '';
+
+            try {
+                await window.signInWithEmailAndPassword(window.firebaseAuth, email, password);
+            } catch (err) {
+                errorEl.innerText = err.message || 'Login failed. Please check email and password.';
+            }
+        }
+
+        async function handleLiveSignup() {
+            const email = document.getElementById('liveSignupEmail').value.trim();
+            const password = document.getElementById('liveSignupPassword').value;
+            const errorEl = document.getElementById('liveSignupError');
+            errorEl.innerText = '';
+
+            try {
+                await window.createUserWithEmailAndPassword(window.firebaseAuth, email, password);
+            } catch (err) {
+                errorEl.innerText = err.message || 'Signup failed. Please try a stronger password.';
+            }
+        }
+
+        async function handleLiveLogout() {
+            if (confirm('Sign out of Live Board?')) {
+                await window.signOut(window.firebaseAuth);
+                location.reload();
+            }
+        }
+
+        function returnToLobby() {
+            const ws = document.getElementById('liveWorkspaceContainer');
+            if (ws) ws.style.display = 'none';
+            const lobby = document.getElementById('liveLobbyContainer');
+            if (lobby) lobby.style.display = 'block';
+            loadLobbyData();
+        }
+
+        function launchBoardFromLobby() {
+            const title = document.getElementById('lobbyRoomTitle')?.value?.trim() || 'Live Strategy Session';
+            if (typeof createNewLiveRoom === 'function') {
+                createNewLiveRoom(null, title);
+                document.getElementById('liveLobbyContainer').style.display = 'none';
+                document.getElementById('liveWorkspaceContainer').style.display = 'flex';
+            }
+        }
+
+        function joinBoardFromLobbyInput() {
+            let input = document.getElementById('lobbyJoinInput')?.value?.trim();
+            if (!input) {
+                toastMsg('⚠️ Enter a Room ID or link');
+                return;
+            }
+            if (typeof window.parseLiveRoomId === 'function') {
+                input = window.parseLiveRoomId(input);
+            }
+            document.getElementById('liveLobbyContainer').style.display = 'none';
+            document.getElementById('liveWorkspaceContainer').style.display = 'flex';
+            if (typeof openLiveMeetingPage === 'function') {
+                openLiveMeetingPage(input);
+            }
+        }
+
+        async function loadLobbyData() {
+            const userEmail = localStorage.getItem('whatanagent_live_email') || window.firebaseAuth?.currentUser?.email || '';
+            const userUid = window.firebaseAuth?.currentUser?.uid || '';
+            const roomsGrid = document.getElementById('lobbyMyRoomsGrid');
+            const usersGrid = document.getElementById('lobbyRegisteredUsersList');
+
+            // 1. Fetch Rooms Assigned to this user or hosted by user
+            try {
+                const rRes = await fetch(`/api/live-meeting/my-rooms?email=${encodeURIComponent(userEmail)}&uid=${encodeURIComponent(userUid)}&user=${encodeURIComponent(userEmail)}`);
+                const rData = await rRes.json();
+                if (rData.ok && rData.rooms && roomsGrid) {
+                    if (rData.rooms.length === 0) {
+                        roomsGrid.innerHTML = `
+                            <div style="grid-column:1/-1; text-align:center; color:var(--text-muted); padding:30px; background:var(--card-dark); border-radius:12px; border:1px solid var(--border-dark);">
+                                No boards assigned yet. Click "Start New Live Board" above to create one.
+                            </div>
+                        `;
+                    } else {
+                        roomsGrid.innerHTML = '';
+                        rData.rooms.forEach(r => {
+                            const isHost = !!r.isHost;
+                            const isFinished = r.status === 'finished';
+                            const card = document.createElement('div');
+                            card.className = 'lobby-card';
+                            card.style.cssText = `border-top:3px solid ${isHost ? '#f59e0b' : '#10b981'}; display:flex; flex-direction:column; justify-content:space-between; gap:12px;`;
+
+                            card.innerHTML = `
+                                <div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                        <code style="color:var(--cyan); font-weight:bold; font-size:12px;">${r.roomId}</code>
+                                        <span style="font-size:10px; background:${isFinished ? '#450a0a' : (isHost ? '#78350f' : '#064e3b')}; color:${isFinished ? '#f87171' : (isHost ? '#fde68a' : '#34d399')}; padding:2px 8px; border-radius:10px; font-weight:bold; text-transform:uppercase;">
+                                            ${isFinished ? '⏹️ CONCLUDED' : (isHost ? '👑 HOST' : '👥 ASSIGNED')}
+                                        </span>
+                                    </div>
+                                    <h4 style="font-size:16px; font-weight:800; margin-bottom:6px; color:#f8fafc;">${escapeHtml(r.title || 'Strategy Board')}</h4>
+                                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">👑 Host: ${escapeHtml(r.hostName || 'Admin')}</div>
+                                </div>
+
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid #1e293b; padding-top:10px;">
+                                    <button onclick="enterBoardFromCard('${r.roomId}')" style="flex:1; padding:8px 12px; background:#1e293b; border:1px solid #38bdf8; color:#38bdf8; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;">
+                                        👉 Enter Board
+                                    </button>
+                                    ${isHost ? `
+                                        <button onclick="renameLiveRoom('${r.roomId}', '${escapeHtml(r.title || '')}')" style="padding:8px 10px; background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;" title="Rename Room">
+                                            ✏️
+                                        </button>
+                                        <button onclick="deleteLiveRoom('${r.roomId}')" style="padding:8px 10px; background:#2d1515; border:1px solid #ef4444; color:#ef4444; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;" title="Delete Room">
+                                            🗑️
+                                        </button>
+                                    ` : `
+                                        <button onclick="leaveLiveRoom('${r.roomId}')" style="padding:8px 12px; background:#2d1515; border:1px solid #ef4444; color:#ef4444; border-radius:8px; font-weight:bold; font-size:12px; cursor:pointer;" title="Unlink / Leave this room">
+                                            🚪 Leave
+                                        </button>
+                                    `}
+                                </div>
+                            `;
+                            roomsGrid.appendChild(card);
+                        });
+                    }
+                }
+            } catch(e) { }
+
+            // 2. Fetch Registered Users Directory
+            try {
+                const uRes = await fetch('/api/live-meeting/registered-users');
+                const uData = await uRes.json();
+                if (uData.ok && uData.users && usersGrid) {
+                    usersGrid.innerHTML = '';
+                    uData.users.forEach(u => {
+                        const card = document.createElement('div');
+                        card.style.cssText = 'background:var(--card-dark); border:1px solid var(--border-dark); border-radius:12px; padding:12px; display:flex; align-items:center; gap:10px;';
+                        card.innerHTML = `
+                            <div class="avatar-circle" style="width:32px; height:32px; font-size:13px;">${(u.name || 'U')[0].toUpperCase()}</div>
+                            <div style="flex:1; overflow:hidden;">
+                                <div style="font-weight:700; font-size:13px; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.name)}</div>
+                                <div style="font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(u.email || u.phone || '')}</div>
+                            </div>
+                            <span style="width:8px; height:8px; border-radius:50%; background:var(--emerald);" title="Registered Collaborator"></span>
+                        `;
+                        usersGrid.appendChild(card);
+                    });
+
+                    const select = document.getElementById('liveAssignContactSelect');
+                    if (select) {
+                        select.innerHTML = '<option value="">-- Choose Registered Teammate --</option>';
+                        uData.users.forEach(u => {
+                            select.innerHTML += `<option value="${escapeHtml(u.phone || u.email)}" data-name="${escapeHtml(u.name)}">👤 ${escapeHtml(u.name)} (${escapeHtml(u.email || u.phone)})</option>`;
+                        });
+                    }
+                }
+            } catch(e) { }
+
+            // 3. Load Saved Discussions Snapshots
+            if (typeof window.loadSavedDiscussions === 'function') {
+                window.loadSavedDiscussions();
+            }
+        }
+
+        window.enterBoardFromCard = function(roomId) {
+            document.getElementById('liveLobbyContainer').style.display = 'none';
+            document.getElementById('liveWorkspaceContainer').style.display = 'flex';
+            if (typeof openLiveMeetingPage === 'function') {
+                openLiveMeetingPage(roomId);
+            }
+        };
+
+        window.leaveLiveRoom = async function(roomId) {
+            const userEmail = localStorage.getItem('whatanagent_live_email') || window.firebaseAuth?.currentUser?.email || '';
+            if (!confirm(`Are you sure you want to leave and unlink from room [${roomId}]?\nIt will be removed from your list.`)) return;
+
+            try {
+                toastMsg('⏳ Unlinking from room...');
+                const res = await fetch('/api/live-meeting/leave-room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId, userIdentifier: userEmail })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    toastMsg('🚪 Unlinked from room');
+                    loadLobbyData();
+                } else {
+                    toastMsg(`⚠️ Could not leave: ${data.error}`);
+                }
+            } catch (e) {
+                toastMsg('⚠️ Network error leaving room');
+            }
+        };
+
+        window.deleteLiveRoom = async function(roomId) {
+            if (!confirm(`Are you sure you want to permanently delete room [${roomId}]?`)) return;
+
+            try {
+                toastMsg('⏳ Deleting room...');
+                const res = await fetch('/api/live-meeting/delete-room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    toastMsg('🗑️ Room deleted');
+                    loadLobbyData();
+                } else {
+                    toastMsg(`⚠️ Could not delete: ${data.error}`);
+                }
+            } catch (e) {
+                toastMsg('⚠️ Network error deleting room');
+            }
+        };
+
+        window.renameLiveRoom = async function(roomId, currentTitle) {
+            const newTitle = prompt('Enter new room title:', currentTitle || '');
+            if (!newTitle || newTitle.trim() === currentTitle) return;
+
+            try {
+                toastMsg('⏳ Renaming room...');
+                const res = await fetch('/api/live-meeting/rename-room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId, newTitle: newTitle.trim() })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    toastMsg('✏️ Room renamed successfully');
+                    loadLobbyData();
+                } else {
+                    toastMsg(`⚠️ Could not rename: ${data.error}`);
+                }
+            } catch (e) {
+                toastMsg('⚠️ Network error renaming room');
+            }
+        };
+
+        // Attach override so openLiveMeetingPage displays workspace container on live.html
+        const origOpenLive = window.openLiveMeetingPage;
+        window.openLiveMeetingPage = async function(id) {
+            document.getElementById('liveLobbyContainer').style.display = 'none';
+            document.getElementById('liveWorkspaceContainer').style.display = 'flex';
+            if (typeof origOpenLive === 'function') {
+                origOpenLive(id);
+            }
+        };
+
+        window.exitLiveBoardToLobby = function() {
+            document.getElementById('liveWorkspaceContainer').style.display = 'none';
+            document.getElementById('liveLobbyContainer').style.display = 'block';
+            if (typeof closeLiveMeetingPage === 'function') closeLiveMeetingPage();
+            const authUser = window.firebaseAuth?.currentUser;
+            if (authUser?.email) loadLobbyData();
+        };
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function toastMsg(msg) {
+            const n = document.getElementById('notification');
+            if (n) {
+                n.innerText = msg;
+                n.classList.add('show');
+                setTimeout(() => n.classList.remove('show'), 3000);
+            }
+        }
+    </script>
+</body>
+</html>

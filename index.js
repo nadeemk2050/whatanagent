@@ -11,9 +11,13 @@ import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
+import { registerLiveMeetingRoutes } from './liveMeetingApi.mjs';
+import { initLiveMeetingWebSocket } from './liveMeetingWs.mjs';
 import { registerNewsRoutes } from './newsAgent.mjs';
 import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
+import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
+import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -65,6 +69,9 @@ attachWaWebDb(db);
 // Contact Brain (per-person persona cards + learned style) needs Firestore on all nodes too.
 attachBrainDb(db);
 
+// AI Activity Tracker & Master Auto-Fetch Kill Switch needs Firestore
+attachAiTrackerDb(db);
+
 dotenv.config();
 
 // (WhatsApp Web / Baileys is initialized further below - ONLY on the node that owns the
@@ -108,12 +115,16 @@ app.use(express.json({ limit: '30mb' }));
 
 // Note Book (AI notebook: voice -> paragraphs, refine, AlignTasks extraction, WhatsApp push/import, reminders)
 registerNotebookRoutes(app, db);
+// 🔴 Live Interactive Discussion / Meeting Board (Drawings, Calculations, Checklists, Polls, AI Co-Pilot)
+registerLiveMeetingRoutes(app, db);
 // Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
 const newsAgent = registerNewsRoutes(app, db);
 // � Gold Market Agent (live XAU/USD spot + one-time price alerts -> WhatsApp boss notifications)
 const goldAgent = registerGoldRoutes(app, db);
 // �🧠 Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
 const brainEngine = registerBrainRoutes(app, db);
+// 📊 Trade Accounts Data (Purchases & Sales Ledger for TT, Gold, and Items)
+registerTradeAccountsRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -123,6 +134,16 @@ app.use(express.static('public', {
     }
   }
 }));
+
+// Clean route for Standalone Live Interactive Board Portal
+app.get('/live', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'live.html'));
+});
+
+// Clean route for Trade Accounts Data Portal
+app.get(['/trade', '/trade-accounts', '/trades'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'trade.html'));
+});
 
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {
@@ -1555,6 +1576,40 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
 
   if (finalOut.trim()) await sendWhatsAppMessage(senderNumber, finalOut.trim(), settings);
 }
+
+// --- 🛡️ AI ACTIVITY TRACKER & KILL SWITCH REST ENDPOINTS ---
+app.get('/api/ai/control-state', (req, res) => {
+  res.json({ ok: true, stopped: isAiAutoFetchStopped() });
+});
+
+app.post('/api/ai/control-state', async (req, res) => {
+  try {
+    const stopped = !!req.body.stopped;
+    const user = req.body.user || 'dashboard';
+    const result = await setAiAutoFetchStopped(stopped, user);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/ai/activity-log', (req, res) => {
+  try {
+    const data = getAiActivityLog(req.query || {});
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/ai/activity-log/clear', async (req, res) => {
+  try {
+    const result = await clearAiActivityLog();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 // --- API Endpoints ---
 app.get('/', (req, res) => {
@@ -4308,8 +4363,10 @@ function startFollowUpScheduler() {
 
 // --- Server Startup (Render production / Railway staging replica) ---
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`WhatsApp AI Agent running on port ${PORT}${STAGING_MODE ? ' [STAGING MODE - schedulers off]' : ''}${DRY_RUN ? ' [DRY RUN - outbound sends blocked]' : ''}`);
   startFollowUpScheduler();
 });
+initLiveMeetingWebSocket(server, db);
+
  

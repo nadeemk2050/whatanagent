@@ -6,9 +6,15 @@
 // delivery loop (so exactly one node ever sends them).
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { sendWaWebMessage, logBossOrder } from './waWebClient.js';
+import { isAiAutoFetchStopped, recordAiCall, attachAiTrackerDb } from './aiTracker.mjs';
 
 let globalDb = null;
-export function attachGoldDb(db) { if (db) globalDb = db; }
+export function attachGoldDb(db) {
+  if (db) {
+    globalDb = db;
+    attachAiTrackerDb(db);
+  }
+}
 
 const STATE_DOC = ['appData', 'goldState'];          // last price + limits + history + config
 const FAST_DOC = ['appData', 'goldPointsFast'];      // ~60s poll points (capped, ~24h)
@@ -439,6 +445,7 @@ Explain the core mechanism in simple words a beginner can understand immediately
   if (geminiKey) order.push('gemini');
 
   for (const p of order) {
+    const startTime = Date.now();
     try {
       if (p === 'qwen' || p === 'deepseek') {
         const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
@@ -458,9 +465,35 @@ Explain the core mechanism in simple words a beginner can understand immediately
           }),
           signal: AbortSignal.timeout(45000)
         });
-        if (!r.ok) continue;
+        if (!r.ok) {
+          const errText = await r.text().catch(() => '');
+          recordAiCall({
+            provider: p,
+            model,
+            area: 'Gold Events: Macro Analysis',
+            isAutoFetch: false,
+            prompt: `Event: ${title} (${ccy})`,
+            response: '',
+            error: `HTTP ${r.status}: ${errText.substring(0, 200)}`,
+            durationMs: Date.now() - startTime
+          });
+          continue;
+        }
         const j = await r.json();
         const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        const tokensIn = (j.usage && j.usage.prompt_tokens) || 0;
+        const tokensOut = (j.usage && j.usage.completion_tokens) || 0;
+        recordAiCall({
+          provider: p,
+          model,
+          area: 'Gold Events: Macro Analysis',
+          isAutoFetch: false,
+          prompt: `Event: ${title} (${ccy}) [Forecast: ${forecast} | Prev: ${previous}]`,
+          response: t,
+          tokensIn,
+          tokensOut,
+          durationMs: Date.now() - startTime
+        });
         if (t) {
           const resObj = { ok: true, text: t, model: model, provider: p, generatedAt: Date.now() };
           qwenAnalysisMemoryCache[cacheKey] = resObj;
@@ -478,6 +511,19 @@ Explain the core mechanism in simple words a beginner can understand immediately
             if (!r.ok) continue;
             const j = await r.json();
             const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+            const tokensIn = (j.usageMetadata && j.usageMetadata.promptTokenCount) || 0;
+            const tokensOut = (j.usageMetadata && j.usageMetadata.candidatesTokenCount) || 0;
+            recordAiCall({
+              provider: 'gemini',
+              model: gm,
+              area: 'Gold Events: Macro Analysis',
+              isAutoFetch: false,
+              prompt: `Event: ${title} (${ccy})`,
+              response: t,
+              tokensIn,
+              tokensOut,
+              durationMs: Date.now() - startTime
+            });
             if (t) {
               const resObj = { ok: true, text: t, model: gm, provider: 'gemini', generatedAt: Date.now() };
               qwenAnalysisMemoryCache[cacheKey] = resObj;
@@ -582,9 +628,37 @@ export async function fetchEventActualAi(event) {
   const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
   const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || 'sk-4fd49b86269047a1923866f294a8141d';
+  const isUserManualAction = !!(event && event.forceUserAction);
+  const isStopped = isAiAutoFetchStopped();
 
-  // 1. Scrape live financial newspapers & wire headlines
+  // 🛡️ If AI Auto-Fetching is STOPPED and this was not an explicit 1-on-1 user action, block it completely!
+  if (isStopped && !isUserManualAction) {
+    recordAiCall({
+      provider: 'guard',
+      model: 'auto-fetch-gate',
+      area: 'Gold Events: Actual Result Scrape',
+      isAutoFetch: true,
+      prompt: `Scrape request for: ${title} (${ccy})`,
+      response: 'BLOCKED: All AI Auto-Fetching is currently STOPPED by user.',
+      status: 'blocked',
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0
+    });
+    // Return consensus heuristic directly with 0 token spend
+    const act = forecast && forecast !== '—' && forecast !== 'N/A' ? forecast : (previous && previous !== '—' && previous !== 'N/A' ? previous : '—');
+    return {
+      actual: act,
+      headline: 'Auto-fetching stopped by master control switch (0 tokens used)',
+      found: false,
+      source: 'Consensus Heuristic (Auto-Fetch Off)',
+      agent: 'Consensus Heuristic'
+    };
+  }
+
+  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+
+  // 1. Scrape live financial newspapers & wire headlines (free web scraping, 0 AI cost)
   const newsArticles = await scrapeFinancialNews(title, ccy, dateStr);
   const newsContext = newsArticles.length > 0
     ? 'LIVE NEWSPAPER & WIRE HEADLINES:\n' + newsArticles.map((a, i) => `${i + 1}. [${a.source}] ${a.title}${a.desc ? ' - ' + a.desc : ''}`).join('\n')
@@ -616,6 +690,7 @@ If the actual result is truly not yet published anywhere in the news, estimate t
   if (deepseekKey) order.push('deepseek');
 
   for (const p of order) {
+    const startTime = Date.now();
     try {
       if (p === 'gemini') {
         for (const gm of ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.6-flash']) {
@@ -629,6 +704,19 @@ If the actual result is truly not yet published anywhere in the news, estimate t
             if (!r.ok) continue;
             const j = await r.json();
             const t = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+            const tokensIn = (j.usageMetadata && j.usageMetadata.promptTokenCount) || 0;
+            const tokensOut = (j.usageMetadata && j.usageMetadata.candidatesTokenCount) || 0;
+            recordAiCall({
+              provider: 'gemini',
+              model: gm,
+              area: 'Gold Events: Actual Result Scrape',
+              isAutoFetch: !isUserManualAction,
+              prompt: `Parse actual for: ${title} (${ccy})`,
+              response: t,
+              tokensIn,
+              tokensOut,
+              durationMs: Date.now() - startTime
+            });
             const jsonMatch = t.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
               const obj = JSON.parse(jsonMatch[0]);
@@ -660,9 +748,35 @@ If the actual result is truly not yet published anywhere in the news, estimate t
           }),
           signal: AbortSignal.timeout(25000)
         });
-        if (!r.ok) continue;
+        if (!r.ok) {
+          const errText = await r.text().catch(() => '');
+          recordAiCall({
+            provider: p,
+            model,
+            area: 'Gold Events: Actual Result Scrape',
+            isAutoFetch: !isUserManualAction,
+            prompt: `Parse actual for: ${title} (${ccy})`,
+            response: '',
+            error: `HTTP ${r.status}: ${errText.substring(0, 200)}`,
+            durationMs: Date.now() - startTime
+          });
+          continue;
+        }
         const j = await r.json();
         const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        const tokensIn = (j.usage && j.usage.prompt_tokens) || 0;
+        const tokensOut = (j.usage && j.usage.completion_tokens) || 0;
+        recordAiCall({
+          provider: p,
+          model,
+          area: 'Gold Events: Actual Result Scrape',
+          isAutoFetch: !isUserManualAction,
+          prompt: `Parse actual for: ${title} (${ccy})`,
+          response: t,
+          tokensIn,
+          tokensOut,
+          durationMs: Date.now() - startTime
+        });
         const jsonMatch = t.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const obj = JSON.parse(jsonMatch[0]);
