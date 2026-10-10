@@ -99,8 +99,9 @@ let schedulerState = 'starting';
     standby = (rt.exists() ? rt.data() : {}).renderStandby !== false;
   } catch (e) { standby = true; }
   const isStandbyNode = IS_RENDER && standby;
-  if (isStandbyNode || STAGING_MODE) {
-    console.log('[WA-WEB] Skipped on this ' + (isStandbyNode ? 'STANDBY' : 'STAGING') + ' node - the active node owns the linked-device session');
+  const isLocalWithoutWa = !IS_RENDER && !process.env.ALLOW_LOCAL_WA;
+  if (isStandbyNode || STAGING_MODE || isLocalWithoutWa) {
+    console.log('[WA-WEB] Skipped on this ' + (isStandbyNode ? 'STANDBY' : (STAGING_MODE ? 'STAGING' : 'LOCAL')) + ' node - the active Render node owns the linked-device session');
     return;
   }
   initWaWeb(db);
