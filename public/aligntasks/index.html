@@ -85,7 +85,8 @@
                             <button id="account-menu-button" class="p-2 rounded-full hover:bg-gray-200 text-gray-700" aria-label="Account menu">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
                             </button>
-                            <div id="account-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
+                            <div id="account-menu" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
+                                <button id="menu-personal-tasks" class="w-full text-left px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 flex items-center gap-2"><span>🔒</span><span>My Personal Tasks</span></button>
                                 <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
                                 <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Add Sub Users</button>
                                 <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
@@ -96,8 +97,11 @@
                     </div>
                 </div>
                 <div class="bg-gray-200 p-1 rounded-lg flex gap-1">
-                    <button id="nav-tasks-button" class="nav-button w-1/2 p-2 rounded-md font-semibold">All & Individual Tasks</button>
-                    <button id="nav-projects-button" class="nav-button w-1/2 p-2 rounded-md font-semibold">Project Management</button>
+                    <button id="nav-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">All & Individual Tasks</button>
+                    <button id="nav-personal-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm flex items-center justify-center gap-1">
+                        <span>🔒</span><span>My Personal Tasks</span>
+                    </button>
+                    <button id="nav-projects-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">Project Management</button>
                 </div>
             </header>
             
@@ -214,6 +218,155 @@
                         <p id="subuser-form-message" class="hidden text-sm mt-3"></p>
                     </div>
                 </section>
+
+                <!-- Personal Tasks Section (Strictly Private to the logged-in user) -->
+                <section id="personal-tasks-page" class="main-section hidden space-y-6">
+                    <!-- Section Header Banner -->
+                    <div class="bg-gradient-to-r from-purple-700 via-indigo-700 to-blue-700 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
+                        <div class="relative z-10">
+                            <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-2xl">🔒</span>
+                                    <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">My Personal Tasks</h2>
+                                </div>
+                                <span class="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/30">
+                                    Private &amp; Confidential (Only visible to you)
+                                </span>
+                            </div>
+                            <p class="text-purple-100 text-sm max-w-2xl leading-relaxed">
+                                Keep your private tasks, reminders, and daily to-dos strictly for your own use. Other team members and staff cannot view this page. From here, you can also send and schedule WhatsApp messages to any team member, group, or any external phone number worldwide.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Quick Stats Cards -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">All Tasks</p>
+                                <p id="personal-stat-total" class="text-2xl font-black text-gray-800 mt-0.5">0</p>
+                            </div>
+                            <div class="p-2.5 bg-purple-50 text-purple-600 rounded-lg text-lg">📋</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">To Do</p>
+                                <p id="personal-stat-todo" class="text-2xl font-black text-blue-600 mt-0.5">0</p>
+                            </div>
+                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-lg text-lg">⏳</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Urgent / High</p>
+                                <p id="personal-stat-urgent" class="text-2xl font-black text-red-600 mt-0.5">0</p>
+                            </div>
+                            <div class="p-2.5 bg-red-50 text-red-600 rounded-lg text-lg">⚡</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Completed</p>
+                                <p id="personal-stat-done" class="text-2xl font-black text-green-600 mt-0.5">0</p>
+                            </div>
+                            <div class="p-2.5 bg-green-50 text-green-600 rounded-lg text-lg">✅</div>
+                        </div>
+                    </div>
+
+                    <!-- Add Personal Task Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b pb-3">
+                            <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                <span class="text-purple-600 text-xl">➕</span> Add New Personal Task
+                            </h3>
+                            <span class="text-xs text-gray-400">Recorded only under your account</span>
+                        </div>
+                        <form id="add-personal-task-form" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Task Title / What needs to be done *</label>
+                                <input type="text" id="personal-task-desc" placeholder="e.g. Call broker about trade contract, verify customs payment..." class="w-full p-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none" required />
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🏷️ Category</label>
+                                    <select id="personal-task-category" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
+                                        <option value="General">🏷️ General</option>
+                                        <option value="Calls & WhatsApp">📞 Calls & WhatsApp</option>
+                                        <option value="Trade & Deals">🤝 Trade & Deals</option>
+                                        <option value="Finance & Payments">💰 Finance & Payments</option>
+                                        <option value="Follow-up">📌 Follow-up</option>
+                                        <option value="Private">🔒 Private</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">⚡ Priority</label>
+                                    <select id="personal-task-priority" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
+                                        <option value="normal">🔵 Normal</option>
+                                        <option value="high">🟠 High Priority</option>
+                                        <option value="urgent">🔴 Urgent</option>
+                                        <option value="low">⚪ Low Priority</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🗓️ Due Date & Time</label>
+                                    <input type="datetime-local" id="personal-task-duedate" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🔁 Repeat Cycle</label>
+                                    <select id="personal-task-repeat" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
+                                        <option value="none">Does not repeat</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">📝 Notes & Memo (Optional)</label>
+                                    <textarea id="personal-task-notes" rows="2" placeholder="Details, phone numbers, contact names, reference codes..." class="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none"></textarea>
+                                </div>
+                            </div>
+                            <div class="flex justify-end pt-1">
+                                <button type="submit" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow transition-all flex items-center gap-2">
+                                    <span>➕ Save Personal Task</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Search and Filter Toolbar -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-4 space-y-3">
+                        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                            <div class="relative flex-grow">
+                                <input type="text" id="personal-search-input" placeholder="🔍 Search personal tasks & notes..." class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none" />
+                                <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+                            </div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <select id="personal-category-filter" class="p-2 border border-gray-300 rounded-xl text-sm bg-white">
+                                    <option value="all">All Categories</option>
+                                    <option value="General">General</option>
+                                    <option value="Calls & WhatsApp">Calls & WhatsApp</option>
+                                    <option value="Trade & Deals">Trade & Deals</option>
+                                    <option value="Finance & Payments">Finance & Payments</option>
+                                    <option value="Follow-up">Follow-up</option>
+                                    <option value="Private">Private</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 flex-wrap border-t pt-3">
+                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white" data-filter="all">All Tasks (<span id="tab-count-all">0</span>)</button>
+                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="todo">⏳ To Do (<span id="tab-count-todo">0</span>)</button>
+                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="urgent">⚡ Urgent / High (<span id="tab-count-urgent">0</span>)</button>
+                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="done">✅ Completed (<span id="tab-count-done">0</span>)</button>
+                        </div>
+                    </div>
+
+                    <!-- Personal Tasks List -->
+                    <div id="personal-tasks-list" class="space-y-3">
+                        <div class="bg-white p-8 rounded-2xl text-center text-gray-400 border border-gray-200">
+                            Loading your personal tasks...
+                        </div>
+                    </div>
+                </section>
             </main>
         </div>
     </div>
@@ -271,6 +424,25 @@
                         <div id="wa-remind-groups-list" class="max-h-44 overflow-y-auto mt-2"></div>
                         <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The groups list comes from the WhatsApp session and auto-updates.</p>
                     </div>
+                </div>
+                <div class="border border-green-200 bg-green-50/70 rounded-xl p-3 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-bold text-green-900 flex items-center gap-1.5">
+                            <span>📱</span><span>Send to Any WhatsApp Contact / Custom Number</span>
+                        </label>
+                        <span class="text-xs text-green-700 font-semibold bg-green-100 px-2 py-0.5 rounded-full">Global</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-600 block mb-0.5">Phone Number (with country code)</label>
+                            <input id="wa-remind-custom-phone" type="tel" placeholder="e.g. +971501234567 or 971..." class="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-600 block mb-0.5">Contact Name (optional)</label>
+                            <input id="wa-remind-custom-name" type="text" placeholder="e.g. Client Ali, Broker, etc." class="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500">Pick team members, groups, and/or specify any individual phone number anywhere in the world.</p>
                 </div>
                 <div class="border border-gray-200 rounded-lg p-3 space-y-1">
                     <label class="text-sm font-medium text-gray-700">✍️ Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
@@ -487,6 +659,68 @@
             </form>
         </div>
     </div>
+    <div id="edit-personal-task-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <span class="text-purple-600">✏️</span> Edit Personal Task
+                </h3>
+                <button id="edit-personal-task-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+            </div>
+            <form id="edit-personal-task-form" class="p-6 space-y-4">
+                <input type="hidden" id="edit-personal-task-id">
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">Task Title / Description *</label>
+                    <textarea id="edit-personal-task-desc" class="w-full mt-1 p-2.5 border border-gray-300 rounded-xl text-sm" rows="3" required></textarea>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">Category</label>
+                        <select id="edit-personal-task-category" class="w-full mt-1 p-2 border border-gray-300 rounded-xl text-sm bg-white">
+                            <option value="General">🏷️ General</option>
+                            <option value="Calls & WhatsApp">📞 Calls & WhatsApp</option>
+                            <option value="Trade & Deals">🤝 Trade & Deals</option>
+                            <option value="Finance & Payments">💰 Finance & Payments</option>
+                            <option value="Follow-up">📌 Follow-up</option>
+                            <option value="Private">🔒 Private</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">Priority</label>
+                        <select id="edit-personal-task-priority" class="w-full mt-1 p-2 border border-gray-300 rounded-xl text-sm bg-white">
+                            <option value="normal">🔵 Normal</option>
+                            <option value="high">🟠 High Priority</option>
+                            <option value="urgent">🔴 Urgent</option>
+                            <option value="low">⚪ Low Priority</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">Due Date & Time</label>
+                        <input type="datetime-local" id="edit-personal-task-duedate" class="w-full mt-1 p-2 border border-gray-300 rounded-xl text-sm" />
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-gray-700">Repeat</label>
+                        <select id="edit-personal-task-repeat" class="w-full mt-1 p-2 border border-gray-300 rounded-xl text-sm bg-white">
+                            <option value="none">Does not repeat</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-gray-700">Notes & Memo</label>
+                    <textarea id="edit-personal-task-notes" rows="2" class="w-full mt-1 p-2 border border-gray-300 rounded-xl text-sm"></textarea>
+                </div>
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" id="edit-personal-task-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-xl hover:bg-gray-200">Cancel</button>
+                    <button type="submit" class="bg-purple-600 text-white font-semibold px-5 py-2 rounded-xl hover:bg-purple-700">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
         // PWA Service Worker Registration
@@ -541,7 +775,9 @@
             const menuAddSubusers = document.getElementById('menu-add-subusers');
             const menuLogout = document.getElementById('menu-logout');
             const navTasksButton = document.getElementById('nav-tasks-button');
+            const navPersonalTasksButton = document.getElementById('nav-personal-tasks-button');
             const navProjectsButton = document.getElementById('nav-projects-button');
+            const menuPersonalTasks = document.getElementById('menu-personal-tasks');
             const installButton = document.getElementById('install-button');
             const subuserFormMessage = document.getElementById('subuser-form-message');
 
@@ -755,10 +991,12 @@
                 document.getElementById(sectionId)?.classList.remove('hidden');
 
                 navTasksButton.classList.toggle('active', sectionId === 'tasks-page');
+                if (navPersonalTasksButton) navPersonalTasksButton.classList.toggle('active', sectionId === 'personal-tasks-page');
                 navProjectsButton.classList.toggle('active', sectionId === 'projects-page');
 
                 if (sectionId === 'settings-page') {
                     navTasksButton.classList.remove('active');
+                    if (navPersonalTasksButton) navPersonalTasksButton.classList.remove('active');
                     navProjectsButton.classList.remove('active');
                 }
             }
@@ -842,9 +1080,11 @@
                 } catch (e) { console.warn('contact book save:', e); }
             }
             async function openWaRemindPicker(type, taskId, projectId) {
-                const taskRef = (type === 'project' && projectId)
-                    ? db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId)
-                    : db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
+                const taskRef = (type === 'personal_tasks')
+                    ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
+                    : (type === 'project' && projectId)
+                        ? db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId)
+                        : db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
                 const snap = await taskRef.get();
                 if (!snap.exists) throw new Error('Task not found');
                 const t = snap.data() || {};
@@ -873,6 +1113,10 @@
                             '</label>';
                     }).join('');
                 }
+                const customPhoneEl = document.getElementById('wa-remind-custom-phone');
+                const customNameEl = document.getElementById('wa-remind-custom-name');
+                if (customPhoneEl) customPhoneEl.value = '';
+                if (customNameEl) customNameEl.value = '';
                 document.getElementById('wa-remind-groups-manager').classList.add('hidden');
                 document.getElementById('wa-remind-group-search').value = '';
                 await loadWaRemindFavorites();
@@ -958,7 +1202,14 @@
                 if (!waRemindCtx) return;
                 const memberBoxes = Array.from(document.querySelectorAll('#wa-remind-members .wa-remind-member-cb:checked'));
                 const groupBoxes = Array.from(document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb:checked'));
-                if (!memberBoxes.length && !groupBoxes.length) { alert('Select at least one team member or group first.'); return; }
+                const customPhoneRaw = (document.getElementById('wa-remind-custom-phone') || {}).value || '';
+                const customPhone = normalizeWaNumberClient(customPhoneRaw);
+                const customName = ((document.getElementById('wa-remind-custom-name') || {}).value || '').trim() || ('+' + customPhone);
+
+                if (!memberBoxes.length && !groupBoxes.length && !customPhone) {
+                    alert('Select at least one team member, group, or enter a direct WhatsApp phone number.');
+                    return;
+                }
                 const t = waRemindCtx.task || {};
                 const baseMessage = String((document.getElementById('wa-remind-message') || {}).value || '').trim() || waScheduleDefaults();
                 const scheduling = document.getElementById('wa-remind-schedule-toggle').checked;
@@ -977,7 +1228,10 @@
                         if (!jid) continue;
                         targets.push({ type: 'group', id: jid, name: gname });
                     }
-                    if (!targets.length) { alert('The selected people/groups have no WhatsApp target yet.'); return; }
+                    if (customPhone) {
+                        targets.push({ type: 'direct', id: customPhone, name: customName });
+                    }
+                    if (!targets.length) { alert('The selected people/groups or phone number have no valid WhatsApp target.'); return; }
                     if (scheduling) {
                         const sched = readWaScheduleForm();
                         const whenStr = new Date(sched.startAt).toLocaleString();
@@ -1582,6 +1836,286 @@
                 individualTasksContainer.appendChild(userSection);
             }
 
+            // ===== 🔒 MY PERSONAL TASKS (Strictly private to currentUser.uid) =====
+            let personalTasksCache = [];
+            let currentPersonalFilter = 'all';
+
+            function renderPersonalTasks() {
+                const listEl = document.getElementById('personal-tasks-list');
+                if (!listEl) return;
+
+                const searchVal = (document.getElementById('personal-search-input')?.value || '').trim().toLowerCase();
+                const categoryFilter = document.getElementById('personal-category-filter')?.value || 'all';
+
+                const totalCount = personalTasksCache.length;
+                const todoCount = personalTasksCache.filter(t => t.status !== 'Done').length;
+                const urgentCount = personalTasksCache.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'Done').length;
+                const doneCount = personalTasksCache.filter(t => t.status === 'Done').length;
+
+                // Update Stats
+                const totalEl = document.getElementById('personal-stat-total');
+                const todoEl = document.getElementById('personal-stat-todo');
+                const urgentEl = document.getElementById('personal-stat-urgent');
+                const doneEl = document.getElementById('personal-stat-done');
+                if (totalEl) totalEl.textContent = totalCount;
+                if (todoEl) todoEl.textContent = todoCount;
+                if (urgentEl) urgentEl.textContent = urgentCount;
+                if (doneEl) doneEl.textContent = doneCount;
+
+                // Update Tab Badges
+                const tabAll = document.getElementById('tab-count-all');
+                const tabTodo = document.getElementById('tab-count-todo');
+                const tabUrgent = document.getElementById('tab-count-urgent');
+                const tabDone = document.getElementById('tab-count-done');
+                if (tabAll) tabAll.textContent = totalCount;
+                if (tabTodo) tabTodo.textContent = todoCount;
+                if (tabUrgent) tabUrgent.textContent = urgentCount;
+                if (tabDone) tabDone.textContent = doneCount;
+
+                let filtered = personalTasksCache;
+
+                // Tab Filter
+                if (currentPersonalFilter === 'todo') {
+                    filtered = filtered.filter(t => t.status !== 'Done');
+                } else if (currentPersonalFilter === 'urgent') {
+                    filtered = filtered.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'Done');
+                } else if (currentPersonalFilter === 'done') {
+                    filtered = filtered.filter(t => t.status === 'Done');
+                }
+
+                // Category Filter
+                if (categoryFilter !== 'all') {
+                    filtered = filtered.filter(t => (t.category || 'General') === categoryFilter);
+                }
+
+                // Search Filter
+                if (searchVal) {
+                    filtered = filtered.filter(t => {
+                        const desc = String(t.description || '').toLowerCase();
+                        const cat = String(t.category || '').toLowerCase();
+                        const notes = String(t.notes || '').toLowerCase();
+                        return desc.includes(searchVal) || cat.includes(searchVal) || notes.includes(searchVal);
+                    });
+                }
+
+                if (filtered.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="bg-white p-8 rounded-2xl text-center border border-gray-200">
+                            <span class="text-4xl block mb-2">📋</span>
+                            <p class="text-gray-600 font-semibold text-base">No personal tasks found</p>
+                            <p class="text-gray-400 text-xs mt-1">${personalTasksCache.length === 0 ? 'Add your first private task above. Only you can view your personal tasks.' : 'Try changing your search keywords or filter tab.'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const now = new Date();
+                listEl.innerHTML = filtered.map(t => {
+                    const isDone = t.status === 'Done';
+                    const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+                    const isOverdue = dueDate && dueDate < now && !isDone;
+
+                    // Priority Pill
+                    let priorityBadge = '';
+                    if (t.priority === 'urgent') {
+                        priorityBadge = '<span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200">🔴 Urgent</span>';
+                    } else if (t.priority === 'high') {
+                        priorityBadge = '<span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">🟠 High</span>';
+                    } else if (t.priority === 'low') {
+                        priorityBadge = '<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">⚪ Low</span>';
+                    } else {
+                        priorityBadge = '<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">🔵 Normal</span>';
+                    }
+
+                    // Category Pill
+                    const catBadge = `<span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">🏷️ ${t.category || 'General'}</span>`;
+
+                    // Due Date Pill
+                    let dueBadge = '';
+                    if (dueDate) {
+                        dueBadge = `<span class="text-xs font-medium px-2 py-0.5 rounded-full ${isOverdue ? 'bg-red-100 text-red-700 font-bold border border-red-200' : 'bg-gray-100 text-gray-700'}">🗓️ ${formatTaskTimestamp(dueDate)}${isOverdue ? ' · ⚠️ OVERDUE' : ''}</span>`;
+                    }
+
+                    // Repeat Pill
+                    const repType = t.repeat ? (t.repeat.type || t.repeat) : 'none';
+                    const repeatBadge = (repType && repType !== 'none') ? `<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">🔁 ${repType}</span>` : '';
+
+                    // Notes snippet
+                    const notesHTML = t.notes ? `<div class="mt-2 text-xs text-gray-600 bg-amber-50/70 border border-amber-200/60 rounded-lg p-2.5 whitespace-pre-wrap break-words">📝 <b>Notes:</b> ${waEsc(t.notes)}</div>` : '';
+
+                    return `
+                        <div class="bg-white rounded-xl shadow-sm border ${isDone ? 'border-gray-200 opacity-75' : (isOverdue ? 'border-red-200' : 'border-gray-200')} p-4 transition-all hover:shadow-md">
+                            <div class="flex items-start gap-3">
+                                <input type="checkbox" class="task-checkbox mt-1 h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer" data-task-type="personal_tasks" data-task-id="${t.id}" ${isDone ? 'checked' : ''} title="Mark done / to-do">
+                                <div class="flex-grow min-w-0">
+                                    <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
+                                        ${priorityBadge}
+                                        ${catBadge}
+                                        ${dueBadge}
+                                        ${repeatBadge}
+                                        <span class="text-xs text-gray-400 font-mono ml-auto">🔒 Private</span>
+                                    </div>
+                                    <h4 class="text-sm font-semibold text-gray-900 break-words ${isDone ? 'line-through text-gray-400' : ''}">${waEsc(t.description || '')}</h4>
+                                    ${notesHTML}
+                                    <div class="flex flex-wrap justify-between items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+                                        <span class="text-xs text-gray-400">Created: ${formatTaskTimestamp(t.createdAt)}</span>
+                                        <div class="flex items-center gap-2">
+                                            <button class="wa-remind-button text-xs px-2.5 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-semibold transition-colors flex items-center gap-1" data-task-type="personal_tasks" data-task-id="${t.id}" title="Send this task via WhatsApp to team, groups, or custom phone">
+                                                <span>💬</span><span>Send to WhatsApp</span>
+                                            </button>
+                                            <button class="edit-personal-task-btn text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-colors" data-id="${t.id}">
+                                                ✏️ Edit
+                                            </button>
+                                            <button class="delete-personal-task-btn text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-semibold transition-colors" data-id="${t.id}">
+                                                🗑️ Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Personal Task Form Submission (Add)
+            const addPersonalTaskForm = document.getElementById('add-personal-task-form');
+            if (addPersonalTaskForm) {
+                addPersonalTaskForm.addEventListener('submit', async e => {
+                    e.preventDefault();
+                    if (!currentUser) return;
+                    const desc = (document.getElementById('personal-task-desc')?.value || '').trim();
+                    if (!desc) return;
+                    const category = document.getElementById('personal-task-category')?.value || 'General';
+                    const priority = document.getElementById('personal-task-priority')?.value || 'normal';
+                    const dueDate = document.getElementById('personal-task-duedate')?.value || null;
+                    const repeat = document.getElementById('personal-task-repeat')?.value || 'none';
+                    const notes = (document.getElementById('personal-task-notes')?.value || '').trim();
+
+                    try {
+                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).add({
+                            description: desc,
+                            category: category,
+                            priority: priority,
+                            dueDate: dueDate,
+                            repeat: { type: repeat },
+                            notes: notes,
+                            status: 'To Do',
+                            isPersonal: true,
+                            ownerUid: currentUser.uid,
+                            ownerEmail: currentUser.email,
+                            createdBy: currentUser.email,
+                            createdAt: new Date()
+                        });
+                        addPersonalTaskForm.reset();
+                        document.getElementById('personal-task-priority').value = 'normal';
+                        document.getElementById('personal-task-category').value = 'General';
+                        document.getElementById('personal-task-repeat').value = 'none';
+                    } catch (err) {
+                        alert('❌ Could not add personal task: ' + (err.message || err));
+                    }
+                });
+            }
+
+            // Edit Personal Task Modal
+            function openEditPersonalTaskModal(taskId) {
+                const task = personalTasksCache.find(t => t.id === taskId);
+                if (!task) return;
+                document.getElementById('edit-personal-task-id').value = taskId;
+                document.getElementById('edit-personal-task-desc').value = task.description || '';
+                document.getElementById('edit-personal-task-category').value = task.category || 'General';
+                document.getElementById('edit-personal-task-priority').value = task.priority || 'normal';
+                document.getElementById('edit-personal-task-duedate').value = task.dueDate || '';
+                const repType = task.repeat ? (task.repeat.type || task.repeat) : 'none';
+                document.getElementById('edit-personal-task-repeat').value = repType || 'none';
+                document.getElementById('edit-personal-task-notes').value = task.notes || '';
+                document.getElementById('edit-personal-task-modal').classList.remove('hidden');
+            }
+
+            const editPersonalTaskModalClose = document.getElementById('edit-personal-task-modal-close');
+            if (editPersonalTaskModalClose) {
+                editPersonalTaskModalClose.addEventListener('click', () => {
+                    document.getElementById('edit-personal-task-modal').classList.add('hidden');
+                });
+            }
+            const editPersonalTaskCancel = document.getElementById('edit-personal-task-cancel');
+            if (editPersonalTaskCancel) {
+                editPersonalTaskCancel.addEventListener('click', () => {
+                    document.getElementById('edit-personal-task-modal').classList.add('hidden');
+                });
+            }
+
+            const editPersonalTaskForm = document.getElementById('edit-personal-task-form');
+            if (editPersonalTaskForm) {
+                editPersonalTaskForm.addEventListener('submit', async e => {
+                    e.preventDefault();
+                    if (!currentUser) return;
+                    const taskId = document.getElementById('edit-personal-task-id').value;
+                    if (!taskId) return;
+                    const desc = (document.getElementById('edit-personal-task-desc')?.value || '').trim();
+                    if (!desc) return;
+                    const category = document.getElementById('edit-personal-task-category')?.value || 'General';
+                    const priority = document.getElementById('edit-personal-task-priority')?.value || 'normal';
+                    const dueDate = document.getElementById('edit-personal-task-duedate')?.value || null;
+                    const repeat = document.getElementById('edit-personal-task-repeat')?.value || 'none';
+                    const notes = (document.getElementById('edit-personal-task-notes')?.value || '').trim();
+
+                    try {
+                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId).update({
+                            description: desc,
+                            category: category,
+                            priority: priority,
+                            dueDate: dueDate,
+                            repeat: { type: repeat },
+                            notes: notes,
+                            lastUpdatedAt: new Date(),
+                            lastUpdatedBy: currentUser.email
+                        });
+                        document.getElementById('edit-personal-task-modal').classList.add('hidden');
+                    } catch (err) {
+                        alert('❌ Could not save personal task: ' + (err.message || err));
+                    }
+                });
+            }
+
+            // Filter Tabs and Search
+            document.body.addEventListener('click', e => {
+                const tab = e.target.closest('.personal-filter-tab');
+                if (tab) {
+                    currentPersonalFilter = tab.getAttribute('data-filter') || 'all';
+                    document.querySelectorAll('.personal-filter-tab').forEach(b => {
+                        const isActive = b.getAttribute('data-filter') === currentPersonalFilter;
+                        b.className = 'personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all ' +
+                            (isActive ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200');
+                    });
+                    renderPersonalTasks();
+                    return;
+                }
+                const editBtn = e.target.closest('.edit-personal-task-btn');
+                if (editBtn) {
+                    openEditPersonalTaskModal(editBtn.getAttribute('data-id'));
+                    return;
+                }
+                const delBtn = e.target.closest('.delete-personal-task-btn');
+                if (delBtn) {
+                    const id = delBtn.getAttribute('data-id');
+                    if (id && confirm('Delete this personal task?')) {
+                        db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(id).delete()
+                            .catch(err => alert('❌ ' + (err.message || err)));
+                    }
+                    return;
+                }
+            });
+
+            const personalSearchInput = document.getElementById('personal-search-input');
+            if (personalSearchInput) {
+                personalSearchInput.addEventListener('input', () => renderPersonalTasks());
+            }
+            const personalCategoryFilter = document.getElementById('personal-category-filter');
+            if (personalCategoryFilter) {
+                personalCategoryFilter.addEventListener('change', () => renderPersonalTasks());
+            }
+
             async function renderProjects(projects, staffList) {
                 projectsContainer.innerHTML = '';
                 if (projects.length === 0) {
@@ -1912,6 +2446,22 @@
                     );
                     currentUnsubscribes.push(unsub);
                 }
+
+                // --- Personal Tasks Realtime Listener (Strictly private to currentUser.uid) ---
+                unsub = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).onSnapshot(
+                    snapshot => {
+                        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        tasks.sort((a, b) => {
+                            const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (new Date(a.createdAt || 0).getTime() || 0);
+                            const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (new Date(b.createdAt || 0).getTime() || 0);
+                            return tb - ta;
+                        });
+                        personalTasksCache = tasks;
+                        renderPersonalTasks();
+                    },
+                    error => console.warn('Personal tasks listener warning:', error)
+                );
+                currentUnsubscribes.push(unsub);
             }
 
 
@@ -2043,7 +2593,12 @@
                 profileModal.classList.remove('hidden');
             });
             navTasksButton.addEventListener('click', () => showMainSection('tasks-page'));
+            if (navPersonalTasksButton) navPersonalTasksButton.addEventListener('click', () => showMainSection('personal-tasks-page'));
             navProjectsButton.addEventListener('click', () => showMainSection('projects-page'));
+            if (menuPersonalTasks) menuPersonalTasks.addEventListener('click', () => {
+                accountMenu.classList.add('hidden');
+                showMainSection('personal-tasks-page');
+            });
             document.getElementById('profile-modal-close').addEventListener('click', () => profileModal.classList.add('hidden'));
             document.addEventListener('click', event => {
                 if (!accountMenu.contains(event.target) && !accountMenuButton.contains(event.target)) {
@@ -2446,7 +3001,9 @@
                 const { taskType, taskId, projectId } = checkbox.dataset;
 
                 let docRef, collectionRef;
-                if (taskType === 'project') {
+                if (taskType === 'personal_tasks') {
+                    collectionRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`);
+                } else if (taskType === 'project') {
                     collectionRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`);
                 } else {
                     collectionRef = db.collection(`/artifacts/${appId}/public/data/${taskType}`);
@@ -2457,13 +3014,14 @@
                     const docSnap = await docRef.get();
                     if (docSnap.exists) {
                         const completedTask = docSnap.data();
-                        if (completedTask.repeat && completedTask.repeat.type !== 'none') {
-                            if (completedTask.repeat.remaining && completedTask.repeat.remaining <= 1) {
+                        const repType = completedTask.repeat ? (completedTask.repeat.type || completedTask.repeat) : 'none';
+                        if (repType && repType !== 'none') {
+                            if (completedTask.repeat && completedTask.repeat.remaining && completedTask.repeat.remaining <= 1) {
                                 // Last repetition
                             } else {
-                                const nextDueDate = calculateNextDueDate(completedTask.dueDate, completedTask.repeat.type);
+                                const nextDueDate = calculateNextDueDate(completedTask.dueDate, repType);
                                 const newTaskData = { ...completedTask, status: 'To Do', createdAt: new Date(), dueDate: nextDueDate, completedBy: null, completedAt: null, lastUpdatedBy: null, lastUpdatedAt: null };
-                                if(newTaskData.repeat.remaining) {
+                                if (newTaskData.repeat && newTaskData.repeat.remaining) {
                                     newTaskData.repeat.remaining -= 1;
                                 }
                                 delete newTaskData.id; 
