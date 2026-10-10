@@ -6,6 +6,31 @@
     <title>TRADE ACCOUNTS DATA — Purchases & Sales Ledger + AI Chat Extractor</title>
     <link rel="icon" type="image/png" href="/icon-192.png">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        // Forward all API requests to production Render backend when running on Firebase Hosting or external host
+        (function() {
+            const isRenderOrigin = location.origin === 'https://whatanagent.onrender.com';
+            if (!isRenderOrigin) {
+                const API_BASE = 'https://whatanagent.onrender.com/';
+                const origFetch = window.fetch.bind(window);
+                window.fetch = function(input, init) {
+                    if (typeof input === 'string') {
+                        if (input.startsWith('/api/') || input.startsWith('api/')) {
+                            input = API_BASE + (input.startsWith('/') ? input.substring(1) : input);
+                        }
+                    } else if (input && input.url) {
+                        try {
+                            const u = new URL(input.url, location.origin);
+                            if (u.pathname.startsWith('/api/') || u.pathname.startsWith('api/')) {
+                                input = new Request(API_BASE + (u.pathname.startsWith('/') ? u.pathname.substring(1) : u.pathname) + u.search, input);
+                            }
+                        } catch(e) {}
+                    }
+                    return origFetch(input, init);
+                };
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg-main: #0b1120;
@@ -1482,27 +1507,44 @@
 
     <!-- ===== WHATSAPP CHAT / GROUP SELECTOR MODAL ===== -->
     <div class="modal-overlay" id="chatSelectorModal">
-        <div class="modal-card" style="max-width:500px;">
+        <div class="modal-card" style="max-width:540px; width:95%;">
             <div class="modal-header">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:20px;">💬</span>
-                    <h3 style="font-size:16px; font-weight:800;">Select WhatsApp Chat or Group</h3>
+                    <span style="font-size:22px;">💬</span>
+                    <div>
+                        <h3 style="font-size:16px; font-weight:800;">Select WhatsApp Chat or Group</h3>
+                        <p style="font-size:11.5px; color:#94a3b8; margin-top:2px;">Choose any group or chat to analyze historical trade conversations</p>
+                    </div>
                 </div>
-                <button class="sidebar-close" onclick="closeChatSelectorModal()" style="position:static; width:26px; height:26px;">✕</button>
+                <button class="sidebar-close" onclick="closeChatSelectorModal()" style="position:static; width:28px; height:28px;">✕</button>
             </div>
 
-            <div class="modal-body">
-                <div class="search-box" style="margin-bottom:6px;">
-                    <span>🔍</span>
-                    <input type="text" id="chatModalSearchInput" placeholder="Search contact, phone or group name..." oninput="filterChatModalList()">
+            <div class="modal-body" style="padding:14px 18px;">
+                <!-- Filter Tabs: All / WhatsApp Groups / Direct Chats -->
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <button id="chatTabAll" type="button" style="flex:1; padding:8px 6px; font-size:12px; font-weight:700; border-radius:8px; border:1px solid #06b6d4; background:rgba(6,182,212,0.2); color:#38bdf8; cursor:pointer;" onclick="setChatFilterTab('all')">
+                        🌐 All (<span id="chatCountAll">...</span>)
+                    </button>
+                    <button id="chatTabGroups" type="button" style="flex:1.2; padding:8px 6px; font-size:12px; font-weight:700; border-radius:8px; border:1px solid #334155; background:transparent; color:#94a3b8; cursor:pointer;" onclick="setChatFilterTab('groups')">
+                        👥 Groups Only (<span id="chatCountGroups">...</span>)
+                    </button>
+                    <button id="chatTabPrivate" type="button" style="flex:1; padding:8px 6px; font-size:12px; font-weight:700; border-radius:8px; border:1px solid #334155; background:transparent; color:#94a3b8; cursor:pointer;" onclick="setChatFilterTab('private')">
+                        👤 Direct (<span id="chatCountPrivate">...</span>)
+                    </button>
                 </div>
 
-                <div class="chat-modal-list" id="chatModalList">
+                <div class="search-box" style="margin-bottom:10px;">
+                    <span>🔍</span>
+                    <input type="text" id="chatModalSearchInput" placeholder="Search group name, phone number, contact..." oninput="filterChatModalList()">
+                </div>
+
+                <div class="chat-modal-list" id="chatModalList" style="max-height:360px;">
                     <div style="text-align:center; padding:30px; color:#64748b;">Loading WhatsApp chats...</div>
                 </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="chatModalStatsText" style="font-size:11.5px; color:#94a3b8;">Connecting to WhatsApp...</span>
                 <button class="btn btn-ghost" onclick="closeChatSelectorModal()">Close</button>
             </div>
         </div>
@@ -1513,19 +1555,6 @@
 
     <!-- ===== SCRIPT ===== -->
     <script>
-        // When hosted on Firebase Hosting, forward /api calls to the Render production backend
-        (function() {
-            const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
-            if (!isFirebaseHost) return;
-            const API_BASE = 'https://whatanagent.onrender.com/';
-            const origFetch = window.fetch.bind(window);
-            window.fetch = function(input, init) {
-                if (typeof input === 'string' && (input.startsWith('api/') || input.startsWith('/api/'))) {
-                    input = API_BASE + (input.startsWith('/') ? input.substring(1) : input);
-                }
-                return origFetch(input, init);
-            };
-        })();
 
         let allPurchases = [];
         let allSales = [];
@@ -1734,13 +1763,40 @@
         }
 
         // ===== 💬 WHATSAPP CHAT SELECTOR MODAL & LOGIC =====
+        let activeChatFilterTab = 'all'; // 'all', 'groups', 'private'
+
+        function setChatFilterTab(tab) {
+            activeChatFilterTab = tab;
+            const tabs = [
+                { id: 'chatTabAll', key: 'all' },
+                { id: 'chatTabGroups', key: 'groups' },
+                { id: 'chatTabPrivate', key: 'private' }
+            ];
+
+            tabs.forEach(t => {
+                const btn = document.getElementById(t.id);
+                if (!btn) return;
+                if (t.key === tab) {
+                    btn.style.borderColor = '#06b6d4';
+                    btn.style.background = 'rgba(6, 182, 212, 0.2)';
+                    btn.style.color = '#38bdf8';
+                } else {
+                    btn.style.borderColor = '#334155';
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#94a3b8';
+                }
+            });
+
+            filterChatModalList();
+        }
+
         async function openChatSelectorModal() {
             const m = document.getElementById('chatSelectorModal');
             if (m) m.style.display = 'flex';
             if (waChatsCache.length === 0) {
                 await loadWhatsAppChats();
             } else {
-                renderChatModalList(waChatsCache);
+                filterChatModalList();
             }
         }
 
@@ -1751,17 +1807,31 @@
 
         async function loadWhatsAppChats() {
             const host = document.getElementById('chatModalList');
+            const stats = document.getElementById('chatModalStatsText');
+            host.innerHTML = `<div style="text-align:center; padding:35px; color:#38bdf8;"><span style="font-size:24px; display:inline-block; margin-bottom:8px;">⏳</span><br><b>Loading WhatsApp Groups &amp; Chats...</b><br><small style="color:#94a3b8;">Fetching live contacts from WhatsApp Web...</small></div>`;
             try {
                 const res = await fetch('/api/trade/chats');
                 const data = await res.json();
                 if (data.ok && data.chats) {
                     waChatsCache = data.chats || [];
-                    renderChatModalList(waChatsCache);
+                    
+                    const groupCount = waChatsCache.filter(c => c.isGroup || (c.id && c.id.includes('@g.us'))).length;
+                    const privateCount = waChatsCache.length - groupCount;
+
+                    const elAll = document.getElementById('chatCountAll');
+                    const elGrp = document.getElementById('chatCountGroups');
+                    const elPriv = document.getElementById('chatCountPrivate');
+                    if (elAll) elAll.textContent = waChatsCache.length.toLocaleString();
+                    if (elGrp) elGrp.textContent = groupCount.toLocaleString();
+                    if (elPriv) elPriv.textContent = privateCount.toLocaleString();
+
+                    if (stats) stats.textContent = `Total: ${waChatsCache.length.toLocaleString()} chats (${groupCount} groups)`;
+                    filterChatModalList();
                 } else {
-                    host.innerHTML = `<div style="text-align:center; padding:20px; color:#f43f5e;">Could not load chats. Make sure WhatsApp is connected.</div>`;
+                    host.innerHTML = `<div style="text-align:center; padding:25px; color:#f43f5e;">Could not load chats. Make sure WhatsApp is connected.<br><button class="btn btn-ghost" style="margin-top:10px; display:inline-block;" onclick="loadWhatsAppChats()">🔄 Retry</button></div>`;
                 }
             } catch (e) {
-                host.innerHTML = `<div style="text-align:center; padding:20px; color:#f43f5e;">Error: ${e.message}</div>`;
+                host.innerHTML = `<div style="text-align:center; padding:25px; color:#f43f5e;">Error connecting: ${e.message}<br><button class="btn btn-ghost" style="margin-top:10px; display:inline-block;" onclick="loadWhatsAppChats()">🔄 Retry</button></div>`;
             }
         }
 
@@ -1770,41 +1840,61 @@
             if (!host) return;
 
             if (!chats || chats.length === 0) {
-                host.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8;">No chats found.</div>`;
+                host.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8; font-size:13px;">No chats found matching your search.</div>`;
                 return;
             }
 
-            host.innerHTML = chats.map(c => {
+            // Slice top 250 results for rapid DOM rendering
+            const displayList = chats.slice(0, 250);
+
+            host.innerHTML = displayList.map(c => {
                 const isGroup = c.isGroup || (c.id && c.id.includes('@g.us'));
                 const icon = isGroup ? '👥' : '👤';
-                const typeBadge = isGroup ? '<span style="font-size:10px; background:#1e1b4b; color:#a5b4fc; padding:2px 6px; border-radius:4px; font-weight:bold;">GROUP</span>' : '<span style="font-size:10px; background:#064e3b; color:#6ee7b7; padding:2px 6px; border-radius:4px; font-weight:bold;">PRIVATE</span>';
+                const typeBadge = isGroup 
+                    ? '<span style="font-size:10px; background:rgba(6,182,212,0.22); color:#22d3ee; border:1px solid #0891b2; padding:2px 7px; border-radius:4px; font-weight:800; letter-spacing:0.5px;">GROUP</span>' 
+                    : '<span style="font-size:10px; background:rgba(16,185,129,0.18); color:#6ee7b7; border:1px solid #059669; padding:2px 7px; border-radius:4px; font-weight:700;">DIRECT</span>';
                 
+                const groupName = c.name || (isGroup ? 'WhatsApp Group' : (c.phone || c.id));
+                const lastMsgSnippet = c.lastMessage ? `<div style="font-size:11px; color:#64748b; margin-top:2px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:320px;">💬 ${escapeHtml(c.lastMessage.slice(0, 65))}</div>` : '';
+
                 return `
-                    <div class="chat-modal-item" onclick="selectChatForScan('${c.id}', '${escapeAttr(c.name || c.id)}', ${isGroup})">
-                        <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
-                            <span style="font-size:18px;">${icon}</span>
-                            <div style="overflow:hidden;">
-                                <div style="font-weight:700; color:#f8fafc; font-size:13px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(c.name || c.id)}</div>
-                                <div style="font-size:11px; color:#94a3b8; font-family:monospace;">${c.phone || c.id}</div>
+                    <div class="chat-modal-item" onclick="selectChatForScan('${c.id}', '${escapeAttr(groupName)}', ${isGroup})">
+                        <div style="display:flex; align-items:center; gap:12px; overflow:hidden; flex:1;">
+                            <span style="font-size:22px; flex-shrink:0;">${icon}</span>
+                            <div style="overflow:hidden; flex:1;">
+                                <div style="font-weight:700; color:#f8fafc; font-size:13.5px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${escapeHtml(groupName)}</div>
+                                <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-top:1px;">${escapeHtml(c.phone || c.id)}</div>
+                                ${lastMsgSnippet}
                             </div>
                         </div>
-                        <div>${typeBadge}</div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+                            ${typeBadge}
+                            ${c.unreadCount ? `<span style="background:#ef4444; color:#fff; font-size:10px; font-weight:800; padding:1px 6px; border-radius:10px;">${c.unreadCount}</span>` : ''}
+                        </div>
                     </div>
                 `;
-            }).join('');
+            }).join('') + (chats.length > 250 ? `<div style="text-align:center; padding:10px; color:#64748b; font-size:11.5px;">Showing top 250 of ${chats.length.toLocaleString()} matching items. Type in search bar to find more.</div>` : '');
         }
 
         function filterChatModalList() {
             const q = (document.getElementById('chatModalSearchInput').value || '').toLowerCase().trim();
-            if (!q) {
-                renderChatModalList(waChatsCache);
-                return;
+            let filtered = waChatsCache;
+
+            if (activeChatFilterTab === 'groups') {
+                filtered = filtered.filter(c => c.isGroup || (c.id && c.id.includes('@g.us')));
+            } else if (activeChatFilterTab === 'private') {
+                filtered = filtered.filter(c => !c.isGroup && (!c.id || !c.id.includes('@g.us')));
             }
-            const filtered = waChatsCache.filter(c => 
-                (c.name && c.name.toLowerCase().includes(q)) ||
-                (c.id && c.id.toLowerCase().includes(q)) ||
-                (c.phone && c.phone.includes(q))
-            );
+
+            if (q) {
+                filtered = filtered.filter(c => 
+                    (c.name && c.name.toLowerCase().includes(q)) ||
+                    (c.id && c.id.toLowerCase().includes(q)) ||
+                    (c.phone && c.phone.includes(q)) ||
+                    (c.lastMessage && c.lastMessage.toLowerCase().includes(q))
+                );
+            }
+
             renderChatModalList(filtered);
         }
 
