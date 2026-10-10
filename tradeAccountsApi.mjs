@@ -58,12 +58,16 @@ export function sanitizeTradeEntry(raw, existing = {}) {
   const calculatedAmount = Math.round((quantity * rate) * 100) / 100;
   const amount = raw.amount != null && !isNaN(parseFloat(raw.amount)) ? num(raw.amount) : calculatedAmount;
   
+  const time = sstr(raw.time || existing.time || '', 30);
+  const timestamp = sstr(raw.timestamp || existing.timestamp || (date + (time ? ' ' + time : '')), 50);
   const notes = sstr(raw.notes != null ? raw.notes : (existing.notes || ''), 500);
   const refNo = sstr(raw.refNo != null ? raw.refNo : (existing.refNo || ''), 60);
 
   return {
     type,
     date,
+    time,
+    timestamp,
     itemName,
     partyName,
     unit,
@@ -92,6 +96,8 @@ export function sanitizeDraftTrade(raw, existing = {}) {
   const calculatedAmount = Math.round((quantity * rate) * 100) / 100;
   const amount = raw.amount != null && !isNaN(parseFloat(raw.amount)) ? num(raw.amount) : calculatedAmount;
   
+  const time = sstr(raw.time || existing.time || '', 30);
+  const timestamp = sstr(raw.timestamp || existing.timestamp || (date + (time ? ' ' + time : '')), 50);
   const notes = sstr(raw.notes != null ? raw.notes : (existing.notes || ''), 500);
   const refNo = sstr(raw.refNo != null ? raw.refNo : (existing.refNo || ''), 60);
   const evidenceQuote = sstr(raw.evidenceQuote != null ? raw.evidenceQuote : (existing.evidenceQuote || ''), 1000);
@@ -103,6 +109,8 @@ export function sanitizeDraftTrade(raw, existing = {}) {
   return {
     type,
     date,
+    time,
+    timestamp,
     itemName,
     partyName,
     unit,
@@ -620,6 +628,8 @@ For each trade transaction found, return a JSON object with this exact structure
     "amount": number, (total amount, quantity * rate)
     "currency": "AED" | "USD" | "INR" | "SAR",
     "date": "YYYY-MM-DD", (date from message timestamp or deal date)
+    "time": "HH:MM:SS", (exact time from message timestamp e.g. "14:32:05" or "14:32")
+    "timestamp": "YYYY-MM-DD HH:MM:SS", (full message timestamp e.g. "2026-10-08 14:32:05")
     "refNo": "...", (TT number, deal ref, booking id if any, else "")
     "notes": "...", (short explanation of terms/deal context)
     "evidenceQuote": "...", (the exact message sentence or quote from WhatsApp showing this deal)
@@ -652,8 +662,31 @@ RULES:
       for (const item of extractedList) {
         if (!item.itemName && !item.quantity && !item.amount) continue;
         
+        let matchedTime = item.time || '';
+        let matchedTimestamp = item.timestamp || '';
+
+        // Deterministically match exact WhatsApp message timestamp from recent messages
+        if (item.evidenceQuote) {
+          const eqClean = String(item.evidenceQuote).toLowerCase().replace(/['"“”]/g, '').trim();
+          const foundMsg = recent.find(m => {
+            const txt = String(m.text || m.mediaInfo?.caption || '').toLowerCase().replace(/['"“”]/g, '').trim();
+            return txt && (txt.includes(eqClean) || eqClean.includes(txt) || (eqClean.length > 8 && txt.includes(eqClean.slice(0, 16))));
+          });
+          if (foundMsg && foundMsg.timestamp) {
+            const dt = new Date(foundMsg.timestamp);
+            matchedTime = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            matchedTimestamp = dt.toISOString().replace('T', ' ').substring(0, 19);
+          }
+        }
+
+        if (!matchedTimestamp && item.date) {
+          matchedTimestamp = item.date + (matchedTime ? ' ' + matchedTime : '');
+        }
+
         const draftPayload = sanitizeDraftTrade({
           ...item,
+          time: matchedTime || item.time || '',
+          timestamp: matchedTimestamp || item.timestamp || '',
           sourceChatId: chatId,
           sourceChatName: chatName || chatId,
           status: 'pending'
@@ -704,6 +737,8 @@ RULES:
       const tradePayload = sanitizeTradeEntry({
         type: confirmedType || overrides.type || draftData.type || 'purchase',
         date: overrides.date || draftData.date,
+        time: overrides.time || draftData.time,
+        timestamp: overrides.timestamp || draftData.timestamp,
         itemName: overrides.itemName || draftData.itemName,
         partyName: overrides.partyName || draftData.partyName,
         unit: overrides.unit || draftData.unit,
@@ -759,6 +794,8 @@ RULES:
             const payload = sanitizeTradeEntry({
               type: defaultType || d.type || 'purchase',
               date: d.date,
+              time: d.time,
+              timestamp: d.timestamp,
               itemName: d.itemName,
               partyName: d.partyName,
               unit: d.unit,

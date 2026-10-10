@@ -1407,11 +1407,15 @@
                 <input type="hidden" id="entryType" value="purchase">
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" style="flex:1.2;">
                         <label>Date</label>
                         <input type="date" id="entryDate" class="form-control">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="flex:1;">
+                        <label>Time</label>
+                        <input type="time" id="entryTime" step="1" class="form-control">
+                    </div>
+                    <div class="form-group" style="flex:1.2;">
                         <label>Currency</label>
                         <select id="entryCurrency" class="form-control">
                             <option value="AED" selected>AED (UAE Dirham)</option>
@@ -1635,8 +1639,9 @@
             }
 
             if (existing) {
-                document.getElementById('editEntryId').value = existing.id;
+                document.getElementById('editEntryId').value = existing.id || '';
                 document.getElementById('entryDate').value = existing.date || new Date().toISOString().split('T')[0];
+                document.getElementById('entryTime').value = existing.time || (existing.timestamp && existing.timestamp.includes(' ') ? existing.timestamp.split(' ')[1] : new Date().toTimeString().slice(0, 8));
                 document.getElementById('entryCurrency').value = existing.currency || 'AED';
                 document.getElementById('entryItemName').value = existing.itemName || '';
                 document.getElementById('entryPartyName').value = existing.partyName || '';
@@ -1648,6 +1653,7 @@
             } else {
                 document.getElementById('editEntryId').value = '';
                 document.getElementById('entryDate').value = new Date().toISOString().split('T')[0];
+                document.getElementById('entryTime').value = new Date().toTimeString().slice(0, 8);
                 document.getElementById('entryCurrency').value = 'AED';
                 document.getElementById('entryItemName').value = '';
                 document.getElementById('entryPartyName').value = '';
@@ -1672,6 +1678,8 @@
             const editId = document.getElementById('editEntryId').value;
             const type = document.getElementById('entryType').value;
             const date = document.getElementById('entryDate').value || new Date().toISOString().split('T')[0];
+            const time = document.getElementById('entryTime').value || '';
+            const timestamp = date + (time ? ' ' + time : '');
             const itemName = document.getElementById('entryItemName').value.trim();
             const partyName = document.getElementById('entryPartyName').value.trim();
             const unit = document.getElementById('entryUnit').value;
@@ -1696,6 +1704,8 @@
             const payload = {
                 type,
                 date,
+                time,
+                timestamp,
                 itemName,
                 partyName,
                 unit,
@@ -2002,6 +2012,22 @@
                 const typeLabel = isBuy ? '🟢 PROPOSED PURCHASE (BUY)' : '🔴 PROPOSED SALE (SELL)';
                 const amountFormatted = fmt(d.amount || (d.quantity * d.rate));
 
+                // Timestamp formatting
+                let dateDisplay = d.date || '';
+                let timeDisplay = d.time || '';
+                if (!timeDisplay && d.timestamp && d.timestamp.includes(' ')) {
+                    const parts = d.timestamp.split(' ');
+                    dateDisplay = parts[0];
+                    timeDisplay = parts[1];
+                }
+                if (!timeDisplay && d.createdAt) {
+                    try {
+                        const ct = new Date(d.createdAt);
+                        timeDisplay = ct.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    } catch(e) {}
+                }
+                const fullDateTimeStr = (dateDisplay + (timeDisplay ? ' ' + timeDisplay : '')).trim();
+
                 return `
                     <div class="draft-item-card ${typeClass}" id="draftCard_${d.id}">
                         <div class="draft-top-row">
@@ -2010,7 +2036,10 @@
                                 <span class="draft-source-tag">💬 ${escapeHtml(d.sourceChatName || 'WhatsApp')}</span>
                                 ${d.confidence ? `<span style="font-size:10.5px; color:#a5b4fc;">⚡ ${d.confidence} confidence</span>` : ''}
                             </div>
-                            <div style="font-size:11.5px; color:#94a3b8; font-family:monospace;">${d.date || ''}</div>
+                            <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#38bdf8; font-family:monospace; background:rgba(6,182,212,0.12); border:1px solid rgba(6,182,212,0.3); padding:4px 10px; border-radius:6px; font-weight:700;">
+                                <span>🕒</span>
+                                <span>${escapeHtml(fullDateTimeStr || 'Pending')}</span>
+                            </div>
                         </div>
 
                         <div class="draft-details-grid">
@@ -2042,8 +2071,11 @@
                         </div>
 
                         ${d.evidenceQuote ? `
-                        <div class="draft-evidence-box">
+                        <div class="draft-evidence-box" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                             <span>💬 Quote: "${escapeHtml(d.evidenceQuote)}"</span>
+                            <span style="font-size:11px; color:#38bdf8; font-family:monospace; background:rgba(15,23,42,0.85); padding:2px 8px; border-radius:5px; border:1px solid rgba(56,189,248,0.3); white-space:nowrap; display:inline-flex; align-items:center; gap:4px;">
+                                <span>🕒</span> <b>${escapeHtml(timeDisplay ? `${dateDisplay} ${timeDisplay}` : fullDateTimeStr)}</b>
+                            </span>
                         </div>` : ''}
 
                         <div class="draft-bottom-bar">
@@ -2245,7 +2277,10 @@
             } else {
                 pTbody.innerHTML = pList.map(e => `
                     <tr>
-                        <td style="color:#94a3b8; font-size:11.5px;">${e.date || ''}</td>
+                        <td style="color:#94a3b8; font-size:11.5px; white-space:nowrap;">
+                            <div>${e.date || ''}</div>
+                            ${e.time ? `<div style="font-size:10.5px; color:#38bdf8; font-family:monospace; margin-top:2px;">🕒 ${escapeHtml(e.time)}</div>` : ''}
+                        </td>
                         <td>
                             <span class="tag-item">${escapeHtml(e.itemName || 'TT')}</span>
                             ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${escapeHtml(e.refNo)}</span>` : ''}
@@ -2271,7 +2306,10 @@
             } else {
                 sTbody.innerHTML = sList.map(e => `
                     <tr>
-                        <td style="color:#94a3b8; font-size:11.5px;">${e.date || ''}</td>
+                        <td style="color:#94a3b8; font-size:11.5px; white-space:nowrap;">
+                            <div>${e.date || ''}</div>
+                            ${e.time ? `<div style="font-size:10.5px; color:#38bdf8; font-family:monospace; margin-top:2px;">🕒 ${escapeHtml(e.time)}</div>` : ''}
+                        </td>
                         <td>
                             <span class="tag-item" style="color:#fb7185; border-color:rgba(251,113,133,0.3);">${escapeHtml(e.itemName || 'TT')}</span>
                             ${e.refNo ? `<span style="font-size:10.5px; color:#64748b; margin-left:4px;">#${escapeHtml(e.refNo)}</span>` : ''}
@@ -2293,14 +2331,14 @@
 
         // Export to CSV
         function exportTradeDataToCSV() {
-            let csv = "Type,Date,Item Name,Party Name,Quantity,Unit,Rate,Amount,Currency,Ref No,Notes\n";
+            let csv = "Type,Date,Time,Timestamp,Item Name,Party Name,Quantity,Unit,Rate,Amount,Currency,Ref No,Notes\n";
             
             allPurchases.forEach(e => {
-                csv += `PURCHASE,"${e.date || ''}","${e.itemName || ''}","${e.partyName || ''}",${e.quantity || 0},"${e.unit || ''}",${e.rate || 0},${e.amount || 0},"${e.currency || ''}","${e.refNo || ''}","${(e.notes || '').replace(/"/g, '""')}"\n`;
+                csv += `PURCHASE,"${e.date || ''}","${e.time || ''}","${e.timestamp || ''}","${e.itemName || ''}","${e.partyName || ''}",${e.quantity || 0},"${e.unit || ''}",${e.rate || 0},${e.amount || 0},"${e.currency || ''}","${e.refNo || ''}","${(e.notes || '').replace(/"/g, '""')}"\n`;
             });
 
             allSales.forEach(e => {
-                csv += `SALE,"${e.date || ''}","${e.itemName || ''}","${e.partyName || ''}",${e.quantity || 0},"${e.unit || ''}",${e.rate || 0},${e.amount || 0},"${e.currency || ''}","${e.refNo || ''}","${(e.notes || '').replace(/"/g, '""')}"\n`;
+                csv += `SALE,"${e.date || ''}","${e.time || ''}","${e.timestamp || ''}","${e.itemName || ''}","${e.partyName || ''}",${e.quantity || 0},"${e.unit || ''}",${e.rate || 0},${e.amount || 0},"${e.currency || ''}","${e.refNo || ''}","${(e.notes || '').replace(/"/g, '""')}"\n`;
             });
 
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
