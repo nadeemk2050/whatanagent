@@ -110,6 +110,20 @@ const app = express();
 // Gzip every response (the 600KB dashboard HTML shrinks ~5x) - cuts bandwidth + transfer time,
 // keeping the Render free-tier bandwidth pool and CPU pressure low.
 app.use(compression());
+// CORS: allow the Firebase-hosted dashboard (web.app / firebaseapp.com) to call this API cross-origin.
+const CORS_ALLOWED = /^https:\/\/whatanagent-a1e59\.(web\.app|firebaseapp\.com)$/;
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && CORS_ALLOWED.test(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
 // Large limit so dashboard image uploads (base64) and OCR imports fit through the JSON body.
 app.use(express.json({ limit: '30mb' }));
 

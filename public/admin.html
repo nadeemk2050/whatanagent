@@ -3424,11 +3424,11 @@
     </div>
 
     <script>
-        // When the dashboard is hosted on Firebase Hosting, forward API calls to the Railway backend
+        // When the dashboard is hosted on Firebase Hosting, forward API calls to the Render production backend
         (function() {
             const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
             if (!isFirebaseHost) return;
-            const API_BASE = 'https://whatanagent-staging-production.up.railway.app/';
+            const API_BASE = 'https://whatanagent.onrender.com/';
             const origFetch = window.fetch.bind(window);
             window.fetch = function(input, init) {
                 if (typeof input === 'string' && (input.startsWith('api/') || input.startsWith('/api/'))) {
@@ -8303,7 +8303,7 @@
 
         function getBackendBaseUrl() {
             const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
-            return isFirebaseHost ? 'https://whatanagent-staging-production.up.railway.app' : '';
+            return isFirebaseHost ? 'https://whatanagent.onrender.com' : '';
         }
 
         function downloadWaMedia(jid, msgId, defaultName) {

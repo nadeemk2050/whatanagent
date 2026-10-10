@@ -1513,6 +1513,20 @@
 
     <!-- ===== SCRIPT ===== -->
     <script>
+        // When hosted on Firebase Hosting, forward /api calls to the Render production backend
+        (function() {
+            const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
+            if (!isFirebaseHost) return;
+            const API_BASE = 'https://whatanagent.onrender.com/';
+            const origFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                if (typeof input === 'string' && (input.startsWith('api/') || input.startsWith('/api/'))) {
+                    input = API_BASE + (input.startsWith('/') ? input.substring(1) : input);
+                }
+                return origFetch(input, init);
+            };
+        })();
+
         let allPurchases = [];
         let allSales = [];
         let allDrafts = [];
