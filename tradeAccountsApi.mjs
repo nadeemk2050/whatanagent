@@ -29,13 +29,23 @@ const DRAFTS_COLLECTION = 'tradeAccountsDrafts';
 // Helper: Sanitize string
 const sstr = (v, n = 300) => String(v == null ? '' : v).substring(0, n);
 const num = (v, fallback = 0) => {
-  const n = parseFloat(v);
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+  const cleaned = String(v == null ? '' : v).replace(/,/g, '').replace(/[^0-9.-]/g, '');
+  const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : fallback;
 };
 
+// Normalize trade type from AI or user
+export function parseTradeType(rawType, fallback = 'purchase') {
+  const t = String(rawType || '').toLowerCase().trim();
+  if (t === 'sale' || t === 'sold' || t === 'sell' || t === 'out' || t === 'sales') return 'sale';
+  if (t === 'purchase' || t === 'buy' || t === 'bought' || t === 'in' || t === 'purchased') return 'purchase';
+  return fallback;
+}
+
 // Sanitizer for Trade Entries
 export function sanitizeTradeEntry(raw, existing = {}) {
-  const type = (raw.type || existing.type || 'purchase').toLowerCase() === 'sale' ? 'sale' : 'purchase';
+  const type = parseTradeType(raw.type || existing.type, 'purchase');
   const date = sstr(raw.date || existing.date || new Date().toISOString().split('T')[0], 30);
   const itemName = sstr(raw.itemName || existing.itemName || 'TT', 120);
   const partyName = sstr(raw.partyName != null ? raw.partyName : (existing.partyName || ''), 120);
@@ -70,7 +80,7 @@ export function sanitizeTradeEntry(raw, existing = {}) {
 
 // Sanitizer for Draft Trade Entries (Extracted from WhatsApp by AI)
 export function sanitizeDraftTrade(raw, existing = {}) {
-  const type = (raw.type || existing.type || 'purchase').toLowerCase() === 'sale' ? 'sale' : 'purchase';
+  const type = parseTradeType(raw.type || existing.type, 'purchase');
   const date = sstr(raw.date || existing.date || new Date().toISOString().split('T')[0], 30);
   const itemName = sstr(raw.itemName || existing.itemName || 'TT', 120);
   const partyName = sstr(raw.partyName != null ? raw.partyName : (existing.partyName || ''), 120);
@@ -269,12 +279,12 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
 
   const modelsToTry = [];
   if (geminiKey) modelsToTry.push('gemini');
-  if (deepseekKey) modelsToTry.push('deepseek');
   if (qwenKey) modelsToTry.push('qwen');
   if (openaiKey) modelsToTry.push('openai');
+  if (deepseekKey) modelsToTry.push('deepseek');
 
   if (modelsToTry.length === 0) {
-    throw new Error('No AI API key found. Please configure Gemini, DeepSeek, Qwen or OpenAI key.');
+    throw new Error('No AI API key found. Please configure Gemini, Qwen or OpenAI key.');
   }
 
   if (modelsToTry.includes(preferred)) {
@@ -286,53 +296,50 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
     try {
       if (p === 'gemini') {
         const gm = 'gemini-2.5-flash';
+        // thinkingBudget: 0 disables deep chain-of-thought delay, generating in 1-2s
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${geminiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nChat Conversation Content:\n${userText}` }] }]
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nChat Conversation Content:\n${userText}` }] }],
+            generationConfig: {
+              thinkingConfig: { thinkingBudget: 0 },
+              responseMimeType: 'application/json',
+              temperature: 0.1
+            }
           }),
-          signal: AbortSignal.timeout(45000)
+          signal: AbortSignal.timeout(60000)
         });
-        if (!r.ok) continue;
+        if (!r.ok) {
+          const errBody = await r.text();
+          console.warn(`[TRADE EXTRACTOR AI] Gemini HTTP ${r.status}:`, errBody.slice(0, 150));
+          continue;
+        }
         const j = await r.json();
         const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (t) {
           recordAiCall({ source: 'trade_extractor', model: gm, prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
           return t;
         }
-      } else if (p === 'deepseek') {
-        const r = await fetch('https://api.deepseek.com/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            temperature: 0.2,
-            max_tokens: 3000,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
-          }),
-          signal: AbortSignal.timeout(45000)
-        });
-        if (!r.ok) continue;
-        const j = await r.json();
-        const t = j?.choices?.[0]?.message?.content?.trim();
-        if (t) {
-          recordAiCall({ source: 'trade_extractor', model: 'deepseek-chat', prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
-          return t;
-        }
       } else if (p === 'qwen') {
+        // enable_thinking: false turns off Alibaba reasoning tokens for instant completion
         const r = await fetch(`${qwenBase}/chat/completions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${qwenKey}` },
           body: JSON.stringify({
             model: qwenModel,
-            temperature: 0.2,
-            max_tokens: 3000,
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
+            temperature: 0.1,
+            max_tokens: 3500,
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+            enable_thinking: false
           }),
-          signal: AbortSignal.timeout(45000)
+          signal: AbortSignal.timeout(60000)
         });
-        if (!r.ok) continue;
+        if (!r.ok) {
+          const errBody = await r.text();
+          console.warn(`[TRADE EXTRACTOR AI] Qwen HTTP ${r.status}:`, errBody.slice(0, 150));
+          continue;
+        }
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
@@ -345,11 +352,11 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
           body: JSON.stringify({
             model: 'gpt-4o-mini',
-            temperature: 0.2,
-            max_tokens: 3000,
+            temperature: 0.1,
+            max_tokens: 3500,
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
           }),
-          signal: AbortSignal.timeout(45000)
+          signal: AbortSignal.timeout(60000)
         });
         if (!r.ok) continue;
         const j = await r.json();
@@ -358,13 +365,32 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
           recordAiCall({ source: 'trade_extractor', model: 'gpt-4o-mini', prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
           return t;
         }
+      } else if (p === 'deepseek') {
+        const r = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            temperature: 0.1,
+            max_tokens: 3500,
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
+          }),
+          signal: AbortSignal.timeout(60000)
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        const t = j?.choices?.[0]?.message?.content?.trim();
+        if (t) {
+          recordAiCall({ source: 'trade_extractor', model: 'deepseek-chat', prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          return t;
+        }
       }
     } catch (err) {
       console.warn(`[TRADE EXTRACTOR AI] Model ${p} attempt failed:`, err.message);
     }
   }
 
-  throw new Error('All AI providers failed to extract trades from chat.');
+  throw new Error('All AI providers failed or timed out. Please try again with fewer messages or check API key.');
 }
 
 // Clean JSON response from AI
@@ -529,8 +555,16 @@ export function registerTradeAccountsRoutes(app, db) {
         return res.status(400).json({ ok: false, error: 'Please select a WhatsApp chat or group' });
       }
 
-      const { getWaWebMessages } = await import('./waWebClient.js');
-      const messages = await getWaWebMessages(chatId);
+      const { getWaWebMessages, getWaWebMessagesPage } = await import('./waWebClient.js');
+      let messages = await getWaWebMessages(chatId);
+      if ((!messages || messages.length === 0) && typeof getWaWebMessagesPage === 'function') {
+        try {
+          const pg = await getWaWebMessagesPage(chatId, 0, 500);
+          if (pg && pg.messages && pg.messages.length > 0) {
+            messages = pg.messages;
+          }
+        } catch (e2) { /* ignore */ }
+      }
 
       if (!messages || messages.length === 0) {
         return res.status(422).json({ 
@@ -543,15 +577,26 @@ export function registerTradeAccountsRoutes(app, db) {
       const count = Math.max(10, Math.min(parseInt(messageLimit) || 250, 500));
       const recent = messages.slice(-count);
 
-      // Build text conversation transcript
+      // Build text conversation transcript (filtered for speed and accuracy)
       let transcript = '';
+      const noisePattern = /^(\[sticker\]|[👍👌🙏❤️😂🔥✨👏🤝💯]+|hi|hello|salam|assalam|ok|k|ji|haan|theek|done|thanks|thank you)$/i;
+
       for (const m of recent) {
+        let textContent = (m.text || (m.mediaInfo?.caption ? m.mediaInfo.caption : '')).trim();
+        if (!textContent && m.mediaType && m.mediaType !== 'sticker') {
+          textContent = `[${m.mediaType}]`;
+        }
+        if (!textContent || noisePattern.test(textContent)) continue;
+        if (textContent.length > 500) textContent = textContent.slice(0, 500) + '...';
+
         const timeStr = m.timestamp ? new Date(m.timestamp).toISOString().replace('T', ' ').substring(0, 19) : 'Recent';
         const sender = m.fromMe ? 'Me (Company / Boss)' : (m.senderName || chatName || 'Client / Party');
-        const textContent = (m.text || (m.mediaType ? `[${m.mediaType}${m.mediaInfo?.caption ? ': ' + m.mediaInfo.caption : ''}]` : '')).trim();
-        if (textContent) {
-          transcript += `[${timeStr}] ${sender}: ${textContent}\n`;
-        }
+        transcript += `[${timeStr}] ${sender}: ${textContent}\n`;
+      }
+
+      // Cap at 30,000 chars of recent messages for fast 1-2s response
+      if (transcript.length > 30000) {
+        transcript = transcript.slice(-30000);
       }
 
       if (!transcript.trim()) {
