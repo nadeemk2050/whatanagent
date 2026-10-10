@@ -335,12 +335,61 @@
             background: linear-gradient(90deg, #38bdf8, #818cf8, #34d399, #f59e0b);
         }
 
-        .ai-scanner-header {
+        .ai-scanner-header, .drafts-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+            padding: 6px 10px;
+            margin: -6px -10px;
+            border-radius: 10px;
+        }
+        .ai-scanner-header:hover {
+            background: rgba(99, 102, 241, 0.12);
+        }
+        .drafts-header:hover {
+            background: rgba(245, 158, 11, 0.12);
+        }
+
+        .collapse-toggle-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: #94a3b8;
+            transition: transform 0.25s ease;
+            margin-left: 6px;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .collapse-toggle-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .collapse-action-hint {
+            font-size: 11px;
+            font-weight: 700;
+            color: #94a3b8;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 4px 10px;
+            border-radius: 6px;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .collapse-action-hint:hover {
+            color: #f8fafc;
+            border-color: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.12);
         }
 
         .ai-scanner-title {
@@ -1164,78 +1213,89 @@
     <!-- Main Content -->
     <div class="main-container">
 
-        <!-- ===== 1. AI CHAT TRADE EXTRACTOR CARD ===== -->
-        <div class="ai-scanner-card">
-            <div class="ai-scanner-header">
+        <!-- ===== 1. AI CHAT TRADE EXTRACTOR CARD (COLLAPSIBLE) ===== -->
+        <div class="ai-scanner-card" id="aiScannerCard">
+            <div class="ai-scanner-header" onclick="toggleAiScanner()" title="Click heading to Collapse or Open AI Extractor">
                 <div class="ai-scanner-title">
                     <span style="font-size:20px;">🧠</span>
                     <h3>AI WhatsApp Chat Trade Extractor</h3>
                     <span class="ai-badge">Automated Buy &amp; Sell Detection</span>
+                    <span class="collapse-toggle-icon" id="aiScannerToggleIcon">▼</span>
                 </div>
-                <div style="font-size:12px; color:#94a3b8;">
-                    Select any WhatsApp group or individual chat to extract all past trade deals into draft holding queue.
+                <div style="font-size:12px; color:#94a3b8; display:flex; align-items:center; gap:8px;">
+                    <span id="aiScannerSubtitle">Select any WhatsApp group or chat to extract deals</span>
+                    <span class="collapse-action-hint" id="aiScannerHint">Collapse ▲</span>
                 </div>
             </div>
 
-            <div class="ai-scanner-controls">
-                <div class="chat-selector-trigger" id="selectedChatTrigger" onclick="openChatSelectorModal()">
-                    <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
-                        <span id="selectedChatIcon">💬</span>
-                        <span id="selectedChatLabel" style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Click to Select WhatsApp Group or Chat...</span>
+            <!-- Collapsible Body for AI Extractor -->
+            <div id="aiScannerBody" style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
+                <div class="ai-scanner-controls">
+                    <div class="chat-selector-trigger" id="selectedChatTrigger" onclick="openChatSelectorModal()">
+                        <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                            <span id="selectedChatIcon">💬</span>
+                            <span id="selectedChatLabel" style="white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">Click to Select WhatsApp Group or Chat...</span>
+                        </div>
+                        <span style="font-size:11px; color:#a5b4fc; background:#1e1b4b; padding:2px 8px; border-radius:6px;">Change ▼</span>
                     </div>
-                    <span style="font-size:11px; color:#a5b4fc; background:#1e1b4b; padding:2px 8px; border-radius:6px;">Change ▼</span>
+
+                    <select id="scanMessageLimit" class="scan-limit-select" title="Number of chat messages to analyze">
+                        <option value="100">Last 100 Messages</option>
+                        <option value="250" selected>Last 250 Messages</option>
+                        <option value="500">Last 500 Messages (Deep Scan)</option>
+                    </select>
+
+                    <select id="scanModelSelect" class="scan-model-select" title="AI Model Engine">
+                        <option value="gemini" selected>⚡ Gemini 2.5 Flash</option>
+                        <option value="deepseek">🤖 DeepSeek Chat</option>
+                        <option value="qwen">🌐 Qwen 3.8 Flash</option>
+                        <option value="openai">✨ GPT-4o Mini</option>
+                    </select>
+
+                    <button class="btn btn-ai-scan" id="runAiScanBtn" onclick="runAiChatScan()">
+                        <span>⚡ Scan &amp; Extract Trades</span>
+                    </button>
                 </div>
 
-                <select id="scanMessageLimit" class="scan-limit-select" title="Number of chat messages to analyze">
-                    <option value="100">Last 100 Messages</option>
-                    <option value="250" selected>Last 250 Messages</option>
-                    <option value="500">Last 500 Messages (Deep Scan)</option>
-                </select>
-
-                <select id="scanModelSelect" class="scan-model-select" title="AI Model Engine">
-                    <option value="gemini" selected>⚡ Gemini 2.5 Flash</option>
-                    <option value="deepseek">🤖 DeepSeek Chat</option>
-                    <option value="qwen">🌐 Qwen 3.8 Flash</option>
-                    <option value="openai">✨ GPT-4o Mini</option>
-                </select>
-
-                <button class="btn btn-ai-scan" id="runAiScanBtn" onclick="runAiChatScan()">
-                    <span>⚡ Scan &amp; Extract Trades</span>
-                </button>
-            </div>
-
-            <div class="scan-progress-bar" id="scanProgressBar">
-                <div class="scanning-pulse"></div>
-                <span id="scanProgressText">AI is analyzing conversation history and extracting TT/Metal trade transactions...</span>
+                <div class="scan-progress-bar" id="scanProgressBar">
+                    <div class="scanning-pulse"></div>
+                    <span id="scanProgressText">AI is analyzing conversation history and extracting TT/Metal trade transactions...</span>
+                </div>
             </div>
         </div>
 
-        <!-- ===== 2. 📥 DRAFTS SECTION (PENDING BOSS CONFIRMATION) ===== -->
+        <!-- ===== 2. 📥 DRAFTS SECTION (PENDING BOSS CONFIRMATION - COLLAPSIBLE) ===== -->
         <div class="drafts-card" id="draftsSection">
-            <div class="drafts-header">
+            <div class="drafts-header" onclick="toggleDraftsSection()" title="Click heading to Collapse or Open Pending Drafts Queue">
                 <div class="drafts-title">
                     <span style="font-size:22px;">📥</span>
                     <h3>Pending Trade Drafts (Waiting for Boss Confirmation)</h3>
                     <span class="drafts-badge" id="draftsCountBadge">0 Drafts</span>
+                    <span class="collapse-toggle-icon" id="draftsToggleIcon">▼</span>
                 </div>
 
-                <div class="drafts-actions-bar" id="draftsBulkBar" style="display:none;">
-                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#34d399;" onclick="bulkApproveDrafts('purchase')">
-                        <span>🟢 Approve All as Purchases</span>
-                    </button>
-                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#fb7185;" onclick="bulkApproveDrafts('sale')">
-                        <span>🔴 Approve All as Sales</span>
-                    </button>
-                    <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#f43f5e;" onclick="clearAllDrafts()">
-                        <span>🗑️ Dismiss All</span>
-                    </button>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="drafts-actions-bar" id="draftsBulkBar" style="display:none;" onclick="event.stopPropagation()">
+                        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#34d399;" onclick="bulkApproveDrafts('purchase')">
+                            <span>🟢 Approve All as Purchases</span>
+                        </button>
+                        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#fb7185;" onclick="bulkApproveDrafts('sale')">
+                            <span>🔴 Approve All as Sales</span>
+                        </button>
+                        <button class="btn btn-ghost" style="padding:6px 12px; font-size:11.5px; color:#f43f5e;" onclick="clearAllDrafts()">
+                            <span>🗑️ Dismiss All</span>
+                        </button>
+                    </div>
+                    <span class="collapse-action-hint" id="draftsHint">Collapse ▲</span>
                 </div>
             </div>
 
-            <!-- Drafts Queue Container -->
-            <div id="draftsListContainer" style="display:flex; flex-direction:column; gap:10px;">
-                <div style="text-align:center; padding:24px; color:#64748b; font-size:13px; background:rgba(0,0,0,0.2); border-radius:10px; border:1px dashed #334155;">
-                    No pending trade drafts. Select a WhatsApp group or chat above and click <b>Scan &amp; Extract Trades</b> to automatically populate this queue for review.
+            <!-- Collapsible Body for Drafts Queue -->
+            <div id="draftsBody" style="margin-top:12px;">
+                <div id="draftsListContainer" style="display:flex; flex-direction:column; gap:10px;">
+                    <div style="text-align:center; padding:24px; color:#64748b; font-size:13px; background:rgba(0,0,0,0.2); border-radius:10px; border:1px dashed #334155;">
+                        No pending trade drafts. Select a WhatsApp group or chat above and click <b>Scan &amp; Extract Trades</b> to automatically populate this queue for review.
+                    </div>
                 </div>
             </div>
         </div>
@@ -1800,7 +1860,61 @@
             filterChatModalList();
         }
 
+        // ===== 📂 COLLAPSIBLE SECTIONS (AI SCANNER & DRAFTS) =====
+        function toggleAiScanner(forceOpen = null) {
+            const body = document.getElementById('aiScannerBody');
+            const icon = document.getElementById('aiScannerToggleIcon');
+            const hint = document.getElementById('aiScannerHint');
+            if (!body) return;
+
+            const isCurrentlyOpen = body.style.display !== 'none';
+            const willOpen = forceOpen !== null ? forceOpen : !isCurrentlyOpen;
+
+            body.style.display = willOpen ? 'flex' : 'none';
+            if (icon) {
+                if (willOpen) icon.classList.remove('collapsed');
+                else icon.classList.add('collapsed');
+            }
+            if (hint) {
+                hint.textContent = willOpen ? 'Collapse ▲' : 'Open / Expand ▼';
+            }
+            localStorage.setItem('trade_ai_scanner_collapsed', willOpen ? 'false' : 'true');
+        }
+
+        function toggleDraftsSection(forceOpen = null) {
+            const body = document.getElementById('draftsBody');
+            const icon = document.getElementById('draftsToggleIcon');
+            const hint = document.getElementById('draftsHint');
+            if (!body) return;
+
+            const isCurrentlyOpen = body.style.display !== 'none';
+            const willOpen = forceOpen !== null ? forceOpen : !isCurrentlyOpen;
+
+            body.style.display = willOpen ? 'block' : 'none';
+            if (icon) {
+                if (willOpen) icon.classList.remove('collapsed');
+                else icon.classList.add('collapsed');
+            }
+            if (hint) {
+                hint.textContent = willOpen ? 'Collapse ▲' : 'Open / Expand ▼';
+            }
+            localStorage.setItem('trade_drafts_collapsed', willOpen ? 'false' : 'true');
+        }
+
+        function initCollapsibleSections() {
+            // Default to closed/collapsed as requested by user
+            const savedScanner = localStorage.getItem('trade_ai_scanner_collapsed');
+            const savedDrafts = localStorage.getItem('trade_drafts_collapsed');
+
+            const isScannerCollapsed = savedScanner === null ? true : savedScanner === 'true';
+            const isDraftsCollapsed = savedDrafts === null ? true : savedDrafts === 'true';
+
+            toggleAiScanner(!isScannerCollapsed);
+            toggleDraftsSection(!isDraftsCollapsed);
+        }
+
         async function openChatSelectorModal() {
+            toggleAiScanner(true); // Auto-expand scanner when opening selector
             const m = document.getElementById('chatSelectorModal');
             if (m) m.style.display = 'flex';
             if (waChatsCache.length === 0) {
@@ -1958,6 +2072,7 @@
                 const data = await res.json();
                 if (data.ok) {
                     showToast(`✅ Scan Complete: Found ${data.draftsFound} trade transactions!`, 4000);
+                    toggleDraftsSection(true); // Automatically open drafts queue to review newly extracted deals
                     await loadTradeDrafts(true);
                 } else {
                     alert('AI Scan Error: ' + (data.error || 'Unknown error'));
@@ -2352,6 +2467,7 @@
 
         // Initial Load
         window.addEventListener('DOMContentLoaded', () => {
+            initCollapsibleSections();
             loadTradeEntries();
             loadTradeDrafts();
         });
