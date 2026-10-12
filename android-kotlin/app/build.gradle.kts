@@ -1,11 +1,32 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
+// Release signing — credentials live in android-kotlin/keystore.properties (gitignored, NEVER committed).
+// The keystore itself is kept OUTSIDE this public repo: C:/app2026/aligntasks-keystore/aligntasks-release.jks
+// If the file is missing the release build falls back to unsigned (debug builds are unaffected).
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.assigntask.app"
     compileSdk = 34
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.assigntask.app"
@@ -18,6 +39,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -36,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true   // needed by the in-app updater (BuildConfig.VERSION_CODE)
     }
 
     composeOptions {

@@ -24,9 +24,9 @@
 <div class="wrap">
   <div class="card">
     <h1>📋 AlignTasks — Android app</h1>
-    <p class="sub">Version 2.0 · build 7 · teams, invites &amp; device-side WhatsApp sending</p>
+    <p class="sub" id="version-line">Version 2.0 · build 7 · signed release · teams, invites &amp; device-side WhatsApp sending</p>
 
-    <a class="btn" href="./aligntasks-2.0.apk" download>⬇️ Download AlignTasks 2.0 (APK · 21 MB)</a>
+    <a class="btn" id="download-btn" href="./aligntasks-2.0.apk" download>⬇️ Download AlignTasks 2.0 (APK · 15 MB)</a>
     <p class="meta">Android 7.0 and newer</p>
 
     <div class="ok">
@@ -35,6 +35,7 @@
         <li>Team-scoped board — you only ever see your own team's tasks</li>
         <li>New <b>Send on my WhatsApp</b> button on every task (message goes from your own number)</li>
         <li>Home-screen widgets follow the active team</li>
+        <li><b>Future updates arrive automatically</b> — the app checks for a new version, notifies you and installs it with one tap. No more reinstalling.</li>
       </ul>
     </div>
 
@@ -46,11 +47,29 @@
     </ol>
 
     <div class="note">
-      <b>Already have an older AlignTasks installed?</b> If Android refuses to install with
-      “App not installed / signature mismatch”, uninstall the old app first, then install this one.
-      Your tasks live in the cloud, so nothing is lost.
+      <b>Installing over an older AlignTasks?</b> This build is signed with the company's permanent
+      release key, so <b>all future versions install straight over it</b> — inside the app, with one tap.
+      Only if Android says <i>“App not installed / signature mismatch”</i> (an old build signed with a
+      different key) do you need to uninstall it once first. Your tasks live in the cloud, so nothing is lost.
     </div>
   </div>
 </div>
+<script>
+  // Keep this page in sync with version.json — the release script publishes both,
+  // so no manual edit is ever needed here again.
+  fetch('./version.json', { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (v) {
+      var line = document.getElementById('version-line');
+      var btn = document.getElementById('download-btn');
+      if (line && v.versionName) line.textContent = 'Version ' + v.versionName + ' · build ' + v.versionCode + ' · signed release' + (v.publishedAt ? ' · ' + v.publishedAt : '');
+      if (btn && v.apkUrl) {
+        btn.href = v.apkUrl;
+        btn.textContent = '⬇️ Download AlignTasks ' + v.versionName + (v.mandatory ? ' (required update)' : '');
+      }
+      if (v.notes && line) line.textContent += ' · ' + v.notes;
+    })
+    .catch(function () { /* offline: the static text above is used */ });
+</script>
 </body>
 </html>

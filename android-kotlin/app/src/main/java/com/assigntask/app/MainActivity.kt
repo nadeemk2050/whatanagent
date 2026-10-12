@@ -130,12 +130,16 @@ fun AppRoot(initialPage: String = "tasksForAll", vm: AppViewModel = viewModel())
     val authState by vm.authState.collectAsState()
     val error by vm.errorMessage.collectAsState()
 
-    when (val state = authState) {
-        is AuthState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+    Box(Modifier.fillMaxSize()) {
+        when (val state = authState) {
+            is AuthState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            is AuthState.LoggedOut -> AuthScreen(vm)
+            is AuthState.LoggedIn -> MainAppScreen(vm, state.user, state.profile, initialPage)
         }
-        is AuthState.LoggedOut -> AuthScreen(vm)
-        is AuthState.LoggedIn -> MainAppScreen(vm, state.user, state.profile, initialPage)
+        // 2.0: check for a newer APK and offer a one-tap update (notification + dialog)
+        AppUpdateGate()
     }
 }
 
