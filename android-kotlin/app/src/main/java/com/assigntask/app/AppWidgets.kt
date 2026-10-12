@@ -161,9 +161,21 @@ object WidgetDataRepository {
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
 
+    /** AlignTasks 2.0: widgets read the team the app last used (persisted by TaskViewModel). */
+    private fun activeTeamId(context: Context): String =
+        try {
+            context.getSharedPreferences("align_prefs", Context.MODE_PRIVATE)
+                .getString("activeTeamId", "") ?: ""
+        } catch (_: Exception) { "" }
+
+    private fun scoped(context: Context, path: String) =
+        activeTeamId(context).takeIf { it.isNotBlank() }
+            ?.let { db.collection(path).whereEqualTo("teamId", it) }
+            ?: db.collection(path)
+
     fun loadTasksForAll(context: Context): List<WidgetTaskItem> {
         val user = auth.currentUser ?: return emptyList()
-        val docs = Tasks.await(db.collection("$BASE/tasks_for_all").get()).documents
+        val docs = Tasks.await(scoped(context, "$BASE/tasks_for_all").get()).documents
         return docs.mapNotNull { doc ->
             val status = doc.getString("status") ?: "To Do"
             if (status == "Done") return@mapNotNull null
@@ -182,7 +194,7 @@ object WidgetDataRepository {
         val user = auth.currentUser ?: return emptyList()
         val (projectId, projectName) = AppSettingsStore.getWidgetProjectSelection(context)
         if (projectId.isBlank()) return emptyList()
-        val docs = Tasks.await(db.collection("$BASE/projects/$projectId/tasks").get()).documents
+        val docs = Tasks.await(scoped(context, "$BASE/projects/$projectId/tasks").get()).documents
         return docs.mapNotNull { doc ->
             val status = doc.getString("status") ?: "To Do"
             if (status == "Done") return@mapNotNull null
@@ -203,7 +215,7 @@ object WidgetDataRepository {
         val items = mutableListOf<WidgetTaskItem>()
 
         try {
-            val personal = Tasks.await(db.collection("$BASE/tasks").whereEqualTo("assigneeEmail", user.email).get()).documents
+            val personal = Tasks.await(scoped(context, "$BASE/tasks").whereEqualTo("assigneeEmail", user.email).get()).documents
             personal.forEach { doc ->
                 val status = doc.getString("status") ?: "To Do"
                 val due = doc.getString("dueDate").orEmpty()
@@ -216,7 +228,7 @@ object WidgetDataRepository {
         }
 
         try {
-            val allForAll = Tasks.await(db.collection("$BASE/tasks_for_all").get()).documents
+            val allForAll = Tasks.await(scoped(context, "$BASE/tasks_for_all").get()).documents
             allForAll.forEach { doc ->
                 val status = doc.getString("status") ?: "To Do"
                 val due = doc.getString("dueDate").orEmpty()

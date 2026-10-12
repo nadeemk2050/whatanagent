@@ -84,6 +84,28 @@ private const val INCOMING_REMINDER_NOTIFICATION_ID = 91123
 private const val ACTION_STOP_INCOMING_REMINDER = "com.assigntask.app.STOP_INCOMING_REMINDER"
 private const val EXTRA_REMINDER_NOTIFICATION_ID = "extra_reminder_notification_id"
 private const val EXTRA_REMINDER_CALL_ID = "extra_reminder_call_id"
+
+/**
+ * AlignTasks 2.0 — device-side WhatsApp hand-off.
+ * Opens the user's OWN WhatsApp with the message ready to send. Nothing leaves the device and no
+ * server/WhatsApp-Web session is involved. With no phone number WhatsApp asks which chat to use.
+ */
+private fun openWhatsAppHandoff(context: Context, phone: String?, text: String) {
+    val digits = phone.orEmpty().filter { it.isDigit() }
+    val url = if (digits.isNotBlank()) "https://wa.me/$digits?text=" + Uri.encode(text)
+              else "https://wa.me/?text=" + Uri.encode(text)
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return
+    } catch (_: Exception) { /* WhatsApp not installed / cannot handle the link */ }
+    try {
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(share, "Send via WhatsApp"))
+    } catch (_: Exception) { }
+}
 private const val EXTRA_RECIPIENT_UID = "extra_recipient_uid"
 
 class MainActivity : ComponentActivity() {
@@ -2595,6 +2617,19 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
 
                 IconButton(onClick = { showWaTargetsPicker = true }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Send, "WhatsApp Reminder", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF25D366))
+                }
+
+                // 2.0: send from the member's own WhatsApp — no server session involved
+                IconButton(onClick = {
+                    val text = buildString {
+                        append("⏰ Task reminder\n")
+                        append("\"" + task.description + "\"")
+                        if (!task.dueDate.isNullOrEmpty()) append("\n🗓️ Due: " + formatDueDate(task.dueDate))
+                        if (!task.assigneeEmail.isNullOrEmpty()) append("\n👤 " + task.assigneeEmail.substringBefore('@'))
+                    }
+                    openWhatsAppHandoff(waReminderContext, null, text)
+                }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Share, "Send on my WhatsApp", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF128C7E))
                 }
 
                 if (onRemindTask != null && reminderTargets.isNotEmpty()) {

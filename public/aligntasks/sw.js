@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v18'; // Change this version number (v2, v3, etc.) every time you deploy
+const CACHE_NAME = 'task-board-cache-v19'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -36,20 +36,42 @@ function offlineResponse() {
 // undefined throws "Failed to convert value to 'Response'" in the page console.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;   // never intercept writes/POSTs
+
+  const url = new URL(event.request.url);
+  const isHtml = event.request.mode === 'navigate'
+    || event.request.destination === 'document'
+    || /\/$|\.html?$/.test(url.pathname);
+
+  // HTML / app shell: NETWORK-FIRST so a new deployment is picked up on the very next load.
+  // (Previously cache-first, which made deployed UI changes invisible until the cache expired.)
+  if (isHtml) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy)).catch(() => {});
+          }
+          return response || offlineResponse();
+        })
+        .catch(() => caches.match('./index.html')
+          .then(r => r || caches.match(event.request))
+          .then(r => r || offlineResponse()))
+    );
+    return;
+  }
+
+  // Static assets / CDN files: cache-first, then network (and cache the result).
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
+        if (response) return response;
 
         const fetchRequest = event.request.clone();
 
         return fetch(fetchRequest).then(
           response => {
-            // Check if we received a valid response
-            if (!response || response.status !== 200) { // Removed 'basic' check to allow caching CDN files
+            if (!response || response.status !== 200) {
               return response || offlineResponse();
             }
 
@@ -63,13 +85,7 @@ self.addEventListener('fetch', event => {
 
             return response;
           }
-        ).catch(() => {
-          // Network failed and nothing cached: navigations fall back to the cached app shell
-          if (event.request.mode === 'navigate') {
-            return caches.match('./index.html').then(r => r || offlineResponse());
-          }
-          return offlineResponse();
-        });
+        ).catch(() => offlineResponse());
       })
       .catch(() => offlineResponse())
   );

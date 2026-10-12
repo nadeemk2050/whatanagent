@@ -1,8 +1,105 @@
+// ============================================================================
+// AlignTasks 2.0 — team-scoped Firestore rules
+//
+// DESIGN
+//  • ONLY the AlignTasks board tree (/artifacts/<appId>/public/data/**) is restricted.
+//  • Every other collection in this project is left exactly as permissive as before
+//    (`col != 'artifacts'`), so the dashboard, SEO agent, trade pages, gold, notes,
+//    alignWa* queues, contactBook … all keep working unchanged.
+//  • The WhatAnAgent server uses the Admin SDK, which bypasses rules entirely, so the
+//    boss AI / Note Book / reminder jobs are unaffected.
+//
+// ACCESS MODEL
+//   • A signed-in user may read/write board documents whose `teamId` is one of the teams
+//     listed in THEIR profile (users/<uid>.teamIds).
+//   • Personal tasks and notifications are private to their owner uid.
+//   • Invite documents are world-readable by design: an invite link must be checkable BEFORE
+//     the person has an account (they contain only a code, team name, role and expiry).
+//   • Creating a team is allowed for any signed-in user (open signup).
+// ============================================================================
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function myTeams(appId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.teamIds;
+    }
+    function inMyTeam(appId, teamId) {
+      return signedIn() && teamId is string && teamId != '' && teamId in myTeams(appId);
+    }
+    function createdInMyTeam(appId) {
+      return signedIn()
+        && request.resource.data.get('teamId', '') is string
+        && inMyTeam(appId, request.resource.data.get('teamId', ''));
+    }
+
+    // ---------- AlignTasks board ----------
+    match /artifacts/{appId}/public/data/{document=**} {
+
+      // teams: any signed-in user may read names and create their own; members modify
+      match /teams/{teamId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if inMyTeam(appId, teamId);
+      }
+
+      // invites: readable before sign-in (that is the point of an invite link)
+      match /invites/{code} {
+        allow read: if true;
+        allow create: if signedIn() && createdInMyTeam(appId);
+        allow update, delete: if signedIn() && inMyTeam(appId, resource.data.get('teamId', ''));
+      }
+
+      // user profiles
+      match /users/{uid} {
+        allow read: if signedIn();
+        allow create: if signedIn() && (
+          request.auth.uid == uid ||
+          (request.resource.data.get('teamIds', []).size() > 0 &&
+           request.resource.data.teamIds[0] in myTeams(appId))
+        );
+        allow update: if signedIn() && (
+          request.auth.uid == uid ||
+          (resource.data.get('teamIds', []).size() > 0 && resource.data.teamIds[0] in myTeams(appId)) ||
+          (request.resource.data.get('teamIds', []).size() > 0 && request.resource.data.teamIds[0] in myTeams(appId))
+        );
+        allow delete: if signedIn() && (
+          request.auth.uid == uid ||
+          (resource.data.get('teamIds', []).size() > 0 && resource.data.teamIds[0] in myTeams(appId))
+        );
+
+        // strictly private per-user data
+        match /personal_tasks/{taskId} {
+          allow read, write: if signedIn() && request.auth.uid == uid;
+        }
+        match /notifications/{noteId} {
+          allow read, write: if signedIn() && request.auth.uid == uid;
+        }
+      }
+
+      // project sub-tasks
+      match /projects/{projectId}/tasks/{taskId} {
+        allow read: if inMyTeam(appId, resource.data.get('teamId', ''));
+        allow create: if createdInMyTeam(appId);
+        allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
+      }
+
+      // flat board collections: tasks, tasks_for_all, projects, staff
+      match /{col}/{docId} {
+        allow read: if inMyTeam(appId, resource.data.get('teamId', ''));
+        allow create: if createdInMyTeam(appId);
+        allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
+      }
+    }
+
+    // ---------- everything else: unchanged ----------
+    match /{col}/{doc=**} {
+      allow read, write: if col != 'artifacts';
     }
   }
 }

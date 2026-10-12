@@ -1,29 +1,21 @@
 // ============================================================================
-// AlignTasks 2.0 — STAGED Firestore rules (team-scoped).  *** NOT DEPLOYED YET ***
+// AlignTasks 2.0 — team-scoped Firestore rules
 //
-// HOW TO USE
-//   1. Keep this file next to `firestore.rules`. Do NOT copy it over `firestore.rules`
-//      until the 2.0 client is deployed — the currently live 1.5 app (and the boss/Notebook
-//      server features) expect the permissive rules and will break on tight rules.
-//   2. When 2.0 is live everywhere:  cp firestore.rules.aligntasks-2.0 firestore.rules
-//      then  firebase deploy --only firestore:rules
-//   3. Recommended before that: test with the Firestore emulator
-//      (`firebase emulators:start --only firestore`) using 2 teams × 2 users.
+// DESIGN
+//  • ONLY the AlignTasks board tree (/artifacts/<appId>/public/data/**) is restricted.
+//  • Every other collection in this project is left exactly as permissive as before
+//    (`col != 'artifacts'`), so the dashboard, SEO agent, trade pages, gold, notes,
+//    alignWa* queues, contactBook … all keep working unchanged.
+//  • The WhatAnAgent server uses the Admin SDK, which bypasses rules entirely, so the
+//    boss AI / Note Book / reminder jobs are unaffected.
 //
-// WHAT THIS ENFORCES
-//   • Board data (tasks / tasks_for_all / projects / staff / invites / teams) is readable and
-//     writable only by signed-in users whose profile lists that document's teamId.
-//   • Personal tasks and notifications stay private to their owner uid.
-//   • A user profile may be written by its owner, or by someone who shares a team with it
-//     (so owners can add/suspend members). Reads are allowed to signed-in users because the
-//     UI resolves staff by email.
-//   • The WhatAnAgent server (Admin SDK) bypasses rules entirely — the boss AI, Note Book and
-//     any server-side reminder job keep working unchanged.
-//
-// KNOWN LIMITS (fine at this scale): each rule evaluation may call get()/exists() a limited
-// number of times (10 per single-doc request, 20 per multi-doc). We use one profile lookup.
-// Also: the free (Spark) tier allows 200 composite indexes — team queries here are
-// equality-only, so no composite index is required.
+// ACCESS MODEL
+//   • A signed-in user may read/write board documents whose `teamId` is one of the teams
+//     listed in THEIR profile (users/<uid>.teamIds).
+//   • Personal tasks and notifications are private to their owner uid.
+//   • Invite documents are world-readable by design: an invite link must be checkable BEFORE
+//     the person has an account (they contain only a code, team name, role and expiry).
+//   • Creating a team is allowed for any signed-in user (open signup).
 // ============================================================================
 
 rules_version = '2';
@@ -34,44 +26,51 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
-    function profilePath(appId) {
-      return /databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid);
-    }
-    function myProfile(appId) {
-      return get(profilePath(appId)).data;
-    }
     function myTeams(appId) {
-      return myProfile(appId).teamIds;
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.teamIds;
     }
     function inMyTeam(appId, teamId) {
-      return signedIn() && teamId is string && teamId in myTeams(appId);
+      return signedIn() && teamId is string && teamId != '' && teamId in myTeams(appId);
     }
-    // true when the *incoming* document carries one of my team ids
-    function incomingInMyTeam(appId) {
-      return signedIn() && request.resource.data.teamId in myTeams(appId);
-    }
-    // true when the *existing* document belongs to one of my teams
-    function existingInMyTeam(appId) {
-      return signedIn() && resource.data.teamId in myTeams(appId);
+    function createdInMyTeam(appId) {
+      return signedIn()
+        && request.resource.data.get('teamId', '') is string
+        && inMyTeam(appId, request.resource.data.get('teamId', ''));
     }
 
-    // ---------- AlignTasks board (artifacts/<appId>/public/data/...) ----------
+    // ---------- AlignTasks board ----------
     match /artifacts/{appId}/public/data/{document=**} {
-      // flat board collections (tasks, tasks_for_all, projects, staff, invites, teams)
-      match /{col}/{docId} {
-        allow read: if existingInMyTeam(appId);
-        allow create: if incomingInMyTeam(appId);
-        allow update, delete: if existingInMyTeam(appId);
+
+      // teams: any signed-in user may read names and create their own; members modify
+      match /teams/{teamId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if inMyTeam(appId, teamId);
+      }
+
+      // invites: readable before sign-in (that is the point of an invite link)
+      match /invites/{code} {
+        allow read: if true;
+        allow create: if signedIn() && createdInMyTeam(appId);
+        allow update, delete: if signedIn() && inMyTeam(appId, resource.data.get('teamId', ''));
       }
 
       // user profiles
       match /users/{uid} {
         allow read: if signedIn();
-        allow create: if signedIn() && (request.auth.uid == uid || incomingInMyTeam(appId));
-        allow update, delete: if signedIn() && (
+        allow create: if signedIn() && (
           request.auth.uid == uid ||
-          existingInMyTeam(appId) ||
-          incomingInMyTeam(appId)
+          (request.resource.data.get('teamIds', []).size() > 0 &&
+           request.resource.data.teamIds[0] in myTeams(appId))
+        );
+        allow update: if signedIn() && (
+          request.auth.uid == uid ||
+          (resource.data.get('teamIds', []).size() > 0 && resource.data.teamIds[0] in myTeams(appId)) ||
+          (request.resource.data.get('teamIds', []).size() > 0 && request.resource.data.teamIds[0] in myTeams(appId))
+        );
+        allow delete: if signedIn() && (
+          request.auth.uid == uid ||
+          (resource.data.get('teamIds', []).size() > 0 && resource.data.teamIds[0] in myTeams(appId))
         );
 
         // strictly private per-user data
@@ -85,24 +84,22 @@ service cloud.firestore {
 
       // project sub-tasks
       match /projects/{projectId}/tasks/{taskId} {
-        allow read: if existingInMyTeam(appId);
-        allow create: if incomingInMyTeam(appId);
-        allow update, delete: if existingInMyTeam(appId);
+        allow read: if inMyTeam(appId, resource.data.get('teamId', ''));
+        allow create: if createdInMyTeam(appId);
+        allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
+      }
+
+      // flat board collections: tasks, tasks_for_all, projects, staff
+      match /{col}/{docId} {
+        allow read: if inMyTeam(appId, resource.data.get('teamId', ''));
+        allow create: if createdInMyTeam(appId);
+        allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
       }
     }
 
-    // ---------- WhatAnAgent server-side / shared collections ----------
-    // The server uses the Admin SDK (rules bypassed). The dashboard browser app writes
-    // appData/seoAgent and reads a few shared docs, so keep them authenticated-only.
-    match /appData/{doc=**} { allow read, write: if signedIn(); }
-    match /contactBook/{doc=**} { allow read, write: if signedIn(); }
-    match /alignWaSchedules/{doc=**} { allow read, write: if signedIn(); }
-    match /alignWaQueue/{doc=**} { allow read, write: if signedIn(); }
-    match /alignWaGroupFavorites/{doc=**} { allow read, write: if signedIn(); }
-    match /conditionalTasks/{doc=**} { allow read, write: if signedIn(); }
-    match /goldWatches/{doc=**} { allow read, write: if signedIn(); }
-    match /waWebChatHistory/{doc=**} { allow read, write: if signedIn(); }
-    match /waWebKnowledgeBase/{doc=**} { allow read, write: if signedIn(); }
-    match /{other=**} { allow read, write: if signedIn(); }
+    // ---------- everything else: unchanged ----------
+    match /{col}/{doc=**} {
+      allow read, write: if col != 'artifacts';
+    }
   }
 }

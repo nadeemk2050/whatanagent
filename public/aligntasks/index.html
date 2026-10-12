@@ -147,6 +147,29 @@
                             ✅ Completed Tasks <span id="completed-tasks-count" class="bg-white text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">0</span>
                         </button>
                     </div>
+
+                    <!-- 2.0: search · saved views · bulk actions -->
+                    <div id="task-filter-bar" class="bg-white p-4 rounded-xl shadow-sm space-y-3">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <input id="task-search" type="text" placeholder="🔍 Search tasks (text or member)…" class="flex-1 min-w-[200px] p-2 border border-gray-300 rounded-lg text-sm" />
+                            <select id="task-filter-assignee" class="p-2 border border-gray-300 rounded-lg text-sm bg-white min-w-[170px]">
+                                <option value="">All members</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="all">All</button>
+                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="today">📅 My Day</button>
+                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="overdue">⏰ Overdue</button>
+                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="unassigned">👤 Unassigned</button>
+                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="done">✅ Done</button>
+                            <span id="task-filter-count" class="text-xs text-gray-500 ml-auto"></span>
+                        </div>
+                        <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                            <button id="bulk-complete" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700">✅ Complete all shown</button>
+                            <button id="bulk-whatsapp" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">📲 WhatsApp all shown</button>
+                            <button id="bulk-delete" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">🗑️ Delete all shown</button>
+                        </div>
+                    </div>
                     <div>
                         <h2 class="text-2xl font-bold mb-4">General Tasks (For All)</h2>
                         <div class="bg-white rounded-xl shadow-sm p-4">
@@ -837,6 +860,9 @@
             firebase.initializeApp(firebaseConfig);
             const auth = firebase.auth();
             const db = firebase.firestore();
+            // 2.0: local cache → instant reopen + fewer Firestore reads (falls back silently if
+            // the browser blocks it, e.g. multiple tabs without synchronizeTabs support).
+            try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch (e) { /* ignore */ }
             const appId = firebaseConfig.appId;
             const APP_VERSION_2 = '2.0';
             const WEB_APP_VERSION = '2.0';
@@ -1331,6 +1357,103 @@
                 if (assign) assign.classList.toggle('hidden', !owner);
                 const settingsSection = document.getElementById('team-settings-section');
                 if (settingsSection) settingsSection.classList.toggle('hidden', !owner);
+            }
+
+            // ================== 2.0: search / saved views / bulk actions ==================
+            let taskView = localStorage.getItem('alignTaskView') || 'all';
+            let taskSearch = '';
+            let taskAssigneeFilter = '';
+            let boardForAllRaw = [];
+            let boardTasksRaw = [];
+            let currentFiltered = { general: [], individual: [] };
+
+            function taskMatches(t, isGeneral) {
+                const q = taskSearch.trim().toLowerCase();
+                if (q) {
+                    const hay = (String(t.description || '') + ' ' + String(t.assigneeEmail || '')).toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                if (taskAssigneeFilter && String(t.assigneeEmail || '').toLowerCase() !== taskAssigneeFilter) return false;
+                const due = t.dueDate ? new Date(t.dueDate) : null;
+                const done = t.status === 'Done';
+                const now = new Date();
+                const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                switch (taskView) {
+                    case 'today': return !done && !!due && due <= endOfToday;
+                    case 'overdue': return !done && !!due && due < now;
+                    case 'unassigned': return isGeneral ? !done : (!t.assigneeEmail && !done);
+                    case 'done': return done;
+                    default: return true;
+                }
+            }
+
+            function applyTaskFilters() {
+                const general = boardForAllRaw.filter(t => taskMatches(t, true));
+                const individual = boardTasksRaw.filter(t => taskMatches(t, false));
+                currentFiltered = { general: general, individual: individual };
+                renderTasksForAll(general);
+                if (isOwner()) renderAdminIndividualTasks(individual, staffListCache);
+                else renderUserIndividualTasks(individual);
+                const cnt = document.getElementById('task-filter-count');
+                if (cnt) cnt.textContent = (general.length + individual.length) + ' task(s) shown';
+                document.querySelectorAll('.task-view-chip').forEach(b => {
+                    const on = b.getAttribute('data-view') === taskView;
+                    b.className = 'task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border ' +
+                        (on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50');
+                });
+            }
+
+            function renderAssigneeFilter() {
+                const sel = document.getElementById('task-filter-assignee');
+                if (!sel) return;
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">All members</option>' +
+                    staffListCache.map(s => `<option value="${String(s.email || '').toLowerCase()}">${s.name || s.email}</option>`).join('');
+                sel.value = cur || '';
+            }
+
+            function bulkTargets() {
+                return currentFiltered.general.map(t => ({ task: t, col: 'tasks_for_all' }))
+                    .concat(currentFiltered.individual.map(t => ({ task: t, col: 'tasks' })));
+            }
+
+            async function bulkCompleteShown() {
+                const rows = bulkTargets().filter(r => r.task.status !== 'Done');
+                if (!rows.length) { alert('Nothing to complete in this view.'); return; }
+                if (!confirm('Mark ' + rows.length + ' task(s) as done?')) return;
+                let ok = 0;
+                for (const r of rows) {
+                    try { await boardCol(r.col).doc(r.task.id).update({ status: 'Done' }); ok++; } catch (e) { console.warn('bulk complete', e); }
+                }
+                alert('✅ ' + ok + ' of ' + rows.length + ' marked done.');
+            }
+
+            async function bulkDeleteShown() {
+                const rows = bulkTargets();
+                if (!rows.length) { alert('Nothing to delete in this view.'); return; }
+                if (!confirm('Delete ' + rows.length + ' task(s)? This cannot be undone.')) return;
+                let ok = 0;
+                for (const r of rows) {
+                    try { await boardCol(r.col).doc(r.task.id).delete(); ok++; } catch (e) { console.warn('bulk delete', e); }
+                }
+                alert('🗑️ ' + ok + ' of ' + rows.length + ' deleted.');
+            }
+
+            function bulkWhatsAppShown() {
+                const rows = bulkTargets();
+                if (!rows.length) { alert('Nothing to send in this view.'); return; }
+                const items = [];
+                const seen = {};
+                for (const r of rows) {
+                    const email = String(r.task.assigneeEmail || '').toLowerCase();
+                    const staff = email ? staffByEmail(email) : null;
+                    const key = staff ? (staff.whatsappNumber || email) : 'chooser';
+                    if (seen[key]) { seen[key].count++; continue; }
+                    seen[key] = { count: 1 };
+                    items.push({ name: (staff && staff.name) || email || 'Choose a chat', phone: (staff && staff.whatsappNumber) || '' });
+                }
+                const first = rows[0].task;
+                waHandoffShow('Send ' + rows.length + ' task(s) via WhatsApp', items, waTemplateReminder(first));
             }
             
             function showMainSection(sectionId) {
@@ -2488,7 +2611,7 @@
                 }
 
                 const projectsWithCounts = await Promise.all(projects.map(async project => {
-                    const tasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).where('status', '==', 'To Do');
+                    const tasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).where('teamId', '==', teamCtx.teamId).where('status', '==', 'To Do');
                     const tasksSnap = await tasksRef.get();
                     return { ...project, pendingTaskCount: tasksSnap.size };
                 }));
@@ -2521,7 +2644,7 @@
                 const contentEl = document.getElementById(`project-content-${project.id}`);
                 if (!contentEl) return;
 
-                const projectTasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).orderBy("createdAt", "desc");
+                const projectTasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).where('teamId', '==', teamCtx.teamId).orderBy("createdAt", "desc");
                 
                 let query = projectTasksRef;
                 if (currentUserProfile.role !== 'admin') {
@@ -2751,6 +2874,25 @@
                 handoffCopyBtn.textContent = ok ? '✅ Copied' : '⚠️ Copy failed';
                 setTimeout(() => { handoffCopyBtn.textContent = '📋 Copy message'; }, 1500);
             });
+            // 2.0 filters / views / bulk
+            const taskSearchEl = document.getElementById('task-search');
+            if (taskSearchEl) taskSearchEl.addEventListener('input', e => { taskSearch = e.target.value || ''; applyTaskFilters(); });
+            const assigneeFilterEl = document.getElementById('task-filter-assignee');
+            if (assigneeFilterEl) assigneeFilterEl.addEventListener('change', e => { taskAssigneeFilter = e.target.value || ''; applyTaskFilters(); });
+            document.querySelectorAll('.task-view-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    taskView = chip.getAttribute('data-view') || 'all';
+                    try { localStorage.setItem('alignTaskView', taskView); } catch (e) {}
+                    applyTaskFilters();
+                });
+            });
+            const bulkCompleteBtn = document.getElementById('bulk-complete');
+            if (bulkCompleteBtn) bulkCompleteBtn.addEventListener('click', () => bulkCompleteShown());
+            const bulkDeleteBtn = document.getElementById('bulk-delete');
+            if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', () => bulkDeleteShown());
+            const bulkWaBtn = document.getElementById('bulk-whatsapp');
+            if (bulkWaBtn) bulkWaBtn.addEventListener('click', () => bulkWhatsAppShown());
+            applyTaskFilters();
             document.body.addEventListener('click', e => {
                 const copyBtn = e.target.closest('.invite-copy-btn');
                 if (copyBtn) {
@@ -2778,6 +2920,11 @@
                 currentUnsubscribes = [];
 
                 if (!currentUser || !currentUserProfile || !currentUser.email || !teamCtx.teamId) return;
+
+                // 2.0: new team → clear the previous team's lists before the new snapshots arrive
+                boardForAllRaw = [];
+                boardTasksRaw = [];
+                currentFiltered = { general: [], individual: [] };
                 
                 // Notifications Listener
                 const notificationsRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/notifications`).orderBy("createdAt", "desc");
@@ -2794,7 +2941,8 @@
                         const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort(sortByCreatedDesc);
                         tasks.forEach(t => { boardTasksCache[t.id] = t; });
                         noteTaskCompletions('tasks_for_all', tasks);
-                        renderTasksForAll(tasks);
+                        boardForAllRaw = tasks;
+                        applyTaskFilters();
                     },
                     error => showAppError('Error fetching general tasks.', error)
                 );
@@ -2805,6 +2953,8 @@
                         snap => {
                             staffListCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
                             renderStaffList(staffListCache);
+                            renderAssigneeFilter();
+                            applyTaskFilters();
                         },
                         error => showAppError('Error fetching team members.', error)
                     );
@@ -2817,7 +2967,8 @@
                         noteTaskCompletions('tasks', tasks);
                         completedCounts.team = tasks.filter(t => t.status === 'Done').length;
                         updateCompletedBadge();
-                        renderAdminIndividualTasks(tasks, staffListCache);
+                        boardTasksRaw = tasks;
+                        applyTaskFilters();
                     }, error => showAppError('Error fetching individual tasks.', error));
                     currentUnsubscribes.push(unsub);
 
@@ -2839,7 +2990,8 @@
                              noteTaskCompletions('tasks', tasks);
                              completedCounts.team = tasks.filter(t => t.status === 'Done').length;
                              updateCompletedBadge();
-                             renderUserIndividualTasks(tasks)
+                             boardTasksRaw = tasks;
+                             applyTaskFilters();
                         },
                         error => showAppError('Error fetching your individual tasks.', error)
                     );

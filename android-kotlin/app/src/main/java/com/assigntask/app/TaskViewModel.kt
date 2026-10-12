@@ -70,6 +70,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val projectTasks: StateFlow<Map<String, List<Task>>> = _projectTasks.asStateFlow()
 
     private val dataListeners = mutableListOf<ListenerRegistration>()
+
+    // ===== AlignTasks 2.0: the active team =====
+    // Every board read/write is scoped to this team. When it is unknown (legacy account with no
+    // team yet) the app falls back to the old owner-based filtering so nothing breaks.
+    var activeTeamId: String? = null
+        private set
+    var teamIds: List<String> = emptyList()
+        private set
+    private var lastUser: FirebaseUser? = null
+    private var lastProfile: UserProfile? = null
+
+    private fun boardQuery(path: String): Query =
+        activeTeamId?.takeIf { it.isNotBlank() }
+            ?.let { db.collection(path).whereEqualTo("teamId", it) }
+            ?: db.collection(path)
+
+    fun setActiveTeam(teamId: String?) {
+        if (teamId == activeTeamId) return
+        activeTeamId = teamId
+        persistActiveTeam(teamId)
+        val u = lastUser ?: return
+        val p = lastProfile ?: return
+        clearDataListeners()
+        setupFirestoreListeners(u, p)
+    }
+
+    private fun persistActiveTeam(teamId: String?) {
+        try {
+            getApplication<Application>()
+                .getSharedPreferences("align_prefs", android.content.Context.MODE_PRIVATE)
+                .edit().putString("activeTeamId", teamId ?: "").apply()
+        } catch (_: Exception) { }
+    }
     private val projectTaskListeners = mutableMapOf<String, ListenerRegistration>()
 
     init {
@@ -153,6 +186,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                val teamIdsRaw = (doc.get("teamIds") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                val defaultTeam = doc.getString("defaultTeamId").orEmpty()
+                teamIds = teamIdsRaw
+                activeTeamId = defaultTeam.ifBlank { teamIdsRaw.firstOrNull() }
+                persistActiveTeam(activeTeamId)
+
                 UserProfile(
                     name = doc.getString("name") ?: "",
                     email = email,
@@ -191,6 +230,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun setupFirestoreListeners(user: FirebaseUser, profile: UserProfile) {
+        lastUser = user
+        lastProfile = profile
         val teamOwnerUid = if (profile.role == "admin") user.uid else profile.ownerAdminUid.ifBlank { user.uid }
         val teamOwnerEmail = if (profile.role == "admin") {
             (user.email ?: profile.email).lowercase()
@@ -249,7 +290,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     publishAdminScopedData()
                 }
 
-            dataListeners += db.collection("$BASE/tasks_for_all")
+            dataListeners += boardQuery("$BASE/tasks_for_all")
                 .addSnapshotListener { snap, _ ->
                     rawTasksForAll = snap?.documents?.map { doc ->
                         docToTask(doc.id, doc.data ?: emptyMap())
@@ -257,7 +298,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     publishAdminScopedData()
                 }
 
-            dataListeners += db.collection("$BASE/tasks")
+            dataListeners += boardQuery("$BASE/tasks")
                 .addSnapshotListener { snap, _ ->
                     rawTasks = snap?.documents?.map { doc ->
                         docToTask(doc.id, doc.data ?: emptyMap())
@@ -265,7 +306,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     publishAdminScopedData()
                 }
 
-            dataListeners += db.collection("$BASE/staff")
+            dataListeners += boardQuery("$BASE/staff")
                 .addSnapshotListener { snap, _ ->
                     rawStaff = snap?.documents?.map { doc ->
                         Staff(
@@ -279,7 +320,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     publishAdminScopedData()
                 }
 
-            dataListeners += db.collection("$BASE/projects")
+            dataListeners += boardQuery("$BASE/projects")
                 .addSnapshotListener { snap, _ ->
                     rawProjects = snap?.documents?.map { doc ->
                         @Suppress("UNCHECKED_CAST")
@@ -295,7 +336,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        dataListeners += db.collection("$BASE/tasks_for_all")
+        dataListeners += boardQuery("$BASE/tasks_for_all")
             .addSnapshotListener { snap, _ ->
                 _tasksForAll.value = sortTasksDescending((snap?.documents?.map { doc ->
                     docToTask(doc.id, doc.data ?: emptyMap())
@@ -305,7 +346,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 })
             }
 
-        dataListeners += db.collection("$BASE/tasks")
+        dataListeners += boardQuery("$BASE/tasks")
             .whereEqualTo("assigneeEmail", user.email)
             .addSnapshotListener { snap, _ ->
                 _tasks.value = sortTasksDescending((snap?.documents?.map { doc ->
@@ -315,7 +356,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 })
             }
 
-        dataListeners += db.collection("$BASE/projects")
+        dataListeners += boardQuery("$BASE/projects")
             .whereArrayContains("members", user.email ?: "")
             .addSnapshotListener { snap, _ ->
                 @Suppress("UNCHECKED_CAST")
@@ -334,7 +375,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun listenProjectTasks(projectId: String, userEmail: String?, isAdmin: Boolean) {
         if (projectTaskListeners.containsKey(projectId)) return
-        val baseQuery = db.collection("$BASE/projects/$projectId/tasks")
+        val baseQuery = boardQuery("$BASE/projects/$projectId/tasks")
         val query: Query = if (!isAdmin && userEmail != null) {
             baseQuery.whereEqualTo("assigneeEmail", userEmail)
                 .orderBy("createdAt", Query.Direction.DESCENDING)
@@ -456,6 +497,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         "active" to true,
                         "ownerAdminUid" to ownerAdminUid,
                         "ownerAdminEmail" to ownerAdminEmail,
+                        "teamIds" to (if (activeTeamId?.isNotBlank() == true) listOf(activeTeamId as String) else emptyList<String>()),
+                        "teamRoles" to (if (activeTeamId?.isNotBlank() == true) mapOf((activeTeamId as String) to "member") else emptyMap<String, Any>()),
+                        "defaultTeamId" to (activeTeamId ?: ""),
                         "createdBy" to adminEmail,
                         "createdAt" to FieldValue.serverTimestamp()
                     )
@@ -522,6 +566,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             "uid" to uid,
             "ownerAdminUid" to currentOwnerAdminUid()
         )
+        if (activeTeamId?.isNotBlank() == true) data["teamId"] = activeTeamId as String
         val digits = normalizeWaDigits(whatsappNumber)
         if (digits.isNotBlank()) data["whatsappNumber"] = digits
         if (existing.documents.isEmpty()) {
@@ -711,6 +756,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (!alarmRingtoneUri.isNullOrBlank()) data["alarmRingtoneUri"] = alarmRingtoneUri
             if (!alarmRingtoneTitle.isNullOrBlank()) data["alarmRingtoneTitle"] = alarmRingtoneTitle
         }
+        if (activeTeamId?.isNotBlank() == true) data["teamId"] = activeTeamId as String
         return data
     }
 
@@ -865,15 +911,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createProject(name: String, members: List<String>) {
-        db.collection("$BASE/projects").add(
-            mapOf(
-                "name" to name,
-                "members" to members,
-                "ownerAdminUid" to currentOwnerAdminUid(),
-                "ownerAdminEmail" to currentOwnerAdminEmail(),
-                "createdAt" to FieldValue.serverTimestamp()
-            )
+        val data = mutableMapOf<String, Any>(
+            "name" to name,
+            "members" to members,
+            "ownerAdminUid" to currentOwnerAdminUid(),
+            "ownerAdminEmail" to currentOwnerAdminEmail(),
+            "createdAt" to FieldValue.serverTimestamp()
         )
+        if (activeTeamId?.isNotBlank() == true) data["teamId"] = activeTeamId as String
+        db.collection("$BASE/projects").add(data)
     }
 
     fun editSubUser(staff: Staff, newName: String, password: String, onResult: (String?) -> Unit) {
