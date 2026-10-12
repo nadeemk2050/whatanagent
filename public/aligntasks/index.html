@@ -290,6 +290,7 @@
                             </div>
                         </div>
                         <button id="team-save-button" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">💾 Save Team Settings</button>
+                        <button id="team-export-button" class="mt-4 ml-2 bg-white border border-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-50">⬇️ Export team (JSON)</button>
                         <p id="team-settings-message" class="hidden text-sm mt-3"></p>
                         <div class="mt-4 pt-4 border-t text-xs text-gray-500">Team ID: <span id="team-id-label">—</span></div>
                     </div>
@@ -1300,6 +1301,9 @@
                 const t = teamsCache[teamId] || {};
                 teamCtx.teamName = t.name || 'My Team';
                 teamCtx.role = (teamCtx.teamRoles && teamCtx.teamRoles[teamId]) || (t.ownerUid === (currentUser && currentUser.uid) ? 'owner' : 'member');
+                // Legacy compatibility: parts of the 1.5-era UI still test role === 'admin'.
+                // Map the team role onto that field in memory so both code paths agree.
+                if (currentUserProfile) currentUserProfile.role = (teamCtx.role === 'owner') ? 'admin' : 'user';
                 teamCtx.reminderMode = (t.settings && t.settings.reminderMode) || 'handoff';
                 if (currentUser && currentUserProfile && currentUserProfile.defaultTeamId !== teamId) {
                     boardCol('users').doc(currentUser.uid).update({ defaultTeamId: teamId }).catch(() => {});
@@ -2802,11 +2806,91 @@
             document.getElementById('completed-tasks-button').addEventListener('click', openCompletedTasksModal);
             document.getElementById('completed-tasks-modal-close').addEventListener('click', () => document.getElementById('completed-tasks-modal').classList.add('hidden'));
             
+            // ===== 2.0: team member management + export =====
+            async function memberEditPrompt(email, currentName, currentWa) {
+                const name = window.prompt('Member name:', currentName || '');
+                if (name === null) return;
+                const wa = window.prompt('WhatsApp number (country code, leave empty to clear):', currentWa || '');
+                if (wa === null) return;
+                const e = String(email || '').toLowerCase();
+                try {
+                    const st = await boardScope('staff').where('email', '==', e).limit(1).get();
+                    if (!st.empty) await boardCol('staff').doc(st.docs[0].id).update({ name: name.trim() || currentName, whatsappNumber: toE164(wa) });
+                    const us = await boardCol('users').where('email', '==', e).limit(1).get();
+                    if (!us.empty) await boardCol('users').doc(us.docs[0].id).update({ name: name.trim() || currentName, phoneE164: toE164(wa) });
+                    alert('✅ Member updated.');
+                } catch (err) { alert('❌ ' + err.message); }
+            }
+
+            async function memberRemove(email) {
+                const e = String(email || '').toLowerCase();
+                if (!confirm('Remove ' + e + ' from "' + teamCtx.teamName + '"?\nTheir own account and any other teams are not affected.')) return;
+                const teamId = teamCtx.teamId;
+                try {
+                    const us = await boardCol('users').where('email', '==', e).limit(1).get();
+                    if (!us.empty) {
+                        const docRef = boardCol('users').doc(us.docs[0].id);
+                        const d = us.docs[0].data() || {};
+                        const teamIds = (d.teamIds || []).filter(id => id !== teamId);
+                        const teamRoles = Object.assign({}, d.teamRoles || {});
+                        delete teamRoles[teamId];
+                        if (!teamIds.length) {
+                            await docRef.update({ teamIds: [], teamRoles: {}, defaultTeamId: '', active: false });
+                        } else {
+                            await docRef.update({
+                                teamIds: teamIds,
+                                teamRoles: teamRoles,
+                                defaultTeamId: (d.defaultTeamId === teamId ? teamIds[0] : d.defaultTeamId)
+                            });
+                        }
+                    }
+                    const st = await boardScope('staff').where('email', '==', e).limit(1).get();
+                    if (!st.empty) await boardCol('staff').doc(st.docs[0].id).delete();
+                    alert('✅ Removed from this team.');
+                } catch (err) { alert('❌ ' + err.message); }
+            }
+
+            // Export the current team (tasks, members, projects) as a JSON file.
+            async function exportTeamJson() {
+                try {
+                    const [tasks, forAll, staff, projects, teamDoc] = await Promise.all([
+                        boardScope('tasks').limit(2000).get(),
+                        boardScope('tasks_for_all').limit(2000).get(),
+                        boardScope('staff').limit(500).get(),
+                        boardScope('projects').limit(500).get(),
+                        db.collection(`${BOARD_BASE}/teams`).doc(teamCtx.teamId).get()
+                    ]);
+                    const payload = {
+                        exportedAt: new Date().toISOString(),
+                        exportedBy: (currentUser && currentUser.email) || '',
+                        team: teamDoc.exists ? teamDoc.data() : { id: teamCtx.teamId },
+                        teamId: teamCtx.teamId,
+                        tasks: tasks.docs.map(d => Object.assign({ id: d.id }, d.data())),
+                        tasksForAll: forAll.docs.map(d => Object.assign({ id: d.id }, d.data())),
+                        members: staff.docs.map(d => Object.assign({ id: d.id }, d.data())),
+                        projects: projects.docs.map(d => Object.assign({ id: d.id }, d.data()))
+                    };
+                    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'aligntasks-' + (teamCtx.teamName || teamCtx.teamId).replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-' + new Date().toISOString().slice(0, 10) + '.json';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+                } catch (e) { alert('❌ Export failed: ' + e.message); }
+            }
+
             function renderStaffList(staff) {
                 staffListContainer.innerHTML = staff.length > 0 ? staff.map(s => `
-                    <div class="flex justify-between items-center text-sm py-1">
-                        <div><p class="font-semibold text-gray-700">${s.name}</p><p class="text-gray-500 text-xs">${s.email}</p></div>
-                    </div>`).join('') : `<p class="text-gray-500 text-xs text-center">No staff added.</p>`;
+                    <div class="flex justify-between items-center text-sm py-1 gap-2 border-b border-gray-50">
+                        <div class="min-w-0">
+                            <p class="font-semibold text-gray-700 truncate">${s.name}</p>
+                            <p class="text-gray-500 text-xs truncate">${s.email}${s.whatsappNumber ? (' · +' + s.whatsappNumber) : ' · <span class="text-red-400">no WhatsApp</span>'}</p>
+                        </div>
+                        <div class="flex gap-1 shrink-0">
+                            <button class="member-edit-btn text-xs px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50" data-email="${s.email}" data-name="${String(s.name || '').replace(/"/g, '&quot;')}" data-wa="${s.whatsappNumber || ''}">✏️ Edit</button>
+                            <button class="member-remove-btn text-xs px-2 py-1 rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100" data-email="${s.email}">Remove</button>
+                        </div>
+                    </div>`).join('') : `<p class="text-gray-500 text-xs text-center">No team members yet.</p>`;
 
                 projectStaffSelection.innerHTML = staff.length > 0 ? staff.map(s => `
                     <label class="flex items-center space-x-2 p-1"><input type="checkbox" class="project-staff-member" value="${s.email}" data-name="${s.name}"><span>${s.name}</span></label>`).join('') : `<p class="text-gray-500 text-xs">Add staff first.</p>`;
@@ -2861,6 +2945,8 @@
             if (menuTeamSettings) menuTeamSettings.addEventListener('click', () => { showMainSection('settings-page'); loadInvites(); });
             const teamSaveBtn = document.getElementById('team-save-button');
             if (teamSaveBtn) teamSaveBtn.addEventListener('click', () => saveTeamSettings());
+            const teamExportBtn = document.getElementById('team-export-button');
+            if (teamExportBtn) teamExportBtn.addEventListener('click', () => exportTeamJson());
             const inviteCreateBtn = document.getElementById('invite-create-button');
             if (inviteCreateBtn) inviteCreateBtn.addEventListener('click', () => createInviteLink());
             const teamLeaveBtn = document.getElementById('team-leave-button');
@@ -2903,6 +2989,13 @@
                 }
                 const revokeBtn = e.target.closest('.invite-revoke-btn');
                 if (revokeBtn) { revokeInvite(revokeBtn.getAttribute('data-code')); return; }
+                const memberEditBtn = e.target.closest('.member-edit-btn');
+                if (memberEditBtn) {
+                    memberEditPrompt(memberEditBtn.getAttribute('data-email'), memberEditBtn.getAttribute('data-name'), memberEditBtn.getAttribute('data-wa'));
+                    return;
+                }
+                const memberRemoveBtn = e.target.closest('.member-remove-btn');
+                if (memberRemoveBtn) { memberRemove(memberRemoveBtn.getAttribute('data-email')); return; }
                 const waBtn = e.target.closest('.task-wa-button');
                 if (waBtn) {
                     const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};

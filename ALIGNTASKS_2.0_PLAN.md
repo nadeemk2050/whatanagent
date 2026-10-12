@@ -49,6 +49,53 @@ Status: **P0–P4 IMPLEMENTED LOCALLY — NOT DEPLOYED.** Plan produced 2026-10-
 
 ---
 
+# ✅ P5–P7 COMPLETED (2026-10-12) — DEPLOYED
+
+### P5 — power & usability (web) — SHIPPED
+- Filter bar on the Tasks page: **search** (text or member), **assignee filter**, and saved views
+  **All · 📅 My Day · ⏰ Overdue · 👤 Unassigned · ✅ Done** (view persists in localStorage).
+- **Bulk actions on the shown list**: complete all, WhatsApp-hand-off all, delete all (with confirm).
+- Firestore **offline persistence** enabled (`synchronizeTabs`) → instant reopen + fewer reads.
+- Multi-line assignment for client-side filtering (`applyTaskFilters`), so every list re-renders from
+  the active filter instead of the raw snapshot.
+
+### P6 — Android parity — SHIPPED (source; APK must be rebuilt & reinstalled)
+- `TaskViewModel`: active-team state from the user profile, **`teamId` filter on every board query**
+  (tasks, tasks_for_all, staff, projects, project tasks), `teamId` stamped on every create
+  (tasks via `buildTaskData`, projects, staff, sub-users), active team persisted to SharedPreferences.
+- `AppWidgets`: home-screen widgets now query the same active team (they would otherwise be blocked).
+- `MainActivity`: new **device-side WhatsApp hand-off** button on each task row (`wa.me` deep link,
+  WhatsApp package fallback + share sheet) — no server session involved.
+- `gradlew compileDebugKotlin` → **BUILD SUCCESSFUL**.
+
+### P7 — hardening — SHIPPED
+- **Rules live**: only `/artifacts/<appId>/public/data/**` is restricted (per-team via
+  `users/<uid>.teamIds`); every other collection keeps its previous permissive rule
+  (`col != 'artifacts'`), so the dashboard, SEO agent, trade, gold, notes, alignWa* and the
+  boss/Notebook server paths (Admin SDK bypasses rules) are untouched.
+  Verified: board reads denied unauthenticated, invites readable pre-sign-in, cross-team writes denied,
+  appData/contactBook still readable.
+- **Composite indexes deployed** (`firestore.indexes.json`): tasks / tasks_for_all / staff / projects on
+  `(teamId, …)`.
+- Legacy `role` is **not** rewritten in the database (the old Android APK and the boss helper still read
+  it). Instead the web app maps team role → `admin`/`user` in memory (`applyTeam`), so both generations
+  of UI agree. A DB normalisation can follow once every APK is updated.
+- Team Settings also gains **Export team (JSON)**; member list gains **Edit** (name + WhatsApp) and
+  **Remove from team** (keeps the person's own account / other teams).
+
+### Still open (deliberately deferred)
+- Android: in-app **team switcher** and **invite-accept** UI (app uses the profile's default team).
+- Per-team **audit log** and **team emoji/colour** in the switcher.
+- **Weekly in-app digest** (no server needed, but not built yet).
+- Rebuild + reinstall the **Android APK** so installed devices use the team-scoped queries (required
+  for the live rules).
+- Optional: unify `role` (admin/user → owner/member) once all APKs are updated, and drop the
+  compatibility shim.
+- 🔙 Rollback for the rules if ever needed: `git checkout HEAD~1 -- firestore.rules && firebase deploy --only firestore:rules`
+  (or restore the previous permissive `allow read, write: if true` ruleset).
+
+---
+
 
 ## 0. Scope guard (what this plan will NOT do)
 
