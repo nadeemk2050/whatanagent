@@ -49,13 +49,38 @@
                     <h1 id="auth-title" class="text-3xl font-bold text-gray-800 mt-4">AlignTasks</h1>
                     <p id="auth-subtitle" class="text-gray-500">Sign in to manage your team</p>
                 </div>
+                <div id="invite-banner" class="hidden mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm"></div>
                 <div id="auth-error" class="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center hidden"></div>
                 <form id="auth-form" class="space-y-6">
+                    <div id="signup-name-row" class="hidden"><label class="text-sm font-medium text-gray-700" for="signup-name">Your Name</label><input id="signup-name" type="text" placeholder="e.g. Ahmed Khan" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
                     <div><label class="text-sm font-medium text-gray-700" for="email">Email Address</label><input id="email" type="email" placeholder="you@example.com" required class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
                     <div><label class="text-sm font-medium text-gray-700" for="password">Password</label><input id="password" type="password" placeholder="••••••••" required minLength="6" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
+                    <div id="signup-team-row" class="hidden"><label class="text-sm font-medium text-gray-700" for="signup-team">Team Name</label><input id="signup-team" type="text" placeholder="e.g. Al Saham Trading" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /><p class="text-xs text-gray-500 mt-1">A new team will be created for you — you will be its owner.</p></div>
                     <button id="auth-button" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sign In</button>
                 </form>
                 <div class="text-center mt-6"><button id="auth-toggle" class="text-sm text-blue-600 hover:underline">Need an account? Sign Up</button></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WhatsApp hand-off modal (sends from the user's own WhatsApp — nothing sent by the server) -->
+    <div id="wa-handoff-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 id="wa-handoff-title" class="text-lg font-bold text-gray-800">Send via WhatsApp</h3>
+                <button id="wa-handoff-close" class="text-gray-400 hover:text-gray-600 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto">
+                <p class="text-xs text-gray-500 mb-3">These buttons open <b>your own WhatsApp</b> with the message ready — you press send. Nothing is sent automatically and no server is used.</p>
+                <div id="wa-handoff-list" class="space-y-1"></div>
+            </div>
+            <div class="p-4 border-t bg-gray-50">
+                <label class="text-sm font-medium text-gray-700">Message</label>
+                <textarea id="wa-handoff-message" class="w-full mt-1 p-2 border rounded-lg text-sm" style="height:110px;"></textarea>
+                <div class="flex gap-2 mt-2">
+                    <button id="wa-handoff-copy" class="flex-1 bg-white border border-gray-300 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100">📋 Copy message</button>
+                    <a id="wa-handoff-chooser" href="#" target="_blank" rel="noopener" class="flex-1 text-center bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-green-700">💬 Pick a chat in WhatsApp</a>
+                </div>
             </div>
         </div>
     </div>
@@ -67,8 +92,13 @@
                 <div class="flex justify-between items-center mb-4">
                     <div>
                         <h1 class="text-3xl font-bold text-gray-800">AlignTasks</h1>
-                        <p id="app-version-label" class="text-xs text-gray-500 mt-1">Version 1.6</p>
+                        <p id="app-version-label" class="text-xs text-gray-500 mt-1">Version 2.0</p>
                         <div id="user-info-badge" class="mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded"></div>
+                        <div class="mt-2 flex items-center gap-2">
+                            <label class="text-xs text-gray-500" for="team-switcher">Team</label>
+                            <select id="team-switcher" class="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white max-w-[220px]"></select>
+                            <button id="new-team-button" class="text-xs text-blue-600 hover:underline whitespace-nowrap">＋ New Team</button>
+                        </div>
                     </div>
                     <div class="flex items-center gap-3">
                          <!-- Notification Bell -->
@@ -88,7 +118,8 @@
                             <div id="account-menu" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
                                 <button id="menu-personal-tasks" class="w-full text-left px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 flex items-center gap-2"><span>🔒</span><span>My Personal Tasks</span></button>
                                 <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
-                                <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Add Sub Users</button>
+                                <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">👥 Team Members</button>
+                                <button id="menu-team-settings" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">⚙️ Team Settings &amp; Invites</button>
                                 <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
                                 <button id="menu-group-updates" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📢 Group Updates</button>
                                 <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
@@ -216,6 +247,64 @@
                             <button id="add-staff-button" type="submit" class="sm:col-span-2 bg-green-500 text-white px-3 py-2 rounded-lg font-semibold hover:bg-green-600">Save Sub User</button>
                         </form>
                         <p id="subuser-form-message" class="hidden text-sm mt-3"></p>
+                    </div>
+
+                    <!-- Team Settings -->
+                    <div id="team-settings-section" class="bg-white p-6 rounded-xl shadow-sm">
+                        <h2 class="text-xl font-semibold mb-1">⚙️ Team Settings</h2>
+                        <p class="text-sm text-gray-500 mb-4">Only a team owner can change these settings.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Team Name</label>
+                                <input id="team-name-input" type="text" class="w-full mt-1 p-2 border rounded-lg" />
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Reminders — how they are sent</label>
+                                <select id="team-reminder-mode" class="w-full mt-1 p-2 border rounded-lg bg-white">
+                                    <option value="handoff">Open WhatsApp — I press send (no server needed)</option>
+                                    <option value="server">Automatic sending by the server (needs the linked company WhatsApp)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button id="team-save-button" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">💾 Save Team Settings</button>
+                        <p id="team-settings-message" class="hidden text-sm mt-3"></p>
+                        <div class="mt-4 pt-4 border-t text-xs text-gray-500">Team ID: <span id="team-id-label">—</span></div>
+                    </div>
+
+                    <!-- Invites -->
+                    <div id="invites-section" class="bg-white p-6 rounded-xl shadow-sm">
+                        <h2 class="text-xl font-semibold mb-1">📨 Invite People</h2>
+                        <p class="text-sm text-gray-500 mb-4">Anyone who accepts the link joins this team only. They can still create their own team later.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Role</label>
+                                <select id="invite-role" class="w-full mt-1 p-2 border rounded-lg bg-white">
+                                    <option value="member">Member</option>
+                                    <option value="owner">Co-owner (full admin of this team)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-700">Expires in</label>
+                                <select id="invite-expiry" class="w-full mt-1 p-2 border rounded-lg bg-white">
+                                    <option value="1">1 day</option>
+                                    <option value="7" selected>7 days</option>
+                                    <option value="30">30 days</option>
+                                    <option value="0">Never</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button id="invite-create-button" class="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700">🔗 Create Invite Link</button>
+                            </div>
+                        </div>
+                        <div id="invite-list-container" class="mt-4 space-y-2"></div>
+                        <p id="invite-message" class="hidden text-sm mt-3"></p>
+                    </div>
+
+                    <!-- Leave team -->
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-red-200">
+                        <h2 class="text-xl font-semibold mb-1 text-red-700">⚠️ Leave Team</h2>
+                        <p class="text-sm text-gray-500 mb-4">You will stop seeing this team's board. Your personal tasks always stay with you.</p>
+                        <button id="team-leave-button" class="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700">Leave this team</button>
                     </div>
                 </section>
 
@@ -749,14 +838,97 @@
             const auth = firebase.auth();
             const db = firebase.firestore();
             const appId = firebaseConfig.appId;
-            const WEB_APP_VERSION = '1.5';
+            const APP_VERSION_2 = '2.0';
+            const WEB_APP_VERSION = '2.0';
+            const BOARD_BASE = `/artifacts/${appId}/public/data`;
 
             let currentUser = null;
             let currentUserProfile = null;
             let currentUnsubscribes = [];
             let currentCommentingTask = null;
             let alarmCheckInterval = null;
-            let selfRegistrationAllowed = null;
+            let selfRegistrationAllowed = true;   // 2.0: signup is open for everyone
+
+            // ================== AlignTasks 2.0 — TEAMS ==================
+            // Every board document carries a `teamId`. It is written on create and filtered on read,
+            // so each team only ever sees its own tasks, projects, members and comments.
+            let teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'handoff' };
+            let teamsCache = {};          // teamId -> { id, name, ownerUid, ownerEmail, settings }
+            let staffListCache = [];      // current team's staff (used for WhatsApp hand-off)
+            let boardTasksCache = {};     // taskId -> task (used by the quick-send button)
+            let pendingInviteCode = (new URLSearchParams(location.search).get('invite') || '').trim();
+            let pendingInviteInfo = null;
+
+            const boardCol = (name) => db.collection(`${BOARD_BASE}/${name}`);
+            const boardScope = (name) => db.collection(`${BOARD_BASE}/${name}`).where('teamId', '==', teamCtx.teamId);
+            const isOwner = () => teamCtx.role === 'owner';
+            function sortByCreatedDesc(a, b) {
+                const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (new Date(a.createdAt || 0).getTime() || 0);
+                const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (new Date(b.createdAt || 0).getTime() || 0);
+                return tb - ta;
+            }
+            function makeInviteCode() {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let out = '';
+                for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)];
+                return out;
+            }
+
+            // ---- WhatsApp hand-off (device-side only — no server session involved) ----
+            function toE164(raw) {
+                let d = String(raw || '').replace(/[^0-9]/g, '');
+                if (!d) return '';
+                if (d.startsWith('00')) d = d.substring(2);
+                if (d.startsWith('0') && d.length >= 9) d = '971' + d.substring(1);
+                return d;
+            }
+            function waLink(phone, text) {
+                const num = toE164(phone);
+                const t = encodeURIComponent(String(text || ''));
+                return num ? `https://wa.me/${num}?text=${t}` : `https://wa.me/?text=${t}`;
+            }
+            function openWaHandoff(phone, text) { window.open(waLink(phone, text), '_blank'); }
+            function staffByEmail(email) {
+                const e = String(email || '').toLowerCase();
+                return staffListCache.find(s => String(s.email || '').toLowerCase() === e) || null;
+            }
+            function copyToClipboard(text) {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text); return true; }
+                } catch (e) { /* ignore */ }
+                return false;
+            }
+            function waTemplateTask(task) {
+                return `📋 *Task*\n"${String(task.description || '').substring(0, 300)}"` +
+                    (task.dueDate ? `\n🗓️ Due: ${formatTaskTimestamp(new Date(task.dueDate))}` : '') +
+                    `\n👥 Team: ${teamCtx.teamName}`;
+            }
+            function waTemplateReminder(task) {
+                const overdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Done';
+                return (overdue ? '⏰ *Reminder — this task is overdue*\n' : '⏰ *Reminder*\n') +
+                    `"${String(task.description || '').substring(0, 300)}"` +
+                    (task.dueDate ? `\n🗓️ Due: ${formatTaskTimestamp(new Date(task.dueDate))}` : '') +
+                    `\n👥 Team: ${teamCtx.teamName}`;
+            }
+            function waDialogs() { return document.getElementById('wa-handoff-modal'); }
+            function waHandoffShow(title, items, messageText) {
+                const modal = waDialogs();
+                if (!modal) return;
+                document.getElementById('wa-handoff-title').textContent = title || 'Send via WhatsApp';
+                const list = document.getElementById('wa-handoff-list');
+                if (!items.length) {
+                    list.innerHTML = '<p class="text-sm text-gray-500">Nobody to send to — add a WhatsApp number to the team member first (Settings → Team Members).</p>';
+                } else {
+                    list.innerHTML = items.map((it, i) =>
+                        `<div class="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-gray-50">` +
+                        `<span class="text-sm text-gray-800">${it.name}${it.phone ? ` <span class="text-xs text-green-600">+${toE164(it.phone)}</span>` : ` <span class="text-xs text-red-500">no number → pick chat in WhatsApp</span>`}</span>` +
+                        `<a href="${waLink(it.phone, messageText)}" target="_blank" rel="noopener" class="bg-green-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-700 whitespace-nowrap">💬 Send</a></div>`
+                    ).join('');
+                }
+                const tpl = document.getElementById('wa-handoff-message');
+                if (tpl) tpl.value = messageText || '';
+                modal.classList.remove('hidden');
+            }
 
             // --- Element References ---
             const loadingIndicator = document.getElementById('loading-indicator');
@@ -895,95 +1067,270 @@
             function setAuthMode(mode) {
                 const isSignup = mode === 'signup';
                 authForm.dataset.view = isSignup ? 'signup' : 'login';
-                authTitle.textContent = isSignup ? 'Create Admin Account' : 'Sign In';
+                authTitle.textContent = isSignup ? 'Create your account' : 'Sign In';
                 authButton.textContent = isSignup ? 'Create Account' : 'Sign In';
                 authToggle.textContent = isSignup ? 'Already have an account? Sign In' : 'Need an account? Sign Up';
                 authSubtitle.textContent = isSignup
-                    ? 'You are creating a full new admin account'
+                    ? (pendingInviteCode ? 'You will join the team that invited you' : 'Sign up and get your own team')
                     : 'Sign in to manage your team';
+                const nameRow = document.getElementById('signup-name-row');
+                const teamRow = document.getElementById('signup-team-row');
+                if (nameRow) nameRow.classList.toggle('hidden', !isSignup);
+                if (teamRow) teamRow.classList.toggle('hidden', !isSignup || !!pendingInviteCode);
                 authToggle.classList.remove('hidden');
                 authError.classList.add('hidden');
             }
 
             function getTeamOwnerUid() {
-                if (!currentUser || !currentUserProfile) return '';
-                if (currentUserProfile.role === 'admin') return currentUser.uid;
-                return currentUserProfile.ownerAdminUid || currentUser.uid;
+                if (!currentUser) return '';
+                const t = teamsCache[teamCtx.teamId];
+                return (t && t.ownerUid) || currentUser.uid;
             }
 
             function getTeamOwnerEmail() {
-                if (!currentUser || !currentUserProfile) return '';
-                const currentEmail = (currentUser.email || '').toLowerCase();
-                if (currentUserProfile.role === 'admin') return currentEmail;
-                return (currentUserProfile.ownerAdminEmail || currentEmail).toLowerCase();
+                if (!currentUser) return '';
+                const t = teamsCache[teamCtx.teamId];
+                return String((t && t.ownerEmail) || currentUser.email || '').toLowerCase();
             }
 
-            async function refreshSelfRegistrationState() {
-                const adminSnap = await db.collection(`/artifacts/${appId}/public/data/users`)
-                    .where('role', '==', 'admin')
-                    .limit(1)
-                    .get();
-                selfRegistrationAllowed = adminSnap.empty;
-                setAuthMode(authForm.dataset.view === 'signup' && selfRegistrationAllowed ? 'signup' : 'login');
+            function refreshSelfRegistrationState() {
+                // 2.0: sign up is open to everyone — each new account becomes owner of its own team.
+                selfRegistrationAllowed = true;
+                setAuthMode(authForm.dataset.view === 'signup' ? 'signup' : 'login');
+                updateInviteBanner();
             }
 
-            async function upsertStaffRecord(name, email, uid) {
-                const normalizedEmail = email.toLowerCase();
-                const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`)
-                    .where('email', '==', normalizedEmail)
-                    .limit(1)
-                    .get();
-                const data = { name, email: normalizedEmail, uid };
-                if (staffSnap.empty) {
-                    await db.collection(`/artifacts/${appId}/public/data/staff`).add(data);
-                } else {
-                    await db.collection(`/artifacts/${appId}/public/data/staff`).doc(staffSnap.docs[0].id).update(data);
-                }
+            async function upsertStaffRecord(name, email, uid, whatsappNumber) {
+                const normalizedEmail = String(email || '').toLowerCase();
+                if (!normalizedEmail || !teamCtx.teamId) return;
+                const snap = await boardScope('staff').where('email', '==', normalizedEmail).limit(1).get();
+                const data = { name, email: normalizedEmail, uid: uid || '', teamId: teamCtx.teamId };
+                const wa = toE164(whatsappNumber || '');
+                if (wa) data.whatsappNumber = wa;
+                if (snap.empty) await boardCol('staff').add(data);
+                else await boardCol('staff').doc(snap.docs[0].id).update(data);
             }
 
-            async function createSubUser(name, email, password) {
+            async function createSubUser(name, email, password, whatsappNumber) {
                 const normalizedEmail = email.trim().toLowerCase();
                 const trimmedName = name.trim();
                 if (!trimmedName || !normalizedEmail || password.length < 6) {
                     throw new Error('Name, email, and a 6+ character password are required.');
                 }
+                if (!teamCtx.teamId) throw new Error('No team selected.');
 
                 const secondaryAppName = `subuser-${Date.now()}-${Math.random().toString(36).slice(2)}`;
                 const secondaryApp = firebase.initializeApp(firebaseConfig, secondaryAppName);
                 const secondaryAuth = secondaryApp.auth();
 
                 try {
-                    const credential = await secondaryAuth.createUserWithEmailAndPassword(normalizedEmail, password);
-                    const newUser = credential.user;
-                    await db.collection(`/artifacts/${appId}/public/data/users`).doc(newUser.uid).set({
-                        name: trimmedName,
+                    let newUid = '';
+                    try {
+                        const credential = await secondaryAuth.createUserWithEmailAndPassword(normalizedEmail, password);
+                        newUid = credential.user.uid;
+                    } catch (err) {
+                        if (err && err.code === 'auth/email-already-in-use') {
+                            const ex = await boardCol('users').where('email', '==', normalizedEmail).limit(1).get();
+                            if (ex.empty) throw new Error('That email already has an account. Send them an invite from Settings → Invite People instead.');
+                            newUid = ex.docs[0].id;
+                        } else { throw err; }
+                    }
+
+                    const userRef = boardCol('users').doc(newUid);
+                    const userSnap = await userRef.get();
+                    const existing = userSnap.exists ? (userSnap.data() || {}) : {};
+                    const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
+                    if (!teamIds.includes(teamCtx.teamId)) teamIds.push(teamCtx.teamId);
+                    const teamRoles = Object.assign({}, existing.teamRoles || {});
+                    if (teamRoles[teamCtx.teamId] !== 'owner') teamRoles[teamCtx.teamId] = 'member';
+
+                    await userRef.set({
+                        name: existing.name || trimmedName,
                         email: normalizedEmail,
-                        role: 'user',
+                        role: existing.role === 'admin' ? 'owner' : (existing.role || 'member'),
                         active: true,
-                        ownerAdminUid: getTeamOwnerUid(),
-                        ownerAdminEmail: getTeamOwnerEmail(),
-                        createdBy: currentUser.email,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    await upsertStaffRecord(trimmedName, normalizedEmail, newUser.uid);
+                        teamIds: teamIds,
+                        teamRoles: teamRoles,
+                        defaultTeamId: existing.defaultTeamId || teamCtx.teamId,
+                        phoneE164: toE164(whatsappNumber || existing.phoneE164 || ''),
+                        createdBy: (currentUser && currentUser.email) || '',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+
+                    await upsertStaffRecord(trimmedName, normalizedEmail, newUid, whatsappNumber);
                 } finally {
                     await secondaryAuth.signOut().catch(() => {});
                     await secondaryApp.delete().catch(() => {});
                 }
             }
 
-            async function updateCurrentProfile(name) {
-                const trimmedName = name.trim();
+            async function updateCurrentProfile(name, phone) {
+                const trimmedName = String(name || '').trim();
                 if (!trimmedName || !currentUser) {
                     throw new Error('Name is required.');
                 }
-                await db.collection(`/artifacts/${appId}/public/data/users`).doc(currentUser.uid).update({
+                const patch = {
                     name: trimmedName,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                if (currentUser.email && currentUserProfile?.role !== 'admin') {
-                    await upsertStaffRecord(trimmedName, currentUser.email, currentUser.uid);
+                };
+                if (phone !== undefined) patch.phoneE164 = toE164(phone);
+                await boardCol('users').doc(currentUser.uid).update(patch);
+                if (currentUser.email && !isOwner()) {
+                    await upsertStaffRecord(trimmedName, currentUser.email, currentUser.uid, phone);
                 }
+            }
+
+            // ===== 2.0: teams, membership, invites, switcher =====
+            function updateInviteBanner() {
+                const el = document.getElementById('invite-banner');
+                if (!el) return;
+                if (pendingInviteCode && pendingInviteInfo) {
+                    el.innerHTML = `📨 You have been invited to join <b>${pendingInviteInfo.teamName || 'a team'}</b>. ` +
+                        (currentUser ? 'Press <b>Join now</b> below.' : 'Sign in or sign up to join.');
+                    if (currentUser) {
+                        el.innerHTML += ` <button id="invite-accept-button" class="ml-2 bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-bold">Join now</button>`;
+                        const btn = document.getElementById('invite-accept-button');
+                        if (btn) btn.onclick = () => acceptPendingInvite();
+                    }
+                    el.classList.remove('hidden');
+                } else if (pendingInviteCode && !pendingInviteInfo) {
+                    el.innerHTML = `⚠️ This invite link is not valid any more (used up, revoked or expired). You can still sign up and create your own team.`;
+                    el.classList.remove('hidden');
+                } else {
+                    el.classList.add('hidden');
+                }
+            }
+
+            async function loadPendingInvite() {
+                pendingInviteInfo = null;
+                if (!pendingInviteCode) { updateInviteBanner(); return; }
+                try {
+                    const snap = await db.collection(`${BOARD_BASE}/invites`).doc(pendingInviteCode).get();
+                    if (snap.exists) {
+                        const d = snap.data() || {};
+                        const expired = d.expiresAt && Date.now() > d.expiresAt;
+                        const usedUp = d.maxUses && (d.uses || 0) >= d.maxUses;
+                        if (d.status === 'revoked' || expired || usedUp) pendingInviteInfo = null;
+                        else pendingInviteInfo = Object.assign({ code: pendingInviteCode }, d);
+                    }
+                } catch (e) { console.warn('invite lookup', e); }
+                updateInviteBanner();
+            }
+
+            async function acceptPendingInvite() {
+                if (!pendingInviteCode || !pendingInviteInfo || !currentUser) return;
+                const teamId = pendingInviteInfo.teamId;
+                const role = pendingInviteInfo.role === 'owner' ? 'owner' : 'member';
+                try {
+                    const userRef = boardCol('users').doc(currentUser.uid);
+                    const snap = await userRef.get();
+                    const existing = snap.exists ? (snap.data() || {}) : {};
+                    const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
+                    if (!teamIds.includes(teamId)) teamIds.push(teamId);
+                    const teamRoles = Object.assign({}, existing.teamRoles || {});
+                    if (!teamRoles[teamId] || teamRoles[teamId] !== 'owner') teamRoles[teamId] = role;
+                    await userRef.set({
+                        teamIds: teamIds,
+                        teamRoles: teamRoles,
+                        defaultTeamId: teamId,
+                        active: true,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    await db.collection(`${BOARD_BASE}/invites`).doc(pendingInviteCode)
+                        .update({ uses: firebase.firestore.FieldValue.increment(1), lastUsedAt: Date.now(), lastUsedBy: currentUser.email || '' })
+                        .catch(() => {});
+                    pendingInviteCode = '';
+                    pendingInviteInfo = null;
+                    history.replaceState(null, '', location.pathname);
+                    await loadTeamsFor(currentUser);
+                    await applyTeam(teamId, { reloadProfile: true });
+                    updateInviteBanner();
+                } catch (e) {
+                    showAppError('Could not join the team.', e);
+                }
+            }
+
+            async function loadTeamsFor(user) {
+                const snap = await boardCol('users').doc(user.uid).get();
+                const profile = snap.exists ? (snap.data() || {}) : {};
+                currentUserProfile = profile;
+                teamCtx.teamIds = Array.isArray(profile.teamIds) ? profile.teamIds.slice() : [];
+                teamCtx.teamRoles = profile.teamRoles || {};
+                teamCtx.defaultTeamId = profile.defaultTeamId || teamCtx.teamIds[0] || '';
+                teamsCache = {};
+                for (const id of teamCtx.teamIds) {
+                    try {
+                        const t = await db.collection(`${BOARD_BASE}/teams`).doc(id).get();
+                        if (t.exists) teamsCache[id] = Object.assign({ id: id }, t.data() || {});
+                    } catch (e) { /* ignore */ }
+                }
+                return teamCtx.teamIds;
+            }
+
+            async function applyTeam(teamId, opts) {
+                opts = opts || {};
+                if (!teamId) return;
+                teamCtx.teamId = teamId;
+                const t = teamsCache[teamId] || {};
+                teamCtx.teamName = t.name || 'My Team';
+                teamCtx.role = (teamCtx.teamRoles && teamCtx.teamRoles[teamId]) || (t.ownerUid === (currentUser && currentUser.uid) ? 'owner' : 'member');
+                teamCtx.reminderMode = (t.settings && t.settings.reminderMode) || 'handoff';
+                if (currentUser && currentUserProfile && currentUserProfile.defaultTeamId !== teamId) {
+                    boardCol('users').doc(currentUser.uid).update({ defaultTeamId: teamId }).catch(() => {});
+                }
+                renderTeamSwitcher();
+                renderTeamSettings();
+                applyRoleVisibility();
+                if (!opts.skipListeners) setupFirestoreListeners();
+                if (opts.reloadProfile) { /* listeners already refreshed */ }
+            }
+
+            function renderTeamSwitcher() {
+                const sel = document.getElementById('team-switcher');
+                if (!sel) return;
+                sel.innerHTML = teamCtx.teamIds.map(id => {
+                    const t = teamsCache[id] || {};
+                    const role = (teamCtx.teamRoles && teamCtx.teamRoles[id]) || '';
+                    return `<option value="${id}" ${id === teamCtx.teamId ? 'selected' : ''}>${t.name || id}${role === 'owner' ? ' (owner)' : ''}</option>`;
+                }).join('') || `<option value="${teamCtx.teamId}">${teamCtx.teamName}</option>`;
+            }
+
+            function renderTeamSettings() {
+                const nameEl = document.getElementById('team-name-input');
+                if (nameEl) nameEl.value = teamCtx.teamName || '';
+                const modeEl = document.getElementById('team-reminder-mode');
+                if (modeEl) modeEl.value = teamCtx.reminderMode || 'handoff';
+                const idEl = document.getElementById('team-id-label');
+                if (idEl) idEl.textContent = teamCtx.teamId || '—';
+                const section = document.getElementById('team-settings-section');
+                if (section) section.classList.toggle('hidden', !isOwner());
+                const invites = document.getElementById('invites-section');
+                if (invites) invites.classList.toggle('hidden', !isOwner());
+            }
+
+            function applyRoleVisibility() {
+                const owner = isOwner();
+                const badge = document.getElementById('user-info-badge');
+                if (badge && currentUser) {
+                    badge.innerHTML = `<span>${(currentUserProfile && currentUserProfile.name) || currentUser.email} — ${teamCtx.role} · ${teamCtx.teamName}</span>`;
+                    badge.className = `mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded ${owner ? 'bg-green-600' : 'bg-blue-600'}`;
+                }
+                const sub = document.getElementById('menu-add-subusers');
+                if (sub) sub.classList.toggle('hidden', !owner);
+                const staffSection = document.getElementById('staff-management-section');
+                if (staffSection) staffSection.classList.toggle('hidden', !owner);
+                const projTitle = document.getElementById('projects-section-title');
+                if (projTitle) projTitle.textContent = owner ? 'All Projects' : 'My Assigned Projects';
+                const indTitle = document.getElementById('individual-tasks-title');
+                if (indTitle) indTitle.textContent = owner ? 'Individual Tasks Overview (All Staff)' : 'My Individual Tasks';
+                const forAllForm = document.getElementById('task-for-all-form');
+                if (forAllForm) forAllForm.style.display = owner ? 'flex' : 'none';
+                const createProj = document.getElementById('admin-create-project-container');
+                if (createProj) createProj.classList.toggle('hidden', !owner);
+                const assign = document.getElementById('admin-assign-task-container');
+                if (assign) assign.classList.toggle('hidden', !owner);
+                const settingsSection = document.getElementById('team-settings-section');
+                if (settingsSection) settingsSection.classList.toggle('hidden', !owner);
             }
             
             function showMainSection(sectionId) {
@@ -1044,6 +1391,7 @@
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} title="Send a WhatsApp reminder to the assigned member">💬 Remind</button>
+                                    <button class="task-wa-button text-xs px-2 py-1 rounded-lg bg-green-600 text-white border border-green-700 font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">📲 Quick send</button>
                                     <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>Comments (${task.comments?.length || 0})</button>
                                     ${actionButtons}
                                 </div>
@@ -1066,8 +1414,8 @@
                 if (!digits || !email) return;
                 const normalizedEmail = String(email).toLowerCase();
                 try {
-                    const snap = await db.collection(`/artifacts/${appId}/public/data/staff`).where('email', '==', normalizedEmail).limit(1).get();
-                    if (!snap.empty) await db.collection(`/artifacts/${appId}/public/data/staff`).doc(snap.docs[0].id).update({ whatsappNumber: digits });
+                    const snap = await boardScope('staff').where('email', '==', normalizedEmail).limit(1).get();
+                    if (!snap.empty) await boardCol('staff').doc(snap.docs[0].id).update({ whatsappNumber: digits, teamId: teamCtx.teamId });
                 } catch (e) { console.warn('staff whatsapp save:', e); }
                 try {
                     await db.collection('contactBook').doc(digits).set({
@@ -1088,7 +1436,7 @@
                 const snap = await taskRef.get();
                 if (!snap.exists) throw new Error('Task not found');
                 const t = snap.data() || {};
-                const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).limit(50).get();
+                const staffSnap = await boardScope('staff').limit(50).get();
                 const members = [];
                 staffSnap.forEach(d => {
                     const v = d.data() || {};
@@ -1214,6 +1562,21 @@
                 const baseMessage = String((document.getElementById('wa-remind-message') || {}).value || '').trim() || waScheduleDefaults();
                 const scheduling = document.getElementById('wa-remind-schedule-toggle').checked;
                 const sendBtn = document.getElementById('wa-remind-send');
+
+                // Hand-off mode (default): nothing is queued on the server — WhatsApp opens with the message ready.
+                if (teamCtx.reminderMode === 'handoff' && !scheduling) {
+                    const items = [];
+                    for (const cb of memberBoxes) {
+                        const email = String(cb.value || '').toLowerCase();
+                        const member = (waRemindCtx.members || []).find(m => m.email === email);
+                        if (member) items.push({ name: member.name, phone: member.wa || '' });
+                    }
+                    for (const cb of groupBoxes) items.push({ name: (cb.getAttribute('data-name') || 'group') + ' (group → choose in WhatsApp)', phone: '' });
+                    if (customPhone) items.push({ name: customName, phone: customPhone });
+                    document.getElementById('wa-remind-modal').classList.add('hidden');
+                    waHandoffShow('Send now from your own WhatsApp', items, baseMessage);
+                    return;
+                }
                 try {
                     const targets = [];
                     for (const cb of memberBoxes) {
@@ -1383,7 +1746,7 @@
                 const d = snap.data() || {};
                 if ((Number(d.sentCount) || 0) > 0) { alert('Only not-yet-sent (pending) reminders can be edited.'); return; }
                 closeScheduledReminders();
-                const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).limit(50).get();
+                const staffSnap = await boardScope('staff').limit(50).get();
                 const members = [];
                 staffSnap.forEach(sd => {
                     const v = sd.data() || {};
@@ -1624,6 +1987,7 @@
                             <div class="flex justify-end items-center mt-2">
                                 <div class="flex items-center gap-2">
                                     <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="tasks_for_all" data-task-id="${task.id}" title="Send a WhatsApp reminder for this general task">💬 Remind</button>
+                                    <button class="task-wa-button text-xs px-2 py-1 rounded-lg bg-green-600 text-white border border-green-700 font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">📲 Quick send</button>
                                     <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="tasks_for_all" data-task-id="${task.id}">Comments (${task.comments?.length || 0})</button>
                                     ${adminButtons}
                                 </div>
@@ -2363,13 +2727,57 @@
             document.getElementById('scheduled-refresh').addEventListener('click', loadScheduledReminders);
             document.getElementById('group-updates-close').addEventListener('click', () => document.getElementById('group-updates-modal').classList.add('hidden'));
             document.getElementById('gu-save').addEventListener('click', saveGroupUpdates);
+            loadPendingInvite();   // 2.0: show the invite banner before/while the user signs in
+
+            // --- 2.0 bindings: teams, invites, WhatsApp hand-off ---
+            const teamSwitcherEl = document.getElementById('team-switcher');
+            if (teamSwitcherEl) teamSwitcherEl.addEventListener('change', e => { applyTeam(e.target.value); });
+            const newTeamBtn = document.getElementById('new-team-button');
+            if (newTeamBtn) newTeamBtn.addEventListener('click', () => createNewTeamPrompt());
+            const menuTeamSettings = document.getElementById('menu-team-settings');
+            if (menuTeamSettings) menuTeamSettings.addEventListener('click', () => { showMainSection('settings-page'); loadInvites(); });
+            const teamSaveBtn = document.getElementById('team-save-button');
+            if (teamSaveBtn) teamSaveBtn.addEventListener('click', () => saveTeamSettings());
+            const inviteCreateBtn = document.getElementById('invite-create-button');
+            if (inviteCreateBtn) inviteCreateBtn.addEventListener('click', () => createInviteLink());
+            const teamLeaveBtn = document.getElementById('team-leave-button');
+            if (teamLeaveBtn) teamLeaveBtn.addEventListener('click', () => leaveCurrentTeam());
+            const handoffCloseBtn = document.getElementById('wa-handoff-close');
+            if (handoffCloseBtn) handoffCloseBtn.addEventListener('click', () => document.getElementById('wa-handoff-modal').classList.add('hidden'));
+            const handoffCopyBtn = document.getElementById('wa-handoff-copy');
+            if (handoffCopyBtn) handoffCopyBtn.addEventListener('click', () => {
+                const m = document.getElementById('wa-handoff-message').value;
+                const ok = copyToClipboard(m);
+                handoffCopyBtn.textContent = ok ? '✅ Copied' : '⚠️ Copy failed';
+                setTimeout(() => { handoffCopyBtn.textContent = '📋 Copy message'; }, 1500);
+            });
+            document.body.addEventListener('click', e => {
+                const copyBtn = e.target.closest('.invite-copy-btn');
+                if (copyBtn) {
+                    copyToClipboard(copyBtn.getAttribute('data-url') || '');
+                    copyBtn.textContent = '✅ Copied';
+                    setTimeout(() => { copyBtn.textContent = '📋 Copy link'; }, 1500);
+                    return;
+                }
+                const revokeBtn = e.target.closest('.invite-revoke-btn');
+                if (revokeBtn) { revokeInvite(revokeBtn.getAttribute('data-code')); return; }
+                const waBtn = e.target.closest('.task-wa-button');
+                if (waBtn) {
+                    const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};
+                    const staff = staffByEmail(task.assigneeEmail);
+                    const message = waTemplateReminder(task);
+                    if (staff && staff.whatsappNumber) openWaHandoff(staff.whatsappNumber, message);
+                    else waHandoffShow('Send via WhatsApp', [{ name: (staff && staff.name) || task.assigneeEmail || 'team member', phone: '' }], message);
+                    return;
+                }
+            });
 
             // --- Firestore Listeners ---
             function setupFirestoreListeners() {
                 currentUnsubscribes.forEach(unsub => unsub());
                 currentUnsubscribes = [];
 
-                if (!currentUserProfile || !currentUser.email) return;
+                if (!currentUser || !currentUserProfile || !currentUser.email || !teamCtx.teamId) return;
                 
                 // Notifications Listener
                 const notificationsRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/notifications`).orderBy("createdAt", "desc");
@@ -2381,9 +2789,10 @@
                 });
                 currentUnsubscribes.push(unsub);
 
-                unsub = db.collection(`/artifacts/${appId}/public/data/tasks_for_all`).orderBy("createdAt", "desc").onSnapshot(
+                unsub = boardScope('tasks_for_all').onSnapshot(
                     snapshot => {
-                        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort(sortByCreatedDesc);
+                        tasks.forEach(t => { boardTasksCache[t.id] = t; });
                         noteTaskCompletions('tasks_for_all', tasks);
                         renderTasksForAll(tasks);
                     },
@@ -2391,40 +2800,41 @@
                 );
                 currentUnsubscribes.push(unsub);
                 
-                if (currentUserProfile.role === 'admin') {
-                    unsub = db.collection(`/artifacts/${appId}/public/data/staff`).orderBy("name").onSnapshot(
-                        snap => renderStaffList(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-                        error => showAppError('Error fetching staff list.', error)
+                if (isOwner()) {
+                    unsub = boardScope('staff').onSnapshot(
+                        snap => {
+                            staffListCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+                            renderStaffList(staffListCache);
+                        },
+                        error => showAppError('Error fetching team members.', error)
                     );
                     currentUnsubscribes.push(unsub);
-                    
-                    unsub = db.collection(`/artifacts/${appId}/public/data/tasks`).orderBy("createdAt", "desc").onSnapshot(async tasksSnap => {
-                        const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()}));
+
+                    unsub = boardScope('tasks').onSnapshot(tasksSnap => {
+                        const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()})).sort(sortByCreatedDesc);
+                        tasks.forEach(t => { boardTasksCache[t.id] = t; });
                         startAlarmChecker(tasks);
                         noteTaskCompletions('tasks', tasks);
                         completedCounts.team = tasks.filter(t => t.status === 'Done').length;
                         updateCompletedBadge();
-                        const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).orderBy("name").get();
-                        const staffList = staffSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                        renderAdminIndividualTasks(tasks, staffList);
+                        renderAdminIndividualTasks(tasks, staffListCache);
                     }, error => showAppError('Error fetching individual tasks.', error));
                     currentUnsubscribes.push(unsub);
 
-                    unsub = db.collection(`/artifacts/${appId}/public/data/projects`).onSnapshot(
-                        async projectsSnap => {
+                    unsub = boardScope('projects').onSnapshot(
+                        projectsSnap => {
                             const projects = projectsSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                            const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).orderBy("name").get();
-                            const staffList = staffSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                            renderProjects(projects, staffList);
+                            renderProjects(projects, staffListCache);
                         },
                         error => showAppError('Error fetching projects.', error)
                     );
                     currentUnsubscribes.push(unsub);
 
                 } else { // User View
-                    unsub = db.collection(`/artifacts/${appId}/public/data/tasks`).where("assigneeEmail", "==", currentUser.email).orderBy("createdAt", "desc").onSnapshot(
+                    unsub = boardScope('tasks').where("assigneeEmail", "==", currentUser.email).onSnapshot(
                         tasksSnap => {
-                             const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                             const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()})).sort(sortByCreatedDesc);
+                             tasks.forEach(t => { boardTasksCache[t.id] = t; });
                              startAlarmChecker(tasks);
                              noteTaskCompletions('tasks', tasks);
                              completedCounts.team = tasks.filter(t => t.status === 'Done').length;
@@ -2435,12 +2845,10 @@
                     );
                     currentUnsubscribes.push(unsub);
 
-                    unsub = db.collection(`/artifacts/${appId}/public/data/projects`).where("members", "array-contains", currentUser.email).onSnapshot(
-                        async projectsSnap => {
+                    unsub = boardScope('projects').where("members", "array-contains", currentUser.email).onSnapshot(
+                        projectsSnap => {
                             const projects = projectsSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                            const staffSnap = await db.collection(`/artifacts/${appId}/public/data/staff`).get();
-                            const staffList = staffSnap.docs.map(d => ({id: d.id, ...d.data()}));
-                            renderProjects(projects, staffList);
+                            renderProjects(projects, staffListCache);
                         },
                         error => showAppError('Error fetching your projects.', error)
                     );
@@ -2465,6 +2873,219 @@
             }
 
 
+            // ===== 2.0: provisioning, team bootstrap, invites, team settings =====
+            async function bootstrapTeams(user) {
+                let teamIds = await loadTeamsFor(user);
+                if (!currentUser || currentUser.uid !== user.uid) return;   // signed out / switched while loading
+                if (!teamIds.length) {
+                    const attached = await attachToDefaultTeam(user);
+                    if (!attached) {
+                        await createTeamFor(user, (((currentUserProfile && currentUserProfile.name) || String(user.email || '').split('@')[0]) + "'s Team"), 'owner');
+                    }
+                    teamIds = await loadTeamsFor(user);
+                }
+                const versionLabel = document.getElementById('app-version-label');
+                if (versionLabel) versionLabel.textContent = `Version ${WEB_APP_VERSION}`;
+                if (!currentUser || currentUser.uid !== user.uid) return;   // signed out / switched while loading
+                await applyTeam(teamCtx.defaultTeamId || teamIds[0], { skipListeners: true });
+                setupFirestoreListeners();
+                updateInviteBanner();
+            }
+
+            // Brand-new account: joins via the invite link if present, otherwise gets its own team.
+            async function provisionNewAccount(user) {
+                const email = String(user.email || '').toLowerCase();
+                const nameEl = document.getElementById('signup-name');
+                const teamEl = document.getElementById('signup-team');
+                const typedName = ((nameEl && nameEl.value) || '').trim();
+                const typedTeam = ((teamEl && teamEl.value) || '').trim();
+                const displayName = typedName || email.split('@')[0];
+
+                await boardCol('users').doc(user.uid).set({
+                    name: displayName,
+                    email: email,
+                    role: 'owner',
+                    active: true,
+                    teamIds: [],
+                    teamRoles: {},
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdBy: 'self-signup'
+                }, { merge: true });
+                currentUserProfile = { name: displayName, email: email, role: 'owner', teamIds: [], teamRoles: {} };
+
+                if (pendingInviteCode) {
+                    if (!pendingInviteInfo) await loadPendingInvite();
+                    if (pendingInviteInfo) { await acceptPendingInvite(); return; }
+                }
+                await createTeamFor(user, typedTeam || (displayName + "'s Team"), 'owner');
+            }
+
+            async function createTeamFor(user, name, role) {
+                const teamRef = boardCol('teams').doc();
+                const teamId = teamRef.id;
+                await teamRef.set({
+                    name: String(name || 'New Team').substring(0, 60),
+                    ownerUid: role === 'owner' ? user.uid : '',
+                    ownerEmail: role === 'owner' ? String(user.email || '').toLowerCase() : '',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    createdBy: String(user.email || '').toLowerCase(),
+                    settings: { reminderMode: 'handoff', allowMemberInvites: false }
+                });
+                const userRef = boardCol('users').doc(user.uid);
+                const snap = await userRef.get();
+                const existing = snap.exists ? (snap.data() || {}) : {};
+                const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
+                if (!teamIds.includes(teamId)) teamIds.push(teamId);
+                const teamRoles = Object.assign({}, existing.teamRoles || {});
+                teamRoles[teamId] = role === 'owner' ? 'owner' : 'member';
+                await userRef.set({
+                    teamIds: teamIds,
+                    teamRoles: teamRoles,
+                    defaultTeamId: existing.defaultTeamId || teamId,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                return teamId;
+            }
+
+            // Legacy account (created before teams existed) → joins the existing team as a member.
+            async function attachToDefaultTeam(user) {
+                try {
+                    const snap = await db.collection(`${BOARD_BASE}/teams`).limit(1).get();
+                    if (snap.empty) return false;
+                    const teamDoc = snap.docs[0];
+                    const userRef = boardCol('users').doc(user.uid);
+                    const us = await userRef.get();
+                    const existing = us.exists ? (us.data() || {}) : {};
+                    const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
+                    if (!teamIds.includes(teamDoc.id)) teamIds.push(teamDoc.id);
+                    const teamRoles = Object.assign({}, existing.teamRoles || {});
+                    if (!teamRoles[teamDoc.id]) teamRoles[teamDoc.id] = 'member';
+                    await userRef.set({
+                        teamIds: teamIds,
+                        teamRoles: teamRoles,
+                        defaultTeamId: teamDoc.id,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    return true;
+                } catch (e) { console.warn('attach default team', e); return false; }
+            }
+
+            async function createNewTeamPrompt() {
+                const suggested = ((currentUserProfile && currentUserProfile.name) ? currentUserProfile.name + "'s Team" : 'New Team');
+                const name = window.prompt('Name for your new team:', suggested);
+                if (!name || !name.trim()) return;
+                try {
+                    const teamId = await createTeamFor(currentUser, name.trim(), 'owner');
+                    await loadTeamsFor(currentUser);
+                    await applyTeam(teamId, { skipListeners: true });
+                    setupFirestoreListeners();
+                } catch (e) { alert('❌ ' + e.message); }
+            }
+
+            async function saveTeamSettings() {
+                const msg = document.getElementById('team-settings-message');
+                if (!isOwner()) { setInlineMessage(msg, 'Only a team owner can change team settings.', true); return; }
+                const name = (document.getElementById('team-name-input').value || '').trim();
+                const reminderMode = document.getElementById('team-reminder-mode').value === 'server' ? 'server' : 'handoff';
+                try {
+                    await db.collection(`${BOARD_BASE}/teams`).doc(teamCtx.teamId).set({
+                        name: name || teamCtx.teamName,
+                        settings: { reminderMode: reminderMode },
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    teamsCache[teamCtx.teamId] = Object.assign({}, teamsCache[teamCtx.teamId] || {}, { name: name || teamCtx.teamName, settings: { reminderMode: reminderMode } });
+                    teamCtx.teamName = name || teamCtx.teamName;
+                    teamCtx.reminderMode = reminderMode;
+                    renderTeamSwitcher();
+                    applyRoleVisibility();
+                    setInlineMessage(msg, 'Team settings saved.');
+                } catch (e) { setInlineMessage(msg, e.message, true); }
+            }
+
+            async function createInviteLink() {
+                const msg = document.getElementById('invite-message');
+                if (!isOwner()) { setInlineMessage(msg, 'Only a team owner can invite people.', true); return; }
+                const role = document.getElementById('invite-role').value === 'owner' ? 'owner' : 'member';
+                const days = parseInt(document.getElementById('invite-expiry').value, 10) || 0;
+                const code = makeInviteCode();
+                try {
+                    await db.collection(`${BOARD_BASE}/invites`).doc(code).set({
+                        teamId: teamCtx.teamId,
+                        teamName: teamCtx.teamName,
+                        role: role,
+                        createdBy: (currentUser && currentUser.email) || '',
+                        createdAt: Date.now(),
+                        expiresAt: days > 0 ? Date.now() + days * 86400000 : 0,
+                        maxUses: 0,
+                        uses: 0,
+                        status: 'active'
+                    });
+                    const url = `${location.origin}${location.pathname}?invite=${code}`;
+                    const copied = copyToClipboard(url);
+                    await loadInvites();
+                    setInlineMessage(msg, copied ? '✅ Invite link copied — send it to anyone.' : ('Invite created: ' + url));
+                    if (!copied) waHandoffShow('Share this invite', [], `Join my team "${teamCtx.teamName}" on AlignTasks: ${url}`);
+                } catch (e) { setInlineMessage(msg, e.message, true); }
+            }
+
+            async function loadInvites() {
+                const box = document.getElementById('invite-list-container');
+                if (!box || !teamCtx.teamId) return;
+                try {
+                    const snap = await db.collection(`${BOARD_BASE}/invites`).where('teamId', '==', teamCtx.teamId).limit(50).get();
+                    const items = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}));
+                    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                    renderInvites(items);
+                } catch (e) { box.innerHTML = '<p class="text-xs text-red-500">Could not load invites.</p>'; }
+            }
+
+            function renderInvites(items) {
+                const box = document.getElementById('invite-list-container');
+                if (!box) return;
+                const active = items.filter(i => i.status !== 'revoked');
+                if (!active.length) { box.innerHTML = '<p class="text-xs text-gray-500">No invite links yet.</p>'; return; }
+                box.innerHTML = active.map(i => {
+                    const url = `${location.origin}${location.pathname}?invite=${i.id}`;
+                    const exp = i.expiresAt ? new Date(i.expiresAt).toLocaleDateString() : 'never expires';
+                    return `<div class="flex flex-wrap items-center justify-between gap-2 border rounded-lg p-2">` +
+                        `<div class="text-xs text-gray-600"><div class="font-mono font-bold text-sm">${i.id}</div>` +
+                        `<div>${i.role === 'owner' ? 'co-owner' : 'member'} · used ${i.uses || 0}× · ${exp}</div></div>` +
+                        `<div class="flex gap-2">` +
+                        `<button class="invite-copy-btn bg-white border border-gray-300 px-3 py-1.5 rounded-lg text-xs font-semibold" data-url="${url}">📋 Copy link</button>` +
+                        `<button class="invite-revoke-btn bg-red-50 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg text-xs font-semibold" data-code="${i.id}">Revoke</button>` +
+                        `</div></div>`;
+                }).join('');
+            }
+
+            async function revokeInvite(code) {
+                try {
+                    await db.collection(`${BOARD_BASE}/invites`).doc(code).set({ status: 'revoked', revokedAt: Date.now() }, { merge: true });
+                    await loadInvites();
+                } catch (e) { alert('❌ ' + e.message); }
+            }
+
+            async function leaveCurrentTeam() {
+                if (!confirm('Leave "' + teamCtx.teamName + '"? You will lose access to its board.')) return;
+                const teamId = teamCtx.teamId;
+                try {
+                    const snap = await boardCol('users').doc(currentUser.uid).get();
+                    const existing = snap.exists ? (snap.data() || {}) : {};
+                    const teamIds = (existing.teamIds || []).filter(id => id !== teamId);
+                    const teamRoles = Object.assign({}, existing.teamRoles || {});
+                    delete teamRoles[teamId];
+                    if (!teamIds.length) { alert('You must belong to at least one team. Create a new team first.'); return; }
+                    await boardCol('users').doc(currentUser.uid).set({
+                        teamIds: teamIds,
+                        teamRoles: teamRoles,
+                        defaultTeamId: teamIds[0],
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    await loadTeamsFor(currentUser);
+                    await applyTeam(teamCtx.defaultTeamId || teamIds[0], { skipListeners: true });
+                    setupFirestoreListeners();
+                } catch (e) { alert('❌ ' + e.message); }
+            }
+
             // --- Auth State Change Handler ---
              auth.onAuthStateChanged(async user => {
                 currentUser = user;
@@ -2480,25 +3101,13 @@
                     });
 
                     if (userDocSnap && !userDocSnap.exists) {
-                        await userDocRef.set({
-                            name: (user.email || 'admin').split('@')[0],
-                            email: (user.email || '').toLowerCase(),
-                            role: 'admin',
-                            active: true,
-                            ownerAdminUid: user.uid,
-                            ownerAdminEmail: (user.email || '').toLowerCase(),
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                        }).catch(error => {
-                            showAppError('Error creating admin profile.', error);
-                            auth.signOut();
-                            return;
-                        });
+                        await provisionNewAccount(user);
                     }
 
                     appScreen.classList.remove('hidden');
                     authScreen.classList.add('hidden');
 
-                    const unsub = userDocRef.onSnapshot((doc) => {
+                    const unsub = userDocRef.onSnapshot(async (doc) => {
                         if (doc.exists) {
                             currentUserProfile = doc.data();
                             if (currentUserProfile) {
@@ -2512,25 +3121,18 @@
                                     auth.signOut();
                                     return;
                                 }
-                                const isAdmin = currentUserProfile.role === 'admin';
                                 appError.classList.add('hidden');
-                                document.getElementById('user-info-badge').innerHTML = `<span>${currentUserProfile.name || user.email} (${currentUserProfile.role})</span>`;
-                                document.getElementById('user-info-badge').className = `mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded ${isAdmin ? 'bg-green-600' : 'bg-blue-600'}`;
                                 
-                                menuAddSubusers.classList.toggle('hidden', !isAdmin);
-                                document.getElementById('task-for-all-form').style.display = isAdmin ? 'flex' : 'none';
-                                document.getElementById('admin-create-project-container').classList.toggle('hidden', !isAdmin);
-                                document.getElementById('admin-assign-task-container').classList.toggle('hidden', !isAdmin);
+
                                 
-                                projectsSectionTitle.textContent = isAdmin ? 'All Projects' : 'My Assigned Projects';
-                                individualTasksTitle.textContent = isAdmin ? 'Individual Tasks Overview (All Staff)' : 'My Individual Tasks';
+
                                 
                                 if (Notification.permission === 'default') {
                                     Notification.requestPermission();
                                 }
 
+                                if (!teamCtx.teamId) await bootstrapTeams(user);
                                 showMainSection('tasks-page');
-                                setupFirestoreListeners();
                             }
                         } else {
                             showAppError('User profile not found. Please sign out and sign in again.');
@@ -2543,8 +3145,19 @@
                     appScreen.classList.add('hidden');
                     authScreen.classList.remove('hidden');
                     currentUnsubscribes.forEach(unsub => unsub());
+                    currentUnsubscribes = [];
                     if(alarmCheckInterval) clearInterval(alarmCheckInterval);
-                    refreshSelfRegistrationState().catch(error => showAppError('Could not load auth mode.', error));
+                    // clear team state so a signed-out visitor never sees stale team data
+                    teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'handoff' };
+                    teamsCache = {};
+                    staffListCache = [];
+                    boardTasksCache = {};
+                    currentUserProfile = null;
+                    const selEl = document.getElementById('team-switcher');
+                    if (selEl) selEl.innerHTML = '';
+                    const badgeEl = document.getElementById('user-info-badge');
+                    if (badgeEl) badgeEl.textContent = '';
+                    refreshSelfRegistrationState();
                 }
             });
 
@@ -2556,8 +3169,10 @@
                 const password = document.getElementById('password').value;
                 const isLogin = authForm.dataset.view === 'login';
                 if (!isLogin) {
-                    const confirmed = window.confirm('You are making a full new admin account. Are you sure you need it? If you want to join any team, tell the admin to add you.');
-                    if (!confirmed) {
+                    const msg = pendingInviteCode
+                        ? 'Create your account and join the team that invited you?'
+                        : 'Create your account? A new team will be created for you and you will be its owner.';
+                    if (!window.confirm(msg)) {
                         return;
                     }
                 }
@@ -2643,9 +3258,10 @@
                 const members = selectedStaff.map(input => input.value);
                 
                 if (name && members.length > 0) {
-                    db.collection(`/artifacts/${appId}/public/data/projects`).add({
+                    boardCol('projects').add({
                         name,
                         members,
+                        teamId: teamCtx.teamId,
                         createdAt: new Date(),
                         createdBy: currentUser.email,
                         ownerAdminUid: getTeamOwnerUid(),
@@ -2679,6 +3295,7 @@
                      dueDate,
                      status: 'To Do',
                      comments: [],
+                     teamId: teamCtx.teamId,
                      createdAt: new Date(),
                      createdBy: currentUser.email,
                      ownerAdminUid: getTeamOwnerUid(),
@@ -2702,10 +3319,11 @@
                 e.preventDefault();
                 const description = document.getElementById('new-task-for-all-description').value.trim();
                 if(!description) return;
-                db.collection(`/artifacts/${appId}/public/data/tasks_for_all`).add({
+                boardCol('tasks_for_all').add({
                     description,
                     status: 'To Do',
                     comments: [],
+                    teamId: teamCtx.teamId,
                     createdAt: new Date(),
                     createdBy: currentUser.email,
                     ownerAdminUid: getTeamOwnerUid(),
@@ -2735,7 +3353,7 @@
                 const email = document.getElementById('edit-staff-email').value.trim();
                 if (id && name && email) {
                     const waNumber = (document.getElementById('edit-staff-wa') || {}).value || '';
-                    db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({ name, email: email.toLowerCase(), whatsappNumber: normalizeWaNumberClient(waNumber) })
+                    db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({ name, email: email.toLowerCase(), whatsappNumber: normalizeWaNumberClient(waNumber), teamId: teamCtx.teamId })
                         .then(() => persistStaffWhatsApp(email, waNumber, name))
                         .then(() => editStaffModal.classList.add('hidden'));
                 }
@@ -2783,6 +3401,7 @@
                             dueDate,
                             status: 'To Do',
                             comments: [],
+                            teamId: teamCtx.teamId,
                             createdAt: new Date(),
                             createdBy: currentUser.email,
                             ownerAdminUid: getTeamOwnerUid(),
@@ -2920,7 +3539,7 @@
                 } else if (button.classList.contains('notify-button')) {
                     // Send notification logic
                     const { taskDescription, assigneeEmail } = button.dataset;
-                    const staffRef = db.collection(`/artifacts/${appId}/public/data/staff`).where('email', '==', assigneeEmail);
+                    const staffRef = boardScope('staff').where('email', '==', assigneeEmail);
                     const staffSnap = await staffRef.get();
                     if (!staffSnap.empty) {
                         const staffDoc = staffSnap.docs[0];

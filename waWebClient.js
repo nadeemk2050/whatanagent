@@ -319,6 +319,24 @@ async function bossCancelTask(q) {
 const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
 const ALIGNTASKS_BASE = 'artifacts/' + ALIGNTASKS_APP_ID + '/public/data';
 
+// AlignTasks 2.0 — board documents carry a `teamId`. Server-side writers (boss orders, Note Book,
+// reminder jobs) must stamp the SAME team the board users see, otherwise their docs are invisible
+// on the team-scoped board. Resolved once and cached for 5 minutes.
+let alignPrimaryTeam = { at: 0, id: '' };
+export async function getPrimaryAlignTeamId() {
+  if (!globalDb) return '';
+  if (alignPrimaryTeam.id && (Date.now() - alignPrimaryTeam.at) < 5 * 60 * 1000) return alignPrimaryTeam.id;
+  let id = '';
+  try {
+    const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/teams'));
+    const teams = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}));
+    const primary = teams.find(t => t.settings && t.settings.isPrimary) || teams[0];
+    if (primary) id = primary.id;
+  } catch (e) { /* teams collection may not exist yet (pre-migration) */ }
+  alignPrimaryTeam = { at: Date.now(), id: id };
+  return id;
+}
+
 let staffDirCache = { at: 0, list: [] };
 async function alignTasksStaffDirectory() {
   if (!globalDb) return [];
@@ -402,7 +420,11 @@ async function ensureAlignTasksStaffDoc(person) {
   try {
     const staffCol = collection(globalDb, ALIGNTASKS_BASE + '/staff');
     const snap = await getDocs(query(staffCol, where('email', '==', person.email)));
-    const data = { name: person.name || person.email.split('@')[0], email: person.email, uid: person.uid || '' };
+    const teamId = await getPrimaryAlignTeamId();
+    const data = Object.assign(
+      { name: person.name || person.email.split('@')[0], email: person.email, uid: person.uid || '' },
+      teamId ? { teamId: teamId } : {}
+    );
     if (snap.empty) {
       await addDoc(staffCol, data);
       console.log('[ALIGNTASKS] ➕ Created board staff entry for ' + data.name + ' (' + person.email + ')');
@@ -469,6 +491,7 @@ export async function bossAlignTaskAdd(p) {
   // BOARD RULE: when no person is named the task goes to the shared "General Tasks (For All)"
   // list. Only an explicitly named person ("for Sahir", "assign to Farhan") creates an
   // individual task under that person.
+  const teamId = await getPrimaryAlignTeamId();
   if (!rawAssignee) {
     const owner = await alignTasksOwnerAdmin();
     const task = {
@@ -481,6 +504,7 @@ export async function bossAlignTaskAdd(p) {
       ownerAdminUid: owner.uid,
       ownerAdminEmail: owner.email
     };
+    if (teamId) task.teamId = teamId;
     const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'), task);
     console.log('[ALIGNTASKS] ➕ Boss added GENERAL task "' + title + '"' + (due.value ? (' due ' + due.value) : ''));
     return { ok: true, id: ref.id, task: task, general: true, dueTs: due.ts || null };
@@ -504,6 +528,7 @@ export async function bossAlignTaskAdd(p) {
     ownerAdminEmail: '',
     setAlarm: false
   };
+  if (teamId) task.teamId = teamId;
   await ensureAlignTasksStaffDoc(who.person);   // board visibility: the admin view renders only staff sections
   const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks'), task);
   console.log('[ALIGNTASKS] ➕ Boss added task "' + title + '" for ' + who.person.name + (due.value ? (' due ' + due.value) : ''));

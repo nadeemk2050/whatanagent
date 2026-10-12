@@ -86,20 +86,36 @@ async function touchNote(db, id, patch) {
   await setDoc(doc(db, NOTES, id), Object.assign({ updatedAt: Date.now() }, patch || {}), { merge: true });
 }
 
+// AlignTasks 2.0 — board docs carry a teamId; resolve the primary team once (5 min cache).
+let nbAlignTeamCache = { at: 0, id: '' };
+async function primaryAlignTeamId(db) {
+  if (nbAlignTeamCache.id && (Date.now() - nbAlignTeamCache.at) < 5 * 60 * 1000) return nbAlignTeamCache.id;
+  let id = '';
+  try {
+    const snap = await getDocs(collection(db, ALIGN_BASE + '/teams'));
+    const teams = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}));
+    const primary = teams.find(t => t.settings && t.settings.isPrimary) || teams[0];
+    if (primary) id = primary.id;
+  } catch (e) { /* pre-migration projects have no teams collection */ }
+  nbAlignTeamCache = { at: Date.now(), id: id };
+  return id;
+}
+
 // --- Create an AlignTasks task straight from extracted note items (same rules as boss orders:
 // no person named -> General list; a person named -> their individual list) ---
 async function createNoteAlignTask(db, t, parsedWhen) {
   const description = sstr(t.description || t.task || '', 200).trim();
   if (!description) return { ok: false, error: 'Empty task' };
+  const teamId = await primaryAlignTeamId(db);
   let dueValue = '';
   let dueTs = 0;
   if (parsedWhen && parsedWhen > Date.now() - 60000) { dueTs = parsedWhen; dueValue = dubaiStamp(parsedWhen); }
   const assignee = sstr(t.assignee || '', 60).trim();
   if (!assignee) {
-    await addDoc(collection(db, ALIGN_BASE + '/tasks_for_all'), {
+    await addDoc(collection(db, ALIGN_BASE + '/tasks_for_all'), Object.assign({
       description, dueDate: dueValue, status: 'To Do', comments: [], createdAt: new Date(),
       createdBy: 'note-extract', ownerAdminUid: '', ownerAdminEmail: ''
-    });
+    }, teamId ? { teamId: teamId } : {}));
     return { ok: true, where: 'General Tasks (For All)' };
   }
   const staffSnap = await getDocs(collection(db, ALIGN_BASE + '/staff'));
@@ -107,20 +123,21 @@ async function createNoteAlignTask(db, t, parsedWhen) {
   let match = null;
   staffSnap.forEach((d) => {
     const v = d.data() || {};
+    if (teamId && v.teamId && v.teamId !== teamId) return;   // 2.0: only this team's members
     const nm = String(v.name || '').toLowerCase();
     if (!match && nm && (nm === q || nm.includes(q) || q.includes(nm.split(' ')[0]))) match = Object.assign({ id: d.id }, v);
   });
   if (!match) {
-    await addDoc(collection(db, ALIGN_BASE + '/tasks_for_all'), {
+    await addDoc(collection(db, ALIGN_BASE + '/tasks_for_all'), Object.assign({
       description: description + ' (for ' + assignee + ')', dueDate: dueValue, status: 'To Do', comments: [], createdAt: new Date(),
       createdBy: 'note-extract', ownerAdminUid: '', ownerAdminEmail: ''
-    });
+    }, teamId ? { teamId: teamId } : {}));
     return { ok: true, where: 'General Tasks (no member matched "' + assignee + '")' };
   }
-  await addDoc(collection(db, ALIGN_BASE + '/tasks'), {
+  await addDoc(collection(db, ALIGN_BASE + '/tasks'), Object.assign({
     description, assigneeEmail: String(match.email || '').toLowerCase(), dueDate: dueValue, status: 'To Do', comments: [],
     createdAt: new Date(), createdBy: 'note-extract', ownerAdminUid: match.uid || '', ownerAdminEmail: '', setAlarm: false
-  });
+  }, teamId ? { teamId: teamId } : {}));
   return { ok: true, where: match.name || match.email };
 }
 
