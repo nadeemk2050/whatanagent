@@ -91,8 +91,6 @@ Status: **P0–P4 IMPLEMENTED LOCALLY — NOT DEPLOYED.** Plan produced 2026-10-
   for the live rules).
 - Optional: unify `role` (admin/user → owner/member) once all APKs are updated, and drop the
   compatibility shim.
-- 🔙 Rollback for the rules if ever needed: `git checkout HEAD~1 -- firestore.rules && firebase deploy --only firestore:rules`
-  (or restore the previous permissive `allow read, write: if true` ruleset).
 
 ---
 
@@ -402,3 +400,36 @@ so old readers keep working.
 | P6 | 2–3 d |
 | P7 | 2–3 d |
 | **Total** | **~13–20 dev-days**, shippable in slices (P0→P4 delivers the full "own login + teams + invites + device WhatsApp" product) |
+
+
+---
+
+# ?? ANDROID RELEASES & AUTO-UPDATE (live)
+
+### Signing (permanent identity - never commit to this PUBLIC repo)
+| Item | Value |
+|---|---|
+| Keystore | ``C:\app2026\aligntasks-keystore\aligntasks-release.jks`` (outside the repo) |
+| Alias | ``aligntasks`` |
+| Credentials file | ``C:\app2026\aligntasks-keystore\KEYSTORE-CREDENTIALS.txt`` |
+| Gradle credentials | ``android-kotlin/keystore.properties`` (gitignored) |
+| Certificate | CN=AlignTasks, OU=Al Saham Al Ahmar, O=Al Saham Al Ahmar, L=Sharjah, C=AE - SHA-256 0c87a244...bd27a7 |
+| Current build | versionCode 7 - versionName 2.0 - signed release APK 14.68 MB |
+
+WARNING: losing the keystore or its password means existing installs can never be updated again. Back both up.
+
+### How auto-update works (self-hosted, no Play Store needed)
+1. ``AppUpdate.kt`` reads https://whatanagent-a1e59.web.app/downloads/version.json (once per hour + on every app start).
+2. If versionCode is higher than the installed build: the app posts a NOTIFICATION and shows an "Update available" dialog.
+3. "Update now" -> DownloadManager downloads the APK -> the system installer opens -> one tap Install. mandatory:true removes the "Later" button.
+4. Android never allows a fully silent install for sideloaded apps - only Google Play (internal testing) or an MDM device-owner can do that.
+
+### Release ritual (ONE command)
+    powershell -ExecutionPolicy Bypass -File scripts/release-android.ps1 -VersionName 2.1 -Notes "Fixed task reminders"
+      -Mandatory  -> forced update;   -SkipBuild -> re-publish the last built APK
+
+It bumps versionCode/versionName, builds the signed release APK, publishes public/downloads/aligntasks-<ver>.apk,
+rewrites version.json, commits, pushes and deploys hosting. The download page reads version.json, so it never needs editing.
+
+### Rollback for the rules (if ever needed)
+    git checkout HEAD~1 -- firestore.rules ; npx firebase deploy --only firestore:rules
