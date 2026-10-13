@@ -1099,7 +1099,10 @@ export async function runDashboardBossCommand(text, opts = {}) {
   try {
     await appendBossBrain('boss', (wasVoice ? '🎙️ ' : '🖥️ ') + command);
     const bossExecPrompt = await buildBossExecPrompt();
-    const replyTextRaw = await generateWaWebAutoBotReply(getSelfChatJid(), command, bossExecPrompt, null, 'gemini-3.6-flash');
+    // Text paths no longer force a specific Gemini model: the knowledge-base engine (currently
+    // qwen3.8-flash) is used, and the health-aware chain still falls back across every provider.
+    // Gemini's free tier only allows 20 requests/day/model, so forcing it caused daily outages.
+    const replyTextRaw = await generateWaWebAutoBotReply(getSelfChatJid(), command, bossExecPrompt, null);
     const { summaryText, cleanedReply } = await executeBossActionBlocks(replyTextRaw || '');
     let finalMsg = ((wasVoice ? '🎙️ *[Voice Order Understood]*\n\n' : '') + summaryText + (cleanedReply ? cleanedReply.trim() : '')).trim();
     if (!finalMsg) return { ok: false, error: 'The AI could not generate a reply (provider quota / temporary error). Try again in a moment.' };
@@ -1221,7 +1224,7 @@ async function rewriteScheduledReminderText(original, occurrenceNo, whenMs) {
       '- If the date clearly matches a season/occasion (weekend, Eid, Ramadan, UAE National Day, New Year, summer etc), you may ONLY add a light, respectful touch — otherwise no occasion talk at all.\n' +
       '- Never invent facts, amounts, promises or new deadlines.\n' +
       'Return ONLY the rewritten message text, no quotes, no explanations.\n\nReminder to rewrite:\n"""' + original + '"""';
-    const out = await generateWaWebAutoBotReply('aligntasks-scheduler', 'Rewrite this reminder now.', prompt, null, 'gemini-3.6-flash');
+    const out = await generateWaWebAutoBotReply('aligntasks-scheduler', 'Rewrite this reminder now.', prompt, null);
     const clean = String(out || '').trim().replace(/^["']+|["']+$/g, '');
     if (clean && clean.length > 10) return clean.substring(0, 800);
     return '';
@@ -1739,7 +1742,7 @@ async function handleConditionalTaskReply(jid, text) {
         'Write ONE short, polite, professional WhatsApp reply that acknowledges their answer and responds naturally' +
         (followAt ? ' — and confirm that you will follow up with them at the time they mentioned.' : '') + '.' +
         '\nRules: Roman Urdu or English only (NEVER Devanagari/Hindi script). No action blocks. No markdown headers. Max 3 sentences.';
-      const aiOut = await generateWaWebAutoBotReply(jid, replyTextRaw, ctx, null, 'gemini-3.6-flash');
+      const aiOut = await generateWaWebAutoBotReply(jid, replyTextRaw, ctx, null);
       replyToSend = String(aiOut || '').trim();
     } catch (e) { console.warn('[COND TASK] AI reply failed:', e.message); }
     if (!replyToSend && followAt) replyToSend = '✅ Noted — I will follow up at the promised time.';
@@ -1794,6 +1797,26 @@ function initConditionalEngine(db) {
 let bossDeliveryTimer = null;
 let waWebContactsBookTimer = null;
 let geminiQuotaBlockedUntil = 0;   // circuit breaker: set when Gemini answers 429 (quota exhausted)
+
+// ---- Per-provider health (2026-10-13) -------------------------------------------------------
+// A dead key (401/403) or an exhausted quota (429) must NOT block every reply: we mark the
+// provider unhealthy, skip it for a while and let the other engines answer. Without this a single
+// revoked DeepSeek key / exhausted Gemini quota silenced the boss-bot completely.
+const providerBlockedUntil = { gemini: 0, deepseek: 0, qwen: 0, openai: 0 };
+function providerHealthy(p) { return (providerBlockedUntil[p] || 0) < Date.now(); }
+function providerBlock(p, ms) {
+  if (!p) return;
+  providerBlockedUntil[p] = Date.now() + ms;
+  const mins = Math.round(ms / 60000);
+  console.warn('[AI HEALTH] ⛔ ' + p + ' marked unavailable for ' + mins + ' min (will be skipped and retried automatically)');
+}
+function noteProviderError(p, err) {
+  const m = String((err && (err.message || err)) || '');
+  if (/401|403|invalid|authentication|unauthorized/i.test(m)) providerBlock(p, 60 * 60 * 1000);      // dead key → 1 hour
+  else if (/429|quota|RESOURCE_EXHAUSTED|rate ?limit/i.test(m)) providerBlock(p, 30 * 60 * 1000);      // quota  → 30 min
+  else if (/404|model ?not ?(exist|found)|not found/i.test(m)) providerBlock(p, 60 * 60 * 1000);       // bad model → 1 hour
+  return m;
+}
 async function processBossRemindersAndNotifications() {
   try {
     if (!globalDb || waWebState.status !== 'connected') return;
@@ -4825,12 +4848,21 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || settings.DASHSCOPE_API_KEY || '';
     qwenBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
     qwenModelId = settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
+    // An invalid/rotated Qwen model name must not break the one healthy provider: always
+    // fall back through the known-good ids (verified live 2026-10-13).
+    const qwenCandidates = Array.from(new Set([qwenModelId, 'qwen3.8-flash', 'qwen-plus', 'qwen-flash'].filter(Boolean)));
 
     chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
-    // Circuit breaker: if Gemini is out of quota, use DeepSeek for TEXT instantly (media still tries Gemini)
-    if (chosenModel.startsWith('gemini') && geminiQuotaBlockedUntil > Date.now()) {
-      console.log('[WA-WEB AI] Gemini quota exhausted (circuit breaker active) - using DeepSeek for text replies');
-      chosenModel = 'deepseek-chat';
+    // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the best healthy
+    // engine — the knowledge-base engine if it is not Gemini, otherwise Qwen (verified working),
+    // and only then DeepSeek.
+    if (chosenModel.startsWith('gemini') && !providerHealthy('gemini')) {
+      const kbModel = String(waWebKnowledgeBase.aiModel || '');
+      const alt = (!/^gemini/i.test(kbModel) && kbModel)
+        ? kbModel
+        : (providerHealthy('qwen') && qwenKey ? 'qwen3.8-flash' : 'deepseek-chat');
+      console.log('[WA-WEB AI] Gemini unavailable (quota/key) - switching text replies to ' + alt);
+      chosenModel = alt;
     }
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
@@ -4838,13 +4870,18 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // The FIRST fallback rotates (Gemini 3.6 Flash -> DeepSeek v4 Flash -> Qwen on successive calls),
     // so sometimes Gemini is the 1st fallback and sometimes DeepSeek is 1st with Gemini 2nd.
     cheapOrder = (exclude) => {
-      const base = ['gemini', 'deepseek', 'qwen'].filter(p => p !== exclude);
+      const base = ['gemini', 'deepseek', 'qwen'].filter(p => p !== exclude && providerHealthy(p));
+      if (!base.length) return ['gemini', 'deepseek', 'qwen'].filter(p => p !== exclude);
       if (!base.length) return [];
       const k = (textRotationCounter++) % base.length;
       return [...base.slice(k), ...base.slice(0, k)];
     };
     tryTextProvider = async (p, userText) => {
       try {
+        if (!providerHealthy(p)) {
+          console.log('[AI HEALTH] skipping unhealthy provider: ' + p);
+          return '';
+        }
         if (p === 'gemini' && geminiKey) {
           for (const gm of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
             try {
@@ -4854,7 +4891,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
               const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + userText }] }] });
               const t = (res.response.text() || '').trim();
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via ' + gm + ' fallback'); return t; }
-            } catch (e) { console.warn('[WA-WEB AI] ' + gm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+            } catch (e) { noteProviderError('gemini', e); console.warn('[WA-WEB AI] ' + gm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
           }
         } else if (p === 'deepseek' && deepseekKey) {
           for (const dm of ['deepseek-chat']) {
@@ -4868,20 +4905,24 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
               });
               const t = (comp.choices[0]?.message?.content || '').trim();
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek ' + dm + ' fallback'); return t; }
-            } catch (e) { console.warn('[WA-WEB AI] DeepSeek ' + dm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+            } catch (e) { noteProviderError('deepseek', e); console.warn('[WA-WEB AI] DeepSeek ' + dm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
           }
         } else if (p === 'qwen' && qwenKey) {
           const { default: OpenAI } = await import('openai');
           const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
-          const comp = await openai.chat.completions.create({
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
-            model: qwenModelId,
-            temperature: 0.4
-          });
-          const t = (comp.choices[0]?.message?.content || '').trim();
-          if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen fallback'); return t; }
+          for (const qm of qwenCandidates) {
+            try {
+              const comp = await openai.chat.completions.create({
+                messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+                model: qm,
+                temperature: 0.4
+              });
+              const t = (comp.choices[0]?.message?.content || '').trim();
+              if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen ' + qm + ' fallback'); return t; }
+            } catch (e) { noteProviderError('qwen', e); console.warn('[WA-WEB AI] Qwen ' + qm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+          }
         }
-      } catch (e) { console.warn('[WA-WEB AI] ' + p + ' fallback failed: ' + (e.message || '').substring(0, 120)); }
+      } catch (e) { noteProviderError(p, e); console.warn('[WA-WEB AI] ' + p + ' fallback failed: ' + (e.message || '').substring(0, 120)); }
       return '';
     };
 
@@ -5083,7 +5124,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     }
 
     // 2. TEXT-BASED AI AUTO-REPLY (Dynamic Model Selection)
-    if (chosenModel.startsWith('deepseek') && deepseekKey) {
+    if (chosenModel.startsWith('deepseek') && deepseekKey && providerHealthy('deepseek')) {
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
@@ -5106,7 +5147,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         tokensOut: comp.usage?.completion_tokens || 0
       });
       return t;
-    } else if (chosenModel.startsWith('gemini') && geminiKey) {
+    } else if (chosenModel.startsWith('gemini') && geminiKey && providerHealthy('gemini')) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
       const geminiModel = chosenModel || 'gemini-2.5-flash';
@@ -5125,7 +5166,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       });
       if (gtxt) return gtxt;
       throw new Error('Gemini returned an empty reply');
-    } else if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && qwenKey) {
+    } else if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && qwenKey && providerHealthy('qwen')) {
       // Qwen3.8-Flash (Alibaba Model Studio, OpenAI-compatible) - smart multilingual text engine
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
@@ -5174,7 +5215,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         tokensOut: comp.usage?.completion_tokens || 0
       });
       return t;
-    } else if (deepseekKey) {
+    } else if (deepseekKey && providerHealthy('deepseek')) {
       // Automatic Fallback 1: DeepSeek
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
@@ -5195,7 +5236,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         tokensOut: comp.usage?.completion_tokens || 0
       });
       return t;
-    } else if (geminiKey) {
+    } else if (geminiKey && providerHealthy('gemini')) {
       // Automatic Fallback 2: Gemini
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
@@ -5213,20 +5254,49 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0
       });
       return t;
+    } else if (qwenKey && providerHealthy('qwen')) {
+      // Automatic Fallback 3: Qwen (Alibaba Model Studio, OpenAI-compatible) — the most reliable
+      // engine whenever Gemini is out of quota and the DeepSeek key is unavailable.
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+      for (const qm of qwenCandidates) {
+        try {
+          const comp = await openai.chat.completions.create({
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
+            model: qm,
+            temperature: 0.4
+          });
+          const t = (comp.choices[0]?.message?.content || '').trim();
+          if (!t) continue;
+          recordAiCall({
+            provider: 'qwen',
+            model: qm,
+            area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback 3]',
+            isAutoFetch: false,
+            prompt: customerMessage,
+            response: t,
+            tokensIn: comp.usage?.prompt_tokens || 0,
+            tokensOut: comp.usage?.completion_tokens || 0
+          });
+          return t;
+        } catch (e) { noteProviderError('qwen', e); console.warn('[WA-WEB AI] Qwen ' + qm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+      }
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);
     // Circuit breaker: remember Gemini quota exhaustion so text replies skip it for the next 30 minutes
-    if (/429|quota|RESOURCE_EXHAUSTED/i.test(err.message || '')) geminiQuotaBlockedUntil = Date.now() + 30 * 60 * 1000;
+    if (/429|quota|RESOURCE_EXHAUSTED|401|403|invalid/i.test(err.message || '')) geminiQuotaBlockedUntil = Date.now() + 30 * 60 * 1000;
     // A dead / quota-limited provider must NEVER silence the bot: fall back to any other working key.
     const txtIn = (customerMessage || '').trim();
     if (!txtIn) {
       // Media could not be processed (e.g. Gemini quota) - say so instead of staying silent
       return 'Sorry, I could not process that media right now. Please resend it or type your message.';
     }
-    // AUTOMATIC SWITCH (rotating order): the FIRST fallback alternates between Gemini 3.6 Flash and
-    // DeepSeek v4 Flash, then the remaining engines follow - no provider is always tried first.
+    // AUTOMATIC SWITCH (rotating order): the FIRST fallback alternates between the engines, and any
+    // provider that failed with 401/403/429 is skipped until its health window expires.
     const failedFamily = /^gemini/i.test(chosenModel) ? 'gemini' : (/^deepseek/i.test(chosenModel) ? 'deepseek' : (/^qwen/i.test(chosenModel) ? 'qwen' : ''));
+    // Remember WHICH provider failed so the rotation skips it next time (must be declared first — TDZ)
+    if (failedFamily) noteProviderError(failedFamily, err);
     if (tryTextProvider && cheapOrder) {
       for (const p of cheapOrder(failedFamily)) {
         const t = await tryTextProvider(p, txtIn);
