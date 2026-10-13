@@ -3910,7 +3910,15 @@ export async function initWaWeb(db = null) {
                   configuredBossPhone.endsWith(cleanSenderPhone)
                 ))
               );
-              const bossPasscode = (waWebKnowledgeBase.bossPasscode || waWebKnowledgeBase.bossKnowledge?.bossPasscode || '2831').trim();
+              // SECURITY (2026-10-13): the passcode that proves a message comes from the Boss is the
+              // agent's highest authority - it belongs in the environment, not in the readable DB.
+              // BOSS_PASSCODE (Render env) always wins over the stored value.
+              const bossPasscode = String(
+                process.env.BOSS_PASSCODE ||
+                waWebKnowledgeBase.bossPasscode ||
+                waWebKnowledgeBase.bossKnowledge?.bossPasscode ||
+                '2831'
+              ).trim();
 
               // Diagnostics: if the Boss sends a message type we cannot parse, remember its RAW shape in
               // the boss brain so it can be supported (probe: entry with role 'sys' + rawKeys field).
@@ -5334,6 +5342,15 @@ export function getWaWebKnowledgeBase() {
 
 // Save Knowledge Base
 export async function saveWaWebKnowledgeBase(newKnowledge) {
+  // If the passcode is supplied by the environment it is authoritative - never persist a copy.
+  if (process.env.BOSS_PASSCODE) {
+    if (newKnowledge && newKnowledge.bossPasscode) delete newKnowledge.bossPasscode;
+    if (newKnowledge && newKnowledge.bossKnowledge && typeof newKnowledge.bossKnowledge === 'object') {
+      const bk = { ...newKnowledge.bossKnowledge };
+      delete bk.bossPasscode;
+      newKnowledge.bossKnowledge = bk;
+    }
+  }
   waWebKnowledgeBase = { ...waWebKnowledgeBase, ...newKnowledge };
   if (globalDb) {
     try {
