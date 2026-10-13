@@ -693,7 +693,7 @@ If the actual result is truly not yet published anywhere in the news, estimate t
     const startTime = Date.now();
     try {
       if (p === 'gemini') {
-        for (const gm of ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.6-flash']) {
+        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash']) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',
