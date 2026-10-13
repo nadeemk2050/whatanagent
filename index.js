@@ -344,9 +344,19 @@ app.post('/api/wa-web/contact/update', async (req, res) => {
 });
 
 // Dedicated WhatsApp Web Knowledge Base Endpoints
+// SECURITY (2026-10-13): bossPasscode is what proves a WhatsApp message comes from the Boss -
+// it must never be published. It is stripped from the response and a save that omits it keeps
+// the stored value (the browser never needs to see it).
 app.get('/api/wa-web/knowledge-base', (req, res) => {
   try {
-    res.json({ knowledge: getWaWebKnowledgeBase() });
+    const kb = { ...(getWaWebKnowledgeBase() || {}) };
+    const passcodeSet = !!(kb.bossPasscode || (kb.bossKnowledge && kb.bossKnowledge.bossPasscode));
+    delete kb.bossPasscode;
+    if (kb.bossKnowledge && typeof kb.bossKnowledge === 'object') {
+      kb.bossKnowledge = { ...kb.bossKnowledge };
+      delete kb.bossKnowledge.bossPasscode;
+    }
+    res.json({ knowledge: kb, bossPasscodeSet: passcodeSet });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -356,8 +366,22 @@ app.post('/api/wa-web/knowledge-base', async (req, res) => {
   try {
     const { knowledge } = req.body || {};
     if (!knowledge) return res.status(400).json({ error: 'Missing knowledge payload' });
-    const saved = await saveWaWebKnowledgeBase(knowledge);
-    res.json({ success: true, knowledge: saved });
+    // An empty or masked passcode box means "leave it unchanged".
+    const incoming = { ...knowledge };
+    const current = getWaWebKnowledgeBase() || {};
+    if (!incoming.bossPasscode || looksMasked(incoming.bossPasscode)) {
+      if (current.bossPasscode) incoming.bossPasscode = current.bossPasscode;
+    }
+    if (incoming.bossKnowledge && typeof incoming.bossKnowledge === 'object') {
+      const bk = { ...incoming.bossKnowledge };
+      if (!bk.bossPasscode || looksMasked(bk.bossPasscode)) {
+        const cur = current.bossKnowledge && current.bossKnowledge.bossPasscode;
+        if (cur) bk.bossPasscode = cur;
+      }
+      incoming.bossKnowledge = bk;
+    }
+    const saved = await saveWaWebKnowledgeBase(incoming);
+    res.json({ success: true, knowledge: (() => { const s = { ...(saved || {}) }; delete s.bossPasscode; return s; })() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
