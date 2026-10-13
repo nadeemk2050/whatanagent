@@ -1803,18 +1803,60 @@ let geminiQuotaBlockedUntil = 0;   // circuit breaker: set when Gemini answers 4
 // provider unhealthy, skip it for a while and let the other engines answer. Without this a single
 // revoked DeepSeek key / exhausted Gemini quota silenced the boss-bot completely.
 const providerBlockedUntil = { gemini: 0, deepseek: 0, qwen: 0, openai: 0 };
-function providerHealthy(p) { return (providerBlockedUntil[p] || 0) < Date.now(); }
-function providerBlock(p, ms) {
+const providerBlockNotified = { gemini: false, deepseek: false, qwen: false, openai: false };
+const PROVIDER_LABEL = { gemini: 'Gemini', deepseek: 'DeepSeek', qwen: 'Qwen', openai: 'OpenAI' };
+
+// One-time heads-up to the Boss whenever an engine takes itself out of the rotation (and again when
+// it comes back). Delivered through appData/bossNotifications, which the WA-Web node polls and sends.
+async function notifyBossProvider(provider, kind, detail, mins) {
+  try {
+    if (!globalDb) return;
+    const label = PROVIDER_LABEL[provider] || provider;
+    const text = (kind === 'blocked')
+      ? '⚠️ *AI engine switched off automatically*\n' + label + ' failed' + (detail ? (' — ' + detail) : '') +
+        '.\n✅ Replies keep working on the other engines.\n🔄 ' + label + ' will be retried automatically in about ' + mins + ' min.'
+      : '✅ *' + label + ' is back in the rotation* — the assistant may use it again.';
+    const ref = doc(globalDb, 'appData', 'bossNotifications');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    items.push({
+      id: 'ntf-ai-' + Date.now() + '-' + provider + '-' + kind,
+      text: text,
+      createdAt: Date.now(),
+      status: 'pending',
+      source: 'ai-health'
+    });
+    await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+    console.log('[AI HEALTH] 📩 Boss notified: ' + label + ' ' + kind);
+  } catch (e) { /* a notification must never break a reply */ }
+}
+
+function providerHealthy(p) {
+  const blocked = (providerBlockedUntil[p] || 0) > Date.now();
+  if (!blocked && providerBlockNotified[p]) {
+    providerBlockNotified[p] = false;
+    notifyBossProvider(p, 'recovered', '', 0).catch(() => {});
+  }
+  return !blocked;
+}
+
+function providerBlock(p, ms, detail) {
   if (!p) return;
+  const wasHealthy = providerHealthy(p);   // reads the OLD state (also clears a pending note)
   providerBlockedUntil[p] = Date.now() + ms;
   const mins = Math.round(ms / 60000);
   console.warn('[AI HEALTH] ⛔ ' + p + ' marked unavailable for ' + mins + ' min (will be skipped and retried automatically)');
+  if (wasHealthy && !providerBlockNotified[p]) {
+    providerBlockNotified[p] = true;       // one notification per outage
+    notifyBossProvider(p, 'blocked', detail || '', mins).catch(() => {});
+  }
 }
+
 function noteProviderError(p, err) {
   const m = String((err && (err.message || err)) || '');
-  if (/401|403|invalid|authentication|unauthorized/i.test(m)) providerBlock(p, 60 * 60 * 1000);      // dead key → 1 hour
-  else if (/429|quota|RESOURCE_EXHAUSTED|rate ?limit/i.test(m)) providerBlock(p, 30 * 60 * 1000);      // quota  → 30 min
-  else if (/404|model ?not ?(exist|found)|not found/i.test(m)) providerBlock(p, 60 * 60 * 1000);       // bad model → 1 hour
+  if (/401|403|invalid|authentication|unauthorized/i.test(m)) providerBlock(p, 60 * 60 * 1000, 'invalid or revoked API key');       // dead key → 1 hour
+  else if (/429|quota|RESOURCE_EXHAUSTED|rate ?limit/i.test(m)) providerBlock(p, 30 * 60 * 1000, 'quota reached (free-tier / daily limit)'); // quota → 30 min
+  else if (/404|model ?not ?(exist|found)|not found/i.test(m)) providerBlock(p, 60 * 60 * 1000, 'model name not available');        // bad model → 1 hour
   return m;
 }
 async function processBossRemindersAndNotifications() {
