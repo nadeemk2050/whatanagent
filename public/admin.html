@@ -3586,6 +3586,25 @@
             } catch (e) { console.warn('[STATS] load failed:', e && e.message); }
         }
 
+        // ---- admin token: protects the endpoints that store / change API keys ----
+        // The token is set in Render > Environment as ADMIN_TOKEN. It is asked for once and kept
+        // in this browser only - never embedded in the page source.
+        function adminToken() { try { return localStorage.getItem('wat_admin_token') || ''; } catch (e) { return ''; } }
+        function setAdminToken(t) { try { localStorage.setItem('wat_admin_token', t || ''); } catch (e) {} }
+        async function postAdmin(url, payload) {
+            const doPost = () => fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken() },
+                body: JSON.stringify(payload)
+            });
+            let res = await doPost();
+            if (res.status === 401) {
+                const t = window.prompt('This action is protected.\n\nEnter your ADMIN TOKEN (the value you set as ADMIN_TOKEN in Render > Environment):');
+                if (t && t.trim()) { setAdminToken(t.trim()); res = await doPost(); }
+            }
+            return res;
+        }
+
         async function loadEnv() {
             const res = await fetch('api/env');
             const data = await res.json();
@@ -3666,7 +3685,7 @@
                 RESTRICT_PRICING: document.getElementById('guardRestrictPricing').checked,
                 BLOCK_COMPETITORS: document.getElementById('guardBlockCompetitors').checked
             };
-            await fetch('api/env', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            await postAdmin('api/env', payload);
             
             const n = document.getElementById('notification');
             n.innerText = '✅ Settings Saved & Sync Complete!';

@@ -9,7 +9,7 @@ import * as cheerio from 'cheerio';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch } from "firebase/firestore";
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch, deleteField } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
 import { registerLiveMeetingRoutes } from './liveMeetingApi.mjs';
 import { initLiveMeetingWebSocket } from './liveMeetingWs.mjs';
@@ -628,34 +628,66 @@ app.post('/api/wa-web/image/test', async (req, res) => {
 });
 
 // --- Settings Management ---
-async function getSettings() {
+// SECURITY (2026-10-13): secrets may live ONLY in the server environment (Render env vars).
+// Anything present in process.env wins and is NEVER written back to Firestore, because the
+// database project is shared with the public web pages and must not hold credentials.
+const SECRET_SETTING_KEYS = [
+  'DEEPSEEK_API_KEY', 'GEMINI_API_KEY', 'QWEN_API_KEY', 'QWEN_BASE_URL',
+  'WHATSAPP_TOKEN', 'VERIFY_TOKEN', 'PHONE_NUMBER_ID'
+];
+
+// The raw stored document (no environment merge) - used when WRITING.
+async function getSettingsRaw() {
   try {
     const docSnap = await getDoc(doc(db, "appData", "settings"));
-    if (docSnap.exists()) return docSnap.data();
+    if (docSnap.exists()) return docSnap.data() || {};
   } catch(e) { console.error("Error reading settings", e); }
   return {};
 }
 
-// Automatic Migration from .env to Firestore on boot
+// What the rest of the app uses: stored values with environment secrets merged on top.
+async function getSettings() {
+  const stored = await getSettingsRaw();
+  const overrides = {};
+  for (const k of SECRET_SETTING_KEYS) if (process.env[k]) overrides[k] = process.env[k];
+  return { ...stored, ...overrides };
+}
+
+// Only ever hand a masked hint to a browser: "sk-0729••••••baef"
+function maskSecret(v) {
+  if (!v || typeof v !== 'string') return '';
+  if (v.length <= 8) return '•'.repeat(v.length);
+  return v.slice(0, 6) + '••••••' + v.slice(-4);
+}
+const looksMasked = (v) => typeof v === 'string' && v.includes('•');
+
+// Boot: never copy secrets from the environment into the database.
 async function migrateEnvToDb() {
   try {
     const docSnap = await getDoc(doc(db, "appData", "settings"));
-    if (!docSnap.exists() && process.env.WHATSAPP_TOKEN) {
+    if (!docSnap.exists() && process.env.OWNER_PHONE_NUMBER) {
        await setDoc(doc(db, "appData", "settings"), {
-          DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
-          QWEN_API_KEY: process.env.QWEN_API_KEY || '',
-          QWEN_BASE_URL: process.env.QWEN_BASE_URL || '',
           QWEN_MODEL: process.env.QWEN_MODEL || 'qwen3.8-flash',
-          WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN || '',
-          PHONE_NUMBER_ID: process.env.PHONE_NUMBER_ID || '',
-          VERIFY_TOKEN: process.env.VERIFY_TOKEN || '',
           OWNER_PHONE_NUMBER: process.env.OWNER_PHONE_NUMBER || ''
        });
-       console.log("Migrated .env to Firestore Settings successfully!");
+       console.log("Created settings document (non-secret fields only).");
     }
   } catch (e) { console.error("Migration error:", e); }
 }
 migrateEnvToDb();
+
+// --- Admin token: guards the endpoints that read or change secrets ---
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+if (!ADMIN_TOKEN) {
+  console.warn('[SECURITY] ADMIN_TOKEN is NOT set - anyone who finds this server can change your API keys. Set ADMIN_TOKEN in the Render environment.');
+} else {
+  console.log('[SECURITY] ADMIN_TOKEN active - secret endpoints are protected.');
+}
+function adminOk(req) {
+  if (!ADMIN_TOKEN) return true;   // not configured yet: keep the dashboard usable
+  const t = String(req.get('x-admin-token') || req.query.token || '');
+  return !!t && t === ADMIN_TOKEN;
+}
 
 // --- Core Helper Functions ---
 
@@ -1631,13 +1663,18 @@ app.get('/', (req, res) => {
   res.send('WhatsApp AI Agent Webhook is active! <br> <a href="/admin.html">Go to Admin Dashboard</a>');
 });
 
+// Secrets are NEVER returned in clear text - only a masked hint and whether one is configured.
 app.get('/api/env', async (req, res) => {
   const settings = await getSettings();
   res.json({
     ACTIVE_AI_PROVIDER: settings.ACTIVE_AI_PROVIDER || 'deepseek',
-    DEEPSEEK_API_KEY: settings.DEEPSEEK_API_KEY || '',
-    GEMINI_API_KEY: settings.GEMINI_API_KEY || '',
-    QWEN_API_KEY: settings.QWEN_API_KEY || '',
+    DEEPSEEK_API_KEY: maskSecret(settings.DEEPSEEK_API_KEY),
+    GEMINI_API_KEY: maskSecret(settings.GEMINI_API_KEY),
+    QWEN_API_KEY: maskSecret(settings.QWEN_API_KEY),
+    DEEPSEEK_API_KEY_SET: !!settings.DEEPSEEK_API_KEY,
+    GEMINI_API_KEY_SET: !!settings.GEMINI_API_KEY,
+    QWEN_API_KEY_SET: !!settings.QWEN_API_KEY,
+    KEYS_FROM_ENV: SECRET_SETTING_KEYS.filter(k => !!process.env[k]),
     QWEN_BASE_URL: settings.QWEN_BASE_URL || '',
     QWEN_MODEL: settings.QWEN_MODEL || '',
     OWNER_PHONE_NUMBER: settings.OWNER_PHONE_NUMBER || '',
@@ -1647,17 +1684,23 @@ app.get('/api/env', async (req, res) => {
 });
 
 app.post('/api/env', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized - send the admin token in the x-admin-token header.' });
   try {
-    const data = req.body;
-    // Fields missing from the request keep their stored value (an old cached dashboard posting
-    // a partial payload must never wipe keys such as QWEN_API_KEY / DEEPSEEK_API_KEY).
-    const prev = await getSettings();
+    const data = req.body || {};
+    const prev = await getSettingsRaw();   // raw stored doc (never carry env values back into the DB)
     const keep = (v, old) => (v !== undefined && v !== null ? v : (old || ''));
+    // A secret that lives in the environment is authoritative: it is never stored in the database,
+    // and any plaintext copy already there is removed on the next save.
+    const secretField = (name, incoming) => {
+      if (process.env[name]) return deleteField();
+      if (looksMasked(incoming)) return keep(undefined, prev[name]);   // masked placeholder = leave unchanged
+      return keep(incoming, prev[name]);
+    };
     await setDoc(doc(db, "appData", "settings"), {
       ACTIVE_AI_PROVIDER: keep(data.ACTIVE_AI_PROVIDER, prev.ACTIVE_AI_PROVIDER) || 'deepseek',
-      DEEPSEEK_API_KEY: keep(data.DEEPSEEK_API_KEY, prev.DEEPSEEK_API_KEY),
-      GEMINI_API_KEY: keep(data.GEMINI_API_KEY, prev.GEMINI_API_KEY),
-      QWEN_API_KEY: keep(data.QWEN_API_KEY, prev.QWEN_API_KEY),
+      DEEPSEEK_API_KEY: secretField('DEEPSEEK_API_KEY', data.DEEPSEEK_API_KEY),
+      GEMINI_API_KEY: secretField('GEMINI_API_KEY', data.GEMINI_API_KEY),
+      QWEN_API_KEY: secretField('QWEN_API_KEY', data.QWEN_API_KEY),
       QWEN_BASE_URL: keep(data.QWEN_BASE_URL, prev.QWEN_BASE_URL),
       QWEN_MODEL: keep(data.QWEN_MODEL, prev.QWEN_MODEL) || 'qwen3.8-flash',
       OWNER_PHONE_NUMBER: keep(data.OWNER_PHONE_NUMBER, prev.OWNER_PHONE_NUMBER),
@@ -1672,16 +1715,33 @@ app.post('/api/env', async (req, res) => {
 });
 
 // Pass through endpoints for Admin UI
+// SECURITY (2026-10-13): the boss passcode must never leave the server. It is stripped from the
+// response (the dashboard shows a masked placeholder) and a write that omits it keeps the stored one.
+const SECRET_KNOWLEDGE_FIELDS = ['bossCode', 'bossPasscode', 'bossCodeHash'];
 app.get('/api/knowledge', async (req, res) => {
   try {
     const docSnap = await getDoc(doc(db, "appData", "knowledge"));
-    res.json(docSnap.exists() ? docSnap.data() : {});
+    const data = docSnap.exists() ? (docSnap.data() || {}) : {};
+    const safe = { ...data };
+    for (const f of SECRET_KNOWLEDGE_FIELDS) if (safe[f]) { delete safe[f]; safe[f + '_SET'] = true; }
+    res.json(safe);
   } catch (error) { res.status(500).json({ error: 'Failed to load knowledge base.' }); }
 });
 
 app.post('/api/knowledge', async (req, res) => {
+  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized - send the admin token in the x-admin-token header.' });
   try {
-    await setDoc(doc(db, "appData", "knowledge"), req.body);
+    const incoming = req.body || {};
+    const prevSnap = await getDoc(doc(db, "appData", "knowledge"));
+    const prev = prevSnap.exists() ? (prevSnap.data() || {}) : {};
+    const payload = { ...incoming };
+    // "••••" or an empty box means "leave it as it is" - never wipe a secret by saving the form.
+    for (const f of SECRET_KNOWLEDGE_FIELDS) {
+      if (!payload[f] || looksMasked(payload[f])) {
+        if (prev[f] !== undefined) payload[f] = prev[f]; else delete payload[f];
+      }
+    }
+    await setDoc(doc(db, "appData", "knowledge"), payload, { merge: true });
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Failed to save knowledge.' }); }
 });
