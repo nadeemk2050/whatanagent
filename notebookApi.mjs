@@ -46,7 +46,7 @@ async function callNoteAI(db, systemPrompt, userText, preferred) {
         const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
         if (t) { console.log('[NOTE AI] ✍️ answered via ' + model); return t; }
       } else if (p === 'gemini') {
-        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash']) {
+        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',

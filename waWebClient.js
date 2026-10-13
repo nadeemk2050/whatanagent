@@ -928,7 +928,7 @@ async function buildBossExecPrompt() {
     'Format: [CONFIG: {"key": value}]\n' +
     'Allowed keys:\n' +
     '  rules, rulesAppend, systemPromptInstructions, customKnowledgeText, knowledgeAppend, greetingTemplate, humanHandoverKeywords, productsCatalog, faqs, faqAppend (text),\n' +
-    '  cooldownSeconds (number), autoReplyEnabled (true/false), autoReplyScope ("all"|"direct_only"|"groups_only"), aiModel (e.g. "gemini-2.5-flash"),\n' +
+    '  cooldownSeconds (number), autoReplyEnabled (true/false), autoReplyScope ("all"|"direct_only"|"groups_only"), aiModel (e.g. "gemini-3.8-flash"),\n' +
     '  bossPhone (text), bossPasscode (text), bossName (text), pausedContacts ({"97150...": true})\n' +
     'Use the *Append keys to ADD a new rule without losing existing ones.\n' +
     'Examples:\n' +
@@ -1822,7 +1822,9 @@ function noteProviderError(p, err) {
   const m = String((err && (err.message || err)) || '');
   if (/401|403|invalid|authentication|unauthorized/i.test(m)) providerBlock(p, 60 * 60 * 1000, 'invalid or revoked API key');       // dead key → 1 hour
   else if (/429|quota|RESOURCE_EXHAUSTED|rate ?limit/i.test(m)) providerBlock(p, 30 * 60 * 1000, 'quota reached (free-tier / daily limit)'); // quota → 30 min
-  else if (/404|model ?not ?(exist|found)|not found/i.test(m)) providerBlock(p, 60 * 60 * 1000, 'model name not available');        // bad model → 1 hour
+  // 404 = ONE model name has been retired. The other models on the same key still work, so the
+  // provider must stay in the rotation (blocking it here used to silence Gemini for a whole hour).
+  else if (/404|model ?not ?(exist|found)|not found/i.test(m)) console.warn('[AI HEALTH] ' + p + ': model name unavailable, trying the next one (provider stays enabled)');
   return m;
 }
 async function processBossRemindersAndNotifications() {
@@ -2420,7 +2422,10 @@ async function getGeminiKey() {
 // 1) Qwen3-ASR-Flash (Alibaba Model Studio, synchronous DashScope API) - runs on the Qwen key and is
 //    NOT limited by Gemini's free-tier AUDIO quota (Gemini returns 429 for audio while text still works).
 // 2) Gemini chain fallback - used only if Qwen ASR is unavailable or fails.
-const AUDIO_MODEL_CHAIN = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
+const AUDIO_MODEL_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+// Current Flash models, newest first. `gemini-flash-latest` is a rolling alias, so this chain keeps
+// working even when Google retires a version (gemini-2.5-flash is already gone for newer projects).
+const GEMINI_TEXT_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
 const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
 
 // Rotation counters: share the load between providers - the FIRST fallback alternates
@@ -4899,7 +4904,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           return '';
         }
         if (p === 'gemini' && geminiKey) {
-          for (const gm of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+          for (const gm of GEMINI_TEXT_CHAIN) {
             try {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(geminiKey);
@@ -4997,7 +5002,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           } catch (e) { console.warn('[WA-WEB MULTIMODAL] Qwen extract failed: ' + (e.message || '').substring(0, 120)); }
         }
         if (geminiKey) {
-          for (const gm of ['gemini-3.6-flash', 'gemini-2.5-flash']) {
+          for (const gm of GEMINI_TEXT_CHAIN) {
             try {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(geminiKey);
@@ -5066,8 +5071,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       // Try Gemini Multimodal - automatic fallback chain (Gemini 3.6 Flash first: most reliable Gemini media model right now)
       if (geminiKey) {
         const geminiCandidates = chosenModel.startsWith('gemini')
-          ? [chosenModel, 'gemini-3.6-flash', 'gemini-2.5-flash']
-          : ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash'];
+          ? [chosenModel, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']
+          : GEMINI_TEXT_CHAIN;
         for (const geminiModelName of geminiCandidates) {
         try {
           const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -5166,7 +5171,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     } else if (chosenModel.startsWith('gemini') && geminiKey && providerHealthy('gemini')) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const geminiModel = chosenModel || 'gemini-2.5-flash';
+      const geminiModel = chosenModel || GEMINI_TEXT_CHAIN[0];
       const model = genAI.getGenerativeModel({ model: geminiModel });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const gtxt = (res.response.text() || '').trim();
@@ -5256,12 +5261,12 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       // Automatic Fallback 2: Gemini
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[1] });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const t = res.response.text() || null;
       recordAiCall({
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: GEMINI_TEXT_CHAIN[1],
         area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback]',
         isAutoFetch: false,
         prompt: customerMessage,

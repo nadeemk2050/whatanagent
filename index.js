@@ -62,6 +62,11 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
+// Gemini model used by the dashboard features (KB test, AI assistant, OCR, suggest ...).
+// `gemini-flash-latest` is Google's rolling alias for the current Flash model, so this keeps
+// working when a version is retired (gemini-2.5-flash already returns 404 for newer API keys).
+const GEMINI_FLASH_DEFAULT = process.env.GEMINI_FLASH_MODEL || 'gemini-flash-latest';
+
 // Give waWebClient Firestore access on ALL nodes (staging skips initWaWeb, but Notebook audio /
 // backups / key resolution inside waWebClient must still work there).
 attachWaWebDb(db);
@@ -429,7 +434,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       reply = comp.choices[0]?.message?.content || '';
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
       const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       reply = r.response.text() || '';
     } else {
@@ -519,7 +524,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     }
     messages.push({ role: 'user', content: userInstruction });
 
-    const chosenModel = model || 'gemini-2.5-flash';
+    const chosenModel = model || GEMINI_FLASH_DEFAULT;
     let reply = '';
 
     if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
@@ -544,7 +549,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (chosenModel.startsWith('gemini') && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const gemModel = chosenModel || 'gemini-2.5-flash';
+      const gemModel = chosenModel || GEMINI_FLASH_DEFAULT;
       const m = genAI.getGenerativeModel({ model: gemModel });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
@@ -569,7 +574,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const m = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const m = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
@@ -1067,7 +1072,7 @@ function extractPhonesFromText(text) {
 // OCR / data extraction for PDF documents using Gemini multimodal input
 async function extractDocumentWithAI(fileBuffer, mimeType, settings) {
   const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_DEFAULT });
   const response = await generateContentWithRetry(model, {
     contents: [
       {
@@ -2133,7 +2138,7 @@ app.post('/api/ai/suggest', async (req, res) => {
     if (!settings.GEMINI_API_KEY) return res.status(400).json({ error: 'Gemini API key is not configured.' });
 
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_DEFAULT });
 
     let systemInstruction = "";
     if (field === 'faq') {
@@ -2288,7 +2293,7 @@ app.post('/api/ai/suggest-chat-reply', async (req, res) => {
 
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_FLASH_DEFAULT,
       systemInstruction: systemInstruction
     });
 
@@ -2316,7 +2321,7 @@ app.post('/api/ai/extract-contacts', async (req, res) => {
     const prompt = "Extract ALL contacts (names, phone numbers, emails, companies, cities, countries) from this file. Return ONLY a raw JSON array where each item has keys: name, phone, email, company, city, country, notes. Use empty string for missing values. If the file has no contacts at all, return []. Do not wrap in markdown or add any explanation.";
 
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_DEFAULT });
 
     let parts;
     if (mime.startsWith('text/') || /\.(csv|txt)$/i.test(fileName || '')) {
@@ -3191,7 +3196,7 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
   if (model === 'gemini') {
     if (!settings.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.');
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
-    const gm = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: sanitizeText(systemPrompt) });
+    const gm = genAI.getGenerativeModel({ model: GEMINI_FLASH_DEFAULT, systemInstruction: sanitizeText(systemPrompt) });
     const contents = [];
     let lastRole = '';
     messages.forEach(m => {
@@ -3890,7 +3895,7 @@ app.get('/webhook', (req, res) => {
 
 // Gemini media chain - the automatic fallback when Qwen cannot handle the media
 // (Gemini 3.6 Flash first: it is the most reliable Gemini model for audio/images right now)
-const GEMINI_MEDIA_CHAIN = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview'];
+const GEMINI_MEDIA_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
 async function geminiMediaAnalyze(buffer, mimeType, prompt, settings) {
   const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('Gemini API key is not configured.');

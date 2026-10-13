@@ -303,7 +303,7 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
   for (const p of modelsToTry) {
     try {
       if (p === 'gemini') {
-        const gm = 'gemini-2.5-flash';
+        const gm = 'gemini-flash-latest';
         // thinkingBudget: 0 disables deep chain-of-thought delay, generating in 1-2s
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${geminiKey}`, {
           method: 'POST',

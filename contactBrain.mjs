@@ -465,7 +465,7 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
         });
         if (t) { console.log('[BRAIN AI] 🧠 answered via ' + model); return t; }
       } else if (p === 'gemini') {
-        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash']) {
+        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',

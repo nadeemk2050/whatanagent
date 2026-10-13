@@ -500,7 +500,7 @@ Explain the core mechanism in simple words a beginner can understand immediately
           return resObj;
         }
       } else if (p === 'gemini') {
-        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash']) {
+        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',
@@ -693,7 +693,7 @@ If the actual result is truly not yet published anywhere in the news, estimate t
     const startTime = Date.now();
     try {
       if (p === 'gemini') {
-        for (const gm of ['gemini-2.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash']) {
+        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',

@@ -49,7 +49,7 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'gemini') {
   for (const p of modelsToTry) {
     try {
       if (p === 'gemini') {
-        const gm = 'gemini-2.5-flash';
+        const gm = 'gemini-flash-latest';
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${geminiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
