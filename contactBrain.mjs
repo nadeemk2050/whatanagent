@@ -564,11 +564,22 @@ export async function learnContactStyle(jid, { force = false } = {}) {
     at: Date.now()
   };
   const key = brainKeyFor(jid);
-  await setDoc(doc(brainDb, BRAINS, key), { learned, lastLearnedAt: Date.now() }, { merge: true });
-  const updated = { ...profile, learned, lastLearnedAt: Date.now() };
+  await setDoc(doc(brainDb, BRAINS, key), { learned, lastLearnedAt: learned.at }, { merge: true });
+
+  // Read the document back so the UI can honestly say "saved", not just "request finished".
+  let verified = false;
+  let storedAt = null;
+  try {
+    const check = await getDoc(doc(brainDb, BRAINS, key));
+    const stored = check.exists() ? (check.data() || {}) : {};
+    verified = !!(stored.learned && Number(stored.learned.at) === learned.at);
+    storedAt = Number(stored.lastLearnedAt) || null;
+  } catch (e) { console.warn('[BRAIN] learn verification failed:', e.message); }
+
+  const updated = { ...profile, learned, lastLearnedAt: learned.at };
   brainCache.set(key, { profile: updated, at: Date.now() });
-  console.log('[BRAIN] 🎓 Learned style for ' + key + ' — ' + learned.facts.length + ' facts, ' + learned.topics.length + ' topics');
-  return { ok: true, learned };
+  console.log('[BRAIN] 🎓 Learned style for ' + key + ' — ' + learned.facts.length + ' facts, ' + learned.topics.length + ' topics' + (verified ? ' (verified in DB)' : ''));
+  return { ok: true, learned, verified, savedAt: storedAt || learned.at, facts: learned.facts.length, topics: learned.topics.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -740,7 +751,13 @@ export function registerBrainRoutes(app, db) {
     try {
       const jid = decodeURIComponent(req.params.jid);
       const profile = await saveBrain(jid, req.body || {});
-      res.json({ ok: true, profile });
+      res.json({
+        ok: true,
+        profile,
+        savedAt: profile.updatedAt,
+        learnedPreserved: !!(profile.learned && profile.learned.style),
+        facts: (profile.learned && Array.isArray(profile.learned.facts)) ? profile.learned.facts.length : 0
+      });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -758,7 +775,9 @@ export function registerBrainRoutes(app, db) {
   app.post('/api/brain/:jid/learn', async (req, res) => {
     try {
       const r = await learnContactStyle(decodeURIComponent(req.params.jid), { force: true });
-      res.json(r.ok ? { ok: true, learned: r.learned } : { ok: false, error: r.error });
+      res.json(r.ok
+        ? { ok: true, learned: r.learned, verified: r.verified, savedAt: r.savedAt, facts: r.facts, topics: r.topics }
+        : { ok: false, error: r.error });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 

@@ -2730,7 +2730,8 @@
                             <div id="brPanelJid" style="font-size:11px; color:#94a3b8;"></div>
                         </div>
                         <select id="brPanelMode" title="How the AI handles this person" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#e2e8f0;"></select>
-                        <button onclick="saveBrainCard()" style="background:#16a34a; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Card</button>
+                        <span id="brSaveStatus" style="font-size:11.5px; font-weight:700; color:#86efac; text-align:right; line-height:1.3;"></span>
+                        <button onclick="saveBrainCard()" id="brSaveBtn" style="background:#16a34a; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Card</button>
                         <button onclick="closeBrainPanel()" style="background:#475569; border:none; color:#fff; padding:8px 14px; border-radius:8px; font-weight:bold; cursor:pointer;">✖ Close</button>
                     </div>
                     <div style="display:flex; gap:6px; padding:10px 18px; background:#e2e8f0; flex-wrap:wrap;">
@@ -2834,6 +2835,7 @@
                                     <b>🎓 What the AI learned about this person (from YOUR own past messages + his)</b>
                                     <button onclick="brainLearnNow()" id="brLearnBtn" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🔄 Learn now</button>
                                 </div>
+                                <div id="brLearnConfirm" style="display:none; margin-bottom:10px;"></div>
                                 <div id="brLearnedBox" style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px;"></div>
                             </div>
                         </div>
@@ -10799,6 +10801,7 @@
         brainRenderPersonas();
         brainRenderLearned(p);
         brainRenderDiscussLog();
+        brainSetSaveStatus((brainCurrent.exists && p.updatedAt ? 'Last saved ' + new Date(p.updatedAt).toLocaleString() : 'Not saved yet') + '\n' + brainMemoryLine(p), '#cbd5e1');
     }
 
     function brainRenderPersonas() {
@@ -10893,6 +10896,8 @@
 
     async function saveBrainCard() {
         if (!brainCurrent) return;
+        const btn = document.getElementById('brSaveBtn');
+        if (btn) { btn.disabled = true; btn.innerText = '⏳ Saving…'; }
         try {
             const r = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -10901,9 +10906,15 @@
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'failed');
             brainCurrent.profile = d.profile; brainCurrent.exists = true;
-            toastMsg('💾 Brain card saved — the AI now follows these rules for this person 🧠');
             brainRenderPanel();
-        } catch (e) { toastMsg('❌ ' + e.message); }
+            const when = new Date(d.savedAt || Date.now()).toLocaleString();
+            const mem = d.learnedPreserved
+                ? 'Learned memory kept: ' + (d.facts || 0) + ' facts'
+                : 'No learned memory yet (use 🔄 Learn now in Learned Memory)';
+            brainSetSaveStatus('✅ Card saved ' + when + '\n' + mem, '#86efac');
+            toastMsg('💾 Saved — card rules are now active for this contact. ' + mem);
+        } catch (e) { toastMsg('❌ ' + e.message); brainSetSaveStatus('❌ Not saved — ' + e.message, '#fca5a5'); }
+        finally { if (btn) { btn.disabled = false; btn.innerText = '💾 Save Card'; } }
     }
 
     async function deleteBrainCard() {
@@ -11008,17 +11019,42 @@
     }
 
     // ---------- 🎓 Learned memory ----------
+    function brainMemoryLine(p) {
+        const l = (p && p.learned) || null;
+        if (!l || !l.style) return 'Memory: nothing learned yet';
+        const f = (l.facts || []).length, t = (l.topics || []).length;
+        return 'Memory: ' + f + ' fact' + (f === 1 ? '' : 's') + ' · ' + t + ' topic' + (t === 1 ? '' : 's') + ' · ' + (l.at ? new Date(l.at).toLocaleString() : '—');
+    }
+
+    function brainSetSaveStatus(text, color) {
+        const el = document.getElementById('brSaveStatus');
+        if (!el) return;
+        el.innerText = text || '';
+        el.style.color = color || '#86efac';
+        el.style.whiteSpace = 'pre-line';
+    }
+
+    function brainShowLearnConfirm(html) {
+        const el = document.getElementById('brLearnConfirm');
+        if (!el) return;
+        el.innerHTML = html || '';
+        el.style.display = html ? 'block' : 'none';
+    }
+
     function brainRenderLearned(p) {
         const el = document.getElementById('brLearnedBox');
         if (!el) return;
         const l = (p && p.learned) || null;
         if (!l || !l.style) {
-            el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). After that, <b>every reply follows this understanding automatically</b>, and it keeps updating itself in the background as chats continue.</p>' +
+            brainShowLearnConfirm('');
+            el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). The result is <b>saved to this contact\'s KB immediately</b> — no Save Card needed for it.</p>' +
                 (brainCurrent && brainCurrent.msgCount ? '<div style="font-size:12px; color:#94a3b8; margin-top:8px;">Messages available: ' + brainCurrent.msgCount + '</div>' : '');
             return;
         }
+        const lFacts = (l.facts || []).length, lTopics = (l.topics || []).length;
         el.innerHTML =
-            '<div style="margin-bottom:10px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12px; color:#065f46;">✅ <b>Active:</b> the AI replies according to this understanding on EVERY message to this person, and it re-updates itself automatically as your chats continue (plus 🔄 Learn now any time).</div>' +
+            '<div style="margin-bottom:10px; padding:8px 12px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:8px; font-size:12px; color:#065f46;">✅ <b>Saved in this contact\'s KB</b> — ' + lFacts + ' fact' + (lFacts === 1 ? '' : 's') + ' · ' + lTopics + ' topic' + (lTopics === 1 ? '' : 's') + ' · last learned ' + (l.at ? new Date(l.at).toLocaleString() : '—') + '.<br>' +
+            'The AI replies according to this understanding on EVERY message to this person, and it re-updates itself automatically as your chats continue (plus 🔄 Learn now any time).</div>' +
             '<div style="margin-bottom:10px;"><b>🎨 Your style with him (imitated on every reply):</b><div style="font-size:13.5px; margin-top:4px;">' + escapeHtml(l.style) + '</div></div>' +
             (l.mood ? '<div style="margin-bottom:10px;"><b>🌡️ His mood pattern:</b> <span style="font-size:13.5px;">' + escapeHtml(l.mood) + '</span></div>' : '') +
             ((l.facts && l.facts.length) ? '<div style="margin-bottom:10px;"><b>🧩 Facts remembered:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.facts.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
@@ -11037,8 +11073,18 @@
             if (!r.ok || !d.ok) throw new Error(d.error || 'failed');
             brainCurrent.profile.learned = d.learned;
             brainRenderLearned(brainCurrent.profile);
-            toastMsg('🎓 Learned! The AI will now imitate your style with this person');
-        } catch (e) { toastMsg('❌ ' + e.message); }
+            const facts = (d.learned.facts || []).length, topics = (d.learned.topics || []).length;
+            const when = new Date(d.savedAt || d.learned.at || Date.now()).toLocaleString();
+            const verified = d.verified !== false;
+            brainShowLearnConfirm(
+                '<div style="padding:10px 14px; border-radius:10px; border:1px solid ' + (verified ? '#6ee7b7' : '#fcd34d') + '; background:' + (verified ? '#ecfdf5' : '#fffbeb') + '; color:' + (verified ? '#065f46' : '#92400e') + '; font-size:12.5px; line-height:1.55;">' +
+                (verified ? '✅ <b>Saved and verified in this contact\'s KB.</b>' : '⚠️ <b>Saved, but the read-back check failed — press Learn now again.</b>') +
+                '<br>' + facts + ' fact' + (facts === 1 ? '' : 's') + ' · ' + topics + ' topic' + (topics === 1 ? '' : 's') + ' · ' + when +
+                '<br>This memory is stored immediately — you do <b>not</b> need to press 💾 Save Card for it. Save Card only stores the card rules (personas, dials, notes).</div>'
+            );
+            brainSetSaveStatus('🎓 Memory saved ' + when + '\n' + brainMemoryLine(brainCurrent.profile), '#86efac');
+            toastMsg('✅ Learned & saved — ' + facts + ' facts, ' + topics + ' topics stored for this contact');
+        } catch (e) { toastMsg('❌ ' + e.message); brainShowLearnConfirm('<div style="padding:10px 14px; border-radius:10px; border:1px solid #fca5a5; background:#fef2f2; color:#991b1b; font-size:12.5px;">❌ <b>Not saved:</b> ' + escapeHtml(e.message) + '</div>'); }
         if (btn) { btn.disabled = false; btn.innerText = '🔄 Learn now'; }
     }
 
