@@ -64,3 +64,21 @@ Meta requires your webhook to be accessible via `https`.
 
 - **AI Persona**: You can modify the system instructions for the AI agent in `index.js` under the `generateAIResponse` function.
 - **Handling Images / Audio**: We can extend the receiver under `POST /webhook` to handle media and process them using Gemini.
+
+## 🤖 AI model routing
+
+| Job | Model |
+| --- | --- |
+| WhatsApp text replies, Contact Brain, notes, meeting copilot | `qwen3.8-flash` (Alibaba) |
+| Voice notes | `qwen3-asr-flash` (Alibaba), Gemini audio fallback |
+| Images / cards / OCR | `qwen3.8-omni-flash` (Alibaba) |
+| Strict JSON (gold actuals, trade extractor) | `deepseek-v4.1-flash` (via Alibaba) |
+| PDF / documents / last-resort fallback | `gemini-2.5-flash` |
+
+DeepSeek runs through the Alibaba (DashScope) key by default, so there is one bill and one fewer
+secret to protect. Set `DEEPSEEK_VIA_DASHSCOPE=false` and provide `DEEPSEEK_API_KEY` to bill the
+official DeepSeek API instead; the model name switches to `deepseek-flash` automatically.
+See [aiProviders.mjs](./aiProviders.mjs).
+
+Credentials belong in the hosting environment (Render → Environment), never in the repository or
+the Firestore settings document.
