@@ -4944,7 +4944,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
               const comp = await openai.chat.completions.create({
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: qm,
-                temperature: 0.4
+                temperature: 0.4,
+                extra_body: { enable_thinking: false }
               });
               const t = (comp.choices[0]?.message?.content || '').trim();
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via Qwen ' + qm + ' fallback'); return t; }
@@ -5207,7 +5208,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           { role: 'user', content: customerMessage }
         ],
         model: qm,
-        temperature: 0.4
+        temperature: 0.4,
+        extra_body: { enable_thinking: false }
       });
       const qtxt = (comp.choices[0]?.message?.content || '').trim();
       recordAiCall({
@@ -5295,7 +5297,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           const comp = await openai.chat.completions.create({
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
             model: qm,
-            temperature: 0.4
+            temperature: 0.4,
+            extra_body: { enable_thinking: false }
           });
           const t = (comp.choices[0]?.message?.content || '').trim();
           if (!t) continue;

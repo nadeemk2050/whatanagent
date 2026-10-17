@@ -95,6 +95,7 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${qwenKey}` },
           body: JSON.stringify({
             model: qwenModel,
+            enable_thinking: false,
             temperature: 0.3,
             max_tokens: 1500,
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]

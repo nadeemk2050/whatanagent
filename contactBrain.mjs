@@ -434,7 +434,7 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), ...(p === 'qwen' ? { enable_thinking: false } : {}), temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
           signal: AbortSignal.timeout(60000)
         });
         if (!r.ok) {

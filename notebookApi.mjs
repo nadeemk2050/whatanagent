@@ -42,7 +42,7 @@ async function callNoteAI(db, systemPrompt, userText, preferred) {
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), temperature: 0.4, max_tokens: 1400, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }] }),
+          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), ...(p === 'qwen' ? { enable_thinking: false } : {}), temperature: 0.4, max_tokens: 1400, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }] }),
           signal: AbortSignal.timeout(45000)
         });
         if (!r.ok) { console.warn('[NOTE AI] ' + p + ' HTTP ' + r.status); continue; }
