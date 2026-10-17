@@ -10738,6 +10738,8 @@
         brainActiveTab = tab || 'card';
         brainCurrent = { jid: jid, exists: false, profile: {}, msgCount: 0 };
         brainDiscussCache[jid] = brainDiscussCache[jid] || JSON.parse(localStorage.getItem('brainDiscuss-' + jid) || '[]');
+        brainShowLearnConfirm('');   // never show another contact's "learned" confirmation
+        brainSetSaveStatus('', '#cbd5e1');
         document.getElementById('brainOverlay').style.display = 'block';
         document.getElementById('brPanelName').innerText = 'Loading…';
         document.getElementById('brPanelJid').innerText = jid;
