@@ -8,6 +8,7 @@ import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch
 import { brainPromptSectionForJid, getBrainForReply, saveBrainDraft, escalateBrain } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -4816,6 +4817,8 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
   let systemPrompt = '';
   let geminiKey = '';
   let deepseekKey = '';
+  let deepseekBase = 'https://api.deepseek.com';
+  let deepseekModel = 'deepseek-flash';
   let openaiKey = '';
   let qwenKey = '';
   let qwenBase = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
@@ -4823,7 +4826,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
   // Declared here so the catch-block fallback can use them too (block scope!)
   let cheapOrder = null;
   let tryTextProvider = null;
-  let chosenModel = 'deepseek-chat';
+  let chosenModel = 'deepseek-flash';
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
     settings = settingsSnap.exists() ? settingsSnap.data() : {};
@@ -4864,7 +4867,11 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     }
 
     geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
-    deepseekKey = settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY;
+    // DeepSeek is routed through the Alibaba key by default (same price, one secret less).
+    const dsCfg = resolveDeepSeek(settings);
+    deepseekKey = dsCfg.key;
+    deepseekBase = dsCfg.base;
+    deepseekModel = dsCfg.model;
     openaiKey = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     qwenKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || settings.DASHSCOPE_API_KEY || '';
     qwenBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
@@ -4873,7 +4880,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // fall back through the known-good ids (verified live 2026-10-13).
     const qwenCandidates = Array.from(new Set([qwenModelId, 'qwen3.8-flash', 'qwen-plus', 'qwen-flash'].filter(Boolean)));
 
-    chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-chat';
+    chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-flash';
     // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the best healthy
     // engine — the knowledge-base engine if it is not Gemini, otherwise Qwen (verified working),
     // and only then DeepSeek.
@@ -4881,7 +4888,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
       const kbModel = String(waWebKnowledgeBase.aiModel || '');
       const alt = (!/^gemini/i.test(kbModel) && kbModel)
         ? kbModel
-        : (providerHealthy('qwen') && qwenKey ? 'qwen3.8-flash' : 'deepseek-chat');
+        : (providerHealthy('qwen') && qwenKey ? 'qwen3.8-flash' : 'deepseek-flash');
       console.log('[WA-WEB AI] Gemini unavailable (quota/key) - switching text replies to ' + alt);
       chosenModel = alt;
     }
@@ -4915,14 +4922,15 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
             } catch (e) { noteProviderError('gemini', e); console.warn('[WA-WEB AI] ' + gm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
           }
         } else if (p === 'deepseek' && deepseekKey) {
-          for (const dm of ['deepseek-chat']) {
+          for (const dm of [deepseekModel]) {
             try {
               const { default: OpenAI } = await import('openai');
-              const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+              const openai = new OpenAI({ baseURL: deepseekBase, apiKey: deepseekKey, timeout: 45000 });
               const comp = await openai.chat.completions.create({
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: dm,
-                temperature: 0.4
+                temperature: 0.4,
+                ...deepseekOpenAIOptions(deepseekBase)
               });
               const t = (comp.choices[0]?.message?.content || '').trim();
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek ' + dm + ' fallback'); return t; }
@@ -4989,7 +4997,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
           try {
             const { default: OpenAI } = await import('openai');
             const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 60000 });
-            const vModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+            const vModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-omni-flash';
             const comp = await openai.chat.completions.create({
               messages: [{ role: 'user', content: [
                 { type: 'image_url', image_url: { url: 'data:' + normalizedMime + ';base64,' + mediaData.buffer.toString('base64') } },
@@ -5045,7 +5053,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
         try {
           const { default: OpenAI } = await import('openai');
           const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 60000 });
-          const qwenVisionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+          const qwenVisionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-omni-flash';
           const imgInstruction = 'Customer sent an IMAGE' + (mediaData.caption ? ' (Caption: "' + mediaData.caption + '")' : '') + '. Inspect the image carefully (invoice, product list, payment receipt, business card, document screenshot, etc.) and reply helpfully following our business knowledge and rules. If it contains contact details, list every phone number you can see.';
           const comp = await openai.chat.completions.create({
             messages: [
@@ -5147,19 +5155,20 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // 2. TEXT-BASED AI AUTO-REPLY (Dynamic Model Selection)
     if (chosenModel.startsWith('deepseek') && deepseekKey && providerHealthy('deepseek')) {
       const { default: OpenAI } = await import('openai');
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+      const openai = new OpenAI({ baseURL: deepseekBase, apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: 'deepseek-chat',
-        temperature: 0.4
+        model: deepseekModel,
+        temperature: 0.4,
+        ...deepseekOpenAIOptions(deepseekBase)
       });
       const t = comp.choices[0]?.message?.content || null;
       recordAiCall({
         provider: 'deepseek',
-        model: 'deepseek-chat',
+        model: deepseekModel,
         area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
         isAutoFetch: false,
         prompt: customerMessage,
@@ -5239,16 +5248,17 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     } else if (deepseekKey && providerHealthy('deepseek')) {
       // Automatic Fallback 1: DeepSeek
       const { default: OpenAI } = await import('openai');
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: deepseekKey, timeout: 45000 });
+      const openai = new OpenAI({ baseURL: deepseekBase, apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
-        model: 'deepseek-chat',
-        temperature: 0.4
+        model: deepseekModel,
+        temperature: 0.4,
+        ...deepseekOpenAIOptions(deepseekBase)
       });
       const t = comp.choices[0]?.message?.content || null;
       recordAiCall({
         provider: 'deepseek',
-        model: 'deepseek-chat',
+        model: deepseekModel,
         area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback]',
         isAutoFetch: false,
         prompt: customerMessage,

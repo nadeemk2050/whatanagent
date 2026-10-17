@@ -3,6 +3,7 @@
 // paragraph; refine single paragraphs; extract tasks into AlignTasks; push notes to WhatsApp;
 // import chats from the WhatsApp vault. Registered from index.js via registerNotebookRoutes(app, db).
 import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
+import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 
 const NOTES = 'notes';
 const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
@@ -21,7 +22,10 @@ async function callNoteAI(db, systemPrompt, userText, preferred) {
   const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
   const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const ds = resolveDeepSeek(st);
+  const deepseekKey = ds.key;
+  const deepseekBase = ds.base;
+  const deepseekModel = ds.model;
   const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
   const avail = { qwen: !!qwenKey, gemini: !!geminiKey, deepseek: !!deepseekKey };
   const pref = ['gemini', 'qwen', 'deepseek'].includes(preferred) ? preferred : 'qwen';
@@ -32,13 +36,13 @@ async function callNoteAI(db, systemPrompt, userText, preferred) {
   for (const p of order) {
     try {
       if (p === 'qwen' || p === 'deepseek') {
-        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : (deepseekBase + '/chat/completions');
         const key = p === 'qwen' ? qwenKey : deepseekKey;
-        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const model = p === 'qwen' ? qwenModel : deepseekModel;
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model, temperature: 0.4, max_tokens: 1400, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }] }),
+          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), temperature: 0.4, max_tokens: 1400, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }] }),
           signal: AbortSignal.timeout(45000)
         });
         if (!r.ok) { console.warn('[NOTE AI] ' + p + ' HTTP ' + r.status); continue; }

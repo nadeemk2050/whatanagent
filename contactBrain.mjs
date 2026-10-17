@@ -18,6 +18,7 @@
 
 import { doc, getDoc, setDoc, getDocs, collection, addDoc, deleteDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { isAiAutoFetchStopped, recordAiCall } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 
 let brainDb = null;
 export function attachBrainDb(db) { if (db) brainDb = db; }
@@ -413,7 +414,10 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
   const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
   const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const ds = resolveDeepSeek(st);
+  const deepseekKey = ds.key;
+  const deepseekBase = ds.base;
+  const deepseekModel = ds.model;
 
   const order = [];
   if (qwenKey) order.push('qwen');
@@ -424,13 +428,13 @@ async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 }
     const startTime = Date.now();
     try {
       if (p === 'qwen' || p === 'deepseek') {
-        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : (deepseekBase + '/chat/completions');
         const key = p === 'qwen' ? qwenKey : deepseekKey;
-        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const model = p === 'qwen' ? qwenModel : deepseekModel;
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
-          body: JSON.stringify({ model, temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+          body: JSON.stringify({ model, ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}), temperature, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
           signal: AbortSignal.timeout(60000)
         });
         if (!r.ok) {

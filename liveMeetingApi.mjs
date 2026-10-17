@@ -4,6 +4,7 @@
 import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
 import { sendWaWebMessage } from './waWebClient.js';
 import { recordAiCall } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 import { registerLiveMeetingSessionRoutes } from './liveMeetingSessions.mjs';
 
 const LIVE_ROOMS_COLLECTION = 'liveMeetingRooms';
@@ -22,22 +23,25 @@ async function getAppSettings(db) {
   }
 }
 
-// Multi-model AI for Live Meeting Board (Gemini / DeepSeek / Qwen)
-async function callMeetingAI(db, systemPrompt, userText, preferred = 'gemini') {
+// Multi-model AI for Live Meeting Board (Qwen / DeepSeek / Gemini)
+async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
   const st = await getAppSettings(db);
   const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const ds = resolveDeepSeek(st);
+  const deepseekKey = ds.key;
+  const deepseekBase = ds.base;
+  const deepseekModel = ds.model;
   const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
   const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
 
   const modelsToTry = [];
-  if (geminiKey) modelsToTry.push('gemini');
-  if (deepseekKey) modelsToTry.push('deepseek');
   if (qwenKey) modelsToTry.push('qwen');
+  if (deepseekKey) modelsToTry.push('deepseek');
+  if (geminiKey) modelsToTry.push('gemini');
 
   if (modelsToTry.length === 0) {
-    return "AI Co-pilot is currently offline. Please configure GEMINI_API_KEY or DEEPSEEK_API_KEY in Env Settings.";
+    return "AI Co-pilot is currently offline. Please configure QWEN_API_KEY, DEEPSEEK_API_KEY or GEMINI_API_KEY in Env Settings.";
   }
 
   // Prioritize preferred
@@ -66,11 +70,12 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'gemini') {
           return t;
         }
       } else if (p === 'deepseek') {
-        const r = await fetch('https://api.deepseek.com/chat/completions', {
+        const r = await fetch(deepseekBase + '/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
           body: JSON.stringify({
-            model: 'deepseek-chat',
+            model: deepseekModel,
+            ...deepseekFetchExtras(deepseekBase),
             temperature: 0.3,
             max_tokens: 1500,
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
@@ -81,7 +86,7 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'gemini') {
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'live_meeting', model: 'deepseek-chat', prompt: userText.slice(0, 100), response: t.slice(0, 100), success: true });
+          recordAiCall({ source: 'live_meeting', model: deepseekModel, prompt: userText.slice(0, 100), response: t.slice(0, 100), success: true });
           return t;
         }
       } else if (p === 'qwen') {

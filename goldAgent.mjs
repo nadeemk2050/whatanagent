@@ -7,6 +7,7 @@
 import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
 import { sendWaWebMessage, logBossOrder } from './waWebClient.js';
 import { isAiAutoFetchStopped, recordAiCall, attachAiTrackerDb } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 
 let globalDb = null;
 export function attachGoldDb(db) {
@@ -393,7 +394,10 @@ export async function runQwenEventAnalysis(event) {
   const qwenKey = st.QWEN_API_KEY || process.env.QWEN_API_KEY || st.DASHSCOPE_API_KEY || '';
   const qwenBase = String(st.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   const qwenModel = st.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash';
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const ds = resolveDeepSeek(st);
+  const deepseekKey = ds.key;
+  const deepseekBase = ds.base;
+  const deepseekModel = ds.model;
   const geminiKey = st.GEMINI_API_KEY || process.env.GEMINI_API_KEY || st.geminiApiKey || '';
 
   const systemPrompt = `You are a gold (XAU/USD) macro analyst embedded in a trading-calendar app in Dubai. For each economic event you receive, explain in plain, simple English how the possible results would move gold, and by roughly how much.
@@ -448,14 +452,15 @@ Explain the core mechanism in simple words a beginner can understand immediately
     const startTime = Date.now();
     try {
       if (p === 'qwen' || p === 'deepseek') {
-        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : (deepseekBase + '/chat/completions');
         const key = p === 'qwen' ? qwenKey : deepseekKey;
-        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const model = p === 'qwen' ? qwenModel : deepseekModel;
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
           body: JSON.stringify({
             model,
+            ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}),
             temperature: 0.3,
             max_tokens: 1500,
             messages: [
@@ -656,7 +661,10 @@ export async function fetchEventActualAi(event) {
     };
   }
 
-  const deepseekKey = st.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || '';
+  const ds = resolveDeepSeek(st);
+  const deepseekKey = ds.key;
+  const deepseekBase = ds.base;
+  const deepseekModel = ds.model;
 
   // 1. Scrape live financial newspapers & wire headlines (free web scraping, 0 AI cost)
   const newsArticles = await scrapeFinancialNews(title, ccy, dateStr);
@@ -683,11 +691,11 @@ If the actual result is truly not yet published anywhere in the news, estimate t
   let parsedResult = null;
   let successfulAgent = '';
 
-  // 2. Multi-Agent AI Fallback Cascade: Gemini -> Qwen -> DeepSeek
+  // 2. Multi-Agent AI Fallback Cascade: DeepSeek (best strict JSON) -> Qwen -> Gemini
   const order = [];
-  if (geminiKey) order.push('gemini');
-  if (qwenKey) order.push('qwen');
   if (deepseekKey) order.push('deepseek');
+  if (qwenKey) order.push('qwen');
+  if (geminiKey) order.push('gemini');
 
   for (const p of order) {
     const startTime = Date.now();
@@ -731,14 +739,15 @@ If the actual result is truly not yet published anywhere in the news, estimate t
           if (parsedResult) break;
         }
       } else if (p === 'qwen' || p === 'deepseek') {
-        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : 'https://api.deepseek.com/chat/completions';
+        const url = p === 'qwen' ? (qwenBase + '/chat/completions') : (deepseekBase + '/chat/completions');
         const key = p === 'qwen' ? qwenKey : deepseekKey;
-        const model = p === 'qwen' ? qwenModel : 'deepseek-chat';
+        const model = p === 'qwen' ? qwenModel : deepseekModel;
         const r = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
           body: JSON.stringify({
             model,
+            ...(p === 'deepseek' ? deepseekFetchExtras(deepseekBase) : {}),
             temperature: 0.1,
             max_tokens: 350,
             messages: [

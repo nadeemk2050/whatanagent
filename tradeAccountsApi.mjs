@@ -17,6 +17,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { recordAiCall } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 
 let tradeDb = null;
 export function attachTradeDb(db) {
@@ -262,9 +263,11 @@ export function computeTradeSummary(entries = []) {
 }
 
 // AI Helper: Call Multi-Model LLM for trade scanning
-async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gemini') {
+async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'deepseek') {
   let geminiKey = process.env.GEMINI_API_KEY || '';
   let deepseekKey = process.env.DEEPSEEK_API_KEY || '';
+  let deepseekBase = '';
+  let deepseekModel = '';
   let qwenKey = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || '';
   let qwenBase = String(process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/+$/, '');
   let qwenModel = process.env.QWEN_MODEL || 'qwen3.8-flash';
@@ -285,11 +288,17 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
     } catch (e) { /* ignore */ }
   }
 
+  // DeepSeek is routed through the Alibaba key by default (same price, one secret less).
+  const ds = resolveDeepSeek({ DEEPSEEK_API_KEY: deepseekKey, QWEN_API_KEY: qwenKey, QWEN_BASE_URL: qwenBase });
+  deepseekKey = ds.key;
+  deepseekBase = ds.base;
+  deepseekModel = ds.model;
+
   const modelsToTry = [];
-  if (geminiKey) modelsToTry.push('gemini');
-  if (qwenKey) modelsToTry.push('qwen');
-  if (openaiKey) modelsToTry.push('openai');
   if (deepseekKey) modelsToTry.push('deepseek');
+  if (qwenKey) modelsToTry.push('qwen');
+  if (geminiKey) modelsToTry.push('gemini');
+  if (openaiKey) modelsToTry.push('openai');
 
   if (modelsToTry.length === 0) {
     throw new Error('No AI API key found. Please configure Gemini, Qwen or OpenAI key.');
@@ -374,11 +383,12 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
           return t;
         }
       } else if (p === 'deepseek') {
-        const r = await fetch('https://api.deepseek.com/chat/completions', {
+        const r = await fetch(deepseekBase + '/chat/completions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
           body: JSON.stringify({
-            model: 'deepseek-chat',
+            model: deepseekModel,
+            ...deepseekFetchExtras(deepseekBase),
             temperature: 0.1,
             max_tokens: 3500,
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }]
@@ -389,7 +399,7 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'gem
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'trade_extractor', model: 'deepseek-chat', prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          recordAiCall({ source: 'trade_extractor', model: deepseekModel, prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
           return t;
         }
       }

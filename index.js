@@ -18,6 +18,7 @@ import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -424,12 +425,14 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
         temperature: 0.4
       });
       reply = comp.choices[0]?.message?.content || '';
-    } else if (settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY) {
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY, timeout: 30000 });
+    } else if (hasDeepSeek(settings)) {
+      const ds = resolveDeepSeek(settings);
+      const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 30000 });
       const comp = await openai.chat.completions.create({
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
-        model: 'deepseek-chat',
-        temperature: 0.4
+        model: ds.model,
+        temperature: 0.4,
+        ...deepseekOpenAIOptions(ds.base)
       });
       reply = comp.choices[0]?.message?.content || '';
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
@@ -538,12 +541,14 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         temperature: 0.5
       });
       reply = completion.choices[0]?.message?.content || '';
-    } else if (chosenModel.startsWith('deepseek') && settings.DEEPSEEK_API_KEY) {
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
+    } else if (chosenModel.startsWith('deepseek') && hasDeepSeek(settings)) {
+      const ds = resolveDeepSeek(settings);
+      const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 60000 });
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        model: 'deepseek-chat',
-        temperature: 0.5
+        model: ds.model,
+        temperature: 0.5,
+        ...deepseekOpenAIOptions(ds.base)
       });
       reply = completion.choices[0]?.message?.content || '';
     } else if (chosenModel.startsWith('gemini') && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
@@ -563,12 +568,14 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         temperature: 0.5
       });
       reply = completion.choices[0]?.message?.content || '';
-    } else if (settings.DEEPSEEK_API_KEY) {
-      const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 60000 });
+    } else if (hasDeepSeek(settings)) {
+      const ds = resolveDeepSeek(settings);
+      const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 60000 });
       const completion = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, ...messages],
-        model: 'deepseek-chat',
-        temperature: 0.5
+        model: ds.model,
+        temperature: 0.5,
+        ...deepseekOpenAIOptions(ds.base)
       });
       reply = completion.choices[0]?.message?.content || '';
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
@@ -776,7 +783,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
 
   // A missing key for the SELECTED provider is no longer fatal: the automatic provider switch below
   // completes the reply with any other configured engine (Qwen / Gemini / DeepSeek).
-  if (provider === 'deepseek' && !settings.DEEPSEEK_API_KEY) console.warn('[AI] DeepSeek key missing - auto-switching provider');
+  if (provider === 'deepseek' && !hasDeepSeek(settings)) console.warn('[AI] DeepSeek key missing - auto-switching provider');
   if (provider === 'gemini' && !settings.GEMINI_API_KEY) console.warn('[AI] Gemini key missing - auto-switching provider');
 
   try {
@@ -936,7 +943,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     const custHasKey = {
       gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
       qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
-      deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
+      deepseek: hasDeepSeek(settings)
     };
     const custOrder = orderedProviders(provider, custHasKey);
     let custErr = null;
@@ -958,14 +965,13 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
           });
           finalReply = (completion.choices[0].message.content || '').trim();
         } else {
-          const openai = new OpenAI({
-            baseURL: 'https://api.deepseek.com',
-            apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY
-          });
+          const ds = resolveDeepSeek(settings);
+          const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key });
           const completion = await openai.chat.completions.create({
             messages: dsMessages,
-            model: "deepseek-chat",
+            model: ds.model,
             temperature: 0.7,
+            ...deepseekOpenAIOptions(ds.base)
           });
           finalReply = (completion.choices[0].message.content || '').trim();
         }
@@ -1350,7 +1356,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
     const bossHasKey = {
       gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
       qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
-      deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY)
+      deepseek: hasDeepSeek(settings)
     };
     const bossOrder = orderedProviders(provider, bossHasKey);
     let finalReply = "";
@@ -1373,11 +1379,13 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
           });
           finalReply = (completion.choices[0].message.content || '').trim();
         } else {
-          const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY });
+          const ds = resolveDeepSeek(settings);
+          const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key });
           const completion = await openai.chat.completions.create({
             messages: chatMessages,
-            model: "deepseek-chat",
+            model: ds.model,
             temperature: 0.3,
+            ...deepseekOpenAIOptions(ds.base)
           });
           finalReply = (completion.choices[0].message.content || '').trim();
         }
@@ -3161,7 +3169,7 @@ function stripSeoActionBlocks(text) {
 async function workspaceModelReply(systemPrompt, messages, model, settings) {
   const wsAvailable = {
     gemini: !!(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
-    deepseek: !!(settings.DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY),
+    deepseek: hasDeepSeek(settings),
     qwen: !!(settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY)
   };
   const order = orderedProviders(model || 'deepseek', wsAvailable);
@@ -3212,15 +3220,17 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
     const result = await generateContentWithRetry(gm, { contents });
     return result.response.text().trim();
   }
-  if (!settings.DEEPSEEK_API_KEY) throw new Error('DeepSeek API key is not configured.');
-  const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: settings.DEEPSEEK_API_KEY, timeout: 120000, maxRetries: 1 });
+  const ds = resolveDeepSeek(settings);
+  if (!ds.key) throw new Error('DeepSeek API key is not configured.');
+  const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 120000, maxRetries: 1 });
   const t0 = Date.now();
   const completion = await openai.chat.completions.create({
     messages: [{ role: 'system', content: sanitizeText(systemPrompt) }].concat(messages.map(m => ({ role: m.role, content: sanitizeText(m.content) }))),
-    model: 'deepseek-chat',
-    temperature: 0.4
+    model: ds.model,
+    temperature: 0.4,
+    ...deepseekOpenAIOptions(ds.base)
   });
-  console.log('[AI WORKSPACE] deepseek reply in ' + (Date.now() - t0) + 'ms (' + ((completion.usage && completion.usage.total_tokens) || '?') + ' tokens)');
+  console.log('[AI WORKSPACE] ' + ds.model + ' reply in ' + (Date.now() - t0) + 'ms (' + ((completion.usage && completion.usage.total_tokens) || '?') + ' tokens)');
   return (completion.choices[0].message.content || '').trim();
 }
 
@@ -3950,7 +3960,7 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
   if (qwenKey && imageBuffer && imageBuffer.length) {
     try {
       const compatBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim().replace(/\/+$/, '');
-      const visionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-max';
+      const visionModel = settings.QWEN_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3.8-omni-flash';
       const mime = (String(mimeType || 'image/jpeg').split(';')[0] || 'image/jpeg').trim().toLowerCase();
       const r = await axios.post(compatBase + '/chat/completions', {
         model: visionModel,

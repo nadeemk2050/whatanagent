@@ -25,23 +25,30 @@ const LOGS_DOC = ['appData', 'aiActivityLogs'];
 
 // Estimated Pricing ($ per 1,000,000 tokens)
 const MODEL_PRICING = {
-  // DeepSeek
-  'deepseek-chat': { inPerM: 0.14, outPerM: 0.28 },
-  'deepseek-coder': { inPerM: 0.14, outPerM: 0.28 },
-  'deepseek': { inPerM: 0.14, outPerM: 0.28 },
+  // DeepSeek (V4.1 Flash; billed at the same rate through Alibaba Model Studio)
+  'deepseek-v4.1-flash': { inPerM: 0.30, outPerM: 1.20 },
+  'deepseek-flash': { inPerM: 0.30, outPerM: 1.20 },
+  'deepseek-v4-flash': { inPerM: 0.30, outPerM: 1.20 },
+  'deepseek-chat': { inPerM: 0.30, outPerM: 1.20 },
+  'deepseek-coder': { inPerM: 0.30, outPerM: 1.20 },
+  'deepseek': { inPerM: 0.30, outPerM: 1.20 },
 
   // Google Gemini
-  'gemini-2.5-flash': { inPerM: 0.075, outPerM: 0.30 },
-  'gemini-1.5-flash': { inPerM: 0.075, outPerM: 0.30 },
-  'gemini-3.6-flash': { inPerM: 0.075, outPerM: 0.30 },
-  'gemini-1.5-pro': { inPerM: 1.25, outPerM: 5.00 },
-  'gemini': { inPerM: 0.075, outPerM: 0.30 },
+  'gemini-2.5-flash': { inPerM: 0.30, outPerM: 2.50 },
+  'gemini-2.5-pro': { inPerM: 1.25, outPerM: 10.00 },
+  'gemini-3.5-flash': { inPerM: 1.50, outPerM: 9.00 },
+  'gemini-3.6-flash': { inPerM: 0.75, outPerM: 3.75 },
+  'gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75 },
+  'gemini-flash-latest': { inPerM: 0.75, outPerM: 3.75 },
+  'gemini': { inPerM: 0.75, outPerM: 3.75 },
 
   // Alibaba Qwen (DashScope)
-  'qwen3.8-flash': { inPerM: 0.20, outPerM: 0.40 },
+  'qwen3.8-flash': { inPerM: 0.15, outPerM: 0.47 },
+  'qwen3.8-omni-flash': { inPerM: 0.15, outPerM: 0.47 },
+  'qwen3.8-max': { inPerM: 2.00, outPerM: 6.00 },
   'qwen-plus': { inPerM: 0.40, outPerM: 1.20 },
   'qwen-max': { inPerM: 1.60, outPerM: 4.80 },
-  'qwen': { inPerM: 0.30, outPerM: 0.60 },
+  'qwen': { inPerM: 0.15, outPerM: 0.47 },
 
   // OpenAI
   'gpt-4o': { inPerM: 2.50, outPerM: 10.00 },
