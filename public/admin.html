@@ -11558,7 +11558,9 @@
           const res = await fetch('/api/brain-powers?jid=' + encodeURIComponent(jid));
           const data = await res.json();
           if (data && data.ok) {
-            document.getElementById('aiPowersContactName').textContent = data.name || (typeof resolveContactName === 'function' ? resolveContactName(jid) : 'Contact');
+            const uiChatName = (document.getElementById('waWebChatName') && document.getElementById('waWebChatName').innerText.trim()) || '';
+            const finalName = (uiChatName && uiChatName !== 'Unsaved WhatsApp contact') ? uiChatName : (data.name || (typeof resolveContactName === 'function' ? resolveContactName(jid) : 'Contact'));
+            document.getElementById('aiPowersContactName').textContent = finalName;
             
             // Mode
             const mode = data.mode || 'auto';
@@ -11628,7 +11630,11 @@
           });
           const data = await res.json();
           if (data && data.ok) {
-            if (typeof toastMsg === 'function') toastMsg('✅ AI Powers & Modalities saved successfully for ' + currentAiPowersJid);
+            const visionAllowed = modalities.allowImage || modalities.allowDoc;
+            const msg = visionAllowed
+              ? '✅ AI Powers saved! Images & PDF Documents are now ALLOWED for this chat.'
+              : '✅ AI Powers & Modalities saved successfully.';
+            if (typeof toastMsg === 'function') toastMsg(msg);
             closeChatAiPowersModal();
           } else {
             alert('Failed to save: ' + ((data && data.error) || 'Unknown error'));

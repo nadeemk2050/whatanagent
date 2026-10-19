@@ -241,6 +241,16 @@ let brainConfigMem = null, brainConfigAt = 0;
 const sanitizeJid = (jid) => sstr(jid, 80).replace(/[^a-zA-Z0-9._@:-]/g, '_');
 export const brainKeyFor = (jid) => sanitizeJid(jid);
 
+let brainAliasResolver = null;
+export function registerBrainAliasResolver(fn) {
+  brainAliasResolver = fn;
+}
+
+let brainPowersSaveHook = null;
+export function registerBrainPowersSaveHook(fn) {
+  brainPowersSaveHook = fn;
+}
+
 export async function getBrainConfig() {
   if (brainConfigMem && (Date.now() - brainConfigAt) < BRAIN_TTL_MS) return brainConfigMem;
   const defaults = { autoClassifyNew: true, learningEnabled: true };
@@ -268,18 +278,78 @@ export async function saveBrainConfig(patch) {
 export async function getBrain(jid, { fresh = false } = {}) {
   if (!brainDb || !jid) return null;
   if (jid.endsWith('@g.us')) return null; // groups have no brain cards
-  const key = brainKeyFor(jid);
-  const hit = brainCache.get(key);
+
+  const primaryKey = brainKeyFor(jid);
+  const hit = brainCache.get(primaryKey);
   if (!fresh && hit && (Date.now() - hit.at) < BRAIN_TTL_MS) return hit.profile;
+
+  // 1. Direct doc lookup by primary key
   try {
-    const snap = await getDoc(doc(brainDb, BRAINS, key));
-    const profile = snap.exists() ? snap.data() : null;
-    brainCache.set(key, { profile, at: Date.now() });
-    return profile;
+    const snap = await getDoc(doc(brainDb, BRAINS, primaryKey));
+    if (snap.exists()) {
+      const profile = snap.data();
+      brainCache.set(primaryKey, { profile, at: Date.now() });
+      return profile;
+    }
   } catch (e) {
-    console.warn('[BRAIN] read failed for ' + key + ':', e.message);
-    return hit ? hit.profile : null;
+    console.warn('[BRAIN] read failed for ' + primaryKey + ':', e.message);
   }
+
+  // 2. Candidate alias lookups (LID <-> Real Phone JID / Clean digits)
+  const candidateKeys = [];
+  if (typeof brainAliasResolver === 'function') {
+    try {
+      const aliases = brainAliasResolver(jid);
+      if (Array.isArray(aliases)) {
+        for (const a of aliases) {
+          const k = brainKeyFor(a);
+          if (k && k !== primaryKey && !candidateKeys.includes(k)) candidateKeys.push(k);
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  const digits = String(jid).replace(/[^0-9]/g, '');
+  if (digits && digits.length <= 15) {
+    const pk = brainKeyFor(digits + '@s.whatsapp.net');
+    if (pk !== primaryKey && !candidateKeys.includes(pk)) candidateKeys.push(pk);
+  }
+
+  for (const altKey of candidateKeys) {
+    const altHit = brainCache.get(altKey);
+    if (!fresh && altHit && (Date.now() - altHit.at) < BRAIN_TTL_MS) {
+      if (altHit.profile) {
+        brainCache.set(primaryKey, { profile: altHit.profile, at: Date.now() });
+        return altHit.profile;
+      }
+    }
+    try {
+      const snap = await getDoc(doc(brainDb, BRAINS, altKey));
+      if (snap.exists()) {
+        const profile = snap.data();
+        brainCache.set(primaryKey, { profile, at: Date.now() });
+        brainCache.set(altKey, { profile, at: Date.now() });
+        return profile;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // 3. Fallback: query Firestore collection by 'phone' field
+  if (digits && digits.length >= 7) {
+    try {
+      const q = query(collection(brainDb, BRAINS), where('phone', '==', digits), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        const found = qSnap.docs[0];
+        const profile = found.data();
+        brainCache.set(primaryKey, { profile, at: Date.now() });
+        brainCache.set(found.id, { profile, at: Date.now() });
+        return profile;
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  return hit ? hit.profile : null;
 }
 
 export async function saveBrain(jid, rawProfile) {
@@ -287,9 +357,25 @@ export async function saveBrain(jid, rawProfile) {
   const key = brainKeyFor(jid);
   const snap = await getDoc(doc(brainDb, BRAINS, key));
   const existing = snap.exists() ? (snap.data() || {}) : {};
-  const profile = sanitizeProfile({ ...rawProfile, jid }, existing);
+  let resolvedPhone = rawProfile.phone || existing.phone || '';
+  if (!resolvedPhone && typeof brainAliasResolver === 'function') {
+    try {
+      const aliases = brainAliasResolver(jid);
+      for (const a of (aliases || [])) {
+        const d = String(a).replace(/[^0-9]/g, '');
+        if (d && d.length >= 7 && d.length <= 15) { resolvedPhone = d; break; }
+      }
+    } catch (e) { /* ignore */ }
+  }
+  const profile = sanitizeProfile({ ...rawProfile, phone: resolvedPhone || rawProfile.phone, jid }, existing);
   await setDoc(doc(brainDb, BRAINS, key), profile, { merge: true });
   brainCache.set(key, { profile, at: Date.now() });
+
+  if (resolvedPhone) {
+    const phoneKey = brainKeyFor(resolvedPhone + '@s.whatsapp.net');
+    if (phoneKey !== key) brainCache.set(phoneKey, { profile, at: Date.now() });
+  }
+
   return profile;
 }
 
@@ -725,7 +811,20 @@ export function registerBrainRoutes(app, db) {
       if (modalities && typeof modalities === 'object') patch.modalities = modalities;
       if (permissions && typeof permissions === 'object') patch.permissions = permissions;
       
+      patch.powersConfigured = true;
+      patch.autoCreated = false;
+      patch.powersConfiguredAt = Date.now();
+
       const saved = await saveBrain(jid, { ...(profile || {}), ...patch });
+
+      if (typeof brainPowersSaveHook === 'function') {
+        try {
+          await brainPowersSaveHook(jid, modalities, saved);
+        } catch (hErr) {
+          console.warn('[BRAIN] brainPowersSaveHook error:', hErr.message);
+        }
+      }
+
       res.json({ ok: true, profile: saved });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

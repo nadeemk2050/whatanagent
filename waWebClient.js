@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
-import { brainPromptSectionForJid, getBrainForReply, saveBrainDraft, escalateBrain } from './contactBrain.mjs';
+import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
@@ -2343,8 +2343,77 @@ function phonesMatchLoose(a, b) {
   return min >= 9 && (a.endsWith(b) || b.endsWith(a));
 }
 
-export function isVisualMediaAllowedFor(jid) {
-  const mode = String(waWebKnowledgeBase.mediaAiMode || 'selected').toLowerCase();
+// Register LID <-> Phone alias resolver for Contact Brain
+if (typeof registerBrainAliasResolver === 'function') {
+  registerBrainAliasResolver((jid) => {
+    const aliases = [];
+    const clean = jidUser(jid);
+    const realPhone = resolveRealPhoneNumber(jid);
+    if (realPhone && realPhone !== clean) {
+      aliases.push(realPhone + '@s.whatsapp.net');
+    }
+    for (const [l, p] of lidToPhoneMap.entries()) {
+      if (p === clean || (realPhone && p === realPhone)) {
+        if (l !== clean) aliases.push(l + '@lid');
+      }
+    }
+    return aliases;
+  });
+}
+
+// Synchronize allowed power customer in knowledge base when AI powers modal is saved
+export async function syncMediaAiAllowedFromPowers(jid, modalities, profile = null) {
+  if (!modalities) return;
+  const allowVision = modalities.allowImage === true || modalities.allowDoc === true;
+  const senderDigits = digitsOf(jidUser(jid));
+  const resolvedDigits = digitsOf(resolveRealPhoneNumber(jid) || (profile && profile.phone) || '');
+  const targetNumber = resolvedDigits || (senderDigits.length <= 15 ? senderDigits : '');
+
+  // If user is allowing vision for someone, ensure global mediaAiMode is not 'off'
+  if (allowVision && waWebKnowledgeBase.mediaAiMode === 'off') {
+    waWebKnowledgeBase.mediaAiMode = 'selected';
+    console.log('[WA-WEB KB] Changed mediaAiMode from off -> selected because power customer was enabled');
+  }
+
+  let list = Array.isArray(waWebKnowledgeBase.mediaAiAllowed)
+    ? [...waWebKnowledgeBase.mediaAiAllowed]
+    : String(waWebKnowledgeBase.mediaAiAllowed || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+
+  if (targetNumber && targetNumber.length >= 7) {
+    const exists = list.some(n => phonesMatchLoose(n, targetNumber));
+    if (allowVision && !exists) {
+      list.push(targetNumber);
+    } else if (!allowVision && exists) {
+      list = list.filter(n => !phonesMatchLoose(n, targetNumber));
+    }
+  }
+  if (senderDigits && senderDigits.length >= 7 && senderDigits !== targetNumber) {
+    if (allowVision && !list.includes(senderDigits)) list.push(senderDigits);
+    else if (!allowVision) list = list.filter(x => x !== senderDigits);
+  }
+
+  waWebKnowledgeBase.mediaAiAllowed = list;
+  if (globalDb) {
+    try {
+      await setDoc(doc(globalDb, "appData", "waWebKnowledgeBase"), {
+        mediaAiMode: waWebKnowledgeBase.mediaAiMode || 'selected',
+        mediaAiAllowed: waWebKnowledgeBase.mediaAiAllowed
+      }, { merge: true });
+      console.log(`[WA-WEB KB] Synchronized mediaAiAllowed (${list.length} entries) & mode (${waWebKnowledgeBase.mediaAiMode}) to Firestore`);
+    } catch (e) {
+      console.warn('[WA-WEB KB] Error persisting mediaAiAllowed sync:', e.message);
+    }
+  }
+}
+
+// Register save hook with contactBrain
+if (typeof registerBrainPowersSaveHook === 'function') {
+  registerBrainPowersSaveHook(async (jid, modalities, profile) => {
+    await syncMediaAiAllowedFromPowers(jid, modalities, profile);
+  });
+}
+
+export async function isVisualMediaAllowedFor(jid, mediaType = 'image') {
   const senderDigits = digitsOf(jidUser(jid));
   const resolvedDigits = digitsOf(resolveRealPhoneNumber(jid) || '');
   const configuredBoss = digitsOf(waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592');
@@ -2357,14 +2426,61 @@ export function isVisualMediaAllowedFor(jid) {
     (configuredBoss && (senderDigits.endsWith(configuredBoss) || resolvedDigits.endsWith(configuredBoss) || configuredBoss.endsWith(senderDigits)));
   if (isBoss) return true;
 
-  if (mode === 'all') return true;
-  if (mode === 'off') return false;
+  // 1. HIGHEST PRIORITY: Check Contact Brain & Per-Chat AI Powers
+  try {
+    const brain = await getBrain(jid);
+    if (brain && brain.modalities) {
+      const m = brain.modalities;
+      const isExplicit = brain.powersConfigured === true || brain.autoCreated === false || (brain.updatedAt && brain.createdAt && brain.updatedAt > brain.createdAt);
+      if (isExplicit) {
+        if (mediaType === 'image') {
+          if (m.allowImage === true) {
+            console.log(`[WA-WEB MEDIA] ✅ Image allowed by Contact AI Powers for ${jid} (${brain.name || 'contact'})`);
+            return true;
+          }
+          if (m.allowImage === false) {
+            console.log(`[WA-WEB MEDIA] ⛔ Image blocked by Contact AI Powers for ${jid}`);
+            return false;
+          }
+        } else if (mediaType === 'document') {
+          if (m.allowDoc === true) {
+            console.log(`[WA-WEB MEDIA] ✅ Document/PDF allowed by Contact AI Powers for ${jid} (${brain.name || 'contact'})`);
+            return true;
+          }
+          if (m.allowDoc === false) {
+            console.log(`[WA-WEB MEDIA] ⛔ Document/PDF blocked by Contact AI Powers for ${jid}`);
+            return false;
+          }
+        } else if (mediaType === 'video') {
+          if (m.allowVideo === true) return true;
+          if (m.allowVideo === false) return false;
+        } else if (mediaType === 'audio') {
+          if (m.allowAudio === true) return true;
+          if (m.allowAudio === false) return false;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[WA-WEB MEDIA] Error checking contact brain modalities:', e.message);
+  }
 
+  // 2. Global Power Customers List (waWebKnowledgeBase.mediaAiAllowed)
   const rawList = waWebKnowledgeBase.mediaAiAllowed;
   const list = (Array.isArray(rawList) ? rawList : String(rawList || '').split(/[\n,;]+/))
     .map(digitsOf)
     .filter(n => n.length >= 7);
-  return list.some(n => phonesMatchLoose(n, senderDigits) || phonesMatchLoose(n, resolvedDigits));
+  if (list.some(n => phonesMatchLoose(n, senderDigits) || phonesMatchLoose(n, resolvedDigits))) {
+    console.log(`[WA-WEB MEDIA] ✅ Media allowed by Global Power Customers list for ${jid}`);
+    return true;
+  }
+
+  // 3. Global Vision Mode (all / off / selected)
+  const mode = String(waWebKnowledgeBase.mediaAiMode || 'selected').toLowerCase();
+  if (mode === 'all') return true;
+  if (mode === 'off') return false;
+
+  // In 'selected' mode, if neither individual AI power nor global list allowed it:
+  return false;
 }
 
 export function visualMediaBlockedReplyText() {
@@ -4968,7 +5084,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // (boss always allowed). Text chat and voice notes remain available to EVERY customer.
     if (mediaData && mediaData.buffer && mediaData.buffer.length > 0 &&
         (mediaData.mediaType === 'image' || mediaData.mediaType === 'document') &&
-        !isVisualMediaAllowedFor(jid)) {
+        !(await isVisualMediaAllowedFor(jid, mediaData.mediaType))) {
       const blocked = visualMediaBlockedReplyText();
       console.log('[WA-WEB MEDIA] ⛔ Vision skipped for non-power customer ' + jid + ' (' + mediaData.mediaType + ') - polite text-only notice sent');
       return blocked;
