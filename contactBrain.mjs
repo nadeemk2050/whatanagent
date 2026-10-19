@@ -159,6 +159,10 @@ export function sanitizeProfile(raw, existing = {}) {
   p.notes = sstr(raw.notes != null ? raw.notes : existing.notes, 1000);
   p.humanDelay = asBool(raw.humanDelay != null ? raw.humanDelay : existing.humanDelay);
   p.learnEnabled = raw.learnEnabled != null ? asBool(raw.learnEnabled) : (existing.learnEnabled !== false);
+  // 🎓 AI Staff assignment (optional). agentId points at a document in the `agents` collection.
+  // agentManual records that the owner picked it by hand, which is required for Personal agents.
+  p.agentId = sstr(raw.agentId != null ? raw.agentId : existing.agentId, 80);
+  p.agentManual = raw.agentManual != null ? asBool(raw.agentManual) : !!existing.agentManual;
   p.autoCreated = existing.autoCreated === true;
   p.createdAt = existing.createdAt || Date.now();
   p.updatedAt = Date.now();

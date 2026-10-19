@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎓 AI Staff Academy</title>
+<style>
+  :root { --bg:#f1f5f9; --card:#fff; --border:#e2e8f0; --text:#0f172a; --muted:#64748b; --brand:#7c3aed; --ok:#16a34a; --warn:#d97706; --danger:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+  .hidden { display:none !important; }
+  /* ---------- login ---------- */
+  #authWrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  #authCard { background:#fff; padding:26px; border-radius:14px; box-shadow:0 10px 30px rgba(15,23,42,.12); width:100%; max-width:380px; }
+  #authCard h2 { margin:0 0 4px; font-size:20px; }
+  #authCard p { margin:0 0 16px; color:var(--muted); font-size:13px; }
+  #authCard input { width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:9px; margin-bottom:10px; font-size:14px; }
+  #authCard button { width:100%; padding:11px; border:none; border-radius:9px; background:var(--brand); color:#fff; font-weight:700; cursor:pointer; font-size:14px; }
+  /* ---------- shell ---------- */
+  #app { max-width:1240px; margin:0 auto; padding:14px 14px 60px; }
+  header.top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#0f172a; color:#fff; padding:14px 16px; border-radius:14px; margin-bottom:14px; }
+  header.top .brand { font-size:17px; font-weight:800; }
+  header.top .brand small { display:block; font-size:11px; color:#94a3b8; font-weight:500; }
+  .top-actions { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .btn { border:none; border-radius:9px; padding:9px 14px; font-weight:700; font-size:12.5px; cursor:pointer; }
+  .btn-primary { background:var(--brand); color:#fff; }
+  .btn-green { background:var(--ok); color:#fff; }
+  .btn-ghost { background:#1e293b; color:#e2e8f0; }
+  .btn-warn { background:var(--warn); color:#fff; }
+  .btn-danger { background:var(--danger); color:#fff; }
+  .btn-sm { padding:6px 10px; font-size:11.5px; }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .link { color:#fff; text-decoration:none; font-size:12px; opacity:.85; }
+  /* ---------- counters + tabs ---------- */
+  .counters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .counter { background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px 14px; min-width:120px; flex:1; }
+  .counter b { display:block; font-size:20px; }
+  .counter span { font-size:11px; color:var(--muted); }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .tab { background:#fff; border:1px solid var(--border); border-radius:20px; padding:8px 14px; font-size:12.5px; font-weight:700; cursor:pointer; color:#334155; }
+  .tab.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+  /* ---------- cards ---------- */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:12px; }
+  .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .card-head { display:flex; gap:10px; align-items:center; }
+  .avatar { width:44px; height:44px; border-radius:12px; background:#ede9fe; display:flex; align-items:center; justify-content:center; font-size:22px; overflow:hidden; flex:0 0 auto; }
+  .avatar img { width:100%; height:100%; object-fit:cover; }
+  .card-name { font-weight:800; font-size:14.5px; }
+  .card-role { font-size:11.5px; color:var(--muted); }
+  .chip { display:inline-block; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:10px; background:#f1f5f9; color:#334155; }
+  .chip.ready { background:#dcfce7; color:#166534; }
+  .chip.newly_hired { background:#e0f2fe; color:#075985; }
+  .chip.under_training { background:#fef3c7; color:#92400e; }
+  .chip.archived { background:#e2e8f0; color:#475569; }
+  .bar { height:7px; background:#eef2f7; border-radius:99px; overflow:hidden; }
+  .bar > div { height:100%; background:linear-gradient(90deg,#7c3aed,#22c55e); }
+  .meta-row { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); }
+  .card-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+  /* ---------- modal / overlay ---------- */
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:1200; display:none; overflow-y:auto; padding:16px; }
+  .overlay.open { display:block; }
+  .sheet { background:var(--card); border-radius:16px; max-width:1000px; margin:0 auto; overflow:hidden; }
+  .sheet-head { background:#0f172a; color:#fff; padding:12px 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .sheet-head .grow { flex:1; min-width:160px; }
+  .sheet-body { padding:16px; }
+  .sheet-tabs { display:flex; gap:6px; overflow-x:auto; padding:10px 16px; background:#e2e8f0; }
+  .st { white-space:nowrap; border:1px solid #94a3b8; background:#fff; color:#334155; border-radius:16px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+  .st.active { background:#0f172a; color:#fff; border-color:#0f172a; }
+  label.f { display:block; font-size:11.5px; font-weight:700; color:#334155; margin:10px 0 4px; }
+  input.f, select.f, textarea.f { width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:9px; font-size:13px; font-family:inherit; background:#fff; }
+  textarea.f { min-height:74px; resize:vertical; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  @media (max-width:640px){ .row2,.row3{ grid-template-columns:1fr; } }
+  .sect { background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .sect h4 { margin:0 0 8px; font-size:13px; }
+  .item { background:#fff; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:8px; }
+  .item .t { font-weight:700; font-size:12.5px; }
+  .item .d { font-size:12px; color:#334155; white-space:pre-wrap; margin-top:4px; }
+  .item .x { font-size:10.5px; color:var(--muted); margin-top:4px; }
+  .bubble { padding:9px 12px; border-radius:12px; max-width:86%; font-size:13px; white-space:pre-wrap; margin-bottom:8px; }
+  .bubble.me { background:#ede9fe; color:#4c1d95; margin-left:auto; }
+  .bubble.ai { background:#f1f5f9; color:#0f172a; }
+  #chatLog { min-height:180px; max-height:45vh; overflow-y:auto; padding:8px; background:#fbfdff; border:1px solid var(--border); border-radius:10px; }
+  table.res { width:100%; border-collapse:collapse; font-size:12px; }
+  table.res th, table.res td { border-bottom:1px solid var(--border); padding:7px 6px; text-align:left; vertical-align:top; }
+  .ok { color:var(--ok); font-weight:800; }
+  .fail { color:var(--danger); font-weight:800; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(20px); background:#0f172a; color:#fff; padding:11px 18px; border-radius:10px; font-size:13px; opacity:0; transition:.25s; z-index:4000; max-width:92vw; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  #tokenBar { background:#fef3c7; border:1px solid #fbbf24; color:#92400e; padding:10px 12px; border-radius:10px; font-size:12.5px; margin-bottom:12px; }
+  #tokenBar input { padding:7px 9px; border:1px solid #d97706; border-radius:8px; font-size:12px; margin-left:6px; }
+  .empty { text-align:center; color:var(--muted); font-size:13px; padding:26px 10px; }
+  .pill { font-size:10px; padding:2px 7px; border-radius:9px; background:#ede9fe; color:#5b21b6; font-weight:700; }
+  .warnbox { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; padding:9px 11px; border-radius:9px; font-size:12px; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+<div id="authWrap">
+  <div id="authCard">
+    <h2>🎓 AI Staff Academy</h2>
+    <p>Sign in with the same dashboard account.</p>
+    <input id="authEmail" type="email" placeholder="Email address" autocomplete="username">
+    <input id="authPass" type="password" placeholder="Password" autocomplete="current-password">
+    <button onclick="academyLogin()" id="authBtn">Log In</button>
+    <p id="authErr" style="color:#dc2626;margin-top:10px;"></p>
+    <p style="margin-top:12px;"><a href="/admin.html" style="color:#7c3aed;font-size:12px;">← Back to dashboard</a></p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="brand">🎓 AI Staff Academy<small>Hire · train · deploy your AI staff</small></div>
+    <div class="top-actions">
+      <button class="btn btn-primary" onclick="openHire()">➕ Hire New Staff / Agent</button>
+      <a class="link" href="/admin.html">← Dashboard</a>
+    </div>
+  </header>
+
+  <div id="tokenBar" class="hidden">
+    <b>Admin token required.</b> Paste the ADMIN_TOKEN configured on the server:
+    <input id="tokenInput" type="password" placeholder="ADMIN_TOKEN" style="width:240px;">
+    <button class="btn btn-sm btn-warn" onclick="saveToken()">Save</button>
+    <span id="tokenMsg"></span>
+  </div>
+
+  <div class="counters" id="counters"></div>
+  <div class="tabs" id="tabs"></div>
+  <div id="cards" class="grid"></div>
+  <div id="cardsEmpty" class="empty hidden"></div>
+</div>
+
+<!-- ======================= HIRE / EDIT MODAL ======================= -->
+<div class="overlay" id="hireOverlay">
+  <div class="sheet" style="max-width:900px;">
+    <div class="sheet-head">
+      <div class="grow"><b id="hireTitle">➕ Hire New Staff</b></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeHire()">✖ Close</button>
+    </div>
+    <div class="sheet-body">
+      <div class="sect">
+        <h4>1. Identity</h4>
+        <div class="row2">
+          <div><label class="f">Name *</label><input class="f" id="hName" placeholder="e.g. Saad"></div>
+          <div><label class="f">Role / Speciality *</label><input class="f" id="hRole" placeholder="e.g. Accounts Manager"></div>
+        </div>
+        <div class="row3">
+          <div><label class="f">Gender</label><select class="f" id="hGender"><option value="neutral">Neutral</option><option value="male">Male</option><option value="female">Female</option></select></div>
+          <div><label class="f">Category</label><select class="f" id="hCategory"><option value="business">Business</option><option value="knowledge">Knowledge</option><option value="personal">Personal (manual assign only)</option></select></div>
+          <div><label class="f">Avatar (emoji)</label><input class="f" id="hEmoji" value="🧑‍💼" maxlength="8"></div>
+        </div>
+        <div class="row2">
+          <div><label class="f">Avatar image URL (optional)</label><input class="f" id="hAvatarUrl" placeholder="https://…"></div>
+          <div><label class="f">Persona age vibe (optional)</label><input class="f" id="hAgePersona" placeholder="e.g. 30s, senior, young"></div>
+        </div>
+        <div class="row2">
+          <div><label class="f">Languages (comma separated)</label><input class="f" id="hLanguages" value="English, Roman Urdu, Urdu"></div>
+          <div><label class="f">Default reply language</label><input class="f" id="hDefaultLanguage" value="Roman Urdu"></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h4>2. Personality & Job</h4>
+        <label class="f">Job description</label><textarea class="f" id="hJobDescription" placeholder="What exactly is this staff member responsible for?"></textarea>
+        <div class="row2">
+          <div><label class="f">Tone / speaking style</label><input class="f" id="hTone" placeholder="e.g. precise, warm, numbers first"></div>
+          <div><label class="f">Working hours</label><input class="f" id="hWorkingHours" placeholder="e.g. 9am–7pm Dubai"></div>
+        </div>
+        <div class="row2">
+          <div><label class="f">Traits (comma separated)</label><input class="f" id="hTraits" placeholder="accurate, patient, polite"></div>
+          <div><label class="f">Signature phrases (comma separated)</label><input class="f" id="hSignaturePhrases" placeholder="Ji bilkul, InshaAllah"></div>
+        </div>
+        <div class="row2">
+          <div><label class="f">Emoji habit</label><input class="f" id="hEmojiHabit" placeholder="e.g. one emoji per line"></div>
+          <div><label class="f">Backstory (short)</label><input class="f" id="hBackstory"></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h4>3. Guardrails</h4>
+        <div class="row2">
+          <div><label class="f">ALWAYS do (one per line)</label><textarea class="f" id="hAlways"></textarea></div>
+          <div><label class="f">NEVER do (one per line)</label><textarea class="f" id="hNever"></textarea></div>
+        </div>
+        <div class="row2">
+          <div><label class="f">Escalate to me when (one per line)</label><textarea class="f" id="hEscalation"></textarea></div>
+          <div><label class="f">Required disclaimers (one per line)</label><textarea class="f" id="hDisclaimers"></textarea></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h4>4. Engine & Permissions</h4>
+        <div class="row2">
+          <div><label class="f">Preferred model</label><select class="f" id="hModel"></select></div>
+          <div><label class="f">Fallback model</label><select class="f" id="hFallbackModel"></select></div>
+        </div>
+        <div class="row3">
+          <div><label class="f">Ready threshold (%)</label><input class="f" id="hReadyThreshold" type="number" min="0" max="100" value="80"></div>
+          <div><label class="f">Daily budget (USD)</label><input class="f" id="hDailyBudgetUsd" type="number" step="0.1" min="0" value="0.5"></div>
+          <div style="display:flex;align-items:flex-end;padding-bottom:4px;">
+            <label style="font-size:12.5px;font-weight:700;"><input type="checkbox" id="hUseBusinessKb" checked> May use business KB</label>
+          </div>
+        </div>
+        <label class="f">Allowed tools</label>
+        <div id="hTools" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;"></div>
+        <label class="f" style="margin-top:12px;">System prompt (role instructions)</label>
+        <textarea class="f" id="hSystemPrompt" style="min-height:120px;" placeholder="You are … Answer …"></textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="closeHire()">Cancel</button>
+        <button class="btn btn-primary" id="hireSaveBtn" onclick="saveHire()">💾 Hire</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= STAFF DETAIL ======================= -->
+<div class="overlay" id="detailOverlay">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="grow">
+        <div id="dName" style="font-weight:800;font-size:15px;">Staff</div>
+        <div id="dSub" style="font-size:11px;color:#94a3b8;"></div>
+      </div>
+      <span id="dProgress"></span>
+      <button class="btn btn-ghost btn-sm" onclick="closeDetail()">✖ Close</button>
+    </div>
+    <div class="sheet-tabs" id="dTabs"></div>
+    <div class="sheet-body" id="dBody"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ======================= helpers ======================= */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+function adminToken() { try { return localStorage.getItem('wat_admin_token') || ''; } catch (e) { return ''; } }
+function saveToken() {
+  const v = $('tokenInput').value.trim();
+  if (!v) return;
+  try { localStorage.setItem('wat_admin_token', v); } catch (e) {}
+  $('tokenBar').classList.add('hidden');
+  loadAll();
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken(), ...(opts.headers || {}) }
+  });
+  if (res.status === 401) { $('tokenBar').classList.remove('hidden'); }
+  if (res.status === 503) {
+    $('tokenBar').classList.remove('hidden');
+    $('tokenMsg').innerHTML = '<br><b>ADMIN_TOKEN is not set on the server.</b> Add it to the hosting environment first.';
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+const LIFECYCLE = {
+  newly_hired: [{ to: 'under_training', label: '📚 Start Training', cls: 'btn-primary' }, { to: 'archived', label: '🗄️ Archive', cls: 'btn-ghost' }],
+  under_training: [{ to: 'ready', label: '✅ Move to Ready', cls: 'btn-green' }, { to: 'archived', label: '🗄️ Archive', cls: 'btn-ghost' }],
+  ready: [{ to: 'under_training', label: '📚 Back to Training', cls: 'btn-warn' }, { to: 'archived', label: '🗄️ Archive', cls: 'btn-ghost' }],
+  archived: [{ to: 'newly_hired', label: '♻️ Restore', cls: 'btn-primary' }]
+};
+const STATUS_LABEL = { newly_hired: '🆕 Newly Hired', under_training: '📚 Under Training', ready: '✅ Ready', archived: '🗄️ Archived' };
+
+/* ======================= state ======================= */
+const S = { meta: null, agents: [], tab: 'newly_hired', current: null, detailTab: 'overview', chat: [], editId: null };
+</script>
+
+<script>
+/* ======================= auth (module) ======================= */
+</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI",
+  authDomain: "whatanagent-a1e59.firebaseapp.com",
+  projectId: "whatanagent-a1e59",
+  storageBucket: "whatanagent-a1e59.appspot.com",
+  messagingSenderId: "410197132578",
+  appId: "1:410197132578:web:97cfc3ae33f39ed3df917b"
+};
+const auth = getAuth(initializeApp(firebaseConfig));
+
+window.academyLogin = async function () {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass = document.getElementById('authPass').value;
+  const btn = document.getElementById('authBtn');
+  document.getElementById('authErr').textContent = '';
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+  } catch (e) {
+    document.getElementById('authErr').textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Log In';
+  }
+};
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById('authWrap').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    if (typeof window.academyBoot === 'function') window.academyBoot();
+  } else {
+    document.getElementById('authWrap').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+});
+</script>
+
+<script>
+/* ======================= main logic (global scope) ======================= */
+window.academyBoot = async function () {
+  await loadMeta();
+  await loadAgents();
+};
+
+async function loadMeta() {
+  if (S.meta) return;
+  try {
+    S.meta = await api('/api/agents/meta');
+    const m = S.meta;
+    $('hModel').innerHTML = m.models.map(x => '<option value="' + esc(x.id) + '">' + esc(x.label) + '</option>').join('');
+    $('hFallbackModel').innerHTML = m.models.map(x => '<option value="' + esc(x.id) + '">' + esc(x.label) + '</option>').join('');
+    $('hFallbackModel').value = 'gemini-2.5-flash';
+    $('hTools').innerHTML = m.tools.map(t =>
+      '<label style="font-size:12px;font-weight:600;background:#fff;border:1px solid var(--border);border-radius:9px;padding:6px 9px;cursor:pointer;">' +
+      '<input type="checkbox" class="toolChk" value="' + esc(t.id) + '"> ' + esc(t.name) +
+      ' <span class="pill">' + esc(t.riskLevel) + '</span></label>').join('');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function loadAgents() {
+  try {
+    const d = await api('/api/agents');
+    S.agents = d.agents || [];
+    renderCounters(); renderTabs(); renderCards();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+function countBy(status) { return S.agents.filter(a => a.status === status).length; }
+
+function renderCounters() {
+  const rows = [
+    { k: 'newly_hired', label: '🆕 Newly Hired' },
+    { k: 'under_training', label: '📚 Under Training' },
+    { k: 'ready', label: '✅ Ready to Work' },
+    { k: 'archived', label: '🗄️ Archived' }
+  ];
+  $('counters').innerHTML = rows.map(r =>
+    '<div class="counter" onclick="setTab(\'' + r.k + '\')" style="cursor:pointer;"><b>' + countBy(r.k) + '</b><span>' + r.label + '</span></div>').join('') +
+    '<div class="counter"><b>' + S.agents.length + '</b><span>Total staff</span></div>';
+}
+
+function renderTabs() {
+  const rows = [
+    { k: 'newly_hired', label: '🆕 Newly Hired' },
+    { k: 'under_training', label: '📚 Under Training' },
+    { k: 'ready', label: '✅ Trained / Ready' },
+    { k: 'archived', label: '🗄️ Archived' }
+  ];
+  $('tabs').innerHTML = rows.map(r =>
+    '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('');
+}
+
+function setTab(k) { S.tab = k; renderTabs(); renderCards(); }
+
+function renderCards() {
+  const list = S.agents.filter(a => a.status === S.tab);
+  const box = $('cards'), empty = $('cardsEmpty');
+  if (!list.length) {
+    box.innerHTML = '';
+    empty.classList.remove('hidden');
+    empty.innerHTML = S.agents.length
+      ? 'No staff in this stage yet.'
+      : 'No AI staff yet. Click <b>➕ Hire New Staff / Agent</b> to create your first one.';
+    return;
+  }
+  empty.classList.add('hidden');
+  box.innerHTML = list.map(a => {
+    const p = a.progress || { effective: 0, auto: 0, override: null };
+    const av = a.avatarUrl ? '<img src="' + esc(a.avatarUrl) + '" alt="">' : esc(a.emoji || '🧑‍💼');
+    const acts = (LIFECYCLE[a.status] || []).map(b =>
+      '<button class="btn btn-sm ' + b.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + b.to + '\')">' + b.label + '</button>').join('');
+    return '<div class="card">' +
+      '<div class="card-head"><div class="avatar">' + av + '</div>' +
+      '<div style="flex:1;min-width:0;"><div class="card-name">' + esc(a.name) + '</div><div class="card-role">' + esc(a.role || '') + '</div></div>' +
+      '<span class="chip ' + esc(a.status) + '">' + esc((STATUS_LABEL[a.status] || '').replace(/^\S+\s/, '')) + '</span></div>' +
+      '<div class="meta-row"><span>Training</span><span><b>' + p.effective + '%</b>' + (p.override !== null ? ' (manual)' : '') + '</span></div>' +
+      '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, p.effective)) + '%"></div></div>' +
+      '<div class="meta-row"><span>' + esc(a.model || '') + '</span><span>' + esc(a.category || '') + '</span></div>' +
+      '<div class="meta-row"><span>Tools: ' + (a.allowedTools || []).length + '</span><span>' + (a.archivedAt ? 'archived ' + new Date(a.archivedAt).toLocaleDateString() : 'updated ' + new Date(a.updatedAt || Date.now()).toLocaleDateString()) + '</span></div>' +
+      '<div class="card-actions"><button class="btn btn-sm btn-ghost" onclick="openDetail(\'' + esc(a.id) + '\')">Open</button>' + acts + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+/* ---------------- lifecycle ---------------- */
+async function changeStatus(id, to) {
+  const a = S.agents.find(x => x.id === id);
+  if (!a) return;
+  const p = (a.progress || {}).effective || 0;
+  const thr = Number(a.readyThreshold) || 80;
+  if (to === 'ready') {
+    let msg = 'Move ' + a.name + ' to READY?\n\nCurrent training score: ' + p + '%\nTarget threshold: ' + thr + '%';
+    if (p < thr) msg += '\n\n⚠️ Below the recommended threshold. You can still proceed.';
+    if (!confirm(msg)) return;
+  }
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/status', { method: 'POST', body: JSON.stringify({ to }) });
+    toast((d.agent && d.agent.name ? d.agent.name : 'Staff') + ' → ' + (STATUS_LABEL[to] || to));
+    await loadAgents();
+    if (S.current && S.current.id === id) await openDetail(id, S.detailTab);
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- hire / edit ---------------- */
+function openHire() {
+  S.editId = null;
+  $('hireTitle').textContent = '➕ Hire New Staff';
+  $('hireSaveBtn').textContent = '💾 Hire';
+  ['hName','hRole','hJobDescription','hTone','hWorkingHours','hTraits','hSignaturePhrases','hEmojiHabit','hBackstory','hAlways','hNever','hEscalation','hDisclaimers','hSystemPrompt','hAvatarUrl','hAgePersona'].forEach(id => { const el = $(id); if (el) el.value = ''; });
+  $('hEmoji').value = '🧑‍💼';
+  $('hLanguages').value = 'English, Roman Urdu, Urdu';
+  $('hDefaultLanguage').value = 'Roman Urdu';
+  $('hGender').value = 'neutral'; $('hCategory').value = 'business';
+  $('hReadyThreshold').value = 80; $('hDailyBudgetUsd').value = 0.5; $('hUseBusinessKb').checked = true;
+  $('hModel').value = 'qwen3.8-flash'; $('hFallbackModel').value = 'gemini-2.5-flash';
+  document.querySelectorAll('.toolChk').forEach(c => c.checked = false);
+  $('hireOverlay').classList.add('open');
+}
+function closeHire() { $('hireOverlay').classList.remove('open'); }
+
+function toolsSelected() { return Array.from(document.querySelectorAll('.toolChk')).filter(c => c.checked).map(c => c.value); }
+
+async function saveHire() {
+  const name = $('hName').value.trim();
+  if (!name) { toast('❌ Name is required'); return; }
+  const btn = $('hireSaveBtn'); btn.disabled = true;
+  const payload = {
+    name,
+    role: $('hRole').value.trim(),
+    gender: $('hGender').value,
+    category: $('hCategory').value,
+    emoji: $('hEmoji').value.trim() || '🧑‍💼',
+    avatarUrl: $('hAvatarUrl').value.trim(),
+    agePersona: $('hAgePersona').value.trim(),
+    languages: $('hLanguages').value.split(',').map(x => x.trim()).filter(Boolean),
+    defaultLanguage: $('hDefaultLanguage').value.trim(),
+    jobDescription: $('hJobDescription').value,
+    tone: $('hTone').value.trim(),
+    workingHours: $('hWorkingHours').value.trim(),
+    traits: $('hTraits').value.split(',').map(x => x.trim()).filter(Boolean),
+    signaturePhrases: $('hSignaturePhrases').value.split(',').map(x => x.trim()).filter(Boolean),
+    emojiHabit: $('hEmojiHabit').value.trim(),
+    backstory: $('hBackstory').value.trim(),
+    guardrails: {
+      always: $('hAlways').value.split('\n').map(x => x.trim()).filter(Boolean),
+      never: $('hNever').value.split('\n').map(x => x.trim()).filter(Boolean),
+      escalation: $('hEscalation').value.split('\n').map(x => x.trim()).filter(Boolean),
+      disclaimers: $('hDisclaimers').value.split('\n').map(x => x.trim()).filter(Boolean)
+    },
+    model: $('hModel').value,
+    fallbackModel: $('hFallbackModel').value,
+    readyThreshold: Number($('hReadyThreshold').value) || 80,
+    dailyBudgetUsd: Number($('hDailyBudgetUsd').value) || 0.5,
+    useBusinessKb: $('hUseBusinessKb').checked,
+    allowedTools: toolsSelected(),
+    systemPrompt: $('hSystemPrompt').value
+  };
+  try {
+    if (S.editId) await api('/api/agents/' + encodeURIComponent(S.editId), { method: 'POST', body: JSON.stringify(payload) });
+    else await api('/api/agents', { method: 'POST', body: JSON.stringify(payload) });
+    toast(S.editId ? '✅ Staff updated' : '✅ ' + name + ' hired');
+    closeHire(); await loadAgents();
+    if (S.editId) await openDetail(S.editId, S.detailTab);
+  } catch (e) { toast('❌ ' + e.message); }
+  finally { btn.disabled = false; }
+}
+
+/* ---------------- detail ---------------- */
+const DETAIL_TABS = [
+  ['overview', '📋 Overview'], ['knowledge', '📚 Knowledge'], ['examples', '💬 Examples'],
+  ['chat', '🧪 Test Chat'], ['lessons', '🎯 Corrections'], ['scorecard', '📝 Scorecard'],
+  ['guardrails', '🛡️ Guardrails'], ['prompt', '🧩 Prompt'], ['tools', '🛠️ Tools'], ['usage', '📈 Usage']
+];
+
+async function openDetail(id, tab) {
+  S.detailTab = tab || 'overview';
+  S.chat = [];
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id));
+    S.current = d;
+    $('dName').textContent = d.agent.name + (d.agent.role ? ' · ' + d.agent.role : '');
+    $('dSub').textContent = (d.agent.id || '') + ' · ' + (STATUS_LABEL[d.agent.status] || d.agent.status) + ' · ' + d.agent.model;
+    $('dProgress').innerHTML = '<span class="chip ready">' + d.agent.progress.effective + '% trained</span>';
+    $('dTabs').innerHTML = DETAIL_TABS.map(([k, label]) =>
+      '<button class="st ' + (S.detailTab === k ? 'active' : '') + '" onclick="openDetail(\'' + esc(id) + '\',\'' + k + '\')">' + label + '</button>').join('');
+    $('dBody').innerHTML = renderDetailTab();
+    $('detailOverlay').classList.add('open');
+    if (S.detailTab === 'usage') loadUsage(id);
+  } catch (e) { toast('❌ ' + e.message); }
+}
+function closeDetail() { $('detailOverlay').classList.remove('open'); S.current = null; }
+
+function renderDetailTab() {
+  const d = S.current; if (!d) return '';
+  const a = d.agent, p = a.progress || {};
+  if (S.detailTab === 'overview') return tabOverview(d, a, p);
+  if (S.detailTab === 'knowledge') return tabKnowledge(d);
+  if (S.detailTab === 'examples') return tabExamples(d);
+  if (S.detailTab === 'chat') return tabChat(d);
+  if (S.detailTab === 'lessons') return tabLessons(d);
+  if (S.detailTab === 'scorecard') return tabTests(d, 'scorecard');
+  if (S.detailTab === 'guardrails') return tabTests(d, 'guardrail');
+  if (S.detailTab === 'prompt') return tabPrompt(d);
+  if (S.detailTab === 'tools') return tabTools(d);
+  if (S.detailTab === 'usage') return '<div id="usageBox" class="empty">Loading usage…</div>';
+  return '';
+}
+
+function bar(label, val, weight) {
+  return '<div style="margin-bottom:8px;"><div class="meta-row"><span>' + esc(label) + ' <span style="color:#94a3b8;">(weight ' + weight + '%)</span></span><span><b>' + Math.round(val) + '%</b></span></div>' +
+    '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, val)) + '%"></div></div></div>';
+}
+
+function tabOverview(d, a, p) {
+  const b = p.breakdown || {};
+  const w = p.weights || {};
+  const hist = (a.history || []).slice(-8).reverse().map(h =>
+    '<div class="item"><div class="t">' + esc((h.from ? STATUS_LABEL[h.from] || h.from : '—') + ' → ' + (STATUS_LABEL[h.to] || h.to)) + '</div>' +
+    '<div class="x">' + new Date(h.at).toLocaleString() + ' · by ' + esc(h.by || 'boss') + ' · progress ' + (h.progress != null ? h.progress + '%' : '—') + (h.note ? ' · ' + esc(h.note) : '') + '</div></div>').join('');
+  return '<div class="sect"><h4>Training progress</h4>' +
+    '<div style="font-size:26px;font-weight:800;color:#7c3aed;margin-bottom:6px;">' + p.effective + '%' + (p.override !== null ? ' <span class="pill">manual override</span>' : '') + '</div>' +
+    '<div class="bar" style="height:10px;margin-bottom:12px;"><div style="width:' + p.effective + '%"></div></div>' +
+    bar('Knowledge coverage', b.knowledge || 0, w.knowledge) +
+    bar('Style training', b.style || 0, w.style) +
+    bar('Scorecard results', b.scorecard || 0, w.scorecard) +
+    bar('Corrections applied', b.corrections || 0, w.corrections) +
+    (p.hasTools ? bar('Tool skills', b.tools || 0, w.tools) : '<div class="x" style="margin-bottom:8px;">Tools weight ignored — this agent has no tools enabled.</div>') +
+    '<div class="row2" style="margin-top:8px;"><div><label class="f">Override % (blank = automatic)</label><input class="f" id="pOverride" type="number" min="0" max="100" value="' + (p.override === null ? '' : p.override) + '"></div>' +
+    '<div><label class="f">Note</label><input class="f" id="pNote" value="' + esc((a.trainingProgress && a.trainingProgress.overrideNote) || '') + '"></div></div>' +
+    '<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="saveOverride(\'' + esc(a.id) + '\')">Save override</button></div>' +
+    '<div class="sect"><h4>Status</h4><div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+    (LIFECYCLE[a.status] || []).map(x => '<button class="btn btn-sm ' + x.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + x.to + '\')">' + x.label + '</button>').join('') +
+    '</div><div class="x" style="margin-top:8px;">Ready threshold: ' + (a.readyThreshold || 80) + '% (recommendation only)</div></div>' +
+    '<div class="sect"><h4>Lifecycle history</h4>' + (hist || '<div class="x">No changes yet.</div>') + '</div>' +
+    '<div class="sect"><h4>Card settings</h4><div class="x">Model: ' + esc(a.model) + ' · fallback ' + esc(a.fallbackModel) + ' · business KB: ' + (a.useBusinessKb ? 'yes' : 'no') + ' · budget $' + (a.dailyBudgetUsd || 0) + '/day</div>' +
+    '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-sm btn-ghost" onclick="editStaff(\'' + esc(a.id) + '\')">✏️ Edit card</button>' +
+    '<button class="btn btn-sm btn-danger" onclick="deleteStaff(\'' + esc(a.id) + '\')">🗑️ Delete permanently</button></div></div>';
+}
+
+async function saveOverride(id) {
+  const raw = $('pOverride').value;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/progress', {
+      method: 'POST',
+      body: JSON.stringify({ override: raw === '' ? null : Number(raw), note: $('pNote').value })
+    });
+    toast('✅ Progress override saved');
+    await loadAgents(); await openDetail(id, 'overview');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+function editStaff(id) {
+  const a = (S.agents.find(x => x.id === id)) || (S.current && S.current.agent);
+  if (!a) return;
+  openHire();
+  S.editId = id;
+  $('hireTitle').textContent = '✏️ Edit ' + a.name;
+  $('hireSaveBtn').textContent = '💾 Save Card';
+  const set = (id2, v) => { const el = $(id2); if (el) el.value = v == null ? '' : v; };
+  set('hName', a.name); set('hRole', a.role); set('hGender', a.gender); set('hCategory', a.category);
+  set('hEmoji', a.emoji); set('hAvatarUrl', a.avatarUrl); set('hAgePersona', a.agePersona);
+  set('hLanguages', (a.languages || []).join(', ')); set('hDefaultLanguage', a.defaultLanguage);
+  set('hJobDescription', a.jobDescription); set('hTone', a.tone); set('hWorkingHours', a.workingHours);
+  set('hTraits', (a.traits || []).join(', ')); set('hSignaturePhrases', (a.signaturePhrases || []).join(', '));
+  set('hEmojiHabit', a.emojiHabit); set('hBackstory', a.backstory);
+  const g = a.guardrails || {};
+  set('hAlways', (g.always || []).join('\n')); set('hNever', (g.never || []).join('\n'));
+  set('hEscalation', (g.escalation || []).join('\n')); set('hDisclaimers', (g.disclaimers || []).join('\n'));
+  set('hModel', a.model); set('hFallbackModel', a.fallbackModel);
+  set('hReadyThreshold', a.readyThreshold); set('hDailyBudgetUsd', a.dailyBudgetUsd);
+  $('hUseBusinessKb').checked = a.useBusinessKb !== false;
+  set('hSystemPrompt', a.systemPrompt);
+  document.querySelectorAll('.toolChk').forEach(c => { c.checked = (a.allowedTools || []).includes(c.value); });
+}
+
+async function deleteStaff(id) {
+  if (!confirm('Delete this staff member permanently? Their training data is removed.')) return;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id), { method: 'DELETE' });
+    toast('🗑️ Deleted'); closeDetail(); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- knowledge ---------------- */
+function tabKnowledge(d) {
+  const items = (d.knowledge || []).map(k =>
+    '<div class="item"><div class="t">' + esc(k.title || 'Item') + '</div><div class="d">' + nl2br(String(k.text || '').slice(0, 600)) + (String(k.text || '').length > 600 ? '…' : '') + '</div>' +
+    '<div class="x">' + esc(k.type || 'text') + (k.source ? ' · ' + esc(k.source) : '') + ' · ' + new Date(k.createdAt).toLocaleString() + '</div>' +
+    '<button class="btn btn-sm btn-danger" style="margin-top:6px;" onclick="delSub(\'knowledge\',\'' + esc(k.id) + '\')">Delete</button></div>').join('');
+  return '<div class="sect"><h4>Add knowledge</h4>' +
+    '<label class="f">Title</label><input class="f" id="kTitle" placeholder="e.g. Price list 2026">' +
+    '<label class="f">Text</label><textarea class="f" id="kText" style="min-height:110px;" placeholder="Paste facts, policies, FAQs…"></textarea>' +
+    '<label class="f">Source (optional)</label><input class="f" id="kSource" placeholder="e.g. company policy doc">' +
+    '<div class="row2" style="margin-top:8px;"><div><label class="f">…or upload a text file (.txt .md .csv .json, max 2 MB)</label><input class="f" id="kFile" type="file" accept=".txt,.md,.csv,.json"></div>' +
+    '<div style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="addKnowledge()">➕ Add</button></div></div></div>' +
+    '<div class="sect"><h4>Knowledge items (' + (d.knowledge || []).length + ')</h4>' + (items || '<div class="x">No knowledge yet — 8 items brings this dimension to 100%.</div>') + '</div>';
+}
+
+async function addKnowledge() {
+  const id = S.current.agent.id;
+  const body = { title: $('kTitle').value.trim(), text: $('kText').value, source: $('kSource').value.trim() };
+  const file = $('kFile').files[0];
+  try {
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) throw new Error('File too large (max 2 MB).');
+      body.fileBase64 = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
+        fr.onerror = () => reject(new Error('Could not read the file.'));
+        fr.readAsDataURL(file);
+      });
+      body.fileName = file.name; body.mimeType = file.type || 'text/plain';
+    }
+    if (!body.text && !body.fileBase64) throw new Error('Provide text or a file.');
+    await api('/api/agents/' + encodeURIComponent(id) + '/knowledge', { method: 'POST', body: JSON.stringify(body) });
+    toast('✅ Knowledge added'); await openDetail(id, 'knowledge'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function delSub(kind, itemId) {
+  const id = S.current.agent.id;
+  if (!confirm('Delete this item?')) return;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/' + kind + '/' + encodeURIComponent(itemId), { method: 'DELETE' });
+    toast('🗑️ Deleted'); await openDetail(id, S.detailTab); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- examples ---------------- */
+function tabExamples(d) {
+  const items = (d.examples || []).map(x =>
+    '<div class="item"><div class="t">' + (x.role === 'them' ? '👤 Them' : '👑 Owner') + '</div><div class="d">' + nl2br(x.text) + '</div>' +
+    '<div class="x">' + new Date(x.createdAt).toLocaleString() + '</div>' +
+    '<button class="btn btn-sm btn-danger" style="margin-top:6px;" onclick="delSub(\'examples\',\'' + esc(x.id) + '\')">Delete</button></div>').join('');
+  return '<div class="sect"><h4>Add one example message</h4>' +
+    '<div class="row2"><div><label class="f">Who said it</label><select class="f" id="exRole"><option value="me">Owner (me)</option><option value="them">Them</option></select></div>' +
+    '<div><label class="f">Message</label><input class="f" id="exText" placeholder="e.g. Ji bilkul, kal deliver ho jayega."></div></div>' +
+    '<button class="btn btn-primary" style="margin-top:8px;" onclick="addExample()">➕ Add example</button></div>' +
+    '<div class="sect"><h4>Import a real chat</h4><div class="x" style="margin-bottom:6px;">One message per line, prefixed with <b>Me:</b> or <b>Them:</b></div>' +
+    '<textarea class="f" id="exChat" style="min-height:120px;" placeholder="Me: Assalamualaikum, invoice bhej di hai&#10;Them: Shukriya bhai"></textarea>' +
+    '<button class="btn btn-primary" style="margin-top:8px;" onclick="importChat()">📥 Import</button></div>' +
+    '<div class="sect"><h4>Approved examples (' + (d.examples || []).length + ')</h4>' + (items || '<div class="x">No examples yet — 5 examples completes this dimension.</div>') + '</div>';
+}
+
+async function addExample() {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/examples', {
+      method: 'POST', body: JSON.stringify({ role: $('exRole').value, text: $('exText').value.trim() })
+    });
+    toast('✅ Example added'); await openDetail(id, 'examples'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function importChat() {
+  const id = S.current.agent.id;
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/examples', {
+      method: 'POST', body: JSON.stringify({ chatRaw: $('exChat').value })
+    });
+    toast('✅ Imported ' + (d.added || 0) + ' messages');
+    await openDetail(id, 'examples'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- test chat ---------------- */
+function tabChat(d) {
+  return '<div class="sect"><h4>Talk to ' + esc(d.agent.name) + ' (private test — nothing is sent to customers)</h4>' +
+    '<div id="chatLog">' + (S.chat.length ? S.chat.map(m => '<div class="bubble ' + (m.role === 'user' ? 'me' : 'ai') + '">' + nl2br(m.content) + '</div>').join('') : '<div class="x">Ask a question the way a real person would.</div>') + '</div>' +
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;"><input class="f" id="chatInput" style="flex:1;min-width:200px;" placeholder="Type a message…" onkeydown="if(event.key===\'Enter\')sendChat()">' +
+    '<button class="btn btn-primary" id="chatSend" onclick="sendChat()">Send</button>' +
+    '<button class="btn btn-ghost" onclick="clearChat()">Clear</button></div>' +
+    '<div class="x" id="chatMeta" style="margin-top:6px;"></div></div>';
+}
+
+async function sendChat() {
+  const input = $('chatInput'); if (!input) return;
+  const text = input.value.trim(); if (!text) return;
+  const id = S.current.agent.id;
+  S.chat.push({ role: 'user', content: text });
+  input.value = ''; renderChatLog();
+  const btn = $('chatSend'); if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/test-chat', {
+      method: 'POST', body: JSON.stringify({ messages: S.chat })
+    });
+    S.chat.push({ role: 'assistant', content: d.reply || '(empty)' });
+    S.lastUser = text; S.lastReply = d.reply;
+    renderChatLog();
+    $('chatMeta').textContent = 'Model: ' + d.model + (d.usedFallback ? ' (fallback)' : '') + ' · tokens ' + (d.tokensIn || 0) + '/' + (d.tokensOut || 0);
+  } catch (e) { toast('❌ ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Send'; } }
+}
+function renderChatLog() {
+  const el = $('chatLog'); if (!el) return;
+  el.innerHTML = S.chat.length
+    ? S.chat.map(m => '<div class="bubble ' + (m.role === 'user' ? 'me' : 'ai') + '">' + nl2br(m.content) + '</div>').join('') +
+      (S.lastReply ? '<div style="display:flex;gap:6px;margin:4px 0 8px;"><button class="btn btn-sm btn-green" onclick="markGood()">👍 Good</button>' +
+        '<button class="btn btn-sm btn-warn" onclick="markBad()">👎 Correct it</button></div>' : '')
+    : '<div class="x">Ask a question the way a real person would.</div>';
+  el.scrollTop = el.scrollHeight;
+}
+function clearChat() { S.chat = []; S.lastReply = ''; renderChatLog(); }
+async function markGood() { toast('👍 Noted — keep this style'); }
+async function markBad() {
+  const correction = prompt('Write the answer ' + (S.current.agent.name) + ' should have given:');
+  if (!correction) return;
+  try {
+    await api('/api/agents/' + encodeURIComponent(S.current.agent.id) + '/lessons', {
+      method: 'POST',
+      body: JSON.stringify({ trigger: S.lastUser || '(previous question)', correction, note: 'From test chat 👎' })
+    });
+    toast('🎯 Saved as a permanent lesson'); await openDetail(S.current.agent.id, 'lessons'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- lessons ---------------- */
+function tabLessons(d) {
+  const items = (d.lessons || []).map(l =>
+    '<div class="item"><div class="t">When: ' + esc(l.trigger || '(any)') + '</div><div class="d">→ ' + nl2br(l.correction) + '</div>' +
+    '<div class="x">' + new Date(l.createdAt).toLocaleString() + (l.note ? ' · ' + esc(l.note) : '') + '</div>' +
+    '<button class="btn btn-sm btn-danger" style="margin-top:6px;" onclick="delSub(\'lessons\',\'' + esc(l.id) + '\')">Delete</button></div>').join('');
+  return '<div class="sect"><h4>Add a correction (permanent lesson)</h4>' +
+    '<label class="f">When the user says…</label><input class="f" id="lTrigger" placeholder="e.g. asks for a discount">' +
+    '<label class="f">Do this instead</label><textarea class="f" id="lCorrection" placeholder="e.g. Explain that prices are fixed and offer the standard package."></textarea>' +
+    '<button class="btn btn-primary" style="margin-top:8px;" onclick="addLesson()">➕ Save lesson</button></div>' +
+    '<div class="sect"><h4>Lessons (' + (d.lessons || []).length + ')</h4>' + (items || '<div class="x">No corrections yet — 10 lessons completes this dimension.</div>') + '</div>';
+}
+async function addLesson() {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/lessons', {
+      method: 'POST', body: JSON.stringify({ trigger: $('lTrigger').value.trim(), correction: $('lCorrection').value.trim() })
+    });
+    toast('🎯 Lesson saved'); await openDetail(id, 'lessons'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- scorecard / guardrails ---------------- */
+function tabTests(d, kind) {
+  const tests = (d.tests || []).filter(t => (t.kind || 'scorecard') === kind);
+  const runs = (d.testRuns || []).filter(r => (r.kind || 'scorecard') === kind);
+  const last = runs[0];
+  const items = tests.map(t =>
+    '<div class="item"><div class="t">' + esc(t.question) + '</div>' +
+    '<div class="d">' + (t.expected ? 'Expected: ' + esc(t.expected) : '') + (t.criteria ? '\nCriteria: ' + esc(t.criteria) : '') + '</div>' +
+    '<button class="btn btn-sm btn-danger" style="margin-top:6px;" onclick="delTest(\'' + esc(t.id) + '\')">Delete</button></div>').join('');
+  const runTable = last ? '<div class="sect"><h4>Last run · ' + new Date(last.createdAt).toLocaleString() + ' · <span class="' + (last.passRate >= 80 ? 'ok' : 'fail') + '">' + last.passRate + '%</span> (' + last.passed + '/' + last.total + ')</h4>' +
+    '<table class="res"><tr><th>Question</th><th>Answer</th><th>Result</th></tr>' +
+    (last.results || []).map(r => '<tr><td>' + esc(r.question) + '</td><td>' + esc(String(r.answer || '').slice(0, 220)) + '</td>' +
+      '<td class="' + (r.pass ? 'ok' : 'fail') + '">' + (r.pass ? 'PASS' : 'FAIL') + '<div class="x">' + esc(r.reason || '') + '</div></td></tr>').join('') +
+    '</table></div>' : '';
+  const starter = kind === 'guardrail' ? '<div class="x" style="margin-bottom:8px;">Leave the list empty and press Run — six standard red-team questions (prompt injection, secrets, other customers, persona override, medical, money) are used automatically.</div>' : '';
+  return '<div class="sect"><h4>' + (kind === 'guardrail' ? '🛡️ Guardrail tests' : '📝 Scorecard questions') + '</h4>' + starter +
+    '<label class="f">Question</label><textarea class="f" id="tQ" style="min-height:60px;"></textarea>' +
+    '<div class="row2"><div><label class="f">Expected answer / behaviour</label><input class="f" id="tE"></div><div><label class="f">Criteria (optional)</label><input class="f" id="tC"></div></div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="addTest(\'' + kind + '\')">➕ Add question</button>' +
+    '<button class="btn btn-primary" id="runBtn" onclick="runTests(\'' + kind + '\')">▶ Run all ' + (kind === 'guardrail' ? 'guardrail tests' : 'tests') + '</button></div></div>' +
+    '<div class="sect"><h4>Questions (' + tests.length + ')</h4>' + (items || '<div class="x">No questions yet.</div>') + '</div>' + runTable;
+}
+
+async function addTest(kind) {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/tests', {
+      method: 'POST', body: JSON.stringify({ question: $('tQ').value.trim(), expected: $('tE').value.trim(), criteria: $('tC').value.trim(), kind })
+    });
+    toast('✅ Question added'); await openDetail(id, kind === 'guardrail' ? 'guardrails' : 'scorecard');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function delTest(itemId) {
+  const id = S.current.agent.id;
+  try { await api('/api/agents/' + encodeURIComponent(id) + '/tests/' + encodeURIComponent(itemId), { method: 'DELETE' }); await openDetail(id, S.detailTab); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function runTests(kind) {
+  const id = S.current.agent.id;
+  const btn = $('runBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/tests/run', { method: 'POST', body: JSON.stringify({ kind }) });
+    toast('✅ ' + d.passRate + '% passed (' + d.passed + '/' + d.total + ')');
+    await openDetail(id, kind === 'guardrail' ? 'guardrails' : 'scorecard');
+    await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+  finally { if (btn) { btn.disabled = false; } }
+}
+
+/* ---------------- prompt ---------------- */
+function tabPrompt(d) {
+  const vers = (d.promptVersions || []).map(v =>
+    '<div class="item"><div class="t">v' + v.version + (v.note ? ' · ' + esc(v.note) : '') + '</div>' +
+    '<div class="x">' + new Date(v.createdAt).toLocaleString() + ' · ' + esc(v.by || 'boss') + '</div>' +
+    '<button class="btn btn-sm btn-ghost" style="margin-top:6px;" onclick="restorePrompt(' + v.version + ')">♻️ Restore</button></div>').join('');
+  return '<div class="sect"><h4>System prompt (role instructions) — current v' + (d.agent.promptVersion || 1) + '</h4>' +
+    '<textarea class="f" id="prPrompt" style="min-height:190px;">' + esc(d.agent.systemPrompt || '') + '</textarea>' +
+    '<div class="row2" style="margin-top:8px;"><div><label class="f">Change note</label><input class="f" id="prNote" placeholder="e.g. stricter tone"></div>' +
+    '<div style="display:flex;align-items:flex-end;"><button class="btn btn-primary" onclick="savePrompt()">💾 Save as new version</button></div></div></div>' +
+    '<div class="sect"><h4>Version history (' + (d.promptVersions || []).length + ')</h4>' + (vers || '<div class="x">No previous versions yet.</div>') + '</div>' +
+    '<div class="sect"><h4>Effective prompt preview (what the model actually receives)</h4>' +
+    '<div class="x" style="margin-bottom:6px;">Guardrails, knowledge, corrections, examples and the safety block are appended automatically.</div>' +
+    '<pre style="white-space:pre-wrap;font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:9px;padding:10px;max-height:320px;overflow:auto;">' + esc(d.previewPrompt || '') + '</pre></div>';
+}
+async function savePrompt() {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/prompt', {
+      method: 'POST', body: JSON.stringify({ systemPrompt: $('prPrompt').value, note: $('prNote').value.trim() })
+    });
+    toast('✅ New prompt version saved'); await openDetail(id, 'prompt');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function restorePrompt(version) {
+  const id = S.current.agent.id;
+  if (!confirm('Restore version ' + version + '?')) return;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/prompt/restore', { method: 'POST', body: JSON.stringify({ version }) });
+    toast('♻️ Restored v' + version); await openDetail(id, 'prompt');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- tools ---------------- */
+async function tabTools(d) {
+  const list = await api('/api/agents/' + encodeURIComponent(d.agent.id) + '/tools').catch(() => ({ tools: [], logs: [] }));
+  const rows = (list.tools || []).map(t =>
+    '<label class="item" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;">' +
+    '<input type="checkbox" class="toolChk2" value="' + esc(t.id) + '" ' + (t.enabled ? 'checked' : '') + '>' +
+    '<span><span class="t">' + esc(t.name) + '</span> <span class="pill">' + esc(t.riskLevel) + '</span>' +
+    '<div class="x">' + esc(t.description) + '</div></span></label>').join('');
+  const logs = (list.logs || []).slice(0, 12).map(l =>
+    '<div class="item"><div class="t">' + esc(l.tool) + ' · ' + esc(l.status) + '</div><div class="x">' + new Date(l.createdAt).toLocaleString() + ' · ' + esc(String(l.summary || '').slice(0, 160)) + '</div></div>').join('');
+  return '<div class="sect"><h4>Allowed tools</h4>' + (rows || '<div class="x">No tools registered.</div>') +
+    '<button class="btn btn-primary" style="margin-top:8px;" onclick="saveAgentTools()">💾 Save allowed tools</button>' +
+    '<div class="x" style="margin-top:8px;">Write tools never execute — they create an item in Contact Brains → Drafts for your approval.</div></div>' +
+    '<div class="sect"><h4>Try a read tool</h4>' +
+    '<div class="row2"><div><label class="f">Tool</label><select class="f" id="toolPick"><option value="fetch_url_text">fetch_url_text</option><option value="read_firestore_collection">read_firestore_collection</option><option value="shopify_read_stub">shopify_read_stub</option></select></div>' +
+    '<div><label class="f">Input</label><input class="f" id="toolInput" placeholder="URL, or collection name"></div></div>' +
+    '<button class="btn btn-ghost" style="margin-top:8px;" onclick="runToolUi()">▶ Run</button>' +
+    '<pre id="toolOut" style="white-space:pre-wrap;font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:9px;padding:10px;margin-top:8px;max-height:220px;overflow:auto;"></pre></div>' +
+    '<div class="sect"><h4>Recent tool calls</h4>' + (logs || '<div class="x">No tool calls yet.</div>') + '</div>';
+}
+async function saveAgentTools() {
+  const id = S.current.agent.id;
+  const tools = Array.from(document.querySelectorAll('.toolChk2')).filter(c => c.checked).map(c => c.value);
+  try {
+    await api('/api/agents/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ allowedTools: tools }) });
+    toast('✅ Tools updated'); await openDetail(id, 'tools'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function runToolUi() {
+  const id = S.current.agent.id;
+  const toolId = $('toolPick').value;
+  const raw = $('toolInput').value.trim();
+  const input = toolId === 'fetch_url_text' ? { url: raw }
+    : toolId === 'read_firestore_collection' ? { collection: raw }
+    : { resource: raw };
+  $('toolOut').textContent = 'Running…';
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/tools/run', { method: 'POST', body: JSON.stringify({ toolId, input }) });
+    $('toolOut').textContent = JSON.stringify(d.result || d, null, 2);
+  } catch (e) { $('toolOut').textContent = '❌ ' + e.message; }
+}
+
+/* ---------------- usage ---------------- */
+async function loadUsage(id) {
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/usage');
+    const u = d.usage || {};
+    const models = Object.keys(u.byModel || {}).map(m => '<div class="meta-row"><span>' + esc(m) + '</span><span>' + u.byModel[m] + ' calls</span></div>').join('');
+    $('usageBox').className = 'sect';
+    $('usageBox').innerHTML = '<h4>Usage</h4><div class="counters" style="margin-bottom:8px;">' +
+      '<div class="counter"><b>' + (u.calls || 0) + '</b><span>Model calls</span></div>' +
+      '<div class="counter"><b>' + (u.tokensIn || 0) + '</b><span>Input tokens</span></div>' +
+      '<div class="counter"><b>' + (u.tokensOut || 0) + '</b><span>Output tokens</span></div>' +
+      '<div class="counter"><b>$' + (u.costUsd || 0) + '</b><span>Estimated cost</span></div>' +
+      '<div class="counter"><b>' + (u.toolCalls || 0) + '</b><span>Tool calls</span></div>' +
+      '<div class="counter"><b>' + (u.pendingApprovals || 0) + '</b><span>Awaiting approval</span></div></div>' +
+      (models || '<div class="x">No calls recorded yet.</div>') +
+      '<div class="x" style="margin-top:8px;">Daily budget: $' + (u.budgetUsdPerDay || 0) + ' · last scorecard: ' + (u.lastTestPassRate == null ? '—' : u.lastTestPassRate + '%') + '</div>';
+  } catch (e) {
+    $('usageBox').textContent = '❌ ' + e.message;
+  }
+}
+</script>
+
+</body>
+</html>

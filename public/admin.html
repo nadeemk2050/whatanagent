@@ -268,6 +268,7 @@
                 document.getElementById('authContainer').style.display = 'none';
                 document.getElementById('appContainer').style.display = 'block';
                 document.getElementById('profileEmail').innerText = user.email;
+                if (typeof refreshAdminTokenStatus === 'function') refreshAdminTokenStatus();
                 document.getElementById('profileUid').innerText = user.uid;
                 if (typeof loadKnowledge === 'function') loadKnowledge();
                 if (typeof loadContacts === 'function') loadContacts();
@@ -370,6 +371,10 @@
             <div class="menu-item" onclick="openCommandCenter()">⚡ Tasks & Command Center 2.0</div>
             <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
             <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 Contact Brains</div>
+            <div class="menu-item" onclick="window.location.href='/academy.html'" style="display:flex; justify-content:space-between; align-items:center; background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; cursor:pointer;">
+                <span>🎓 AI Staff Academy</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#7c3aed; color:#fff; font-weight:bold;">NEW</span>
+            </div>
             <div class="menu-item" onclick="window.open('/aligntasks/','_blank')" title="Open the AlignTasks team board (same login as this dashboard)">📋 AlignTasks</div>
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
@@ -2341,6 +2346,13 @@
                             <label>Qwen Base URL (optional — default: Singapore / international)</label>
                             <input type="text" id="envQwenBase" placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
                         </div>
+                        <div class="form-group">
+                            <label>Admin Token (stored only in this browser — required for 🎓 AI Staff Academy)</label>
+                            <input type="password" id="envAdminToken" placeholder="Paste the ADMIN_TOKEN from the hosting environment" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid var(--border);">
+                            <div style="font-size:11px; color:#64748b; margin-top:4px;">Used as the <code>x-admin-token</code> header. Leave blank to keep the current value. The server must also have ADMIN_TOKEN set, otherwise Academy routes refuse to run.</div>
+                            <button type="button" onclick="saveAdminTokenLocal()" style="margin-top:6px; padding:7px 12px; border-radius:6px; border:1px solid #7c3aed; background:#f5f3ff; color:#5b21b6; font-weight:bold; cursor:pointer; font-size:12px;">💾 Save token in this browser</button>
+                            <span id="adminTokenStatus" style="font-size:11px; margin-left:8px;"></span>
+                        </div>
 
                         <div class="form-group">
                             <label>Owner's Personal Phone Number (For Proxy Control)</label>
@@ -2729,6 +2741,9 @@
                             <div id="brPanelName" style="font-weight:800; font-size:16px;">Contact</div>
                             <div id="brPanelJid" style="font-size:11px; color:#94a3b8;"></div>
                         </div>
+                        <select id="brAgentSelect" title="AI Staff agent that answers this contact (only READY staff are listed)" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#c4b5fd; max-width:210px;">
+                            <option value="">🎓 Agent: Default</option>
+                        </select>
                         <select id="brPanelMode" title="How the AI handles this person" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#e2e8f0;"></select>
                         <span id="brSaveStatus" style="font-size:11.5px; font-weight:700; color:#86efac; text-align:right; line-height:1.3;"></span>
                         <button onclick="saveBrainCard()" id="brSaveBtn" style="background:#16a34a; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Card</button>
@@ -3595,6 +3610,23 @@
         // in this browser only - never embedded in the page source.
         function adminToken() { try { return localStorage.getItem('wat_admin_token') || ''; } catch (e) { return ''; } }
         function setAdminToken(t) { try { localStorage.setItem('wat_admin_token', t || ''); } catch (e) {} }
+
+        // Shared with the 🎓 AI Staff Academy page (same localStorage key).
+        function refreshAdminTokenStatus() {
+            const el = document.getElementById('adminTokenStatus');
+            if (!el) return;
+            el.innerText = adminToken() ? '✅ A token is saved in this browser' : '⚠️ No token saved yet';
+            el.style.color = adminToken() ? '#16a34a' : '#b45309';
+        }
+        function saveAdminTokenLocal() {
+            const input = document.getElementById('envAdminToken');
+            const v = input ? input.value.trim() : '';
+            if (!v) { toastMsg('⚠️ Paste the ADMIN_TOKEN first'); return; }
+            setAdminToken(v);
+            input.value = '';
+            refreshAdminTokenStatus();
+            toastMsg('✅ Admin token saved in this browser — AI Staff Academy is unlocked');
+        }
         async function postAdmin(url, payload) {
             const doPost = () => fetch(url, {
                 method: 'POST',
@@ -10803,6 +10835,7 @@
         brainRenderPersonas();
         brainRenderLearned(p);
         brainRenderDiscussLog();
+        populateAgentSelect(p.agentId || '');
         brainSetSaveStatus((brainCurrent.exists && p.updatedAt ? 'Last saved ' + new Date(p.updatedAt).toLocaleString() : 'Not saved yet') + '\n' + brainMemoryLine(p), '#cbd5e1');
     }
 
@@ -10892,8 +10925,35 @@
             neverSay: document.getElementById('brNeverSay').value.split('\n').map(x => x.trim()).filter(Boolean),
             notes: document.getElementById('brNotes').value,
             humanDelay: document.getElementById('brHumanDelay').checked,
-            learnEnabled: document.getElementById('brLearnEnabled').checked
+            learnEnabled: document.getElementById('brLearnEnabled').checked,
+            agentId: (document.getElementById('brAgentSelect') || {}).value || '',
+            agentManual: true
         };
+    }
+
+    // 🎓 AI Staff: only READY agents can be attached to a live WhatsApp contact.
+    let readyAgentsCache = null;
+    async function loadReadyAgents(force) {
+        if (readyAgentsCache && !force) return readyAgentsCache;
+        try {
+            const res = await fetch('api/agents', { headers: { 'x-admin-token': adminToken() } });
+            if (!res.ok) { readyAgentsCache = []; return readyAgentsCache; }
+            const d = await res.json();
+            readyAgentsCache = (d.agents || []).filter(a => a.status === 'ready');
+            return readyAgentsCache;
+        } catch (e) { readyAgentsCache = []; return readyAgentsCache; }
+    }
+    async function populateAgentSelect(selectedId) {
+        const sel = document.getElementById('brAgentSelect');
+        if (!sel) return;
+        const agents = await loadReadyAgents();
+        sel.innerHTML = '<option value="">🎓 Agent: Default</option>' + agents.map(a =>
+            '<option value="' + escapeHtml(a.id) + '">' + (a.category === 'personal' ? '💬 ' : '🎓 ') + escapeHtml(a.name) + (a.category === 'personal' ? ' (personal)' : '') + '</option>').join('');
+        sel.value = selectedId && agents.some(a => a.id === selectedId) ? selectedId : '';
+        if (selectedId && !agents.some(a => a.id === selectedId)) {
+            sel.innerHTML += '<option value="' + escapeHtml(selectedId) + '">⚠️ ' + escapeHtml(selectedId) + ' (not ready)</option>';
+            sel.value = selectedId;
+        }
     }
 
     async function saveBrainCard() {

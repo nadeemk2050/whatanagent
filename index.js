@@ -17,8 +17,10 @@ import { registerNewsRoutes } from './newsAgent.mjs';
 import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
+import { registerAgentsRoutes } from './agentsApi.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
+import { makeAdminGuard } from './adminGuard.mjs';
 import { 
   initWaWeb, 
   getWaWebStatus, 
@@ -146,6 +148,8 @@ const goldAgent = registerGoldRoutes(app, db);
 const brainEngine = registerBrainRoutes(app, db);
 // 📊 Trade Accounts Data (Purchases & Sales Ledger for TT, Gold, and Items)
 registerTradeAccountsRoutes(app, db);
+// 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
+registerAgentsRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -723,6 +727,17 @@ function adminOk(req) {
   if (!ADMIN_TOKEN) return true;   // not configured yet: keep the dashboard usable
   const t = String(req.get('x-admin-token') || req.query.token || '');
   return !!t && t === ADMIN_TOKEN;
+}
+// Secret-WRITING routes use the fail-closed guard (503 when unset, lockout after repeated
+// wrong guesses). A correct token always passes, so a mistyping owner is never locked out.
+const legacyAdminGuard = makeAdminGuard({ adminToken: ADMIN_TOKEN, label: 'legacy' });
+// Backwards compatibility: while ADMIN_TOKEN is not configured these two routes keep their old
+// behaviour, so the dashboard can still save settings. The instant ADMIN_TOKEN is set in the
+// hosting environment (next restart), they become fail-closed + brute-force protected with no
+// further code change.
+function legacyAdminRoute(req, res, next) {
+  if (!ADMIN_TOKEN) return next();
+  return legacyAdminGuard(req, res, next);
 }
 
 // --- Core Helper Functions ---
@@ -1720,8 +1735,7 @@ app.get('/api/env', async (req, res) => {
   });
 });
 
-app.post('/api/env', async (req, res) => {
-  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized - send the admin token in the x-admin-token header.' });
+app.post('/api/env', legacyAdminRoute, async (req, res) => {
   try {
     const data = req.body || {};
     const prev = await getSettingsRaw();   // raw stored doc (never carry env values back into the DB)
@@ -1765,8 +1779,7 @@ app.get('/api/knowledge', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Failed to load knowledge base.' }); }
 });
 
-app.post('/api/knowledge', async (req, res) => {
-  if (!adminOk(req)) return res.status(401).json({ error: 'Unauthorized - send the admin token in the x-admin-token header.' });
+app.post('/api/knowledge', legacyAdminRoute, async (req, res) => {
   try {
     const incoming = req.body || {};
     const prevSnap = await getDoc(doc(db, "appData", "knowledge"));

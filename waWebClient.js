@@ -9,6 +9,8 @@ import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, e
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
+import { getAgent } from './agentsStore.mjs';
+import { buildAgentSystemPrompt, getCompiledBlocks } from './agentRunner.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -4881,7 +4883,29 @@ export async function toggleContactAiPause(jid, shouldPause = null) {
   return { success: true, jid, cleanPhone, isPaused: targetPaused, pausedContacts: waWebKnowledgeBase.pausedContacts };
 }
 
-export function buildWaWebKnowledgeSystemPrompt(chatContext = null) {
+// Business facts handed to a staff agent only when its card allows it (useBusinessKb).
+function agentBusinessKbText() {
+  const kb = waWebKnowledgeBase || {};
+  const parts = [];
+  if (kb.systemPromptInstructions) parts.push('INSTRUCTIONS: ' + String(kb.systemPromptInstructions).slice(0, 1200));
+  if (kb.customKnowledgeText) parts.push(String(kb.customKnowledgeText).slice(0, 2500));
+  if (Array.isArray(kb.productsCatalog) && kb.productsCatalog.length) {
+    parts.push('PRODUCTS:\n' + kb.productsCatalog.slice(0, 40).map(p => '- ' + p.name + (p.price ? ' (' + p.price + ')' : '')).join('\n'));
+  }
+  if (Array.isArray(kb.faqs) && kb.faqs.length) {
+    parts.push('FAQS:\n' + kb.faqs.slice(0, 25).map(f => 'Q: ' + f.question + '\nA: ' + f.answer).join('\n'));
+  }
+  return parts.join('\n\n');
+}
+
+export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null) {
+  // 🎓 AI Staff agent assigned to this contact: the agent's own prompt (plus its training
+  // knowledge, corrections, examples and the universal safety block) replaces the generic
+  // assistant prompt. With no agent the behaviour below is byte-for-byte unchanged.
+  if (agent) {
+    const blocks = agent.__blocks || {};
+    return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '');
+  }
   const kb = waWebKnowledgeBase;
   let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +
     '--- 🌍 UNIVERSAL MULTILINGUAL PROTOCOL (ALL LANGUAGES SUPPORTED) ---\n' +
@@ -4948,7 +4972,31 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     settings = settingsSnap.exists() ? settingsSnap.data() : {};
     
     const chatContext = getWaWebChatContext(jid);
-    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext);
+
+    // 🎓 AI STAFF: if the owner assigned a READY agent to this contact's brain card, that agent
+    // answers with its own prompt, training material and preferred model. Personal-category
+    // agents only run when the owner assigned them by hand (agentManual). Never affects the
+    // boss override path or contacts without an agent.
+    let brainAgent = null;
+    if (!overridePrompt) {
+      try {
+        const brainProfile = await getBrainForReply(jid, chatContext?.name || '');
+        const assignedId = brainProfile && brainProfile.agentId;
+        if (assignedId) {
+          const a = await getAgent(assignedId);
+          const allowedPersonal = !a || a.category !== 'personal' || brainProfile.agentManual === true;
+          if (a && a.status === 'ready' && allowedPersonal) {
+            a.__blocks = await getCompiledBlocks(a.id);
+            brainAgent = a;
+          } else if (a) {
+            console.log('[WA-WEB AGENT] Ignoring agent ' + assignedId + ' for ' + jid +
+              ' (status=' + a.status + ', personal=' + (a.category === 'personal') + ', manual=' + !!brainProfile.agentManual + ')');
+          }
+        }
+      } catch (e) { console.warn('[WA-WEB AGENT] resolve failed: ' + (e.message || '').slice(0, 120)); }
+    }
+
+    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext, brainAgent);
 
     const cleanPhone = (jid || '').split('@')[0].split(':')[0];
     const contactName = chatContext?.name || '';
@@ -4996,7 +5044,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // fall back through the known-good ids (verified live 2026-10-13).
     const qwenCandidates = Array.from(new Set([qwenModelId, 'qwen3.8-flash', 'qwen-plus', 'qwen-flash'].filter(Boolean)));
 
-    chosenModel = targetModel || waWebKnowledgeBase.aiModel || 'deepseek-flash';
+    chosenModel = targetModel || (brainAgent && brainAgent.model) || waWebKnowledgeBase.aiModel || 'deepseek-flash';
     // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the best healthy
     // engine — the knowledge-base engine if it is not Gemini, otherwise Qwen (verified working),
     // and only then DeepSeek.
