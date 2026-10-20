@@ -7,7 +7,7 @@
 // ============================================================================
 import {
   attachAgentsDb, listAgents, getAgent, createAgent, updateAgent, deleteAgent,
-  setAgentStatus, computeProgress, AVAILABLE_MODELS, STATUSES, STATUS_LABELS, DEFAULT_WEIGHTS,
+  setAgentStatus, computeProgress, computeConfidence, AVAILABLE_MODELS, STATUSES, STATUS_LABELS, DEFAULT_WEIGHTS,
   listKnowledge, addKnowledge, deleteKnowledge,
   listExamples, addExample, deleteExample,
   listLessons, addLesson, updateLesson, deleteLesson,
@@ -18,6 +18,7 @@ import {
 import { AGENT_TEMPLATES, templateById } from './agentTemplates.mjs';
 import { runAgent, judgeAnswer, buildAgentSystemPrompt, getCompiledBlocks, clearAgentBlocksCache, attachRunnerDb } from './agentRunner.mjs';
 import { listTools, runTool, attachToolDb } from './toolRegistry.mjs';
+import { attachLearningDb, listChatCandidates, learnFromSource, learnFromAllSources, maybeAutoLearn, listLearningRuns } from './agentLearning.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { getAiActivityLog } from './aiTracker.mjs';
 import { getWaWebKnowledgeBase } from './waWebClient.js';
@@ -49,7 +50,15 @@ function businessKbText() {
 }
 
 function withProgress(agent) {
-  return { ...agent, progress: computeProgress(agent) };
+  return { ...agent, progress: computeProgress(agent), confidence: computeConfidence(agent) };
+}
+
+// Called from the 60s scheduler in index.js. Self-throttled inside maybeAutoLearn.
+export async function maybeAgentAutoLearn() {
+  try {
+    const agents = await listAgents();
+    await maybeAutoLearn(agents);
+  } catch (e) { /* never break the scheduler */ }
 }
 
 function badRequest(res, msg) { return res.status(400).json({ ok: false, error: msg }); }
@@ -58,6 +67,7 @@ export function registerAgentsRoutes(app, db) {
   attachAgentsDb(db);
   attachToolDb(db);
   attachRunnerDb(db);
+  attachLearningDb(db);
   console.log('[AGENTS] 🎓 AI Staff Academy API registered (fail-closed admin guard' + (process.env.ADMIN_TOKEN ? '' : ' — ADMIN_TOKEN MISSING, routes will return 503') + ')');
 
   const guard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'agents' });
@@ -77,6 +87,99 @@ export function registerAgentsRoutes(app, db) {
   });
 
   app.get(api + '/tools', (req, res) => res.json({ ok: true, tools: listTools() }));
+
+  // WhatsApp contacts/groups that can be assigned as learning sources.
+  app.get(api + '/chats', (req, res) => {
+    const chats = listChatCandidates();
+    res.json({ ok: true, chats, groups: chats.filter(c => c.isGroup).length, contacts: chats.filter(c => !c.isGroup).length });
+  });
+
+  // ---------------------------------------------------------------- learning sources
+  app.get(api + '/:id/sources', async (req, res) => {
+    try {
+      const agent = await getAgent(req.params.id, { fresh: true });
+      if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+      res.json({
+        ok: true,
+        sources: agent.sources || [],
+        learningDays: agent.learningDays || [],
+        autoLearn: agent.autoLearn !== false,
+        confidence: computeConfidence(agent)
+      });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post(api + '/:id/sources', async (req, res) => {
+    try {
+      const agent = await getAgent(req.params.id, { fresh: true });
+      if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+      if (agent.status === 'archived') return badRequest(res, 'Archived staff cannot take on new chats. Restore it first.');
+
+      const body = req.body || {};
+      const jid = sstr(body.jid, 80);
+      if (!jid) return badRequest(res, 'Pick a WhatsApp contact or group.');
+      const sources = agent.sources || [];
+      if (sources.some(s => s.jid === jid)) return badRequest(res, 'That chat is already assigned.');
+
+      sources.push({
+        jid,
+        name: sstr(body.name, 80) || jid,
+        isGroup: !!body.isGroup,
+        addedAt: Date.now(),
+        lastLearnedAt: null,
+        messagesRead: 0,
+        runs: 0,
+        confidence: 0,
+        learned: { style: '', facts: [], topics: [], at: null }
+      });
+      const saved = await updateAgent(agent.id, { sources });
+      res.json({ ok: true, sources: saved.sources, confidence: computeConfidence(saved), progress: computeProgress(saved) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.delete(api + '/:id/sources/:jid', async (req, res) => {
+    try {
+      const agent = await getAgent(req.params.id, { fresh: true });
+      if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+      const jid = decodeURIComponent(req.params.jid);
+      const sources = (agent.sources || []).filter(s => s.jid !== jid);
+      const saved = await updateAgent(agent.id, { sources });
+      res.json({ ok: true, sources: saved.sources, confidence: computeConfidence(saved) });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // Learn from one assigned chat, or from all of them when no jid is given.
+  app.post(api + '/:id/learn', async (req, res) => {
+    try {
+      const agent = await getAgent(req.params.id, { fresh: true });
+      if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+      if (agent.status === 'archived') return badRequest(res, 'Archived staff cannot learn. Restore it first.');
+
+      const jid = sstr((req.body || {}).jid, 80);
+      if (jid) {
+        const source = (agent.sources || []).find(s => s.jid === jid);
+        if (!source) return badRequest(res, 'That chat is not assigned to this agent.');
+        const r = await learnFromSource(agent, source);
+        if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+        const fresh = await getAgent(agent.id, { fresh: true });
+        return res.json({
+          ok: true, mode: 'single', source: r.source, added: r.added,
+          learned: r.learned, messagesRead: r.messagesRead,
+          progress: computeProgress(fresh), confidence: computeConfidence(fresh),
+          agent: fresh
+        });
+      }
+
+      const r = await learnFromAllSources(agent);
+      if (!r.ok) return res.status(400).json({ ok: false, error: r.error || 'Nothing could be learned.' });
+      res.json({ ok: true, mode: 'all', learned: r.learned, total: r.total, results: r.results, progress: r.progress, confidence: r.confidence, agent: r.agent });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.get(api + '/:id/learning-runs', async (req, res) => {
+    try { res.json({ ok: true, runs: await listLearningRuns(req.params.id) }); }
+    catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
 
   // ---------------------------------------------------------------- list / create
   app.get(api, async (req, res) => {

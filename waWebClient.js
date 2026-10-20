@@ -4904,7 +4904,9 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
   // assistant prompt. With no agent the behaviour below is byte-for-byte unchanged.
   if (agent) {
     const blocks = agent.__blocks || {};
-    return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '');
+    // Only this contact's own learned notes are visible, never another customer's.
+    const forJid = chatContext && chatContext.jid ? chatContext.jid : '';
+    return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '', { forJid });
   }
   const kb = waWebKnowledgeBase;
   let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +

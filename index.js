@@ -17,7 +17,7 @@ import { registerNewsRoutes } from './newsAgent.mjs';
 import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
-import { registerAgentsRoutes } from './agentsApi.mjs';
+import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -4482,6 +4482,8 @@ function startFollowUpScheduler() {
     if (brainEngine && typeof brainEngine.maybeLearn === 'function') {
       brainEngine.maybeLearn();
     }
+    // 🌱 AI Staff Academy: staff under training study their assigned WhatsApp chats (self-throttled, 6h)
+    maybeAgentAutoLearn();
   };
   console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));
   runTick();

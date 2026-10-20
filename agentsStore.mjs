@@ -116,7 +116,51 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   a.updatedAt = Date.now();
   a.createdBy = sstr(raw.createdBy || existing.createdBy, 120);
   a.archivedAt = a.status === 'archived' ? (existing.archivedAt || Date.now()) : null;
+
+  // 🌱 Learning sources: WhatsApp contacts/groups this staff member studies.
+  const rawSources = Array.isArray(raw.sources) ? raw.sources : (Array.isArray(existing.sources) ? existing.sources : []);
+  a.sources = rawSources.slice(0, 40).map(s => ({
+    jid: sstr(s.jid, 80),
+    name: sstr(s.name, 80) || 'Contact',
+    isGroup: !!s.isGroup,
+    addedAt: Number(s.addedAt) || Date.now(),
+    lastLearnedAt: Number(s.lastLearnedAt) || null,
+    messagesRead: Number(s.messagesRead) || 0,
+    runs: Number(s.runs) || 0,
+    confidence: clamp(Number(s.confidence) || 0, 0, 100),
+    learned: {
+      style: sstr((s.learned && s.learned.style) || '', 600),
+      facts: arr((s.learned && s.learned.facts) || [], 160, 12),
+      topics: arr((s.learned && s.learned.topics) || [], 60, 10),
+      at: Number((s.learned && s.learned.at) || 0) || null
+    }
+  })).filter(s => s.jid);
+
+  a.autoLearn = asBool(raw.autoLearn != null ? raw.autoLearn : existing.autoLearn, true);
+  a.lastAutoLearnAt = Number(raw.lastAutoLearnAt != null ? raw.lastAutoLearnAt : existing.lastAutoLearnAt) || 0;
+  const days = raw.learningDays !== undefined ? raw.learningDays : existing.learningDays;
+  a.learningDays = (Array.isArray(days) ? days : []).map(d => sstr(d, 10)).filter(Boolean).slice(-30);
+  a.confidence = raw.confidence !== undefined ? raw.confidence : (existing.confidence || null);
   return a;
+}
+
+// 🌱 Confidence: how much this staff member can be trusted today.
+// breadth (how many people/groups it studied), depth (how much it read),
+// consistency (how many separate days it studied), quality (latest scorecard).
+export function computeConfidence(agent) {
+  const sources = (agent && agent.sources) || [];
+  const breakdown = {
+    breadth: clamp(sources.length * 25, 0, 100),
+    depth: sources.length
+      ? Math.round(sources.reduce((s, x) => s + clamp((x.messagesRead || 0) / 150, 0, 1) * 100, 0) / sources.length)
+      : 0,
+    consistency: clamp(((agent && agent.learningDays) || []).length * 20, 0, 100),
+    quality: clamp((agent && agent.lastTestRun && agent.lastTestRun.passRate) || 0, 0, 100)
+  };
+  const score = Math.round(
+    breakdown.breadth * 0.30 + breakdown.depth * 0.30 + breakdown.consistency * 0.20 + breakdown.quality * 0.20
+  );
+  return { score, breakdown, at: Date.now(), sources: sources.length };
 }
 
 // ---------------------------------------------------------------------------

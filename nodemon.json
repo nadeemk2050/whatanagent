@@ -1,5 +1,5 @@
 {
-  "watch": ["index.js", "contactBrain.mjs", "waWebClient.js", "liveMeetingApi.mjs", "liveMeetingWs.mjs", "notebookApi.mjs", "aiTracker.mjs", "goldAgent.mjs", "tradeAccountsApi.mjs", "agentsApi.mjs", "agentsStore.mjs", "agentRunner.mjs", "agentTemplates.mjs", "toolRegistry.mjs", "adminGuard.mjs", "aiProviders.mjs"],
+  "watch": ["index.js", "contactBrain.mjs", "waWebClient.js", "liveMeetingApi.mjs", "liveMeetingWs.mjs", "notebookApi.mjs", "aiTracker.mjs", "goldAgent.mjs", "tradeAccountsApi.mjs", "agentsApi.mjs", "agentsStore.mjs", "agentRunner.mjs", "agentTemplates.mjs", "agentLearning.mjs", "toolRegistry.mjs", "adminGuard.mjs", "aiProviders.mjs"],
   "ext": "js,mjs,json",
   "ignore": ["*.cjs", "public/*", "node_modules/*", "auth_info_baileys/*"]
 }

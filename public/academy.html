@@ -420,7 +420,9 @@ function renderCards() {
       '<div class="meta-row"><span>Training</span><span><b>' + p.effective + '%</b>' + (p.override !== null ? ' (manual)' : '') + '</span></div>' +
       '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, p.effective)) + '%"></div></div>' +
       '<div class="meta-row"><span>' + esc(a.model || '') + '</span><span>' + esc(a.category || '') + '</span></div>' +
-      '<div class="meta-row"><span>Tools: ' + (a.allowedTools || []).length + '</span><span>' + (a.archivedAt ? 'archived ' + new Date(a.archivedAt).toLocaleDateString() : 'updated ' + new Date(a.updatedAt || Date.now()).toLocaleDateString()) + '</span></div>' +
+      '<div class="meta-row"><span>Tools: ' + (a.allowedTools || []).length + ' · 🌱 ' + (a.sources || []).length + ' chats</span><span>' + (a.archivedAt ? 'archived ' + new Date(a.archivedAt).toLocaleDateString() : 'updated ' + new Date(a.updatedAt || Date.now()).toLocaleDateString()) + '</span></div>' +
+      '<div class="meta-row"><span>Confidence</span><span><b>' + ((a.confidence && a.confidence.score) || 0) + '%</b></span></div>' +
+      '<div class="bar" style="height:5px;"><div style="width:' + ((a.confidence && a.confidence.score) || 0) + '%;background:linear-gradient(90deg,#0ea5e9,#22c55e);"></div></div>' +
       '<div class="card-actions"><button class="btn btn-sm btn-ghost" onclick="openDetail(\'' + esc(a.id) + '\')">Open</button>' + acts + '</div>' +
       '</div>';
   }).join('');
@@ -513,9 +515,10 @@ async function saveHire() {
 
 /* ---------------- detail ---------------- */
 const DETAIL_TABS = [
-  ['overview', '📋 Overview'], ['knowledge', '📚 Knowledge'], ['examples', '💬 Examples'],
-  ['chat', '🧪 Test Chat'], ['lessons', '🎯 Corrections'], ['scorecard', '📝 Scorecard'],
-  ['guardrails', '🛡️ Guardrails'], ['prompt', '🧩 Prompt'], ['tools', '🛠️ Tools'], ['usage', '📈 Usage']
+  ['overview', '📋 Overview'], ['learning', '🌱 Learn from Chats'], ['knowledge', '📚 Knowledge'],
+  ['examples', '💬 Examples'], ['chat', '🧪 Test Chat'], ['lessons', '🎯 Corrections'],
+  ['scorecard', '📝 Scorecard'], ['guardrails', '🛡️ Guardrails'], ['prompt', '🧩 Prompt'],
+  ['tools', '🛠️ Tools'], ['usage', '📈 Usage']
 ];
 
 async function openDetail(id, tab) {
@@ -532,6 +535,7 @@ async function openDetail(id, tab) {
     $('dBody').innerHTML = renderDetailTab();
     $('detailOverlay').classList.add('open');
     if (S.detailTab === 'usage') loadUsage(id);
+    if (S.detailTab === 'learning') loadLearningPanel();
   } catch (e) { toast('❌ ' + e.message); }
 }
 function closeDetail() { $('detailOverlay').classList.remove('open'); S.current = null; }
@@ -540,6 +544,7 @@ function renderDetailTab() {
   const d = S.current; if (!d) return '';
   const a = d.agent, p = a.progress || {};
   if (S.detailTab === 'overview') return tabOverview(d, a, p);
+  if (S.detailTab === 'learning') return tabLearning(d);
   if (S.detailTab === 'knowledge') return tabKnowledge(d);
   if (S.detailTab === 'examples') return tabExamples(d);
   if (S.detailTab === 'chat') return tabChat(d);
@@ -625,6 +630,150 @@ async function deleteStaff(id) {
   try {
     await api('/api/agents/' + encodeURIComponent(id), { method: 'DELETE' });
     toast('🗑️ Deleted'); closeDetail(); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- 🌱 learn from chats ---------------- */
+function confidenceBar(c) {
+  const b = (c && c.breakdown) || {};
+  const line = (label, val) => '<div class="meta-row" style="margin-top:2px;"><span>' + label + '</span><span><b>' + Math.round(val || 0) + '%</b></span></div>' +
+    '<div class="bar" style="height:5px;"><div style="width:' + Math.max(0, Math.min(100, val || 0)) + '%"></div></div>';
+  return '<div style="font-size:24px;font-weight:800;color:#0ea5e9;margin-bottom:4px;">' + ((c && c.score) || 0) + '%<span style="font-size:12px;color:#64748b;font-weight:600;"> confidence</span></div>' +
+    '<div class="bar" style="height:10px;margin-bottom:10px;"><div style="width:' + ((c && c.score) || 0) + '%"></div></div>' +
+    line('🧭 Breadth (people & groups studied)', b.breadth) +
+    line('📖 Depth (how much it read)', b.depth) +
+    line('🗓️ Consistency (study days)', b.consistency) +
+    line('🎯 Quality (latest scorecard)', b.quality);
+}
+
+function tabLearning(d) {
+  const a = d.agent;
+  const sources = a.sources || [];
+  const c = a.confidence || { score: 0, breakdown: {} };
+  const rows = sources.map(s => {
+    const l = s.learned || {};
+    return '<div class="item">' +
+      '<div class="t">' + (s.isGroup ? '👥 ' : '👤 ') + esc(s.name) + ' <span class="pill">' + (s.isGroup ? 'group' : 'contact') + '</span></div>' +
+      '<div style="font-size:13px;font-weight:800;color:#0ea5e9;margin-top:6px;">' + (s.confidence || 0) + '% <span style="font-size:10.5px;color:#64748b;font-weight:600;">source confidence</span></div>' +
+      '<div class="bar" style="height:6px;margin:2px 0 6px;"><div style="width:' + (s.confidence || 0) + '%"></div></div>' +
+      '<div class="x">read ' + (s.messagesRead || 0) + ' messages · ' + (s.runs || 0) + ' run(s) · ' +
+      (s.lastLearnedAt ? 'last ' + new Date(s.lastLearnedAt).toLocaleString() : 'never learned') + '</div>' +
+      (l.style ? '<div class="d"><b>Style:</b> ' + esc(l.style) + '</div>' : '') +
+      ((l.facts || []).length ? '<div class="d"><b>Knows:</b> ' + esc((l.facts || []).slice(0, 4).join(' · ')) + '</div>' : '') +
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">' +
+      '<button class="btn btn-sm btn-primary" onclick="learnNow(\'' + esc(s.jid).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">🔄 Learn now</button>' +
+      '<button class="btn btn-sm btn-danger" onclick="removeSource(\'' + esc(s.jid).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">Remove</button>' +
+      '</div></div>';
+  }).join('');
+
+  return '<div class="sect"><h4>Confidence</h4>' + confidenceBar(c) + '</div>' +
+    '<div class="sect"><h4>Assign WhatsApp chats to study (' + sources.length + ')</h4>' +
+    '<div class="x" style="margin-bottom:8px;">The staff member reads the recent history of these chats (read-only), extracts durable facts, style and corrections, and its training % grows with every run.</div>' +
+    '<div class="row2"><div><label class="f">Search chats</label><input class="f" id="learnSearch" placeholder="name or number…" oninput="filterChatOptions()"></div>' +
+    '<div><label class="f">WhatsApp contact / group</label><select class="f" id="learnChatSel"><option value="">Loading…</option></select></div></div>' +
+    '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">' +
+    '<button class="btn btn-green" onclick="addSource()">➕ Assign this chat</button>' +
+    '<button class="btn btn-primary" id="learnAllBtn" onclick="learnAll()">🌱 Learn from all assigned</button>' +
+    '<label style="font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="autoLearnChk" ' + (a.autoLearn !== false ? 'checked' : '') + ' onchange="toggleAutoLearn(this.checked)"> Auto-learn every 6 hours</label>' +
+    '</div></div>' +
+    '<div class="sect"><h4>Assigned chats</h4>' + (rows || '<div class="x">No chats assigned yet. Pick one above.</div>') + '</div>' +
+    '<div class="sect"><h4>Learning history</h4><div id="learnRunsBox" class="x">Loading…</div></div>';
+}
+
+let allChatsCache = null;
+
+async function ensureChats() {
+  if (allChatsCache) return allChatsCache;
+  const d = await api('/api/agents/chats');
+  allChatsCache = d.chats || [];
+  return allChatsCache;
+}
+
+function filterChatOptions() {
+  const q = ($('learnSearch') ? $('learnSearch').value : '').toLowerCase().trim();
+  const sel = $('learnChatSel');
+  if (!sel || !allChatsCache) return;
+  const list = allChatsCache.filter(c => !q || c.name.toLowerCase().includes(q) || String(c.lastMessage || '').toLowerCase().includes(q));
+  sel.innerHTML = '<option value="">— pick a chat (' + list.length + ') —</option>' + list.slice(0, 200).map(c =>
+    '<option value="' + esc(c.jid) + '">' + (c.isGroup ? '👥 ' : '👤 ') + esc(c.name) + '</option>').join('');
+}
+
+async function loadLearningPanel() {
+  const d = S.current; if (!d) return;
+  try {
+    await ensureChats();
+    filterChatOptions();
+  } catch (e) { toast('❌ ' + e.message); }
+  try {
+    const r = await api('/api/agents/' + encodeURIComponent(d.agent.id) + '/learning-runs');
+    const runs = r.runs || [];
+    const box = $('learnRunsBox');
+    if (box) {
+      box.className = '';
+      box.innerHTML = runs.length
+        ? '<table class="res"><tr><th>When</th><th>Chat</th><th>Read</th><th>Added</th><th>Result</th></tr>' +
+          runs.slice(0, 20).map(x => '<tr><td>' + new Date(x.createdAt).toLocaleString() + '</td><td>' + (x.isGroup ? '👥 ' : '👤 ') + esc(x.name) + '</td>' +
+            '<td>' + (x.messagesRead || 0) + '</td><td>' +
+            ('K' + ((x.added && x.added.knowledge) || 0) + ' · E' + ((x.added && x.added.examples) || 0) + ' · L' + ((x.added && x.added.lessons) || 0)) + '</td>' +
+            '<td class="' + (x.ok ? 'ok' : 'fail') + '">' + (x.ok ? 'OK' : esc(String(x.error || 'failed').slice(0, 60))) + '</td></tr>').join('') +
+          '</table>'
+        : 'No learning runs yet.';
+    }
+  } catch (e) { const b = $('learnRunsBox'); if (b) b.textContent = '❌ ' + e.message; }
+}
+
+async function addSource() {
+  const sel = $('learnChatSel');
+  const jid = sel ? sel.value : '';
+  if (!jid) { toast('❌ Pick a chat first'); return; }
+  const chat = (allChatsCache || []).find(c => c.jid === jid) || { name: jid, isGroup: false };
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/sources', {
+      method: 'POST', body: JSON.stringify({ jid, name: chat.name, isGroup: !!chat.isGroup })
+    });
+    toast('✅ ' + chat.name + ' assigned');
+    await openDetail(id, 'learning'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function removeSource(jid) {
+  if (!confirm('Remove this chat from the learning sources?')) return;
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id) + '/sources/' + encodeURIComponent(jid), { method: 'DELETE' });
+    toast('🗑️ Removed'); await openDetail(id, 'learning'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function learnNow(jid) {
+  const id = S.current.agent.id;
+  toast('🌱 Reading the chat…');
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/learn', { method: 'POST', body: JSON.stringify({ jid }) });
+    const a = d.added || {};
+    toast('✅ Learned: ' + (a.knowledge || 0) + ' facts · ' + (a.examples || 0) + ' examples · ' + (a.lessons || 0) + ' corrections · training now ' + d.progress.effective + '%');
+    await openDetail(id, 'learning'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+async function learnAll() {
+  const id = S.current.agent.id;
+  const btn = $('learnAllBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '🌱 Learning…'; }
+  try {
+    const d = await api('/api/agents/' + encodeURIComponent(id) + '/learn', { method: 'POST', body: '{}' });
+    toast('✅ Learned from ' + d.learned + '/' + d.total + ' chats · training ' + d.progress.effective + '% · confidence ' + d.confidence.score + '%');
+    await openDetail(id, 'learning'); await loadAgents();
+  } catch (e) { toast('❌ ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🌱 Learn from all assigned'; } }
+}
+
+async function toggleAutoLearn(on) {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/agents/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ autoLearn: !!on }) });
+    toast(on ? '✅ Auto-learn on (every 6h)' : '⏸️ Auto-learn off');
   } catch (e) { toast('❌ ' + e.message); }
 }
 

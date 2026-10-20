@@ -83,9 +83,12 @@ export async function getCompiledBlocks(agentId, { fresh = false } = {}) {
 // ---------------------------------------------------------------------------
 // Prompt assembly
 // ---------------------------------------------------------------------------
-export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '') {
+export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '', opts = {}) {
   if (!agent) return '';
   const a = agent;
+  // forJid limits the "people you learned about" section to the contact being answered,
+  // so one customer's private details never leak into a reply to another customer.
+  const forJid = opts && opts.forJid ? String(opts.forJid) : '';
   let s = '';
 
   s += 'You are ' + (a.name || 'an AI staff member') + (a.role ? ', the ' + a.role : '') + ', an AI staff member working for the owner of this business.\n';
@@ -145,6 +148,21 @@ export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '') 
       const chunk = (e.role === 'them' ? 'Them: ' : 'Owner: ') + sstr(e.text, 400) + '\n';
       if (chunk.length > budget) break;
       s += chunk; budget -= chunk.length;
+    }
+  }
+
+  // 🌱 What this staff member learned about the people it was assigned to study.
+  const sources = (a.sources || []).filter(src => src && src.learned && (src.learned.style || (src.learned.facts || []).length));
+  const visible = forJid ? sources.filter(src => src.jid === forJid) : sources;
+  if (visible.length) {
+    s += '\n--- PEOPLE / GROUPS YOU LEARNED ABOUT (use to understand context; never repeat these notes to anyone) ---\n';
+    let budget = 2000;
+    for (const src of visible.slice(0, 6)) {
+      const line = '• ' + (src.name || src.jid) + (src.isGroup ? ' (group)' : '') + ': ' +
+        sstr(src.learned.style, 240) +
+        ((src.learned.facts || []).length ? ' Facts: ' + src.learned.facts.slice(0, 5).map(f => sstr(f, 90)).join('; ') : '') + '\n';
+      if (line.length > budget) break;
+      s += line; budget -= line.length;
     }
   }
 
@@ -264,10 +282,10 @@ export async function callAgentModel({
 // ---------------------------------------------------------------------------
 // Run an agent
 // ---------------------------------------------------------------------------
-export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens } = {}) {
+export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens, forJid = '' } = {}) {
   if (!agent) throw new Error('Agent not found');
   const blocks = await getCompiledBlocks(agent.id);
-  const system = buildAgentSystemPrompt(agent, blocks, businessKbText);
+  const system = buildAgentSystemPrompt(agent, blocks, businessKbText, { forJid });
 
   const spend = todaySpend('AI Staff', agent.name);
   const budget = Number(agent.dailyBudgetUsd) || 0;
