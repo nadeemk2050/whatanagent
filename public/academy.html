@@ -245,19 +245,36 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
 }
 function adminToken() { try { return localStorage.getItem('wat_admin_token') || ''; } catch (e) { return ''; } }
-function saveToken() {
+async function saveToken() {
   const v = $('tokenInput').value.trim();
-  if (!v) return;
+  if (!v) { $('tokenMsg').textContent = 'Paste the token first.'; return; }
   try { localStorage.setItem('wat_admin_token', v); } catch (e) {}
+  $('tokenMsg').textContent = 'Checking…';
+
+  // Verify the token before pretending it worked.
+  try {
+    const res = await fetch('/api/agents/meta', { headers: { 'x-admin-token': v } });
+    if (res.status === 401) { $('tokenMsg').textContent = '❌ Token rejected — check the value.'; return; }
+    if (res.status === 503) { $('tokenMsg').textContent = '❌ ADMIN_TOKEN is not set on this server.'; return; }
+    if (!res.ok) { $('tokenMsg').textContent = '❌ Server error ' + res.status; return; }
+  } catch (e) { $('tokenMsg').textContent = '❌ ' + e.message; return; }
+
+  S.meta = null;                       // force re-read with the new token
   $('tokenBar').classList.add('hidden');
-  loadAll();
+  $('tokenMsg').textContent = '';
+  await loadMeta();
+  await loadAgents();
+  toast('✅ Token accepted');
 }
 async function api(path, opts = {}) {
   const res = await fetch(path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken(), ...(opts.headers || {}) }
   });
-  if (res.status === 401) { $('tokenBar').classList.remove('hidden'); }
+  if (res.status === 401) {
+    $('tokenBar').classList.remove('hidden');
+    $('tokenMsg').textContent = 'The token saved in this browser was rejected.';
+  }
   if (res.status === 503) {
     $('tokenBar').classList.remove('hidden');
     $('tokenMsg').innerHTML = '<br><b>ADMIN_TOKEN is not set on the server.</b> Add it to the hosting environment first.';
@@ -429,7 +446,9 @@ async function changeStatus(id, to) {
 }
 
 /* ---------------- hire / edit ---------------- */
-function openHire() {
+async function openHire() {
+  if (!S.meta) await loadMeta();
+  if (!S.meta) { toast('❌ Could not load the hire form — check the admin token'); return; }
   S.editId = null;
   $('hireTitle').textContent = '➕ Hire New Staff';
   $('hireSaveBtn').textContent = '💾 Hire';
@@ -576,10 +595,11 @@ async function saveOverride(id) {
   } catch (e) { toast('❌ ' + e.message); }
 }
 
-function editStaff(id) {
+async function editStaff(id) {
   const a = (S.agents.find(x => x.id === id)) || (S.current && S.current.agent);
   if (!a) return;
-  openHire();
+  await openHire();
+  if (!S.meta) return;
   S.editId = id;
   $('hireTitle').textContent = '✏️ Edit ' + a.name;
   $('hireSaveBtn').textContent = '💾 Save Card';
