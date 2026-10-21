@@ -10,7 +10,8 @@ import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mj
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
 import { getAgent } from './agentsStore.mjs';
-import { buildAgentSystemPrompt, getCompiledBlocks } from './agentRunner.mjs';
+import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
+import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -4902,14 +4903,21 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
   // 🎓 AI Staff agent assigned to this contact: the agent's own prompt (plus its training
   // knowledge, corrections, examples and the universal safety block) replaces the generic
   // assistant prompt. With no agent the behaviour below is byte-for-byte unchanged.
-  if (agent) {
+  // 🎩 The built-in default staff member (Mr. Zaheer Ahmed) keeps the original knowledge-base
+  // behaviour — only his name and safety rules are added, so nothing about replies changes.
+  let identity = '';
+  if (agent && agent.isDefault) {
+    identity = 'You are Mr. Zaheer Ahmed, the personal assistant of Mr. Nadeem (the Boss). ' +
+      'You are the default AI staff member handling this WhatsApp conversation.\n' +
+      'You reply AS the owner of this account, never as an AI. Keep replies professional, concise and helpful.\n\n';
+  } else if (agent) {
     const blocks = agent.__blocks || {};
     // Only this contact's own learned notes are visible, never another customer's.
     const forJid = chatContext && chatContext.jid ? chatContext.jid : '';
     return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '', { forJid });
   }
   const kb = waWebKnowledgeBase;
-  let prompt = (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +
+  let prompt = identity + (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +
     '--- 🌍 UNIVERSAL MULTILINGUAL PROTOCOL (ALL LANGUAGES SUPPORTED) ---\n' +
     '1. AUTO-DETECT SENDER LANGUAGE: Detect the language, script, or dialect of the customer (Arabic, English, Roman Urdu, Urdu script, Hindi, Roman Hindi, Tagalog, Russian, French, Spanish, Chinese, Malayalam, Bengali, Pashto, Persian/Farsi, etc.).\n' +
     '2. NATIVE MIRRORING: You MUST reply in the EXACT SAME language, dialect, and script used by the customer. If they message in Arabic -> reply in natural business Arabic. If they write in Roman Urdu (e.g. "bhai price kya hai?") -> reply fluently in Roman Urdu. If English -> reply in English. EXCEPTION: Hindi is NEVER mirrored - see Rule 5.\n' +
@@ -4949,7 +4957,8 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
     prompt += '\n';
   }
 
-  return prompt;
+  // The default staff member also carries the universal safety block.
+  return identity ? (prompt + UNIVERSAL_SAFETY) : prompt;
 }
 
 export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null) {
@@ -4983,11 +4992,12 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     if (!overridePrompt) {
       try {
         const brainProfile = await getBrainForReply(jid, chatContext?.name || '');
-        const assignedId = brainProfile && brainProfile.agentId;
+        // No explicit handler on the brain card -> the built-in assistant handles the chat.
+        const assignedId = (brainProfile && brainProfile.agentId) || DEFAULT_AGENT_ID;
         if (assignedId) {
           const a = await getAgent(assignedId);
           const allowedPersonal = !a || a.category !== 'personal' || brainProfile.agentManual === true;
-          if (a && a.status === 'ready' && allowedPersonal) {
+          if (a && (a.status === 'ready' || a.isDefault) && allowedPersonal) {
             a.__blocks = await getCompiledBlocks(a.id);
             brainAgent = a;
           } else if (a) {

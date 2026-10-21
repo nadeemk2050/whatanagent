@@ -136,6 +136,8 @@ export function sanitizeAgent(raw = {}, existing = {}) {
     }
   })).filter(s => s.jid);
 
+  // Built-in staff (Mr. Zaheer Ahmed) can never be deleted by the UI.
+  a.isDefault = raw.isDefault !== undefined ? !!raw.isDefault : !!existing.isDefault;
   a.autoLearn = asBool(raw.autoLearn != null ? raw.autoLearn : existing.autoLearn, true);
   a.lastAutoLearnAt = Number(raw.lastAutoLearnAt != null ? raw.lastAutoLearnAt : existing.lastAutoLearnAt) || 0;
   const days = raw.learningDays !== undefined ? raw.learningDays : existing.learningDays;

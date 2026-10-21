@@ -391,12 +391,29 @@ function renderTabs() {
     { k: 'archived', label: '🗄️ Archived' }
   ];
   $('tabs').innerHTML = rows.map(r =>
-    '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('');
+    '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('') +
+    '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">🏢 Offices of Staff</button>';
 }
 
 function setTab(k) { S.tab = k; renderTabs(); renderCards(); }
 
 function renderCards() {
+  const box0 = $('cards'), empty0 = $('cardsEmpty');
+
+  // 🏢 Offices of Staff — placeholder section
+  if (S.tab === 'offices') {
+    box0.innerHTML = '';
+    empty0.classList.remove('hidden');
+    empty0.innerHTML =
+      '<div style="background:#fff; border:1px solid var(--border); border-radius:16px; padding:38px 24px; max-width:560px; margin:0 auto;">' +
+      '<div style="font-size:44px; margin-bottom:8px;">🏢</div>' +
+      '<div style="font-size:20px; font-weight:800; color:#0f172a; margin-bottom:6px;">Offices of Staff</div>' +
+      '<div style="font-size:14px; color:#7c3aed; font-weight:800; letter-spacing:.5px; text-transform:uppercase; margin-bottom:10px;">Coming soon</div>' +
+      '<div style="font-size:13px; color:#64748b; line-height:1.6;">Every staff member will get an office here — a workspace with their inbox, assigned chats, performance, schedule and approvals. Mr. Zaheer Ahmed’s office will be the main one.</div>' +
+      '</div>';
+    return;
+  }
+
   const list = S.agents.filter(a => a.status === S.tab);
   const box = $('cards'), empty = $('cardsEmpty');
   if (!list.length) {

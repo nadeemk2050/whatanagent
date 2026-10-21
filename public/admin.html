@@ -1046,8 +1046,8 @@
                         <span>👑 Boss KB</span>
                         <span style="background:#111827; color:#fbbf24; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">EXECUTIVE</span>
                     </button>
-                    <button onclick="openWaWebKnowledgeBaseModal()" title="Knowledge Base for WhatsApp Web AI Chat Bot (Instructions, FAQs, Auto-Pilot & Rules)" style="background:linear-gradient(135deg, #8b5cf6, #3b82f6); border:none; color:#fff; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(139,92,246,0.35);">
-                        <span>🧠 Knowledge Base for AI Chat Bot</span>
+                    <button onclick="openWaWebKnowledgeBaseModal()" title="Mr. Zaheer Ahmed Knowledge Base (Instructions, FAQs, Auto-Pilot & Rules)" style="background:linear-gradient(135deg, #8b5cf6, #3b82f6); border:none; color:#fff; padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(139,92,246,0.35);">
+                        <span>🎩 Mr. Zaheer Ahmed Knowledge Base</span>
                         <span id="waWebAutoReplyStatusBadge" style="background:#22c55e; color:#0f172a; font-size:9px; padding:1px 5px; border-radius:6px; font-weight:800;">WW-AI</span>
                     </button>
                     <button onclick="openWaWebAiCopilot()" title="AI WhatsApp Assistant - Discuss any chat, summarize, draft replies" style="background:linear-gradient(135deg, #10b981, #0284c7); border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold; display:flex; align-items:center; gap:6px; box-shadow:0 0 12px rgba(16,185,129,0.35);">
@@ -1389,7 +1389,8 @@
                         </div>
                         <div>
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <h3 style="margin:0; color:#e9edef; font-size:17px; font-weight:bold;">WhatsApp Web AI Chat Bot — Knowledge Base</h3>
+                                <h3 style="margin:0; color:#e9edef; font-size:17px; font-weight:bold;">Mr. Zaheer Ahmed — Knowledge Base</h3>
+                                <div style="font-size:11px; color:#94a3b8;">Boss's Assistant · default handler of every WhatsApp chat</div>
                                 <span style="background:#005c4b; color:#25d366; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:bold;">Dedicated for WhatsApp Web</span>
                             </div>
                             <div style="font-size:12px; color:#8696a0;">Custom instructions, business FAQs, catalog pricing, and 24/7 AI Auto-Pilot replies</div>
@@ -2741,8 +2742,9 @@
                             <div id="brPanelName" style="font-weight:800; font-size:16px;">Contact</div>
                             <div id="brPanelJid" style="font-size:11px; color:#94a3b8;"></div>
                         </div>
-                        <select id="brAgentSelect" title="AI Staff agent that answers this contact (only READY staff are listed)" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#c4b5fd; max-width:210px;">
-                            <option value="">🎓 Agent: Default</option>
+                        <span style="font-size:10.5px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">Handled by</span>
+                        <select id="brAgentSelect" title="Handled by — staff name. Every chat defaults to Mr. Zaheer Ahmed; pick any staff member (under training or ready)." style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#c4b5fd; max-width:230px;">
+                            <option value="">🎩 Mr. Zaheer Ahmed (default)</option>
                         </select>
                         <select id="brPanelMode" title="How the AI handles this person" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#e2e8f0;"></select>
                         <span id="brSaveStatus" style="font-size:11.5px; font-weight:700; color:#86efac; text-align:right; line-height:1.3;"></span>
@@ -10931,7 +10933,8 @@
         };
     }
 
-    // 🎓 AI Staff: only READY agents can be attached to a live WhatsApp contact.
+    // 🎓 AI Staff: staff under training AND ready staff can be assigned to a live chat.
+    // The built-in Mr. Zaheer Ahmed is the default handler when nothing is picked.
     let readyAgentsCache = null;
     async function loadReadyAgents(force) {
         if (readyAgentsCache && !force) return readyAgentsCache;
@@ -10939,7 +10942,7 @@
             const res = await fetch('api/agents', { headers: { 'x-admin-token': adminToken() } });
             if (!res.ok) { readyAgentsCache = []; return readyAgentsCache; }
             const d = await res.json();
-            readyAgentsCache = (d.agents || []).filter(a => a.status === 'ready');
+            readyAgentsCache = (d.agents || []).filter(a => !a.isDefault && (a.status === 'ready' || a.status === 'under_training'));
             return readyAgentsCache;
         } catch (e) { readyAgentsCache = []; return readyAgentsCache; }
     }
@@ -10947,11 +10950,12 @@
         const sel = document.getElementById('brAgentSelect');
         if (!sel) return;
         const agents = await loadReadyAgents();
-        sel.innerHTML = '<option value="">🎓 Agent: Default</option>' + agents.map(a =>
-            '<option value="' + escapeHtml(a.id) + '">' + (a.category === 'personal' ? '💬 ' : '🎓 ') + escapeHtml(a.name) + (a.category === 'personal' ? ' (personal)' : '') + '</option>').join('');
+        sel.innerHTML = '<option value="">🎩 Mr. Zaheer Ahmed (default)</option>' + agents.map(a =>
+            '<option value="' + escapeHtml(a.id) + '">' + (a.status === 'ready' ? '✅ ' : '📚 ') + escapeHtml(a.name) +
+            ' — ' + escapeHtml(a.role || '') + (a.category === 'personal' ? ' (personal)' : '') + '</option>').join('');
         sel.value = selectedId && agents.some(a => a.id === selectedId) ? selectedId : '';
-        if (selectedId && !agents.some(a => a.id === selectedId)) {
-            sel.innerHTML += '<option value="' + escapeHtml(selectedId) + '">⚠️ ' + escapeHtml(selectedId) + ' (not ready)</option>';
+        if (selectedId && selectedId !== 'zaheer-ahmed' && !agents.some(a => a.id === selectedId)) {
+            sel.innerHTML += '<option value="' + escapeHtml(selectedId) + '">⚠️ ' + escapeHtml(selectedId) + ' (archived / unavailable)</option>';
             sel.value = selectedId;
         }
     }

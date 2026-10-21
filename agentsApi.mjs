@@ -6,7 +6,7 @@
 //   no ADMIN_TOKEN on the server -> 503, wrong token -> 401.
 // ============================================================================
 import {
-  attachAgentsDb, listAgents, getAgent, createAgent, updateAgent, deleteAgent,
+  attachAgentsDb, listAgents, getAgent, saveAgent, createAgent, updateAgent, deleteAgent,
   setAgentStatus, computeProgress, computeConfidence, AVAILABLE_MODELS, STATUSES, STATUS_LABELS, DEFAULT_WEIGHTS,
   listKnowledge, addKnowledge, deleteKnowledge,
   listExamples, addExample, deleteExample,
@@ -15,7 +15,7 @@ import {
   listPromptVersions, addPromptVersion,
   listToolLogs
 } from './agentsStore.mjs';
-import { AGENT_TEMPLATES, templateById } from './agentTemplates.mjs';
+import { AGENT_TEMPLATES, templateById, DEFAULT_AGENT, DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 import { runAgent, judgeAnswer, buildAgentSystemPrompt, getCompiledBlocks, clearAgentBlocksCache, attachRunnerDb } from './agentRunner.mjs';
 import { listTools, runTool, attachToolDb } from './toolRegistry.mjs';
 import { attachLearningDb, listChatCandidates, learnFromSource, learnFromAllSources, maybeAutoLearn, listLearningRuns } from './agentLearning.mjs';
@@ -53,6 +53,24 @@ function withProgress(agent) {
   return { ...agent, progress: computeProgress(agent), confidence: computeConfidence(agent) };
 }
 
+// Idempotent bootstrap of the built-in staff member (Mr. Zaheer Ahmed).
+export async function ensureDefaultAgent() {
+  try {
+    const existing = await getAgent(DEFAULT_AGENT_ID, { fresh: true });
+    if (existing) return existing;
+    const agent = await saveAgent(DEFAULT_AGENT_ID, {
+      ...DEFAULT_AGENT,
+      trainingProgress: { override: 100, overrideNote: 'Built-in default assistant' }
+    });
+    await setAgentStatus(DEFAULT_AGENT_ID, 'ready', { by: 'system', note: 'Built-in default assistant' });
+    console.log('[AGENTS] 🎩 Created the built-in default staff member: ' + DEFAULT_AGENT.name);
+    return agent;
+  } catch (e) {
+    console.warn('[AGENTS] ensureDefaultAgent failed:', e.message);
+    return null;
+  }
+}
+
 // Called from the 60s scheduler in index.js. Self-throttled inside maybeAutoLearn.
 export async function maybeAgentAutoLearn() {
   try {
@@ -68,6 +86,10 @@ export function registerAgentsRoutes(app, db) {
   attachToolDb(db);
   attachRunnerDb(db);
   attachLearningDb(db);
+
+  // The built-in all-rounder must always exist: every chat falls back to him.
+  ensureDefaultAgent().catch(e => console.warn('[AGENTS] default agent bootstrap failed:', e.message));
+
   console.log('[AGENTS] 🎓 AI Staff Academy API registered (fail-closed admin guard' + (process.env.ADMIN_TOKEN ? '' : ' — ADMIN_TOKEN MISSING, routes will return 503') + ')');
 
   const guard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'agents' });
@@ -79,6 +101,8 @@ export function registerAgentsRoutes(app, db) {
     res.json({
       ok: true,
       templates: AGENT_TEMPLATES,
+      defaultAgentId: DEFAULT_AGENT_ID,
+      defaultAgentName: DEFAULT_AGENT.name,
       models: AVAILABLE_MODELS,
       statuses: STATUSES.map(s => ({ id: s, label: STATUS_LABELS[s] })),
       weights: DEFAULT_WEIGHTS,
@@ -249,6 +273,9 @@ export function registerAgentsRoutes(app, db) {
 
   app.delete(api + '/:id', async (req, res) => {
     try {
+      if (req.params.id === DEFAULT_AGENT_ID) {
+        return badRequest(res, 'Mr. Zaheer Ahmed is the built-in default assistant and cannot be deleted.');
+      }
       await deleteAgent(req.params.id);
       clearAgentBlocksCache(req.params.id);
       res.json({ ok: true });
