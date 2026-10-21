@@ -18,6 +18,8 @@ import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
+import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
+import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -150,6 +152,10 @@ const brainEngine = registerBrainRoutes(app, db);
 registerTradeAccountsRoutes(app, db);
 // 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
+// 🏢 Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
+registerOfficeRoutes(app, db);
+// 📖 Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
+registerRuleBookRoutes(app, db);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
@@ -4484,6 +4490,8 @@ function startFollowUpScheduler() {
     }
     // 🌱 AI Staff Academy: staff under training study their assigned WhatsApp chats (self-throttled, 6h)
     maybeAgentAutoLearn();
+    // 📊 Offices of Staff: one stored performance snapshot per day
+    maybeStaffDailyReport();
   };
   console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));
   runTick();

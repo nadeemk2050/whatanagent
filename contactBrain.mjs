@@ -20,6 +20,8 @@ import { doc, getDoc, setDoc, getDocs, collection, addDoc, deleteDoc, query, ord
 import { isAiAutoFetchStopped, recordAiCall } from './aiTracker.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { emitAssignmentEvent } from './assignmentEvents.mjs';
+import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
 
 let brainDb = null;
 export function attachBrainDb(db) { if (db) brainDb = db; }
@@ -384,6 +386,26 @@ export async function saveBrain(jid, rawProfile) {
   await setDoc(doc(brainDb, BRAINS, key), profile, { merge: true });
   brainCache.set(key, { profile, at: Date.now() });
 
+  // 🏢 Office sync: a change of handler emits an assignment event (audit + client list).
+  try {
+    const prevHandled = existing.handledBy || existing.agentId || '';
+    const nextHandled = profile.handledBy || profile.agentId || '';
+    const prevBackup = existing.backupBy || '';
+    const nextBackup = profile.backupBy || '';
+    if (nextHandled !== prevHandled) {
+      await emitAssignmentEvent({
+        chatJid: jid, chatName: profile.name || jid, type: jid.endsWith('@g.us') ? 'group' : 'person',
+        staffId: nextHandled, previousStaffId: prevHandled, role: 'primary', autonomy: profile.mode === 'draft_only' ? 'draft' : 'auto', assignedBy: 'boss'
+      });
+    }
+    if (nextBackup !== prevBackup && nextBackup) {
+      await emitAssignmentEvent({
+        chatJid: jid, chatName: profile.name || jid, type: jid.endsWith('@g.us') ? 'group' : 'person',
+        staffId: nextBackup, previousStaffId: '', role: 'backup', assignedBy: 'boss'
+      });
+    }
+  } catch (e) { console.warn('[BRAIN] assignment sync failed:', e.message); }
+
   if (resolvedPhone) {
     const phoneKey = brainKeyFor(resolvedPhone + '@s.whatsapp.net');
     if (phoneKey !== key) brainCache.set(phoneKey, { profile, at: Date.now() });
@@ -504,6 +526,14 @@ export async function listDrafts({ jid = '', pendingOnly = true, maxCount = 60 }
 // ---------------------------------------------------------------------------
 async function callBrainAI(system, user, { maxTokens = 1200, temperature = 0.5 } = {}) {
   if (!brainDb) return '';
+  // 📖 App Rule Book (Roman Hindi/Urdu only, no secrets) applies to every brain AI call.
+  try { system = await withRuleBook(system, 'academy'); } catch (e) { /* best effort */ }
+  const raw = await callBrainAIRaw(system, user, { maxTokens, temperature });
+  if (!raw) return raw;
+  return hasDevanagari(raw) ? enforceScript(raw).text : raw;
+}
+
+async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.5 } = {}) {
   let st = {};
   try {
     const snap = await getDoc(doc(brainDb, 'appData', 'settings'));

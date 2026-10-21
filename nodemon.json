@@ -1,5 +1,36 @@
-{
-  "watch": ["index.js", "contactBrain.mjs", "waWebClient.js", "liveMeetingApi.mjs", "liveMeetingWs.mjs", "notebookApi.mjs", "aiTracker.mjs", "goldAgent.mjs", "tradeAccountsApi.mjs", "agentsApi.mjs", "agentsStore.mjs", "agentRunner.mjs", "agentTemplates.mjs", "agentLearning.mjs", "toolRegistry.mjs", "adminGuard.mjs", "aiProviders.mjs"],
-  "ext": "js,mjs,json",
-  "ignore": ["*.cjs", "public/*", "node_modules/*", "auth_info_baileys/*"]
+﻿{
+    "watch":  [
+                  "index.js",
+                  "contactBrain.mjs",
+                  "waWebClient.js",
+                  "liveMeetingApi.mjs",
+                  "liveMeetingWs.mjs",
+                  "notebookApi.mjs",
+                  "aiTracker.mjs",
+                  "goldAgent.mjs",
+                  "tradeAccountsApi.mjs",
+                  "agentsApi.mjs",
+                  "agentsStore.mjs",
+                  "agentRunner.mjs",
+                  "agentTemplates.mjs",
+                  "agentLearning.mjs",
+                  "toolRegistry.mjs",
+                  "adminGuard.mjs",
+                  "aiProviders.mjs",
+                  "officeApi.mjs",
+                  "officeControls.mjs",
+                  "auditLog.mjs",
+                  "assignmentEvents.mjs",
+                  "modelSwitcher.mjs",
+                  "meetingRoom.mjs",
+                  "ruleBook.mjs",
+                  "ruleBookApi.mjs"
+              ],
+    "ext":  "js,mjs,json",
+    "ignore":  [
+                   "*.cjs",
+                   "public/*",
+                   "node_modules/*",
+                   "auth_info_baileys/*"
+               ]
 }

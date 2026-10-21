@@ -12,6 +12,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
+import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
 
 const DISPATCH_BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
@@ -285,7 +286,8 @@ export async function callAgentModel({
 export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens, forJid = '' } = {}) {
   if (!agent) throw new Error('Agent not found');
   const blocks = await getCompiledBlocks(agent.id);
-  const system = buildAgentSystemPrompt(agent, blocks, businessKbText, { forJid });
+  // 📖 App Rule Book applies to every staff agent, every purpose.
+  const system = await withRuleBook(buildAgentSystemPrompt(agent, blocks, businessKbText, { forJid }), 'academy');
 
   const spend = todaySpend('AI Staff', agent.name);
   const budget = Number(agent.dailyBudgetUsd) || 0;
@@ -293,13 +295,16 @@ export async function runAgent(agent, messages, { purpose = 'chat', businessKbTe
     throw new Error('Daily budget reached for ' + agent.name + ' ($' + spend.toFixed(3) + ' of $' + budget.toFixed(2) + '). Raise the budget in the agent card to continue.');
   }
 
-  return callAgentModel({
+  const out = await callAgentModel({
     system, messages,
     model: agent.model, fallbackModel: agent.fallbackModel,
     temperature: temperature === undefined ? 0.4 : temperature,
     maxTokens: maxTokens || 1200,
     agentName: agent.name, purpose
   });
+  // Script guard: never let Devanagari leave the app (Rule #1).
+  if (out && typeof out.text === 'string' && hasDevanagari(out.text)) out.text = enforceScript(out.text).text;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

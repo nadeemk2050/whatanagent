@@ -370,6 +370,10 @@
             <div class="menu-item" onclick="showSection('followup')">📅 Follow Ups</div>
             <div class="menu-item" onclick="openCommandCenter()">⚡ Tasks & Command Center 2.0</div>
             <div class="menu-item" onclick="showSection('notebook'); loadNotes();">📓 Note Book</div>
+            <div class="menu-item" onclick="showSection('rulebook'); loadRuleBook();" style="display:flex; justify-content:space-between; align-items:center; background: rgba(220, 38, 38, 0.08); border-left: 4px solid #dc2626;">
+                <span>📖 Rule Book</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#dc2626; color:#fff; font-weight:bold;">APP RULES</span>
+            </div>
             <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 Contact Brains</div>
             <div class="menu-item" onclick="window.location.href='/academy.html'" style="display:flex; justify-content:space-between; align-items:center; background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; cursor:pointer;">
                 <span>🎓 AI Staff Academy</span>
@@ -2632,6 +2636,33 @@
             </div>
 
             <!-- Note Book Section -->
+            <div id="rulebookSection" class="app-section">
+                <h2 style="margin-bottom:5px;">📖 Rule Book</h2>
+                <p class="subtitle" style="margin-top:0;">The house rules every AI in this app must follow — the WhatsApp Web bot, all AI staff, the academy, drafts, summaries and notes. These rules are injected into every prompt <b>and</b> enforced on the output, so they apply even if a model tries to ignore them.</p>
+
+                <div style="background:#fef2f2; border:1px solid #fecaca; border-left:5px solid #dc2626; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+                    <div style="font-weight:800; color:#991b1b; font-size:15px; margin-bottom:4px;">Rule #1 — locked</div>
+                    <div style="font-size:13.5px; color:#7f1d1d; line-height:1.6;">No AI writes, replies or transcribes in <b>Hindi (Devanagari) script</b>. Hindi or Urdu is always written in <b>Roman letters</b> (Roman Hindi / Roman Urdu) so the boss can read it. This is enforced by a script guard on every outgoing message, not only by the prompt.</div>
+                </div>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px;">
+                    <button onclick="loadRuleBook()" style="padding:10px 16px; background:#0f172a; color:#fff; border:none; border-radius:9px; font-weight:700; cursor:pointer;">🔄 Reload</button>
+                    <button onclick="addRule()" style="padding:10px 16px; background:#7c3aed; color:#fff; border:none; border-radius:9px; font-weight:700; cursor:pointer;">➕ Add rule</button>
+                    <button onclick="saveRuleBook()" style="padding:10px 16px; background:#16a34a; color:#fff; border:none; border-radius:9px; font-weight:700; cursor:pointer;">💾 Save all rules</button>
+                    <button onclick="resetRuleBook()" style="padding:10px 16px; background:#fff; color:#b91c1c; border:1px solid #fecaca; border-radius:9px; font-weight:700; cursor:pointer;">♻️ Restore defaults</button>
+                </div>
+
+                <div id="ruleBookList"><p class="subtitle">Loading rules…</p></div>
+
+                <div style="margin-top:22px; background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:16px;">
+                    <div style="font-weight:800; font-size:14px; margin-bottom:6px;">🔤 Test the script guard</div>
+                    <p class="subtitle" style="margin-top:0;">Paste Hindi (Devanagari) text to see exactly what the app would send instead.</p>
+                    <textarea id="ruleTestInput" rows="3" placeholder="आप कैसे हैं?" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:9px; font-size:14px; box-sizing:border-box;"></textarea>
+                    <button onclick="testScriptGuard()" style="margin-top:8px; padding:10px 16px; background:#0f172a; color:#fff; border:none; border-radius:9px; font-weight:700; cursor:pointer;">▶️ Convert</button>
+                    <div id="ruleTestOut" style="margin-top:10px; font-size:14px; color:#0f172a; white-space:pre-wrap;"></div>
+                </div>
+            </div>
+
             <div id="notebookSection" class="app-section">
                 <style>@keyframes notePulse{0%,100%{opacity:1}50%{opacity:.5}}</style>
                 <h2 style="margin-bottom:5px;">📓 Note Book</h2>
@@ -3548,6 +3579,8 @@
             try {
                 if (id === 'seo') {
                     if (typeof loadSeoAgent === 'function') loadSeoAgent();
+                } else if (id === 'rulebook') {
+                    if (typeof loadRuleBook === 'function') loadRuleBook();
                 } else if (id === 'contactbook') {
                     if (typeof loadContactBook === 'function') loadContactBook();
                 } else if (id === 'leadsbook') {
@@ -3664,6 +3697,94 @@
                 if (t && t.trim()) { setAdminToken(t.trim()); res = await doPost(); }
             }
             return res;
+        }
+
+        /* ================= 📖 RULE BOOK ================= */
+        const escHtml = (v) => String(v === undefined || v === null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        let RULES = [];
+        const RB_SCOPE = { app: '🌍 Whole app', wa: '🟢 WhatsApp Web only', academy: '🎓 Academy & staff only', office: '🏢 Offices only' };
+
+        async function loadRuleBook() {
+            const box = document.getElementById('ruleBookList');
+            if (box) box.innerHTML = '<p class="subtitle">Loading rules…</p>';
+            try {
+                const res = await fetch('api/rules', { headers: { 'x-admin-token': adminToken() } });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+                RULES = (data.rules || []).map(r => ({ ...r }));
+                renderRuleBook();
+            } catch (e) {
+                if (box) box.innerHTML = '<p class="subtitle" style="color:#b91c1c;">❌ Could not load the rule book: ' + escHtml(e.message) + '</p>';
+            }
+        }
+
+        function renderRuleBook() {
+            const box = document.getElementById('ruleBookList');
+            if (!box) return;
+            if (!RULES.length) { box.innerHTML = '<p class="subtitle">No rules yet.</p>'; return; }
+            box.innerHTML = RULES.map((r, i) =>
+                '<div style="background:#fff; border:1px solid ' + (r.locked ? '#fecaca' : 'var(--border)') + '; border-radius:12px; padding:14px; margin-bottom:10px;">' +
+                '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">' +
+                '<span style="background:' + (r.locked ? '#dc2626' : '#0f172a') + '; color:#fff; font-weight:800; font-size:11px; padding:2px 8px; border-radius:20px;">RULE #' + (i + 1) + '</span>' +
+                (r.locked ? '<span style="font-size:11px; font-weight:800; color:#991b1b;">🔒 LOCKED — cannot be disabled or deleted</span>' : '') +
+                '<label style="margin-left:auto; font-size:12px; font-weight:700; color:#334155; display:flex; gap:5px; align-items:center;">' +
+                '<input type="checkbox" ' + (r.enabled ? 'checked' : '') + (r.locked ? ' disabled' : '') + ' onchange="RULES[' + i + '].enabled=this.checked"> Active</label>' +
+                (r.locked ? '' : '<button onclick="deleteRule(' + i + ')" style="background:#fff; border:1px solid #fecaca; color:#b91c1c; border-radius:8px; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;">🗑️</button>') +
+                '</div>' +
+                '<input value="' + escHtml(r.title) + '" oninput="RULES[' + i + '].title=this.value" placeholder="Rule title" style="width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:9px; font-size:14px; font-weight:700; box-sizing:border-box; margin-bottom:8px;">' +
+                '<textarea oninput="RULES[' + i + '].text=this.value" rows="3" placeholder="What must the AI do / never do?" style="width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:9px; font-size:13px; line-height:1.55; box-sizing:border-box;">' + escHtml(r.text) + '</textarea>' +
+                '<select onchange="RULES[' + i + '].scope=this.value" style="margin-top:8px; padding:8px 10px; border:1px solid var(--border); border-radius:9px; font-size:12px;">' +
+                Object.keys(RB_SCOPE).map(k => '<option value="' + k + '"' + ((r.scope || 'app') === k ? ' selected' : '') + '>' + RB_SCOPE[k] + '</option>').join('') +
+                '</select>' +
+                '</div>').join('');
+        }
+
+        function addRule() {
+            RULES.push({ id: 'custom-' + Date.now().toString(36), order: RULES.length + 1, title: '', text: '', scope: 'app', locked: false, enabled: true });
+            renderRuleBook();
+        }
+        function deleteRule(i) {
+            if (RULES[i] && RULES[i].locked) return alert('Rule #1 is locked.');
+            RULES.splice(i, 1);
+            renderRuleBook();
+        }
+
+        async function saveRuleBook() {
+            const payload = { rules: RULES.map((r, i) => ({ id: r.id, order: i + 1, title: r.title, text: r.text, scope: r.scope, enabled: r.enabled })) };
+            try {
+                const res = await postAdmin('api/rules', payload);
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+                RULES = (data.rules || []).map(r => ({ ...r }));
+                renderRuleBook();
+                alert('✅ Rule book saved. It applies to every AI immediately.');
+            } catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function resetRuleBook() {
+            if (!confirm('Restore the default rules? Custom rules will be removed.')) return;
+            try {
+                const res = await postAdmin('api/rules/reset', {});
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+                RULES = (data.rules || []).map(r => ({ ...r }));
+                renderRuleBook();
+            } catch (e) { alert('❌ ' + e.message); }
+        }
+
+        async function testScriptGuard() {
+            const out = document.getElementById('ruleTestOut');
+            const text = document.getElementById('ruleTestInput').value;
+            if (!text.trim()) { out.textContent = 'Type something first.'; return; }
+            out.textContent = 'Converting…';
+            try {
+                const res = await postAdmin('api/rules/test-script', { text });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+                out.innerHTML = d.changed
+                    ? '<div style="color:#166534; font-weight:700;">Converted to Roman script:</div><div>' + escHtml(d.after) + '</div>'
+                    : '<div style="color:#166534; font-weight:700;">No Hindi script found — this text would be sent unchanged.</div>';
+            } catch (e) { out.textContent = '❌ ' + e.message; }
         }
 
         async function loadEnv() {

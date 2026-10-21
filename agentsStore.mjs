@@ -140,6 +140,57 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   a.isDefault = raw.isDefault !== undefined ? !!raw.isDefault : !!existing.isDefault;
   a.isProtected = raw.isProtected !== undefined ? !!raw.isProtected : !!existing.isProtected;
   a.knowledgeSource = sstr(raw.knowledgeSource != null ? raw.knowledgeSource : existing.knowledgeSource, 60);
+  // 🏢 OFFICE: autonomy, emergency stop, controls, team links, daily counters.
+  a.autonomy = ['observer', 'draft', 'auto'].includes(raw.autonomy || existing.autonomy) ? (raw.autonomy || existing.autonomy) : 'auto';
+  a.emergencyStop = asBool(raw.emergencyStop != null ? raw.emergencyStop : existing.emergencyStop, false);
+  a.stoppedAt = Number(raw.stoppedAt != null ? raw.stoppedAt : existing.stoppedAt) || 0;
+  a.stoppedReason = sstr(raw.stoppedReason != null ? raw.stoppedReason : existing.stoppedReason, 200);
+  a.coverBy = sstr(raw.coverBy != null ? raw.coverBy : existing.coverBy, 80);
+  a.supervisorId = sstr(raw.supervisorId != null ? raw.supervisorId : existing.supervisorId, 80);
+  a.consultWith = arr(raw.consultWith != null ? raw.consultWith : existing.consultWith, 80, 12);
+
+  const rc = raw.controls || {};
+  const ec = existing.controls || {};
+  const num = (k, def) => {
+    const v = rc[k] !== undefined ? rc[k] : ec[k];
+    return v === undefined || v === null || v === '' ? def : Math.max(0, Number(v) || 0);
+  };
+  const bool = (k, def) => asBool(rc[k] !== undefined ? rc[k] : ec[k], def);
+  a.controls = {
+    dailyMessageLimit: num('dailyMessageLimit', 300),
+    dailyTokenLimit: num('dailyTokenLimit', 300000),
+    dailyCostLimitUsd: num('dailyCostLimitUsd', 2),
+    maxToolCallsPerTask: num('maxToolCallsPerTask', 5),
+    confidenceThreshold: Math.min(100, num('confidenceThreshold', 0)),
+    dryRun: bool('dryRun', false),
+    outOfHoursAutoReply: bool('outOfHoursAutoReply', false),
+    workingHours: sstr(rc.workingHours !== undefined ? rc.workingHours : ec.workingHours, 60) || '00:00-23:59',
+    quietHours: sstr(rc.quietHours !== undefined ? rc.quietHours : ec.quietHours, 60) || '',
+    allowedContacts: arr(rc.allowedContacts !== undefined ? rc.allowedContacts : ec.allowedContacts, 80, 100),
+    blockedContacts: arr(rc.blockedContacts !== undefined ? rc.blockedContacts : ec.blockedContacts, 80, 100),
+    blockedTopics: arr(rc.blockedTopics !== undefined ? rc.blockedTopics : ec.blockedTopics, 60, 30),
+    tripwires: {
+      crisis: bool('crisis', true),
+      anger: bool('anger', true),
+      repeatedComplaints: bool('repeatedComplaints', true),
+      abnormalSpeed: bool('abnormalSpeed', true)
+    },
+    approvalRules: {
+      money: asBool((rc.approvalRules || ec.approvalRules || {}).money, true),
+      deletion: asBool((rc.approvalRules || ec.approvalRules || {}).deletion, true),
+      bulkSend: asBool((rc.approvalRules || ec.approvalRules || {}).bulkSend, true),
+      newContacts: asBool((rc.approvalRules || ec.approvalRules || {}).newContacts, true),
+      sensitiveTopics: asBool((rc.approvalRules || ec.approvalRules || {}).sensitiveTopics, true)
+    }
+  };
+
+  const ru = raw.usageDaily || {};
+  const eu = existing.usageDaily || {};
+  const todayKey = new Date().toISOString().slice(0, 10);
+  a.usageDaily = (ru.date || eu.date) === todayKey
+    ? { date: todayKey, messages: Number(ru.messages != null ? ru.messages : eu.messages) || 0, tokens: Number(ru.tokens != null ? ru.tokens : eu.tokens) || 0, costUsd: Number(ru.costUsd != null ? ru.costUsd : eu.costUsd) || 0 }
+    : { date: todayKey, messages: 0, tokens: 0, costUsd: 0 };
+
   a.autoLearn = asBool(raw.autoLearn != null ? raw.autoLearn : existing.autoLearn, true);
   a.lastAutoLearnAt = Number(raw.lastAutoLearnAt != null ? raw.lastAutoLearnAt : existing.lastAutoLearnAt) || 0;
   const days = raw.learningDays !== undefined ? raw.learningDays : existing.learningDays;
@@ -326,6 +377,15 @@ export async function logFallback(entry) {
   } catch (e) { /* logging must never break a reply */ }
 }
 
+export async function listFallbacks(max = 100) {
+  if (!agentsDb) return [];
+  try {
+    const snap = await getDoc(doc(agentsDb, 'appData', 'agentFallbacks'));
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    return items.slice(-max).reverse();
+  } catch (e) { return []; }
+}
+
 // ---------------------------------------------------------------------------
 // Subcollections
 // ---------------------------------------------------------------------------
@@ -354,6 +414,11 @@ async function deleteSub(agentId, sub, itemId) {
   await deleteDoc(doc(agentsDb, AGENTS, agentId, sub, itemId));
   return true;
 }
+
+// Generic access for newer modules (model history, tasks, meetings, reports).
+export const listAgentSub = (agentId, sub, max = 100) => listSub(agentId, sub, max);
+export async function addAgentSub(agentId, sub, payload) { return addSub(agentId, sub, payload); }
+export async function deleteAgentSub(agentId, sub, itemId) { return deleteSub(agentId, sub, itemId); }
 
 async function bumpCount(agentId, field, delta) {
   const agent = await getAgent(agentId, { fresh: true });

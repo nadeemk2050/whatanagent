@@ -119,12 +119,77 @@ const TOOLS = {
     async handler({ collection: c, id, changes }) {
       return { draft: true, collection: String(c || ''), id: String(id || ''), changes: changes || {} };
     }
+  },
+
+  // ---------------------------------------------------------------- Level 2: internal writes
+  save_note: {
+    id: 'save_note',
+    name: 'Save internal note',
+    description: 'Save an internal note to the business notes collection. No customer-facing effect.',
+    riskLevel: 'write',
+    inputSchema: { title: 'string', text: 'string' },
+    async handler({ title, text }) {
+      if (!toolDb) throw new Error('Database is not attached.');
+      const ref = await addDoc(collection(toolDb, 'notes'), {
+        title: String(title || '').slice(0, 120), text: String(text || '').slice(0, MAX_TEXT), source: 'staff-agent', createdAt: Date.now()
+      });
+      return { saved: true, id: ref.id };
+    }
+  },
+
+  // ---------------------------------------------------------------- Level 4: irreversible / bulk
+  bulk_send_campaign: {
+    id: 'bulk_send_campaign',
+    name: 'Bulk send campaign',
+    description: 'Prepare a bulk WhatsApp send to many contacts. Level 4: needs explicit opt-in AND owner approval.',
+    riskLevel: 'write',
+    inputSchema: { audience: 'string', message: 'string', max: 'number (max 50)' },
+    async handler({ audience, message, max }) {
+      const n = Math.min(50, Math.max(1, Number(max) || 10));
+      return { draft: true, audience: String(audience || ''), recipients: n, message: String(message || '').slice(0, 1500), irreversible: true };
+    }
   }
 };
 
+// Risk levels (0 lowest → 4 highest). Legacy riskLevel ('read'|'write') is kept for old UI.
+export const RISK_LEVELS = {
+  0: { label: 'Observe', hint: 'Read-only, no side effects', color: '#8b949e' },
+  1: { label: 'Draft', hint: 'Produces a draft, never sends', color: '#58a6ff' },
+  2: { label: 'Internal write', hint: 'Changes internal records only', color: '#3fb950' },
+  3: { label: 'External / money', hint: 'Customer-facing or money — needs approval', color: '#d29922' },
+  4: { label: 'Irreversible', hint: 'Bulk or destructive — explicit opt-in + approval', color: '#f85149' }
+};
+
+const TOOL_META = {
+  fetch_url_text: { level: 0, scope: 'web:read' },
+  read_firestore_collection: { level: 0, scope: 'db:read' },
+  shopify_read_stub: { level: 0, scope: 'shopify:read' },
+  send_whatsapp_message: { level: 3, scope: 'wa:send' },
+  update_firestore_document: { level: 3, scope: 'db:write' },
+  save_note: { level: 2, scope: 'db:internal' },
+  bulk_send_campaign: { level: 4, scope: 'wa:bulk' }
+};
+
+// Sensible default tool sets per staff role family (used by the hire form + Office → Tools).
+export const ROLE_TOOLSETS = {
+  general: ['fetch_url_text', 'read_firestore_collection', 'save_note', 'send_whatsapp_message'],
+  accounts: ['fetch_url_text', 'read_firestore_collection', 'save_note', 'send_whatsapp_message', 'update_firestore_document'],
+  support: ['fetch_url_text', 'read_firestore_collection', 'save_note', 'send_whatsapp_message'],
+  wellness: ['read_firestore_collection', 'save_note'],
+  research: ['fetch_url_text', 'read_firestore_collection', 'save_note']
+};
+
+export function toolLevel(id) {
+  return TOOL_META[id] ? TOOL_META[id].level : 1;
+}
+export function toolScope(id) {
+  return TOOL_META[id] ? TOOL_META[id].scope : 'unknown';
+}
+
 export function listTools() {
   return Object.values(TOOLS).map(t => ({
-    id: t.id, name: t.name, description: t.description, riskLevel: t.riskLevel, inputSchema: t.inputSchema
+    id: t.id, name: t.name, description: t.description, riskLevel: t.riskLevel,
+    level: toolLevel(t.id), scope: toolScope(t.id), inputSchema: t.inputSchema
   }));
 }
 
@@ -144,9 +209,16 @@ export async function runTool({ agent, toolId, input = {}, ownerLabel = 'owner' 
   }
 
   const inputSummary = JSON.stringify(input).slice(0, 500);
+  const level = toolLevel(toolId);
 
-  // WRITE tools never execute — they create an approval item.
-  if (tool.riskLevel === 'write') {
+  // Level 4 tools are off unless the owner explicitly opted this staff member in.
+  if (level >= 4 && !agent.level4OptIn) {
+    await logToolCall(agent.id, { tool: toolId, riskLevel: 'level4', input: inputSummary, summary: 'Blocked: Level 4 tool needs owner opt-in', ok: false, status: 'blocked' });
+    throw new Error('"' + toolId + '" is a Level 4 (irreversible) tool. Enable Level 4 for ' + agent.name + ' in the Office → Tools tab first.');
+  }
+
+  // Level 3+ never executes directly — it creates an approval item.
+  if (level >= 3) {
     const preview = await tool.handler(input);
     const draft = await saveBrainDraft({
       jid: 'agent:' + agent.id,
@@ -157,7 +229,7 @@ export async function runTool({ agent, toolId, input = {}, ownerLabel = 'owner' 
       reason: 'agent-approval'
     });
     await logToolCall(agent.id, {
-      tool: toolId, riskLevel: 'write', input: inputSummary,
+      tool: toolId, riskLevel: 'level' + level, input: inputSummary,
       summary: 'Draft created for owner approval' + (draft && draft.id ? ' (' + draft.id + ')' : ''),
       ok: true, status: 'pending_approval'
     });
@@ -173,10 +245,10 @@ export async function runTool({ agent, toolId, input = {}, ownerLabel = 'owner' 
   try {
     const result = await tool.handler(input);
     const summary = JSON.stringify(result).slice(0, 900);
-    await logToolCall(agent.id, { tool: toolId, riskLevel: 'read', input: inputSummary, summary, ok: true, status: 'ok' });
+    await logToolCall(agent.id, { tool: toolId, riskLevel: 'level' + level, input: inputSummary, summary, ok: true, status: 'ok' });
     return { pendingApproval: false, tool: toolId, result };
   } catch (e) {
-    await logToolCall(agent.id, { tool: toolId, riskLevel: 'read', input: inputSummary, summary: e.message, ok: false, status: 'error' });
+    await logToolCall(agent.id, { tool: toolId, riskLevel: 'level' + level, input: inputSummary, summary: e.message, ok: false, status: 'error' });
     throw e;
   }
 }

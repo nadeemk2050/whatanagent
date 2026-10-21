@@ -234,6 +234,22 @@
 
 <div id="toast"></div>
 
+<!-- ======================= OFFICE OF STAFF (full-screen overlay) ======================= -->
+<div class="overlay" id="officeOverlay" style="align-items:stretch;">
+  <div class="sheet" style="max-width:1100px;width:100%;height:100%;max-height:100vh;border-radius:0;">
+    <div class="sheet-head" style="background:linear-gradient(135deg,#312e81,#6d28d9);color:#fff;">
+      <div class="grow">
+        <div id="oName" style="font-weight:800;font-size:16px;">Office</div>
+        <div id="oSub" style="font-size:11px;opacity:.85;"></div>
+      </div>
+      <span id="oBadges" style="display:flex;gap:6px;flex-wrap:wrap;"></span>
+      <button class="btn btn-ghost btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="closeOffice()">✖ Close</button>
+    </div>
+    <div class="sheet-tabs" id="oTabs"></div>
+    <div class="sheet-body" id="oBody" style="background:#f8fafc;"></div>
+  </div>
+</div>
+
 <script>
 /* ======================= helpers ======================= */
 const $ = (id) => document.getElementById(id);
@@ -400,17 +416,11 @@ function setTab(k) { S.tab = k; renderTabs(); renderCards(); }
 function renderCards() {
   const box0 = $('cards'), empty0 = $('cardsEmpty');
 
-  // 🏢 Offices of Staff — placeholder section
+  // 🏢 Offices of Staff — live board
   if (S.tab === 'offices') {
-    box0.innerHTML = '';
-    empty0.classList.remove('hidden');
-    empty0.innerHTML =
-      '<div style="background:#fff; border:1px solid var(--border); border-radius:16px; padding:38px 24px; max-width:560px; margin:0 auto;">' +
-      '<div style="font-size:44px; margin-bottom:8px;">🏢</div>' +
-      '<div style="font-size:20px; font-weight:800; color:#0f172a; margin-bottom:6px;">Offices of Staff</div>' +
-      '<div style="font-size:14px; color:#7c3aed; font-weight:800; letter-spacing:.5px; text-transform:uppercase; margin-bottom:10px;">Coming soon</div>' +
-      '<div style="font-size:13px; color:#64748b; line-height:1.6;">Every staff member will get an office here — a workspace with their inbox, assigned chats, performance, schedule and approvals. Mr. Zaheer Ahmed’s office will be the main one.</div>' +
-      '</div>';
+    box0.innerHTML = '<div class="x">Loading offices…</div>';
+    empty0.classList.add('hidden');
+    renderOffices();
     return;
   }
 
@@ -1102,6 +1112,513 @@ async function loadUsage(id) {
   } catch (e) {
     $('usageBox').textContent = '❌ ' + e.message;
   }
+}
+</script>
+
+<script>
+/* ============================================================================
+   🏢 OFFICES OF STAFF — boards, office overlay, 10 tabs
+   ============================================================================ */
+const O = { offices: [], cur: null, tab: 'profile', tools: [], risk: {}, busy: false, meetings: [] };
+
+function obadge(text, color) {
+  return '<span style="background:' + color + '22;color:' + color + ';border:1px solid ' + color + '55;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;">' + esc(text) + '</span>';
+}
+
+function rosterOptions(selected, { readyOnly = false } = {}) {
+  const list = (S.agents || []).filter(a => !readyOnly || a.status === 'ready' || a.isDefault);
+  return '<option value="">— none —</option>' + list.map(a =>
+    '<option value="' + esc(a.id) + '"' + (a.id === selected ? ' selected' : '') + '>' + esc((a.emoji || '🧑‍💼') + ' ' + a.name) + ' (' + esc(STATUS_LABEL[a.status] || a.status) + ')</option>').join('');
+}
+
+/* ---------------- board ---------------- */
+async function renderOffices() {
+  const box = $('cards'), empty = $('cardsEmpty');
+  try {
+    const d = await api('/api/office/offices?fresh=1');
+    O.offices = d.offices || [];
+  } catch (e) {
+    box.innerHTML = '<div class="x" style="color:#b91c1c;">❌ Could not load offices: ' + esc(e.message) + ' <button class="btn btn-ghost btn-sm" onclick="renderOffices()">Retry</button></div>';
+    return;
+  }
+  if (!O.offices.length) {
+    empty.classList.remove('hidden');
+    empty.innerHTML = 'No offices yet. Hire a staff member first and their office appears here.';
+    box.innerHTML = '';
+    return;
+  }
+  empty.classList.add('hidden');
+  const totals = {
+    staff: O.offices.length,
+    stopped: O.offices.filter(o => o.emergencyStop).length,
+    chats: O.offices.reduce((n, o) => n + o.clients, 0),
+    msgs: O.offices.reduce((n, o) => n + ((o.usage && o.usage.messages) || 0), 0),
+    cost: Math.round(O.offices.reduce((n, o) => n + ((o.usage && o.usage.costUsd) || 0), 0) * 1e4) / 1e4
+  };
+  box.innerHTML =
+    '<div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:4px;">' +
+    [[totals.staff, 'Offices'], [totals.chats, 'Chats handled'], [totals.msgs, 'Messages today'], ['$' + totals.cost, 'Cost today'], [totals.stopped, 'Stopped']].map(x =>
+      '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;"><b style="display:block;font-size:18px;color:#0f172a;">' + x[0] + '</b><span style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px;">' + x[1] + '</span></div>').join('') +
+    '</div>' +
+    O.offices.map(o =>
+      '<div class="card" style="border-color:' + (o.emergencyStop ? '#f85149' : 'var(--border)') + ';">' +
+      '<div style="display:flex;gap:10px;align-items:flex-start;">' +
+      '<div style="font-size:30px;line-height:1;">' + esc(o.emoji || '🧑‍💼') + '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+      '<div style="font-weight:800;font-size:14px;color:#0f172a;">' + esc(o.name) + (o.isDefault ? ' <span style="font-size:10px;color:#7c3aed;">★ DEFAULT</span>' : '') + '</div>' +
+      '<div style="font-size:11px;color:#64748b;">' + esc(o.role || '—') + '</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">' +
+      obadge(o.health.label, o.health.color) +
+      obadge(o.autonomyLabel, '#7c3aed') +
+      obadge(o.status === 'ready' ? 'Ready' : o.status === 'under_training' ? 'Training' : o.status, '#2563eb') +
+      '</div></div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0;font-size:11px;text-align:center;">' +
+      '<div><b>' + o.clients + '</b><br><span style="color:#94a3b8;">Chats</span></div>' +
+      '<div><b>' + ((o.usage && o.usage.messages) || 0) + '</b><br><span style="color:#94a3b8;">Msgs</span></div>' +
+      '<div><b>$' + (((o.usage && o.usage.costUsd) || 0)) + '</b><br><span style="color:#94a3b8;">Cost</span></div>' +
+      '<div><b>' + o.progress.effective + '%</b><br><span style="color:#94a3b8;">Trained</span></div>' +
+      '</div>' +
+      (o.emergencyStop ? '<div style="font-size:11px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:6px;margin-bottom:8px;">⛔ Stopped: ' + esc(o.stoppedReason || 'no reason given') + '</div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+      '<button class="btn btn-primary btn-sm" onclick="openOffice(\'' + esc(o.id) + '\')">🏢 Open office</button>' +
+      (o.isDefault
+        ? '<button class="btn btn-ghost btn-sm" onclick="toggleStop(\'' + esc(o.id) + '\',true)" title="Zaheer is the safety net — stopping him needs a reason">⛔ Stop</button>'
+        : '<button class="btn btn-ghost btn-sm" onclick="toggleStop(\'' + esc(o.id) + '\',' + (o.emergencyStop ? 'false' : 'true') + ')">' + (o.emergencyStop ? '▶️ Resume' : '⛔ Stop') + '</button>') +
+      (o.emergencyStop ? '<button class="btn btn-green btn-sm" onclick="toggleStop(\'' + esc(o.id) + '\',false)">▶️ Resume</button>' : '') +
+      '</div></div>').join('');
+}
+
+async function toggleStop(id, on) {
+  let reason = '';
+  if (on) {
+    reason = prompt('Reason for stopping ' + id + '? (shown in the audit log)') || '';
+    if (!reason.trim()) return toast('Stop cancelled — a reason is required.');
+  }
+  try {
+    await api('/api/office/' + encodeURIComponent(id) + '/stop', { method: 'POST', body: JSON.stringify({ on, reason }) });
+    toast(on ? '⛔ Stopped' : '▶️ Resumed');
+    renderOffices();
+    if (O.cur && O.cur.office.id === id) openOffice(id);
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
+/* ---------------- office overlay ---------------- */
+const OFFICE_TABS = [
+  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'],
+  ['tools', '🧰 Tools'], ['control', '🎛️ Control'], ['performance', '📊 Performance'], ['logs', '🗂️ Logs'],
+  ['team', '👨‍👩‍👦 Team'], ['model', '🧠 Model']
+];
+
+function officeTabsHtml() {
+  return OFFICE_TABS.map(t =>
+    '<button class="tab ' + (O.tab === t[0] ? 'active' : '') + '" onclick="officeTab(\'' + t[0] + '\')">' + t[1] + '</button>').join('');
+}
+
+async function openOffice(id) {
+  const ov = $('officeOverlay');
+  ov.classList.add('open');
+  $('oBody').innerHTML = '<div class="x">Loading office…</div>';
+  $('oTabs').innerHTML = officeTabsHtml();
+  try {
+    const d = await api('/api/office/' + encodeURIComponent(id) + '?t=' + Date.now());
+    O.cur = d; O.tools = d.tools || []; O.risk = d.riskLevels || {};
+    $('oName').textContent = (d.office.emoji || '🧑‍💼') + ' ' + d.office.name + ' — Office';
+    $('oSub').textContent = (d.office.role || '') + ' · ' + (d.office.autonomyLabel || '') + ' · ' + d.office.clients + ' chats';
+    $('oBadges').innerHTML = obadge(d.office.health.label, d.office.health.color) +
+      (d.office.isDefault ? obadge('★ Default', '#a855f7') : '') +
+      (d.office.isProtected ? obadge('🔒 Protected', '#0ea5e9') : '') +
+      (d.office.emergencyStop ? obadge('⛔ STOPPED', '#f85149') : '');
+    renderOfficeTab();
+  } catch (e) {
+    $('oBody').innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>';
+  }
+}
+function closeOffice() { $('officeOverlay').classList.remove('open'); O.cur = null; }
+function officeTab(t) { O.tab = t; $('oTabs').innerHTML = officeTabsHtml(); renderOfficeTab(); }
+function oSect(title, body) { return '<div class="sect"><h4>' + title + '</h4>' + body + '</div>'; }
+function oField(label, html, hint) {
+  return '<label style="display:block;margin-bottom:10px;"><span style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px;">' + esc(label) + '</span>' + html + (hint ? '<span style="display:block;font-size:10px;color:#94a3b8;margin-top:2px;">' + esc(hint) + '</span>' : '') + '</label>';
+}
+const oInput = (id, val, type = 'text', extra = '') =>
+  '<input id="' + id + '" type="' + type + '" value="' + esc(val == null ? '' : val) + '" ' + extra + ' style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">';
+const oSelect = (id, opts, val) => '<select id="' + id + '" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' +
+  opts.map(o => '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</select>';
+const oArea = (id, val) => '<textarea id="' + id + '" rows="3" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' + esc(val == null ? '' : val) + '</textarea>';
+
+async function opost(path, body) {
+  return api('/api/office/' + path, { method: 'POST', body: JSON.stringify(body || {}) });
+}
+
+function renderOfficeTab() {
+  const d = O.cur; const b = $('oBody');
+  if (!d) return;
+  const a = d.agent || {}; const c = d.controls || {};
+  const id = d.office.id;
+
+  if (O.tab === 'profile') {
+    b.innerHTML = oSect('Identity',
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px;">' +
+      [['Name', a.name], ['Role', a.role], ['Status', STATUS_LABEL[a.status] || a.status], ['Category', a.category],
+       ['Model', a.model], ['Autonomy', d.office.autonomyLabel], ['Trained', d.office.progress.effective + '%'], ['Confidence', d.office.confidence + '%']]
+        .map(x => '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;"><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">' + esc(x[0]) + '</div><b style="font-size:12px;">' + esc(x[1] || '—') + '</b></div>').join('') + '</div>') +
+      oSect('Quick actions',
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" onclick="officeTab(\'desk\')">🪑 Desk</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="officeTab(\'clients\')">👥 Clients</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="officeTab(\'control\')">🎛️ Controls</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="closeOffice();openDetail(\'' + esc(id) + '\')">🎓 Training room</button>' +
+        '</div>') +
+      oSect('Ask Mr. Zaheer (advisor — suggests only)',
+        oArea('oAdviceQ', '') + '<button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="askAdvisor()">💬 Ask</button><div id="oAdvice" style="margin-top:8px;font-size:12px;"></div>');
+    return;
+  }
+
+  if (O.tab === 'desk') {
+    b.innerHTML = '<div class="x">Loading desk…</div>';
+    api('/api/office/' + encodeURIComponent(id) + '/desk').then(dd => {
+      const k = dd.desk;
+      b.innerHTML =
+        '<div class="counters" style="margin-bottom:10px;">' +
+        [[k.stats.clients, 'Chats'], [k.stats.groups, 'Groups'], [k.stats.approvals, 'Approvals'], [k.stats.lessons, 'Lessons']]
+          .map(x => '<div class="counter"><b>' + x[0] + '</b><span>' + x[1] + '</span></div>').join('') + '</div>' +
+        oSect('Shift', '<div style="font-size:12px;">Working hours: <b>' + esc(k.shifts.workingHours || 'any') + '</b> · Quiet hours: <b>' + esc(k.shifts.quietHours || 'none') + '</b></div>') +
+        oSect('Today’s desk', k.tasks.length
+          ? k.tasks.map(t => '<div class="meta-row"><span>' + esc(t.title) + '</span><span style="font-size:10px;color:#94a3b8;">' + esc(t.kind) + '</span></div>').join('')
+          : '<div class="x">Nothing on the desk right now.</div>');
+    }).catch(e => { b.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>'; });
+    return;
+  }
+
+  if (O.tab === 'clients') {
+    const cl = d.clients || [];
+    b.innerHTML =
+      (cl.length ? cl.map(cx =>
+        '<div class="sect" style="margin-bottom:8px;">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">' +
+        '<div><b style="font-size:13px;">' + esc(cx.name) + '</b> <span style="font-size:10px;color:#94a3b8;">' + esc(cx.type) + ' · ' + esc(cx.role || 'primary') + '</span></div>' +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<button class="btn btn-ghost btn-sm" onclick="clientBrief(\'' + esc(cx.jid) + '\')">📝 Briefing</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="clientNote(\'' + esc(cx.jid) + '\')">✏️ Note</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="clientHandover(\'' + esc(cx.jid) + '\')">↔️ Handover</button>' +
+        '</div></div>' +
+        (cx.note ? '<div style="font-size:11px;color:#475569;margin-top:4px;">📌 ' + esc(cx.note) + '</div>' : '') +
+        (cx.briefing && cx.briefing.text ? '<div style="font-size:11px;color:#334155;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:6px;margin-top:6px;white-space:pre-wrap;">' + esc(cx.briefing.text) + '</div>' : '') +
+        '<div id="cl_' + esc(cx.id) + '" style="font-size:11px;margin-top:4px;"></div>' +
+        '</div>').join('')
+        : '<div class="x">No chats assigned yet. Assign staff from a chat’s brain card (“Handled by”).</div>') +
+      '<button class="btn btn-ghost btn-sm" onclick="clientsRebuild()">🔄 Rebuild list from assignment events</button>';
+    return;
+  }
+
+  if (O.tab === 'brain') {
+    b.innerHTML = oSect('Brain link',
+      '<div style="font-size:12px;line-height:1.7;">' +
+      (a.knowledgeSource === 'waWebKnowledgeBase'
+        ? '📚 This staff member’s knowledge base is the live <b>Mr. Zaheer Ahmed Knowledge Base</b> used by the WhatsApp bot (single source of truth — nothing is duplicated).'
+        : '📚 Knowledge is stored in this staff member’s own training room.') +
+      '<br><br>Per-chat behaviour (tone, persona, mode, handled by) lives in the <b>Contact Brain</b> of each chat.' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">' +
+      '<button class="btn btn-primary btn-sm" onclick="window.open(\'/admin.html\',\'_blank\')">🧠 Open dashboard brains</button>' +
+      '</div>') +
+      oSect('Handled chats', (d.clients || []).length
+        ? (d.clients || []).map(cx => '<div class="meta-row"><span>' + esc(cx.name) + '</span><span>' + esc(cx.type) + ' · ' + esc(cx.autonomy || 'auto') + '</span></div>').join('')
+        : '<div class="x">No chats linked.</div>');
+    return;
+  }
+
+  if (O.tab === 'tools') {
+    b.innerHTML = oSect('Tools & risk levels',
+      '<div style="font-size:11px;color:#64748b;margin-bottom:8px;">Level 0 observe · 1 draft · 2 internal write · 3 external/money (needs approval) · 4 irreversible (needs opt-in + approval).</div>' +
+      O.tools.map(t =>
+        '<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f1f5f9;">' +
+        '<input type="checkbox" data-tool="' + esc(t.id) + '"' + (t.enabled ? ' checked' : '') + ' style="margin-top:3px;">' +
+        '<span style="flex:1;"><b style="font-size:12px;">' + esc(t.name) + '</b> ' +
+        obadge('L' + t.level + ' ' + ((O.risk[t.level] || {}).label || ''), (O.risk[t.level] || {}).color || '#8b949e') +
+        '<span style="font-size:10px;color:#94a3b8;"> ' + esc(t.scope) + '</span>' +
+        '<div style="font-size:11px;color:#64748b;">' + esc(t.description) + '</div></span></label>').join('') +
+      '<label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;"><input type="checkbox" id="oL4"' + (a.level4OptIn ? ' checked' : '') + '> Allow Level 4 (irreversible) tools for this staff member</label>' +
+      '<button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="saveTools()">💾 Save tools</button>');
+    return;
+  }
+
+  if (O.tab === 'control') {
+    b.innerHTML =
+      oSect('⛔ Emergency stop',
+        '<div style="font-size:12px;margin-bottom:8px;">' + (a.emergencyStop
+          ? '<b style="color:#b91c1c;">STOPPED</b> — ' + esc(a.stoppedReason || 'no reason given')
+          : 'Running normally.') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        '<button class="btn btn-warn btn-sm" onclick="toggleStop(\'' + esc(id) + '\',true)">⛔ Stop now</button>' +
+        '<button class="btn btn-green btn-sm" onclick="toggleStop(\'' + esc(id) + '\',false)">▶️ Resume</button></div>') +
+      oSect('Autonomy dial',
+        oSelect('oAutonomy', [['observer', '👀 Observer — never replies, only alerts'], ['draft', '📥 Draft for approval — writes, boss sends'], ['auto', '🤖 Auto-reply — full autonomy']], a.autonomy) +
+        '<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="saveAutonomy()">💾 Save autonomy</button>') +
+      oSect('Limits',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        oField('Messages / day', oInput('oLm', c.dailyMessageLimit, 'number')) +
+        oField('Tokens / day', oInput('oLt', c.dailyTokenLimit, 'number')) +
+        oField('Cost / day (USD)', oInput('oLc', c.dailyCostLimitUsd, 'number')) +
+        oField('Tool calls / task', oInput('oLk', c.maxToolCallsPerTask, 'number')) +
+        oField('Confidence threshold %', oInput('oLconf', c.confidenceThreshold, 'number'), 'Below this, chats go to the backup staff') +
+        '</div>') +
+      oSect('Hours',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        oField('Working hours', oInput('oLwh', c.workingHours), 'e.g. 09:00-18:00 (overnight 22:00-06:00 allowed)') +
+        oField('Quiet hours', oInput('oLqh', c.quietHours), 'e.g. 13:00-14:00 — drafts only') +
+        '</div>' +
+        '<label style="display:flex;gap:8px;align-items:center;font-size:12px;"><input type="checkbox" id="oLoh"' + (c.outOfHoursAutoReply ? ' checked' : '') + '> Auto-reply outside working hours</label>' +
+        '<label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-top:6px;"><input type="checkbox" id="oLdry"' + (c.dryRun ? ' checked' : '') + '> 🧪 Dry run — generate replies but never send (drafts only)</label>') +
+      oSect('Allow / block',
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        oField('Allowed chats only (one per line, empty = all)', oArea('oLal', (c.allowedContacts || []).join('\n'))) +
+        oField('Blocked chats (one per line)', oArea('oLbl', (c.blockedContacts || []).join('\n'))) +
+        '</div>' +
+        oField('Blocked topics (comma separated words)', oInput('oLbt', (c.blockedTopics || []).join(', ')))) +
+      oSect('Tripwires & approvals',
+        ['crisis', 'anger', 'repeatedComplaints', 'abnormalSpeed'].map(k =>
+          '<label style="display:inline-flex;gap:6px;align-items:center;font-size:12px;margin-right:12px;"><input type="checkbox" data-tw="' + k + '"' + ((c.tripwires || {})[k] ? ' checked' : '') + '> ' + esc(k) + '</label>').join('') +
+        '<div style="margin-top:8px;font-size:11px;color:#64748b;">Tripwire hit = no reply, boss alerted, logged.</div>' +
+        '<div style="margin-top:8px;">' + ['money', 'deletion', 'bulkSend', 'newContacts', 'sensitiveTopics'].map(k =>
+          '<label style="display:inline-flex;gap:6px;align-items:center;font-size:12px;margin-right:12px;"><input type="checkbox" data-ap="' + k + '"' + ((c.approvalRules || {})[k] ? ' checked' : '') + '> approve ' + esc(k) + '</label>').join('') + '</div>') +
+      '<button class="btn btn-primary btn-sm" onclick="saveControls()">💾 Save all controls</button>' +
+      oSect('Why did this happen? (policy tester)',
+        oInput('oPtIn', '', 'text', 'placeholder="Type a customer message…"') +
+        '<button class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="policyTest()">🔎 Check what the staff member would do</button>' +
+        '<div id="oPtOut" style="margin-top:8px;font-size:12px;"></div>');
+    return;
+  }
+
+  if (O.tab === 'performance') {
+    b.innerHTML = '<div class="x">Loading performance…</div>';
+    api('/api/office/' + encodeURIComponent(id) + '/performance').then(pd => {
+      const q = pd.performance;
+      b.innerHTML =
+        '<div class="counters" style="margin-bottom:10px;">' +
+        [[q.progress.effective + '%', 'Trained'], [q.confidence + '%', 'Confidence'], [q.passRate == null ? '—' : q.passRate + '%', 'Scorecard'],
+         [q.guardrailRate == null ? '—' : q.guardrailRate + '%', 'Guardrails'], [q.clients, 'Chats'], [q.activeClients, 'Active 7d'],
+         [q.fallbacks24h, 'Fallbacks 24h'], [q.openComplaints, 'Open complaints']]
+          .map(x => '<div class="counter"><b>' + x[0] + '</b><span>' + x[1] + '</span></div>').join('') + '</div>' +
+        oSect('Recent runs', q.runs.length ? q.runs.map(r => '<div class="meta-row"><span>' + esc(r.kind) + ' · ' + esc(r.model || '') + '</span><span>' + (r.passed || 0) + '/' + (r.total || 0) + ' (' + (r.passRate || 0) + '%)</span></div>').join('') : '<div class="x">No runs yet.</div>') +
+        oSect('5% quality sampling', '<div class="x">Sampling compares recent auto-replies against the Guardrail suite. Run a guardrail test from the Training Room to add samples.</div>') +
+        oSect('Complaint tracker',
+          (d.complaints || []).length ? (d.complaints || []).map(cp =>
+            '<div class="meta-row"><span>' + esc(cp.text) + '</span><span>' + esc(cp.status) + (cp.status !== 'resolved' ? ' <button class="btn btn-ghost btn-sm" onclick="resolveComplaint(\'' + esc(cp.id) + '\')">✔ Resolve</button>' : '') + '</span></div>').join('')
+            : '<div class="x">No complaints. 🎉</div>') +
+        '<div style="display:flex;gap:6px;margin-top:8px;">' + oInput('oCp', '', 'text', 'placeholder="Log a complaint…"') + '<button class="btn btn-ghost btn-sm" onclick="addComplaint()">➕ Log</button></div>' +
+        oSect('Self-review (suggestions only)',
+          '<button class="btn btn-primary btn-sm" onclick="selfReview()">🪞 Ask for self-review</button><div id="oReview" style="margin-top:8px;font-size:12px;white-space:pre-wrap;"></div>');
+    }).catch(e => { b.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>'; });
+    return;
+  }
+
+  if (O.tab === 'logs') {
+    b.innerHTML = oSect('Audit log',
+      '<div style="display:flex;gap:6px;margin-bottom:8px;">' + oInput('oLogQ', '', 'text', 'placeholder="Search action, reason, chat…"') +
+      '<button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔎 Search</button></div><div id="oLogs"></div>');
+    loadLogs();
+    return;
+  }
+
+  if (O.tab === 'team') {
+    b.innerHTML =
+      oSect('Team links',
+        oField('Cover / backup staff (handles chats if this office is stopped)', '<select id="oCover" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' + rosterOptions(a.coverBy, { readyOnly: true }) + '</select>') +
+        oField('Supervisor', '<select id="oSup" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' + rosterOptions(a.supervisorId) + '</select>') +
+        oField('Consult with (comma separated staff ids)', oInput('oConsult', (a.consultWith || []).join(', '))) +
+        '<button class="btn btn-primary btn-sm" onclick="saveTeam()">💾 Save team</button>') +
+      oSect('🪑 Meeting room',
+        oField('Topic', oInput('oMeetTopic', '', 'text', 'placeholder="e.g. How should we handle refund requests?"')) +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        oField('Chair', '<select id="oMeetChair" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' + rosterOptions('zaheer', { readyOnly: true }) + '</select>') +
+        oField('Max rounds', oInput('oMeetRounds', 2, 'number')) + '</div>' +
+        '<div style="font-size:11px;color:#64748b;margin-bottom:6px;">Attendees: ' + (S.agents || []).filter(x => x.status === 'ready' || x.status === 'under_training').map(x =>
+          '<label style="display:inline-flex;gap:4px;align-items:center;margin-right:10px;"><input type="checkbox" data-att="' + esc(x.id) + '"' + (x.id === id ? ' checked' : '') + '> ' + esc((x.emoji || '') + ' ' + x.name) + '</label>').join('') + '</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="runMeetingNow()">▶️ Open & run meeting</button>' +
+        '<div style="font-size:10px;color:#94a3b8;margin-top:6px;">Caps: 2 rounds, ~14k tokens, 2 minutes. Outcome is a draft/lesson only — never an automatic customer action.</div>' +
+        '<div id="oMeetOut" style="margin-top:10px;font-size:12px;white-space:pre-wrap;"></div>');
+    return;
+  }
+
+  if (O.tab === 'model') {
+    const models = d.models || [];
+    b.innerHTML =
+      oSect('Current model',
+        '<div style="font-size:13px;"><b>' + esc(a.model || '—') + '</b>' + (d.safetySensitive ? ' ' + obadge('safety-sensitive role', '#d29922') : '') + '</div>') +
+      oSect('Switch model (compares first)',
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        '<select id="oModel" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' +
+        models.map(m => '<option value="' + esc(m.id) + '"' + (m.id === a.model ? ' selected' : '') + '>' + esc(m.id + ' — ' + (m.label || '')) + '</option>').join('') + '</select>' +
+        '<button class="btn btn-ghost btn-sm" onclick="previewModel()">🔬 Preview</button>' +
+        '<button class="btn btn-primary btn-sm" onclick="applyModel(false)">💾 Apply</button>' +
+        '<button class="btn btn-warn btn-sm" onclick="applyModel(true)">⚠️ Force apply</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="rollbackModel()">↩️ Rollback</button>' +
+        '</div><div id="oModelOut" style="margin-top:10px;font-size:12px;"></div>') +
+      oSect('Switch history', (d.modelHistory || []).length
+        ? (d.modelHistory || []).map(h => '<div class="meta-row"><span>' + esc(h.from) + ' → ' + esc(h.to) + '</span><span>' + esc(h.action) + '</span></div>').join('')
+        : '<div class="x">No switches yet.</div>');
+    return;
+  }
+}
+
+/* ---------------- office actions ---------------- */
+async function saveAutonomy() {
+  const id = O.cur.office.id;
+  try { await opost(id + '/autonomy', { autonomy: $('oAutonomy').value }); toast('✅ Autonomy saved'); openOffice(id); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function saveControls() {
+  const id = O.cur.office.id;
+  const split = (v) => String(v || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+  const tw = {}; document.querySelectorAll('[data-tw]').forEach(x => tw[x.dataset.tw] = x.checked);
+  const ap = {}; document.querySelectorAll('[data-ap]').forEach(x => ap[x.dataset.ap] = x.checked);
+  try {
+    await opost(id + '/controls', {
+      controls: {
+        dailyMessageLimit: Number($('oLm').value) || 0,
+        dailyTokenLimit: Number($('oLt').value) || 0,
+        dailyCostLimitUsd: Number($('oLc').value) || 0,
+        maxToolCallsPerTask: Number($('oLk').value) || 0,
+        confidenceThreshold: Number($('oLconf').value) || 0,
+        workingHours: $('oLwh').value.trim() || '00:00-23:59',
+        quietHours: $('oLqh').value.trim(),
+        outOfHoursAutoReply: $('oLoh').checked,
+        dryRun: $('oLdry').checked,
+        allowedContacts: split($('oLal').value),
+        blockedContacts: split($('oLbl').value),
+        blockedTopics: split($('oLbt').value),
+        tripwires: tw, approvalRules: ap
+      }
+    });
+    toast('✅ Controls saved'); openOffice(id);
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function saveTools() {
+  const id = O.cur.office.id;
+  const tools = []; document.querySelectorAll('[data-tool]').forEach(x => { if (x.checked) tools.push(x.dataset.tool); });
+  const level4OptIn = $('oL4').checked;
+  try {
+    await opost(id + '/tools', { tools, level4OptIn, confirmLevel4: level4OptIn });
+    toast('✅ Tools saved'); openOffice(id);
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function saveTeam() {
+  const id = O.cur.office.id;
+  try {
+    await opost(id + '/team', {
+      coverBy: $('oCover').value,
+      supervisorId: $('oSup').value,
+      consultWith: String($('oConsult').value || '').split(',').map(s => s.trim()).filter(Boolean)
+    });
+    toast('✅ Team saved');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function policyTest() {
+  const id = O.cur.office.id;
+  const out = $('oPtOut');
+  out.textContent = 'Checking…';
+  try {
+    const d = await opost(id + '/policy-check', { incoming: $('oPtIn').value, jid: (O.cur.clients[0] || {}).jid || '' });
+    out.innerHTML = 'Decision: <b>' + esc(d.decision.action) + '</b> — ' + esc(d.decision.reason);
+  } catch (e) { out.textContent = '❌ ' + e.message; }
+}
+async function loadLogs() {
+  const id = O.cur.office.id; const box = $('oLogs');
+  box.innerHTML = '<div class="x">Loading…</div>';
+  try {
+    const d = await api('/api/office/' + encodeURIComponent(id) + '/logs?q=' + encodeURIComponent($('oLogQ').value));
+    box.innerHTML = (d.logs || []).length
+      ? d.logs.map(l => '<div class="sect" style="margin-bottom:6px;padding:8px;"><div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;"><b>' + esc(l.action) + '</b><span style="font-size:10px;color:#94a3b8;">' + esc(new Date(l.createdAt).toLocaleString()) + '</span></div>' +
+        '<div style="font-size:11px;color:#475569;">' + esc(l.summary) + (l.reason ? ' · <i>' + esc(l.reason) + '</i>' : '') + '</div></div>').join('')
+      : '<div class="x">No log entries.</div>';
+  } catch (e) { box.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>'; }
+}
+async function askAdvisor() {
+  const id = O.cur.office.id; const out = $('oAdvice');
+  const q = $('oAdviceQ').value.trim();
+  if (!q) return toast('Type a question first.');
+  out.textContent = 'Mr. Zaheer is thinking…';
+  try {
+    const d = await opost(id + '/advisor', { question: q });
+    out.innerHTML = '<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:8px;white-space:pre-wrap;">' + esc(d.answer) + '</div>';
+  } catch (e) { out.textContent = '❌ ' + e.message; }
+}
+async function clientBrief(jid) {
+  try { await opost(O.cur.office.id + '/clients/' + encodeURIComponent(jid) + '/briefing', {}); toast('✅ Briefing ready'); openOffice(O.cur.office.id); officeTab('clients'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function clientNote(jid) {
+  const note = prompt('Note for this chat (visible to the staff member):');
+  if (note == null) return;
+  try { await opost(O.cur.office.id + '/clients/' + encodeURIComponent(jid) + '/note', { note }); toast('✅ Note saved'); openOffice(O.cur.office.id); officeTab('clients'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function clientHandover(jid) {
+  const opts = (S.agents || []).filter(x => x.status !== 'archived');
+  const pick = prompt('Hand this chat to which staff id?\n\n' + opts.map(x => x.id + ' — ' + x.name).join('\n'));
+  if (!pick) return;
+  try { await opost(O.cur.office.id + '/clients/' + encodeURIComponent(jid) + '/handover', { toStaffId: pick.trim() }); toast('✅ Handed over'); openOffice(O.cur.office.id); officeTab('clients'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function clientsRebuild() {
+  try { await opost(O.cur.office.id + '/clients/rebuild'); toast('✅ Rebuilt'); openOffice(O.cur.office.id); officeTab('clients'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function resolveComplaint(cid) {
+  try { await opost(O.cur.office.id + '/complaints/' + encodeURIComponent(cid) + '/resolve'); toast('✅ Resolved'); officeTab('performance'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function addComplaint() {
+  const t = $('oCp').value.trim();
+  if (!t) return toast('Describe the complaint.');
+  try { await opost(O.cur.office.id + '/complaints', { text: t }); toast('✅ Logged'); officeTab('performance'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function selfReview() {
+  const out = $('oReview'); out.textContent = 'Thinking…';
+  try { const d = await opost(O.cur.office.id + '/review', {}); out.textContent = d.review; }
+  catch (e) { out.textContent = '❌ ' + e.message; }
+}
+async function previewModel() {
+  const out = $('oModelOut'); out.textContent = 'Running the same questions on both models… (this can take ~1 minute)';
+  try {
+    const d = await opost(O.cur.office.id + '/model/preview', { model: $('oModel').value });
+    out.innerHTML =
+      '<div class="meta-row"><span>Scorecard</span><span>' + d.current.scorecard.passRate + '% → <b>' + d.candidate.scorecard.passRate + '%</b></span></div>' +
+      '<div class="meta-row"><span>Guardrails</span><span>' + d.current.guardrails.passRate + '% → <b>' + d.candidate.guardrails.passRate + '%</b></span></div>' +
+      (d.blockers.length ? '<div style="color:#b91c1c;margin-top:6px;">⛔ ' + d.blockers.map(esc).join('<br>') + '</div>' : '<div style="color:#166534;margin-top:6px;">✅ Safe to switch.</div>');
+  } catch (e) { out.textContent = '❌ ' + e.message; }
+}
+async function applyModel(force) {
+  try { await opost(O.cur.office.id + '/model/apply', { model: $('oModel').value, force }); toast('✅ Model switched'); openOffice(O.cur.office.id); officeTab('model'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function rollbackModel() {
+  try { await opost(O.cur.office.id + '/model/rollback'); toast('✅ Rolled back'); openOffice(O.cur.office.id); officeTab('model'); }
+  catch (e) { toast('❌ ' + e.message); }
+}
+async function runMeetingNow() {
+  const out = $('oMeetOut');
+  const topic = $('oMeetTopic').value.trim();
+  const att = []; document.querySelectorAll('[data-att]').forEach(x => { if (x.checked) att.push(x.dataset.att); });
+  if (!topic) return toast('Give the meeting a topic.');
+  if (!att.length) return toast('Pick at least one attendee.');
+  out.textContent = 'Opening meeting…';
+  try {
+    const created = await api('/api/office/meetings', { method: 'POST', body: JSON.stringify({ topic, participants: att, chairId: $('oMeetChair').value || 'zaheer', caps: { maxRounds: Number($('oMeetRounds').value) || 2 } }) });
+    out.textContent = 'Meeting started — staff are discussing (up to 2 minutes)…';
+    const run = await api('/api/office/meetings/' + encodeURIComponent(created.meeting.id) + '/run', { method: 'POST', body: JSON.stringify({ rounds: Number($('oMeetRounds').value) || 2 }) });
+    out.innerHTML = '<div style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;white-space:pre-wrap;">' + esc(run.meeting.decision || '(no decision)') + '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">' +
+      '<button class="btn btn-primary btn-sm" onclick="saveMeeting(\'' + esc(created.meeting.id) + '\',\'lesson\')">📚 Save as lesson</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="saveMeeting(\'' + esc(created.meeting.id) + '\',\'notebook\')">🗒️ Save to notebook</button></div>';
+    const calls = (run.meeting.turns || []).map(t => '<div class="meta-row"><span>' + esc(t.speakerName || '') + '</span><span style="font-size:10px;color:#94a3b8;">' + esc(t.role) + '</span></div>').join('');
+    out.innerHTML = calls + out.innerHTML;
+  } catch (e) { out.textContent = '❌ ' + e.message; }
+}
+async function saveMeeting(mid, kind) {
+  try { await api('/api/office/meetings/' + encodeURIComponent(mid) + '/save', { method: 'POST', body: JSON.stringify({ kind, staffId: O.cur.office.id }) }); toast('✅ Saved'); }
+  catch (e) { toast('❌ ' + e.message); }
 }
 </script>
 
