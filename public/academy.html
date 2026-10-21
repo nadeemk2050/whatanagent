@@ -435,7 +435,9 @@ function renderCounters() {
   ];
   $('counters').innerHTML = rows.map(r =>
     '<div class="counter" onclick="setTab(\'' + r.k + '\')" style="cursor:pointer;"><b>' + countBy(r.k) + '</b><span>' + r.label + '</span></div>').join('') +
-    '<div class="counter"><b>' + S.agents.length + '</b><span>Total staff</span></div>';
+    '<div class="counter" onclick="setTab(\'all\')" title="Click to see every staff member in a detailed column list" ' +
+    'style="cursor:pointer;border-color:' + (S.tab === 'all' ? '#7c3aed' : 'var(--border)') + ';' + (S.tab === 'all' ? 'box-shadow:0 0 0 3px #ede9fe inset;' : '') + '">' +
+    '<b>' + S.agents.length + '</b><span>👥 All staff <span style="color:#7c3aed;font-weight:800;">› list</span></span></div>';
 }
 
 function renderTabs() {
@@ -447,10 +449,11 @@ function renderTabs() {
   ];
   $('tabs').innerHTML = rows.map(r =>
     '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('') +
+    '<button class="tab ' + (S.tab === 'all' ? 'active' : '') + '" onclick="setTab(\'all\')" style="border-color:#0ea5e9;color:' + (S.tab === 'all' ? '#fff' : '#0369a1') + ';' + (S.tab === 'all' ? 'background:#0ea5e9;' : 'background:#f0f9ff;') + '">👥 All Staff (' + S.agents.length + ')</button>' +
     '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">🏢 Offices of Staff</button>';
 }
 
-function setTab(k) { S.tab = k; renderTabs(); renderCards(); }
+function setTab(k) { S.tab = k; renderTabs(); renderCounters(); renderCards(); }
 
 function renderCards() {
   const box0 = $('cards'), empty0 = $('cardsEmpty');
@@ -460,6 +463,13 @@ function renderCards() {
     box0.innerHTML = '<div class="x">Loading offices…</div>';
     empty0.classList.add('hidden');
     renderOffices();
+    return;
+  }
+
+  // 👥 All Staff — every staff member in one detailed column list
+  if (S.tab === 'all') {
+    empty0.classList.add('hidden');
+    renderAllStaff();
     return;
   }
 
@@ -495,6 +505,98 @@ function renderCards() {
       '<div class="card-actions"><button class="btn btn-sm btn-ghost" onclick="openDetail(\'' + esc(a.id) + '\')">Open</button>' + acts + '</div>' +
       '</div>';
   }).join('');
+}
+
+/* ---------------- all staff (column list) ---------------- */
+const STATUS_ORDER = { ready: 0, under_training: 1, newly_hired: 2, archived: 3 };
+
+function allStaffRows() {
+  const q = ($('allSearch') ? $('allSearch').value : '').trim().toLowerCase();
+  const st = $('allStatus') ? $('allStatus').value : '';
+  return S.agents
+    .filter(a => !st || a.status === st)
+    .filter(a => !q || [a.name, a.role, a.model, a.category, a.emoji, a.id].join(' ').toLowerCase().includes(q))
+    .slice()
+    .sort((x, y) => {
+      const d = (y.isDefault ? 1 : 0) - (x.isDefault ? 1 : 0);
+      if (d) return d;
+      const s = (STATUS_ORDER[x.status] == null ? 9 : STATUS_ORDER[x.status]) - (STATUS_ORDER[y.status] == null ? 9 : STATUS_ORDER[y.status]);
+      if (s) return s;
+      return String(x.name || '').localeCompare(String(y.name || ''));
+    });
+}
+
+function renderAllStaff() {
+  const box = $('cards');
+  if (!$('allTable')) {
+    box.innerHTML =
+      '<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px;">' +
+      '<input id="allSearch" placeholder="🔍 Search staff by name, role, model…" oninput="fillAllTable()" ' +
+      'style="flex:1;min-width:180px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:13px;">' +
+      '<select id="allStatus" onchange="fillAllTable()" style="padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:13px;">' +
+      '<option value="">All stages</option>' +
+      '<option value="ready">✅ Ready</option>' +
+      '<option value="under_training">📚 Under Training</option>' +
+      '<option value="newly_hired">🆕 Newly Hired</option>' +
+      '<option value="archived">🗄️ Archived</option>' +
+      '</select>' +
+      '<span id="allCount" style="font-size:12px;color:#64748b;"></span>' +
+      '</div>' +
+      '<div id="allTable" style="grid-column:1/-1;overflow-x:auto;background:#fff;border:1px solid var(--border);border-radius:14px;"></div>';
+  }
+  fillAllTable();
+}
+
+function fillAllTable() {
+  const holder = $('allTable');
+  if (!holder) return;
+  const rows = allStaffRows();
+  if ($('allCount')) $('allCount').textContent = rows.length + ' of ' + S.agents.length + ' staff shown';
+  if (!rows.length) {
+    holder.innerHTML = '<div style="padding:22px;text-align:center;font-size:13px;color:#64748b;">No staff match this search.</div>';
+    return;
+  }
+  const th = (t, extra = '') => '<th style="text-align:left;padding:10px 12px;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:#64748b;border-bottom:1px solid var(--border);white-space:nowrap;' + extra + '">' + t + '</th>';
+
+  const body = rows.map((a, i) => {
+    const p = a.progress || { effective: 0, override: null };
+    const conf = (a.confidence && a.confidence.score) || 0;
+    const prot = !!(a.isProtected || a.isDefault);
+    const statusLabel = (STATUS_LABEL[a.status] || a.status || '').replace(/^\S+\s/, '');
+    const cells =
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#94a3b8;">' + (i + 1) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;">' +
+      '<div style="display:flex;gap:8px;align-items:center;">' +
+      '<span style="font-size:20px;line-height:1;">' + esc(a.emoji || '🧑‍💼') + '</span>' +
+      '<div><div style="font-weight:800;font-size:13px;color:#0f172a;white-space:nowrap;">' + esc(a.name) +
+      (prot ? ' <span style="font-size:9px;font-weight:800;color:#7c3aed;background:#ede9fe;border-radius:20px;padding:1px 6px;">DEFAULT</span>' : '') +
+      (a.isProtected ? ' <span style="font-size:9px;font-weight:800;color:#0369a1;background:#e0f2fe;border-radius:20px;padding:1px 6px;">🔒</span>' : '') +
+      '</div><div style="font-size:11px;color:#94a3b8;white-space:nowrap;">' + esc(a.id) + '</div></div></div></td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;white-space:nowrap;">' + esc(a.role || '—') + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;"><span class="chip ' + esc(a.status) + '" style="white-space:nowrap;">' + esc(statusLabel) + '</span></td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">' + esc(a.category || '—') + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;min-width:110px;">' +
+      '<div style="font-size:12px;font-weight:800;color:#0f172a;">' + p.effective + '%' + (p.override !== null ? ' <span style="font-weight:600;color:#a855f7;font-size:10px;">manual</span>' : '') + '</div>' +
+      '<div class="bar" style="height:5px;margin-top:3px;"><div style="width:' + Math.max(0, Math.min(100, p.effective)) + '%"></div></div></td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;min-width:100px;">' +
+      '<div style="font-size:12px;font-weight:800;color:#0f172a;">' + conf + '%</div>' +
+      '<div class="bar" style="height:5px;margin-top:3px;"><div style="width:' + Math.max(0, Math.min(100, conf)) + '%;background:linear-gradient(90deg,#0ea5e9,#22c55e);"></div></div></td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:11.5px;color:#334155;white-space:nowrap;">' + esc(a.model || '—') + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;text-align:center;">' + (a.sources || []).length + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;text-align:center;">' + (a.allowedTools || []).length + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:11.5px;color:#64748b;white-space:nowrap;">' +
+      (a.archivedAt ? 'archived ' + new Date(a.archivedAt).toLocaleDateString() : 'updated ' + new Date(a.updatedAt || Date.now()).toLocaleDateString()) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">' +
+      '<button class="btn btn-sm btn-ghost" onclick="openDetail(\'' + esc(a.id) + '\')">Open</button> ' +
+      '<button class="btn btn-sm btn-ghost" onclick="openOffice(\'' + esc(a.id) + '\')" title="Open this staff member\'s office">🏢</button>' +
+      '</td>';
+    return '<tr style="' + (prot ? 'background:#faf5ff;' : '') + '">' + cells + '</tr>';
+  }).join('');
+
+  holder.innerHTML = '<table style="width:100%;border-collapse:collapse;min-width:940px;">' +
+    '<thead><tr style="background:#f8fafc;">' +
+    th('#') + th('Staff') + th('Role') + th('Stage') + th('Category') + th('Training') + th('Confidence') + th('Model') + th('Chats') + th('Tools') + th('Updated') + th('Actions') +
+    '</tr></thead><tbody>' + body + '</tbody></table>';
 }
 
 /* ---------------- lifecycle ---------------- */
