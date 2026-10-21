@@ -9,7 +9,7 @@ import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, e
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
-import { getAgent } from './agentsStore.mjs';
+import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 
@@ -4961,7 +4961,37 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
   return identity ? (prompt + UNIVERSAL_SAFETY) : prompt;
 }
 
+// Public entry point. If the assigned staff member cannot answer, the built-in
+// Mr. Zaheer Ahmed answers instead — a staff problem must never silence a chat.
 export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null) {
+  try {
+    const reply = await generateWaWebAutoBotReplyInner(jid, customerMessage, overridePrompt, mediaData, targetModel);
+    if (reply) return reply;
+  } catch (e) {
+    console.warn('[WA-WEB AGENT] primary attempt failed:', (e.message || '').slice(0, 140));
+  }
+  if (overridePrompt) return null;   // boss path is never re-routed
+
+  let assigned = '';
+  try {
+    const b = await getBrainForReply(jid, '');
+    assigned = (b && (b.handledBy || b.agentId)) || '';
+  } catch (e) { /* ignore */ }
+  if (!assigned || assigned === DEFAULT_AGENT_ID) return null;
+
+  try {
+    const reply = await generateWaWebAutoBotReplyInner(jid, customerMessage, null, mediaData, null, { forceDefault: true });
+    if (reply) {
+      await logFallback({ chat: jid, assigned, used: DEFAULT_AGENT_ID, reason: 'assigned staff did not answer (error/timeout/empty)' });
+      return reply;
+    }
+  } catch (e) {
+    await logFallback({ chat: jid, assigned, used: DEFAULT_AGENT_ID, reason: 'retry failed: ' + (e.message || '').slice(0, 120) });
+  }
+  return null;
+}
+
+async function generateWaWebAutoBotReplyInner(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null, opts = {}) {
   if (!globalDb) return null;
   // Declared OUTSIDE the try so the catch-block provider fallback can still reach them
   let settings = {};
@@ -4992,19 +5022,47 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     if (!overridePrompt) {
       try {
         const brainProfile = await getBrainForReply(jid, chatContext?.name || '');
-        // No explicit handler on the brain card -> the built-in assistant handles the chat.
-        const assignedId = (brainProfile && brainProfile.agentId) || DEFAULT_AGENT_ID;
-        if (assignedId) {
-          const a = await getAgent(assignedId);
-          const allowedPersonal = !a || a.category !== 'personal' || brainProfile.agentManual === true;
-          if (a && (a.status === 'ready' || a.isDefault) && allowedPersonal) {
-            a.__blocks = await getCompiledBlocks(a.id);
-            brainAgent = a;
-          } else if (a) {
-            console.log('[WA-WEB AGENT] Ignoring agent ' + assignedId + ' for ' + jid +
-              ' (status=' + a.status + ', personal=' + (a.category === 'personal') + ', manual=' + !!brainProfile.agentManual + ')');
+
+        // Can this staff member actually handle a live chat right now?
+        const pickUsable = async (id) => {
+          if (!id) return { agent: null, reason: 'no staff assigned' };
+          const a = await getAgent(id);
+          if (!a) return { agent: null, reason: 'staff record missing' };
+          if (a.category === 'personal' && (!brainProfile || brainProfile.agentManual !== true)) {
+            return { agent: null, reason: a.name + ' is a personal agent and needs a manual assignment' };
+          }
+          if (!(a.status === 'ready' || a.isDefault)) {
+            return { agent: null, reason: a.name + ' is ' + String(a.status).replace('_', ' ') };
+          }
+          return { agent: a, reason: '' };
+        };
+
+        // Handled by -> Backup -> the built-in assistant. A missing / archived / paused /
+        // not-ready staff member is skipped and logged; the chat is never left unanswered.
+        const handledBy = (brainProfile && (brainProfile.handledBy || brainProfile.agentId)) || DEFAULT_AGENT_ID;
+        const backupBy = (brainProfile && brainProfile.backupBy) || '';
+        const wanted = opts.forceDefault ? DEFAULT_AGENT_ID : handledBy;
+
+        let picked = await pickUsable(wanted);
+        if (picked.agent) {
+          brainAgent = picked.agent;
+        } else {
+          const firstReason = picked.reason;
+          let usedId = '';
+          if (backupBy && backupBy !== wanted) {
+            const b = await pickUsable(backupBy);
+            if (b.agent) { brainAgent = b.agent; usedId = backupBy; }
+          }
+          if (!brainAgent) {
+            const d = await pickUsable(DEFAULT_AGENT_ID);
+            if (d.agent) { brainAgent = d.agent; usedId = DEFAULT_AGENT_ID; }
+          }
+          if (brainAgent && wanted !== usedId) {
+            await logFallback({ chat: jid, assigned: wanted, used: usedId, reason: firstReason });
           }
         }
+
+        if (brainAgent) brainAgent.__blocks = await getCompiledBlocks(brainAgent.id);
       } catch (e) { console.warn('[WA-WEB AGENT] resolve failed: ' + (e.message || '').slice(0, 120)); }
     }
 
@@ -5056,7 +5114,11 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     // fall back through the known-good ids (verified live 2026-10-13).
     const qwenCandidates = Array.from(new Set([qwenModelId, 'qwen3.8-flash', 'qwen-plus', 'qwen-flash'].filter(Boolean)));
 
-    chosenModel = targetModel || (brainAgent && brainAgent.model) || waWebKnowledgeBase.aiModel || 'deepseek-flash';
+    // The built-in assistant keeps the knowledge-base model, so nothing changes for him.
+    chosenModel = targetModel
+      || (brainAgent && !brainAgent.isDefault ? brainAgent.model : '')
+      || waWebKnowledgeBase.aiModel
+      || 'deepseek-flash';
     // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the best healthy
     // engine — the knowledge-base engine if it is not Gemini, otherwise Qwen (verified working),
     // and only then DeepSeek.

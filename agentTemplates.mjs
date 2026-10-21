@@ -325,7 +325,8 @@ export function templateById(id) {
 // He keeps using the existing WhatsApp knowledge base (useBusinessKb: true),
 // so behaviour stays exactly as before — only the identity is new.
 // ---------------------------------------------------------------------------
-export const DEFAULT_AGENT_ID = 'zaheer-ahmed';
+export const DEFAULT_AGENT_ID = 'zaheer';
+export const LEGACY_DEFAULT_AGENT_ID = 'zaheer-ahmed';
 
 export const DEFAULT_AGENT = {
   id: DEFAULT_AGENT_ID,
@@ -335,6 +336,8 @@ export const DEFAULT_AGENT = {
   category: 'business',
   emoji: '🎩',
   isDefault: true,
+  isProtected: true,
+  knowledgeSource: 'waWebKnowledgeBase',
   languages: ['English', 'Roman Urdu', 'Urdu', 'Arabic'],
   defaultLanguage: 'Roman Urdu',
   jobDescription: 'Personal assistant to Mr. Nadeem. Handles every WhatsApp conversation by default: answers customers from the business knowledge base, follows the contact brain rules, relays orders to the boss, and escalates anything sensitive.',

@@ -15,7 +15,7 @@ import {
   listPromptVersions, addPromptVersion,
   listToolLogs
 } from './agentsStore.mjs';
-import { AGENT_TEMPLATES, templateById, DEFAULT_AGENT, DEFAULT_AGENT_ID } from './agentTemplates.mjs';
+import { AGENT_TEMPLATES, templateById, DEFAULT_AGENT, DEFAULT_AGENT_ID, LEGACY_DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 import { runAgent, judgeAnswer, buildAgentSystemPrompt, getCompiledBlocks, clearAgentBlocksCache, attachRunnerDb } from './agentRunner.mjs';
 import { listTools, runTool, attachToolDb } from './toolRegistry.mjs';
 import { attachLearningDb, listChatCandidates, learnFromSource, learnFromAllSources, maybeAutoLearn, listLearningRuns } from './agentLearning.mjs';
@@ -56,14 +56,36 @@ function withProgress(agent) {
 // Idempotent bootstrap of the built-in staff member (Mr. Zaheer Ahmed).
 export async function ensureDefaultAgent() {
   try {
-    const existing = await getAgent(DEFAULT_AGENT_ID, { fresh: true });
-    if (existing) return existing;
-    const agent = await saveAgent(DEFAULT_AGENT_ID, {
-      ...DEFAULT_AGENT,
-      trainingProgress: { override: 100, overrideNote: 'Built-in default assistant' }
-    });
-    await setAgentStatus(DEFAULT_AGENT_ID, 'ready', { by: 'system', note: 'Built-in default assistant' });
-    console.log('[AGENTS] 🎩 Created the built-in default staff member: ' + DEFAULT_AGENT.name);
+    // 1) One-time migration: the first build used the id "zaheer-ahmed".
+    const legacy = await getAgent(LEGACY_DEFAULT_AGENT_ID, { fresh: true });
+    const current = await getAgent(DEFAULT_AGENT_ID, { fresh: true });
+    if (legacy && !current) {
+      const { id, ...rest } = legacy;
+      await saveAgent(DEFAULT_AGENT_ID, { ...rest, isDefault: true, isProtected: true, knowledgeSource: 'waWebKnowledgeBase' });
+      await deleteAgent(LEGACY_DEFAULT_AGENT_ID, { force: true }).catch(e => console.warn('[AGENTS] legacy default cleanup failed:', e.message));
+      console.log('[AGENTS] 🎩 Migrated the default assistant id ' + LEGACY_DEFAULT_AGENT_ID + ' -> ' + DEFAULT_AGENT_ID);
+    } else if (legacy && current) {
+      // Both ids exist (an earlier boot could not delete the protected legacy record) — drop the old one.
+      await deleteAgent(LEGACY_DEFAULT_AGENT_ID, { force: true })
+        .then(() => console.log('[AGENTS] 🎩 Removed duplicate legacy assistant record'))
+        .catch(e => console.warn('[AGENTS] duplicate legacy cleanup failed:', e.message));
+    }
+
+    // 2) Create if missing.
+    let agent = await getAgent(DEFAULT_AGENT_ID, { fresh: true });
+    if (!agent) {
+      await saveAgent(DEFAULT_AGENT_ID, {
+        ...DEFAULT_AGENT,
+        trainingProgress: { override: 100, overrideNote: 'Built-in default assistant' }
+      });
+      agent = await getAgent(DEFAULT_AGENT_ID, { fresh: true });
+      console.log('[AGENTS] 🎩 Created the built-in default staff member: ' + DEFAULT_AGENT.name);
+    }
+
+    // 3) Always repair the protection flags / status.
+    if (agent && (agent.status !== 'ready' || !agent.isDefault || !agent.isProtected || agent.knowledgeSource !== 'waWebKnowledgeBase')) {
+      agent = await saveAgent(DEFAULT_AGENT_ID, { isDefault: true, isProtected: true, knowledgeSource: 'waWebKnowledgeBase', status: 'ready' });
+    }
     return agent;
   } catch (e) {
     console.warn('[AGENTS] ensureDefaultAgent failed:', e.message);
@@ -265,7 +287,17 @@ export function registerAgentsRoutes(app, db) {
     try {
       const existing = await getAgent(req.params.id, { fresh: true });
       if (!existing) return res.status(404).json({ ok: false, error: 'Agent not found' });
-      const agent = await updateAgent(req.params.id, req.body || {});
+
+      const patch = { ...(req.body || {}) };
+      delete patch.id;                 // the id can never be changed
+      if (existing.isProtected || existing.isDefault) {
+        delete patch.status;           // always Ready
+        delete patch.isDefault;
+        delete patch.isProtected;
+        delete patch.knowledgeSource;
+      }
+
+      const agent = await updateAgent(req.params.id, patch);
       clearAgentBlocksCache(agent.id);
       res.json({ ok: true, agent: withProgress(agent), savedAt: agent.updatedAt });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

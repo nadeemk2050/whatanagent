@@ -18,6 +18,7 @@
 
 import { doc, getDoc, setDoc, getDocs, collection, addDoc, deleteDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { isAiAutoFetchStopped, recordAiCall } from './aiTracker.mjs';
+import { makeAdminGuard } from './adminGuard.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 
 let brainDb = null;
@@ -161,7 +162,14 @@ export function sanitizeProfile(raw, existing = {}) {
   p.learnEnabled = raw.learnEnabled != null ? asBool(raw.learnEnabled) : (existing.learnEnabled !== false);
   // 🎓 AI Staff assignment (optional). agentId points at a document in the `agents` collection.
   // agentManual records that the owner picked it by hand, which is required for Personal agents.
-  p.agentId = sstr(raw.agentId != null ? raw.agentId : existing.agentId, 80);
+  // "Handled by" / "Backup" staff. `agentId` is kept as an alias of `handledBy` so the
+  // WhatsApp pipeline and any existing data keep working unchanged.
+  const handledRaw = raw.handledBy != null ? raw.handledBy
+    : (raw.agentId != null ? raw.agentId
+      : (existing.handledBy != null ? existing.handledBy : existing.agentId));
+  p.handledBy = sstr(handledRaw, 80);
+  p.agentId = p.handledBy;
+  p.backupBy = sstr(raw.backupBy != null ? raw.backupBy : existing.backupBy, 80);
   p.agentManual = raw.agentManual != null ? asBool(raw.agentManual) : !!existing.agentManual;
   p.autoCreated = existing.autoCreated === true;
   p.createdAt = existing.createdAt || Date.now();
@@ -281,7 +289,8 @@ export async function saveBrainConfig(patch) {
 
 export async function getBrain(jid, { fresh = false } = {}) {
   if (!brainDb || !jid) return null;
-  if (jid.endsWith('@g.us')) return null; // groups have no brain cards
+  // Groups get brain cards too (needed for "Handled by" / "Backup"), but they are never
+  // auto-created — the owner creates one explicitly by opening the panel and saving.
 
   const primaryKey = brainKeyFor(jid);
   const hit = brainCache.get(primaryKey);
@@ -850,9 +859,13 @@ export function registerBrainRoutes(app, db) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.post('/api/brain/:jid', async (req, res) => {
+  // Brain writes change who handles a chat, so they are fail-closed admin protected.
+  const brainWriteGuard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'brain' });
+
+  app.post('/api/brain/:jid', brainWriteGuard, async (req, res) => {
     try {
       const jid = decodeURIComponent(req.params.jid);
+      if (!jid || jid.length > 120) return res.status(400).json({ error: 'Invalid chat id' });
       const profile = await saveBrain(jid, req.body || {});
       res.json({
         ok: true,
@@ -864,7 +877,7 @@ export function registerBrainRoutes(app, db) {
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  app.delete('/api/brain/:jid', async (req, res) => {
+  app.delete('/api/brain/:jid', brainWriteGuard, async (req, res) => {
     try { await deleteBrain(decodeURIComponent(req.params.jid)); res.json({ ok: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
   });

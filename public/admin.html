@@ -2742,10 +2742,6 @@
                             <div id="brPanelName" style="font-weight:800; font-size:16px;">Contact</div>
                             <div id="brPanelJid" style="font-size:11px; color:#94a3b8;"></div>
                         </div>
-                        <span style="font-size:10.5px; color:#94a3b8; font-weight:700; text-transform:uppercase; letter-spacing:.4px;">Handled by</span>
-                        <select id="brAgentSelect" title="Handled by — staff name. Every chat defaults to Mr. Zaheer Ahmed; pick any staff member (under training or ready)." style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#c4b5fd; max-width:230px;">
-                            <option value="">🎩 Mr. Zaheer Ahmed (default)</option>
-                        </select>
                         <select id="brPanelMode" title="How the AI handles this person" style="padding:7px 10px; border-radius:8px; font-size:12px; border:none; background:#1e293b; color:#e2e8f0;"></select>
                         <span id="brSaveStatus" style="font-size:11.5px; font-weight:700; color:#86efac; text-align:right; line-height:1.3;"></span>
                         <button onclick="saveBrainCard()" id="brSaveBtn" style="background:#16a34a; border:none; color:#fff; padding:8px 16px; border-radius:8px; font-weight:bold; cursor:pointer;">💾 Save Card</button>
@@ -2760,6 +2756,33 @@
                     <div style="flex:1; min-height:0; overflow-y:auto; padding:16px 18px 40px;">
                         <div id="brTabCard">
                             <div style="max-width:1100px; margin:0 auto;">
+
+                                <!-- 👥 STAFF ASSIGNMENT: who handles this chat / group and who backs them up -->
+                                <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:14px; margin-bottom:16px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                                        <div>
+                                            <div style="font-size:13px; font-weight:800; color:#5b21b6;">👥 Handled by — staff name</div>
+                                            <div style="font-size:11px; color:#7c3aed;">Every chat and group defaults to Mr. Zaheer Ahmed. Ready and Under-training staff can be assigned.</div>
+                                        </div>
+                                        <input id="brAgentSearch" placeholder="🔍 Search staff…" oninput="populateAgentSelect(brainCurrent && brainCurrent.profile && (brainCurrent.profile.handledBy || brainCurrent.profile.agentId), brainCurrent && brainCurrent.profile && brainCurrent.profile.backupBy)" style="padding:8px 10px; border:1px solid #c4b5fd; border-radius:8px; font-size:12px; min-width:190px;">
+                                    </div>
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label style="font-size:12px; font-weight:700;">Handled by</label>
+                                            <select id="brAgentSelect" style="width:100%; padding:9px; border:1px solid #c4b5fd; border-radius:8px; background:#fff;">
+                                                <option value="">🎩 Mr. Zaheer Ahmed (Default)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label style="font-size:12px; font-weight:700;">Backup (if the handler is unavailable)</label>
+                                            <select id="brBackupSelect" style="width:100%; padding:9px; border:1px solid #c4b5fd; border-radius:8px; background:#fff;">
+                                                <option value="">🎩 Mr. Zaheer Ahmed (Default)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="brAgentNote" style="font-size:11px; color:#6d28d9; margin-top:8px;"></div>
+                                </div>
+
                                 <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:12px;">
                                     <div class="form-group"><label style="font-size:12px;">Name</label><input id="brName" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
                                     <div class="form-group"><label style="font-size:12px;">Nickname (what you call him)</label><input id="brNick" style="width:100%; padding:9px; border:1px solid var(--border); border-radius:8px;"></div>
@@ -10837,7 +10860,7 @@
         brainRenderPersonas();
         brainRenderLearned(p);
         brainRenderDiscussLog();
-        populateAgentSelect(p.agentId || '');
+        populateAgentSelect(p.handledBy || p.agentId || '', p.backupBy || '');
         brainSetSaveStatus((brainCurrent.exists && p.updatedAt ? 'Last saved ' + new Date(p.updatedAt).toLocaleString() : 'Not saved yet') + '\n' + brainMemoryLine(p), '#cbd5e1');
     }
 
@@ -10928,6 +10951,8 @@
             notes: document.getElementById('brNotes').value,
             humanDelay: document.getElementById('brHumanDelay').checked,
             learnEnabled: document.getElementById('brLearnEnabled').checked,
+            handledBy: (document.getElementById('brAgentSelect') || {}).value || '',
+            backupBy: (document.getElementById('brBackupSelect') || {}).value || '',
             agentId: (document.getElementById('brAgentSelect') || {}).value || '',
             agentManual: true
         };
@@ -10946,17 +10971,46 @@
             return readyAgentsCache;
         } catch (e) { readyAgentsCache = []; return readyAgentsCache; }
     }
-    async function populateAgentSelect(selectedId) {
-        const sel = document.getElementById('brAgentSelect');
-        if (!sel) return;
+    function agentLabel(a) {
+        const st = a.status === 'ready' ? 'Ready' : ('Training ' + ((a.progress && a.progress.effective) || 0) + '%');
+        return escapeHtml(a.name) + ' — ' + escapeHtml(a.role || 'Staff') + ' (' + st + ')' + (a.category === 'personal' ? ' · personal' : '');
+    }
+
+    async function populateAgentSelect(handledBy, backupBy) {
+        const hSel = document.getElementById('brAgentSelect');
+        const bSel = document.getElementById('brBackupSelect');
+        if (!hSel || !bSel) return;
         const agents = await loadReadyAgents();
-        sel.innerHTML = '<option value="">🎩 Mr. Zaheer Ahmed (default)</option>' + agents.map(a =>
-            '<option value="' + escapeHtml(a.id) + '">' + (a.status === 'ready' ? '✅ ' : '📚 ') + escapeHtml(a.name) +
-            ' — ' + escapeHtml(a.role || '') + (a.category === 'personal' ? ' (personal)' : '') + '</option>').join('');
-        sel.value = selectedId && agents.some(a => a.id === selectedId) ? selectedId : '';
-        if (selectedId && selectedId !== 'zaheer-ahmed' && !agents.some(a => a.id === selectedId)) {
-            sel.innerHTML += '<option value="' + escapeHtml(selectedId) + '">⚠️ ' + escapeHtml(selectedId) + ' (archived / unavailable)</option>';
-            sel.value = selectedId;
+        const q = ((document.getElementById('brAgentSearch') || {}).value || '').toLowerCase().trim();
+        const match = (a) => !q || String(a.name + ' ' + (a.role || '')).toLowerCase().includes(q);
+        const ready = agents.filter(a => a.status === 'ready' && match(a));
+        const training = agents.filter(a => a.status === 'under_training' && match(a));
+
+        const opts = (selected) => {
+            let html = '<option value="">🎩 Mr. Zaheer Ahmed (Default)</option>';
+            if (ready.length) html += '<optgroup label="✅ Ready">' + ready.map(a =>
+                '<option value="' + escapeHtml(a.id) + '">' + agentLabel(a) + '</option>').join('') + '</optgroup>';
+            if (training.length) html += '<optgroup label="📚 Under Training">' + training.map(a =>
+                '<option value="' + escapeHtml(a.id) + '">' + agentLabel(a) + '</option>').join('') + '</optgroup>';
+            if (selected && selected !== 'zaheer' && !agents.some(a => a.id === selected)) {
+                html += '<option value="' + escapeHtml(selected) + '">⚠️ ' + escapeHtml(selected) + ' (archived / unavailable)</option>';
+            }
+            return html;
+        };
+
+        hSel.innerHTML = opts(handledBy);
+        bSel.innerHTML = opts(backupBy);
+        hSel.value = handledBy || '';
+        bSel.value = backupBy || '';
+        if (hSel.value !== (handledBy || '')) hSel.value = '';
+        if (bSel.value !== (backupBy || '')) bSel.value = '';
+
+        const note = document.getElementById('brAgentNote');
+        if (note) {
+            const h = agents.find(a => a.id === handledBy);
+            note.innerText = h
+                ? ('This chat is handled by ' + h.name + (h.status !== 'ready' ? ' (still under training)' : '') + '. If unavailable, the backup or Mr. Zaheer Ahmed answers automatically.')
+                : 'This chat is handled by Mr. Zaheer Ahmed (default assistant).';
         }
     }
 
@@ -10965,10 +11019,9 @@
         const btn = document.getElementById('brSaveBtn');
         if (btn) { btn.disabled = true; btn.innerText = '⏳ Saving…'; }
         try {
-            const r = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(brainCollectProfile())
-            });
+            // Brain writes are admin-guarded (fail-closed): postAdmin() adds the token and
+            // asks for it once if this browser does not have it yet.
+            const r = await postAdmin('api/brain/' + encodeURIComponent(brainCurrent.jid), brainCollectProfile());
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'failed');
             brainCurrent.profile = d.profile; brainCurrent.exists = true;
@@ -10987,7 +11040,10 @@
         if (!brainCurrent) return;
         if (!confirm('Delete this brain card? The AI goes back to default behaviour for this contact.')) return;
         try {
-            await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), { method: 'DELETE' });
+            const delRes = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), {
+                method: 'DELETE', headers: { 'x-admin-token': adminToken() }
+            });
+            if (delRes.status === 401) throw new Error('Admin token required — save it in Env Settings first');
             toastMsg('🗑️ Brain card deleted');
             closeBrainPanel();
         } catch (e) { toastMsg('❌ ' + e.message); }

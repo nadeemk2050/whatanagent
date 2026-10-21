@@ -136,8 +136,10 @@ export function sanitizeAgent(raw = {}, existing = {}) {
     }
   })).filter(s => s.jid);
 
-  // Built-in staff (Mr. Zaheer Ahmed) can never be deleted by the UI.
+  // Built-in staff (Mr. Zaheer Ahmed) can never be deleted, archived or demoted.
   a.isDefault = raw.isDefault !== undefined ? !!raw.isDefault : !!existing.isDefault;
+  a.isProtected = raw.isProtected !== undefined ? !!raw.isProtected : !!existing.isProtected;
+  a.knowledgeSource = sstr(raw.knowledgeSource != null ? raw.knowledgeSource : existing.knowledgeSource, 60);
   a.autoLearn = asBool(raw.autoLearn != null ? raw.autoLearn : existing.autoLearn, true);
   a.lastAutoLearnAt = Number(raw.lastAutoLearnAt != null ? raw.lastAutoLearnAt : existing.lastAutoLearnAt) || 0;
   const days = raw.learningDays !== undefined ? raw.learningDays : existing.learningDays;
@@ -219,7 +221,8 @@ export async function listAgents({ fresh = false } = {}) {
     const snap = await getDocs(collection(agentsDb, AGENTS));
     const out = [];
     snap.forEach(d => out.push({ id: d.id, ...d.data() }));
-    out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    // The built-in assistant is always first, then most recently updated.
+    out.sort((a, b) => (Number(!!b.isDefault) - Number(!!a.isDefault)) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
     for (const a of out) cache.set(a.id, { agent: a, at: Date.now() });
     listCache.items = out; listCache.at = Date.now();
     return out;
@@ -254,8 +257,12 @@ export async function updateAgent(id, patch = {}) {
   return saveAgent(id, patch);
 }
 
-export async function deleteAgent(id) {
+export async function deleteAgent(id, { force = false } = {}) {
   if (!agentsDb) throw new Error('Agent storage unavailable');
+  const current = await getAgent(id, { fresh: true });
+  if (!force && current && (current.isProtected || current.isDefault)) {
+    throw new Error(current.name + ' is a protected staff member and cannot be deleted.');
+  }
   await deleteDoc(doc(agentsDb, AGENTS, id));
   cache.delete(id); listCache.items = null;
   return true;
@@ -278,6 +285,9 @@ export async function setAgentStatus(id, to, { by = 'boss', note = '' } = {}) {
   if (!STATUSES.includes(to)) throw new Error('Unknown status: ' + to);
   const agent = await getAgent(id, { fresh: true });
   if (!agent) throw new Error('Agent not found');
+  if ((agent.isProtected || agent.isDefault) && to !== 'ready') {
+    throw new Error(agent.name + ' is the protected default assistant — he always stays Ready and cannot be archived or retrained as a normal hire.');
+  }
   const progress = computeProgress(agent).effective;
   const history = Array.isArray(agent.history) ? agent.history.slice(-99) : [];
   history.push({ at: Date.now(), by, from: agent.status, to, progress, note: sstr(note, 200) });
@@ -292,6 +302,28 @@ export async function setAgentStatus(id, to, { by = 'boss', note = '' } = {}) {
   cache.set(id, { agent: updated, at: Date.now() });
   listCache.items = null;
   return { agent: updated, progress };
+}
+
+// ---------------------------------------------------------------------------
+// Fallback log: "assigned staff could not answer -> Mr. Zaheer Ahmed handled it".
+// Stored once in appData/agentFallbacks (capped) so it survives restarts.
+// ---------------------------------------------------------------------------
+export async function logFallback(entry) {
+  if (!agentsDb) return;
+  try {
+    const ref = doc(agentsDb, 'appData', 'agentFallbacks');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    items.push({
+      chat: sstr(entry.chat, 100),
+      assigned: sstr(entry.assigned, 80),
+      used: sstr(entry.used, 80) || 'zaheer',
+      reason: sstr(entry.reason, 200),
+      at: Date.now()
+    });
+    await setDoc(ref, { items: items.slice(-300) }, { merge: true });
+    console.log('[AGENTS] ↩︎ fallback: ' + (entry.assigned || '?') + ' -> ' + (entry.used || 'zaheer') + ' (' + (entry.reason || '') + ')');
+  } catch (e) { /* logging must never break a reply */ }
 }
 
 // ---------------------------------------------------------------------------

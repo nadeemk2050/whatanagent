@@ -428,11 +428,14 @@ function renderCards() {
   box.innerHTML = list.map(a => {
     const p = a.progress || { effective: 0, auto: 0, override: null };
     const av = a.avatarUrl ? '<img src="' + esc(a.avatarUrl) + '" alt="">' : esc(a.emoji || '🧑‍💼');
-    const acts = (LIFECYCLE[a.status] || []).map(b =>
-      '<button class="btn btn-sm ' + b.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + b.to + '\')">' + b.label + '</button>').join('');
-    return '<div class="card">' +
+    const protectedStaff = !!(a.isProtected || a.isDefault);
+    const acts = protectedStaff
+      ? '<span class="chip ready" title="Built-in assistant: cannot be archived, deleted or moved back to training">🔒 Protected · always Ready</span>'
+      : (LIFECYCLE[a.status] || []).map(b =>
+        '<button class="btn btn-sm ' + b.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + b.to + '\')">' + b.label + '</button>').join('');
+    return '<div class="card" style="' + (protectedStaff ? 'border-color:#c4b5fd;box-shadow:0 0 0 3px #ede9fe inset;' : '') + '">' +
       '<div class="card-head"><div class="avatar">' + av + '</div>' +
-      '<div style="flex:1;min-width:0;"><div class="card-name">' + esc(a.name) + '</div><div class="card-role">' + esc(a.role || '') + '</div></div>' +
+      '<div style="flex:1;min-width:0;"><div class="card-name">' + esc(a.name) + (protectedStaff ? ' <span class="pill" style="background:#ede9fe;color:#5b21b6;">Default / All-rounder</span>' : '') + '</div><div class="card-role">' + esc(a.role || '') + '</div></div>' +
       '<span class="chip ' + esc(a.status) + '">' + esc((STATUS_LABEL[a.status] || '').replace(/^\S+\s/, '')) + '</span></div>' +
       '<div class="meta-row"><span>Training</span><span><b>' + p.effective + '%</b>' + (p.override !== null ? ' (manual)' : '') + '</span></div>' +
       '<div class="bar"><div style="width:' + Math.max(0, Math.min(100, p.effective)) + '%"></div></div>' +
@@ -596,13 +599,15 @@ function tabOverview(d, a, p) {
     '<div class="row2" style="margin-top:8px;"><div><label class="f">Override % (blank = automatic)</label><input class="f" id="pOverride" type="number" min="0" max="100" value="' + (p.override === null ? '' : p.override) + '"></div>' +
     '<div><label class="f">Note</label><input class="f" id="pNote" value="' + esc((a.trainingProgress && a.trainingProgress.overrideNote) || '') + '"></div></div>' +
     '<button class="btn btn-sm btn-primary" style="margin-top:8px;" onclick="saveOverride(\'' + esc(a.id) + '\')">Save override</button></div>' +
-    '<div class="sect"><h4>Status</h4><div style="display:flex;gap:6px;flex-wrap:wrap;">' +
-    (LIFECYCLE[a.status] || []).map(x => '<button class="btn btn-sm ' + x.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + x.to + '\')">' + x.label + '</button>').join('') +
-    '</div><div class="x" style="margin-top:8px;">Ready threshold: ' + (a.readyThreshold || 80) + '% (recommendation only)</div></div>' +
+    '<div class="sect"><h4>Status</h4>' +
+    ((a.isProtected || a.isDefault)
+      ? '<div class="warnbox">🔒 <b>Protected staff member.</b> Mr. Zaheer Ahmed is the built-in default assistant: he always stays Ready and cannot be archived, deleted, retrained as a normal hire, or have his id changed.</div>'
+      : '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + (LIFECYCLE[a.status] || []).map(x => '<button class="btn btn-sm ' + x.cls + '" onclick="changeStatus(\'' + esc(a.id) + '\',\'' + x.to + '\')">' + x.label + '</button>').join('') + '</div>') +
+    '<div class="x" style="margin-top:8px;">Ready threshold: ' + (a.readyThreshold || 80) + '% (recommendation only)</div></div>' +
     '<div class="sect"><h4>Lifecycle history</h4>' + (hist || '<div class="x">No changes yet.</div>') + '</div>' +
     '<div class="sect"><h4>Card settings</h4><div class="x">Model: ' + esc(a.model) + ' · fallback ' + esc(a.fallbackModel) + ' · business KB: ' + (a.useBusinessKb ? 'yes' : 'no') + ' · budget $' + (a.dailyBudgetUsd || 0) + '/day</div>' +
     '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-sm btn-ghost" onclick="editStaff(\'' + esc(a.id) + '\')">✏️ Edit card</button>' +
-    '<button class="btn btn-sm btn-danger" onclick="deleteStaff(\'' + esc(a.id) + '\')">🗑️ Delete permanently</button></div></div>';
+    ((a.isProtected || a.isDefault) ? '' : '<button class="btn btn-sm btn-danger" onclick="deleteStaff(\'' + esc(a.id) + '\')">🗑️ Delete permanently</button>') + '</div></div>';
 }
 
 async function saveOverride(id) {
@@ -800,7 +805,12 @@ function tabKnowledge(d) {
     '<div class="item"><div class="t">' + esc(k.title || 'Item') + '</div><div class="d">' + nl2br(String(k.text || '').slice(0, 600)) + (String(k.text || '').length > 600 ? '…' : '') + '</div>' +
     '<div class="x">' + esc(k.type || 'text') + (k.source ? ' · ' + esc(k.source) : '') + ' · ' + new Date(k.createdAt).toLocaleString() + '</div>' +
     '<button class="btn btn-sm btn-danger" style="margin-top:6px;" onclick="delSub(\'knowledge\',\'' + esc(k.id) + '\')">Delete</button></div>').join('');
-  return '<div class="sect"><h4>Add knowledge</h4>' +
+  const kbNote = (d.agent.knowledgeSource === 'waWebKnowledgeBase')
+    ? '<div class="sect" style="background:#f5f3ff;border-color:#ddd6fe;"><h4>🎩 Mr. Zaheer Ahmed Knowledge Base</h4>' +
+      '<div class="x">This staff member is linked to the live business knowledge base used by the WhatsApp bot — instructions, business background, FAQs and product catalogue. Edit it in <b>Admin dashboard → WhatsApp Web → 🎩 Mr. Zaheer Ahmed Knowledge Base</b>. Nothing is duplicated here.</div></div>'
+    : '';
+
+  return kbNote + '<div class="sect"><h4>Add knowledge</h4>' +
     '<label class="f">Title</label><input class="f" id="kTitle" placeholder="e.g. Price list 2026">' +
     '<label class="f">Text</label><textarea class="f" id="kText" style="min-height:110px;" placeholder="Paste facts, policies, FAQs…"></textarea>' +
     '<label class="f">Source (optional)</label><input class="f" id="kSource" placeholder="e.g. company policy doc">' +
