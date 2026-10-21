@@ -48,7 +48,7 @@ import { attachToolDb, listTools, ROLE_TOOLSETS, RISK_LEVELS, toolLevel } from '
 import { attachAuditDb, audit, listAudit, listGlobalFeed } from './auditLog.mjs';
 import { attachAssignmentDb, listClients, getClient, patchClient, rebuildClients, listEvents, emitAssignmentEvent, clientKey } from './assignmentEvents.mjs';
 import { attachControlsDb, evaluateReplyPolicy, recordUsage } from './officeControls.mjs';
-import { attachMeetingDb, createMeeting, listMeetings, getMeeting, runMeeting, saveMeetingOutcome, reopenMeeting } from './meetingRoom.mjs';
+import { attachMeetingDb, createMeeting, listMeetings, getMeeting, runMeeting, stepMeeting, addMeetingMessage, saveMeetingOutcome, reopenMeeting } from './meetingRoom.mjs';
 import { previewModelChange, applyModelChange, rollbackModel, listModelHistory, MODEL_OPTIONS, isSafetySensitive } from './modelSwitcher.mjs';
 import { runAgent } from './agentRunner.mjs';
 import { getBrain, saveBrain, listBrains } from './contactBrain.mjs';
@@ -208,6 +208,22 @@ export function registerOfficeRoutes(app, db) {
       const out = await runMeeting(req.params.mid, { rounds: Number((req.body || {}).rounds) || null });
       res.json({ ok: true, ...out });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // One turn per call — the chat room streams the discussion with this.
+  app.post(api + '/meetings/:mid/step', async (req, res) => {
+    try {
+      const out = await stepMeeting(req.params.mid);
+      res.json(out);
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  // Boss interjection while the meeting is live.
+  app.post(api + '/meetings/:mid/say', async (req, res) => {
+    try {
+      const out = await addMeetingMessage(req.params.mid, { text: sstr((req.body || {}).text, 1000), by: 'Boss' });
+      res.json(out);
+    } catch (e) { bad(res, e.message); }
   });
 
   app.post(api + '/meetings/:mid/save', async (req, res) => {

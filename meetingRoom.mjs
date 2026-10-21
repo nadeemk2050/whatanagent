@@ -5,6 +5,9 @@
 // meetings get their own small engine: chair frames → each participant answers →
 // chair decides. Hard caps on rounds / tokens / time stop any runaway loop.
 // Output is only ever a DRAFT or a LESSON — never an automatic customer action.
+//
+// The engine is STEP based: one LLM turn per call, so the chat room in the UI can
+// show every message as it happens (and the boss can watch the discussion live).
 // ============================================================================
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { getAgent, addLesson, addAgentSub } from './agentsStore.mjs';
@@ -41,7 +44,7 @@ export async function createMeeting({ topic, participants = [], chairId = 'zahee
       maxMs: Math.min(300000, Math.max(20000, Number(caps.maxMs) || DEFAULTS.maxMs)),
       turnTimeoutMs: DEFAULTS.turnTimeoutMs
     },
-    status: 'open', turns: [], decision: '', costUsd: 0, tokens: 0,
+    status: 'open', phase: 'open', round: 0, slot: 0, turns: [], decision: '', costUsd: 0, tokens: 0,
     createdBy: sstr(by, 60), createdAt: Date.now(), updatedAt: Date.now()
   };
   await setDoc(doc(meetDb, MEETINGS, id), room);
@@ -56,7 +59,10 @@ export async function listMeetings({ max = 25 } = {}) {
     const out = [];
     snap.forEach(d => {
       const r = d.data();
-      out.push({ id: d.id, topic: r.topic, status: r.status, participants: r.participants, chairId: r.chairId, createdAt: r.createdAt, tokens: r.tokens });
+      out.push({
+        id: d.id, topic: r.topic, status: r.status, phase: r.phase || '', participants: r.participants,
+        chairId: r.chairId, createdAt: r.createdAt, tokens: r.tokens, turns: (r.turns || []).length
+      });
     });
     return out;
   } catch (e) { return []; }
@@ -73,77 +79,137 @@ async function ask(agent, messages, purpose) {
   return { text: String(r.text || '').trim(), model: r.model, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 };
 }
 
-// Run rounds until the chair has a decision, or a cap is hit.
-export async function runMeeting(id, { rounds = null } = {}) {
+// ---------------------------------------------------------------------------
+// STEP ENGINE — one LLM turn per call so the UI can stream the discussion.
+//   phase: 'open' -> 'rounds' -> 'close' -> 'done'
+// Every call returns the new turns so the chat room can render them live.
+// ---------------------------------------------------------------------------
+export async function stepMeeting(id) {
   const room = await getMeeting(id);
   if (!room) throw new Error('Meeting not found');
-  if (room.status === 'closed') throw new Error('This meeting is closed.');
+  if (room.status === 'closed' || room.phase === 'done') {
+    return { ok: true, done: true, newTurns: [], meeting: room };
+  }
 
-  const started = Date.now();
   const caps = { ...DEFAULTS, ...(room.caps || {}) };
-  const maxRounds = Math.min(caps.maxRounds, Math.max(1, Number(rounds) || caps.maxRounds));
+  const started = room.startedAt || room.createdAt || Date.now();
   const agents = new Map();
-  for (const pid of Array.from(new Set([room.chairId, ...room.participants]))) {
+  for (const pid of Array.from(new Set([room.chairId, ...(room.participants || [])]))) {
     const a = await getAgent(pid, { fresh: true }).catch(() => null);
     if (a) agents.set(pid, a);
   }
-  const chair = agents.get(room.chairId) || agents.get(room.participants[0]);
+  const chair = agents.get(room.chairId) || agents.get((room.participants || [])[0]);
   if (!chair) throw new Error('No attendee records could be loaded.');
 
-  const turns = [];
-  let tokens = 0;
-  let stopReason = '';
-  const transcript = () => turns.map(t => t.speakerName + ': ' + t.text).join('\n').slice(-6000);
+  const turns = Array.isArray(room.turns) ? room.turns.slice() : [];
+  let tokens = Number(room.tokens) || 0;
+  let phase = room.phase || 'open';
+  let round = Number(room.round) || 1;
+  let slot = Number(room.slot) || 0;
+  let stopReason = room.stopReason || '';
+  const newTurns = [];
+  const transcript = () => turns.map(t => (t.speakerName || 'system') + ': ' + t.text).join('\n').slice(-6000);
+  const commit = (turn) => { turns.push(turn); newTurns.push(turn); };
 
-  const push = async (t) => { turns.push(t); await setDoc(doc(meetDb, MEETINGS, id), { turns, updatedAt: Date.now() }, { merge: true }); };
+  // Caps: jump straight to the chair's closing summary.
+  if (phase !== 'close' && (Date.now() - started > caps.maxMs || tokens > caps.maxTokens)) {
+    stopReason = Date.now() - started > caps.maxMs ? 'time_cap' : 'token_cap';
+    phase = 'close';
+  }
 
-  try {
-    // Chair opens the discussion.
-    const open = await withTimeout(ask(chair, [
+  if (phase === 'open') {
+    const r = await withTimeout(ask(chair, [
       { role: 'system', content: 'You are chairing a short internal staff meeting. Be brief and practical. Do not invent facts about the business. Never include secrets, passcodes or phone numbers.' },
       { role: 'user', content: 'Topic: ' + room.topic + '\n\nOpen the meeting in 2-3 sentences: what we must decide, and what each attendee should focus on.' }
     ], 'meeting chair open'), caps.turnTimeoutMs, 'chair open');
-    tokens += open.tokensIn + open.tokensOut;
-    await push({ role: 'chair', speakerId: chair.id, speakerName: chair.name, text: sstr(open.text, 1500), model: open.model, at: Date.now() });
-
-    for (let r = 1; r <= maxRounds; r++) {
-      for (const pid of room.participants) {
-        if (Date.now() - started > caps.maxMs) { stopReason = 'time_cap'; break; }
-        if (tokens > caps.maxTokens) { stopReason = 'token_cap'; break; }
-        const a = agents.get(pid);
-        if (!a) { turns.push({ role: 'system', speakerName: 'system', text: a === null ? 'Skipped: staff record missing.' : 'Skipped.', at: Date.now() }); continue; }
+    tokens += (r.tokensIn || 0) + (r.tokensOut || 0);
+    commit({
+      role: 'chair', speakerId: chair.id, speakerName: chair.name, speakerRole: chair.role || 'Chair',
+      emoji: chair.emoji || '🪑', kind: 'open', text: sstr(r.text, 2000), model: r.model, at: Date.now()
+    });
+    phase = 'rounds'; round = 1; slot = 0;
+  } else if (phase === 'rounds') {
+    const list = (room.participants || []).filter(p => agents.has(p));
+    if (!list.length) {
+      phase = 'close'; stopReason = stopReason || 'no_participants';
+    } else {
+      if (slot >= list.length) { slot = 0; round += 1; }
+      if (round > caps.maxRounds) {
+        phase = 'close'; stopReason = stopReason || 'round_cap';
+      } else {
+        const a = agents.get(list[slot]);
+        slot += 1;
         try {
           const t = await withTimeout(ask(a, [
-            { role: 'system', content: 'You are ' + a.name + ' (' + (a.role || 'staff') + ') in an internal staff meeting. Be brief (max 120 words), practical, and say clearly if you are unsure. Never invent business facts, prices, or customer information. Never reveal secrets.' },
-            { role: 'user', content: 'Topic: ' + room.topic + '\n\nDiscussion so far:\n' + (transcript() || '(opening only)') + '\n\nRound ' + r + ': give your position in max 120 words, then one concrete recommendation.' }
-          ], 'meeting round ' + r), caps.turnTimeoutMs, a.name);
-          tokens += t.tokensIn + t.tokensOut;
-          await push({ role: 'participant', speakerId: a.id, speakerName: a.name, round: r, text: sstr(t.text, 1500), model: t.model, at: Date.now() });
+            { role: 'system', content: 'You are ' + a.name + ' (' + (a.role || 'staff') + ') in an internal staff meeting with your colleagues and the boss watching. Be brief (max 120 words), practical, and say clearly if you are unsure. React to what colleagues said when useful. Never invent business facts, prices or customer information. Never reveal secrets.' },
+            { role: 'user', content: 'Topic: ' + room.topic + '\n\nDiscussion so far:\n' + (transcript() || '(opening only)') + '\n\nRound ' + round + ': give your position in max 120 words. End with one line starting "SUGGESTION:" with your concrete recommendation.' }
+          ], 'meeting round ' + round), caps.turnTimeoutMs, a.name);
+          tokens += (t.tokensIn || 0) + (t.tokensOut || 0);
+          const txt = sstr(t.text, 2000);
+          const sug = /SUGGESTION:\s*(.+)$/im.exec(txt);
+          commit({
+            role: 'participant', speakerId: a.id, speakerName: a.name, speakerRole: a.role || 'Staff',
+            emoji: a.emoji || '🧑‍💼', round, kind: 'say', text: txt,
+            suggestion: sug ? sstr(sug[1], 400) : '', model: t.model, at: Date.now()
+          });
         } catch (e) {
-          await push({ role: 'system', speakerName: a.name, round: r, text: 'No answer: ' + sstr(e.message, 200), at: Date.now() });
+          commit({ role: 'system', speakerName: a.name, emoji: '⚠️', round, kind: 'error', text: 'Could not answer: ' + sstr(e.message, 200), at: Date.now() });
         }
       }
-      if (stopReason) break;
     }
+  }
 
-    // Chair closes with a structured decision.
-    const close = await withTimeout(ask(chair, [
-      { role: 'system', content: 'You chair internal staff meetings. Summarise decisions precisely. Never include secrets.' },
+  if (phase === 'close') {
+    const c = await withTimeout(ask(chair, [
+      { role: 'system', content: 'You chair internal staff meetings. Summarise decisions precisely, in plain language the boss can act on. Never include secrets.' },
       { role: 'user', content: 'Topic: ' + room.topic + '\n\nTranscript:\n' + transcript() + '\n\nWrite the closing summary with exactly these headings:\nDECISION:\nACTIONS: (numbered, each with an owner)\nOPEN QUESTIONS:\nCONFIDENCE: (0-100)' }
     ], 'meeting chair close'), caps.turnTimeoutMs, 'chair close');
-    tokens += close.tokensIn + close.tokensOut;
-
+    tokens += (c.tokensIn || 0) + (c.tokensOut || 0);
+    const decision = sstr(c.text, 6000);
+    commit({
+      role: 'chair', speakerId: chair.id, speakerName: chair.name, speakerRole: chair.role || 'Chair',
+      emoji: chair.emoji || '🪑', kind: 'close', text: decision, model: c.model, at: Date.now()
+    });
+    phase = 'done';
     const updated = {
-      turns, tokens, status: 'closed', decision: sstr(close.text, 4000),
-      closedAt: Date.now(), updatedAt: Date.now(), stopReason: stopReason || 'complete'
+      turns, tokens, phase, round, slot, decision, status: 'closed',
+      stopReason: stopReason || 'complete', closedAt: Date.now(), updatedAt: Date.now()
     };
     await setDoc(doc(meetDb, MEETINGS, id), updated, { merge: true });
     await audit(chair.id, { action: 'meeting_closed', summary: 'Meeting closed: ' + room.topic, reason: stopReason || 'complete', tokensIn: 0, tokensOut: tokens });
-    return { ok: true, meeting: { ...room, ...updated }, stopReason: stopReason || 'complete' };
-  } catch (e) {
-    await setDoc(doc(meetDb, MEETINGS, id), { status: 'error', error: sstr(e.message, 300), turns, tokens, updatedAt: Date.now() }, { merge: true });
-    throw e;
+    return { ok: true, done: true, newTurns, meeting: { ...room, ...updated } };
   }
+
+  const patch = { turns, tokens, phase, round, slot, stopReason, status: 'running', startedAt: started, updatedAt: Date.now() };
+  await setDoc(doc(meetDb, MEETINGS, id), patch, { merge: true });
+  return { ok: true, done: false, newTurns, meeting: { ...room, ...patch } };
+}
+
+// Run the whole meeting by looping the step engine (used by non-streaming callers).
+export async function runMeeting(id) {
+  const room = await getMeeting(id);
+  if (!room) throw new Error('Meeting not found');
+  if (room.status === 'closed') throw new Error('This meeting is closed.');
+  let last = room;
+  for (let i = 0; i < 40; i++) {
+    const r = await stepMeeting(id);
+    last = r.meeting;
+    if (r.done) break;
+  }
+  return { ok: true, meeting: last, stopReason: last.stopReason || 'complete' };
+}
+
+// A boss interjection during a live meeting (shown to every attendee afterwards).
+export async function addMeetingMessage(id, { text = '', by = 'boss' } = {}) {
+  const room = await getMeeting(id);
+  if (!room) throw new Error('Meeting not found');
+  const body = sstr(text, 1000).trim();
+  if (!body) throw new Error('Type something first.');
+  const turns = Array.isArray(room.turns) ? room.turns.slice() : [];
+  const turn = { role: 'boss', speakerName: sstr(by, 60) || 'Boss', speakerRole: 'Boss', emoji: '👑', kind: 'boss', text: body, at: Date.now() };
+  turns.push(turn);
+  await setDoc(doc(meetDb, MEETINGS, id), { turns, updatedAt: Date.now() }, { merge: true });
+  return { ok: true, turn };
 }
 
 // Turn the meeting outcome into an approval-gated artefact. Nothing auto-executes.
@@ -154,7 +220,7 @@ export async function saveMeetingOutcome(id, { kind = 'lesson', staffId = '', te
   if (!body) throw new Error('Nothing to save yet — run the meeting first.');
 
   if (kind === 'lesson') {
-    const target = sstr(staffId, 80) || room.participants[0];
+    const target = sstr(staffId, 80) || (room.participants || [])[0];
     if (!target) throw new Error('Pick which staff member should learn this.');
     await addLesson(target, { trigger: 'Staff meeting: ' + sstr(room.topic, 200), correction: body, note: 'From meeting ' + id });
     await audit(target, { action: 'meeting_lesson', summary: 'Lesson saved from meeting ' + id, reason: 'boss approved' });
@@ -166,7 +232,6 @@ export async function saveMeetingOutcome(id, { kind = 'lesson', staffId = '', te
     });
     return { ok: true, saved: 'notebook' };
   }
-  // default: keep it as meeting minutes only
   await setDoc(doc(meetDb, MEETINGS, id), { savedAs: kind, savedAt: Date.now() }, { merge: true });
   return { ok: true, saved: kind };
 }
@@ -175,6 +240,6 @@ export async function reopenMeeting(id) {
   if (!meetDb) throw new Error('Meeting storage unavailable');
   const room = await getMeeting(id);
   if (!room) throw new Error('Meeting not found');
-  await updateDoc(doc(meetDb, MEETINGS, id), { status: 'open', closedAt: 0, updatedAt: Date.now() });
+  await updateDoc(doc(meetDb, MEETINGS, id), { status: 'open', phase: 'open', closedAt: 0, updatedAt: Date.now() });
   return { ok: true };
 }
