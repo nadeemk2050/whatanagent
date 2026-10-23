@@ -22,6 +22,7 @@ import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
 import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
+import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -211,6 +212,24 @@ app.post('/api/diagnostics/bandwidth/reset', diagGuard, (req, res) => {
 app.get('/api/diagnostics/media/selftest', diagGuard, async (req, res) => {
   try { res.json({ ok: true, test: await mediaSelfTest() }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// 🧹 WhatsApp session housekeeping — tens of thousands of tiny key files accumulate.
+app.get('/api/diagnostics/session', diagGuard, (req, res) => {
+  try { res.json({ ok: true, session: analyzeSession(path.join(__dirname, 'auth_info_baileys')) }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/diagnostics/session/cleanup', diagGuard, (req, res) => {
+  try {
+    const b = req.body || {};
+    const report = archiveOldSession(path.join(__dirname, 'auth_info_baileys'), {
+      keepDays: Number(b.keepDays),
+      keepNewestPerCategory: b.keepNewest === undefined ? undefined : Number(b.keepNewest),
+      dryRun: b.dryRun === true
+    });
+    res.json({ ok: true, report });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // --- WHATSAPP WEB (BAILEYS MULTI-DEVICE CLIENT) REST ENDPOINTS ---

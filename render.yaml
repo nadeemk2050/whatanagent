@@ -4,10 +4,17 @@ services:
     runtime: node
     repo: https://github.com/nadeemk2050/whatanagent
     branch: master
-    plan: free
+    plan: starter
     envVars:
       - key: PORT
         value: "3000"
+      # Image downscaling for AI uploads. 1536px keeps invoice text readable
+      # (~16px glyph height) while cutting egress ~90%. Raise to 2048 for more
+      # OCR detail on documents, lower to 1280 for maximum savings.
+      - key: MEDIA_MAX_EDGE_PX
+        value: "1536"
+      - key: MEDIA_JPEG_QUALITY
+        value: "80"
     buildCommand: npm install
     startCommand: node index.js
     healthCheckPath: /

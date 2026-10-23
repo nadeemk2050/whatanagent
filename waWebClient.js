@@ -2038,6 +2038,27 @@ const waWebAutoReplyCooldown = new Map(); // jid -> timestamp
 const rawMessagesMap = new Map(); // `${jid}_${msgId}` -> msg
 
 // Calculate live sync metrics, storage footprint & date ranges
+// Cached size of the auth folder. This used to re-stat 40,000+ files on EVERY message
+// (calculateSyncStats is called from 8 hot paths), which was a measurable slowdown.
+// It is only a display statistic, so a 5-minute cache is plenty.
+let authBytesCache = { at: 0, bytes: 0, files: 0 };
+function getAuthDirBytes() {
+  const now = Date.now();
+  if (authBytesCache.at && now - authBytesCache.at < 5 * 60 * 1000) return authBytesCache;
+  let total = 0, count = 0;
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const ent of fs.readdirSync(AUTH_DIR, { withFileTypes: true })) {
+        if (!ent.isFile()) continue;               // skip archive sub-folders
+        count++;
+        try { total += fs.statSync(path.join(AUTH_DIR, ent.name)).size; } catch (e) { /* skip */ }
+      }
+    }
+  } catch (e) { /* non-fatal */ }
+  authBytesCache = { at: now, bytes: total, files: count };
+  return authBytesCache;
+}
+
 export function calculateSyncStats() {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -2080,18 +2101,8 @@ export function calculateSyncStats() {
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  let authBytes = 0;
-  if (fs.existsSync(AUTH_DIR)) {
-    try {
-      const files = fs.readdirSync(AUTH_DIR);
-      for (const f of files) {
-        try {
-          const st = fs.statSync(path.join(AUTH_DIR, f));
-          authBytes += st.size;
-        } catch(e) {}
-      }
-    } catch(e) {}
-  }
+  const authStat = getAuthDirBytes();
+  const authBytes = authStat.bytes;
 
   const chatHistoryBytes = Buffer.byteLength(JSON.stringify(Array.from(waWebState.chats.values())), 'utf8');
   let mediaBytes = 0;
