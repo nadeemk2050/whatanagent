@@ -2,6 +2,14 @@
 # Replace __DOMAIN__ with your hostname (the installer does this for you).
 # The domain must already point at this server's public IP.
 
+{
+	# HTTP/3 (QUIC) on top of h1/h2 — browsers fall back automatically if UDP 443
+	# is blocked, so this is always safe to enable.
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
 __DOMAIN__ {
 	encode gzip zstd
 
