@@ -1,6 +1,7 @@
 import makeWASocketPkg, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import pino from 'pino';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -2969,20 +2970,32 @@ async function restoreSessionFromFirestore(db) {
       let restoredCount = 0;
 
       const restoredChunkPayloads = [];
+      chunkWasEncrypted = [];
       for (let i = 0; i < totalChunks; i++) {
         const chunkSnap = await getDoc(doc(db, "waWebSessionChunks", `chunk_${i}`));
         if (chunkSnap.exists()) {
           const chunkData = chunkSnap.data();
           if (chunkData && chunkData.data) {
-            restoredChunkPayloads[i] = chunkData.data;
+            const storedRaw = String(chunkData.data);
+            const wasEncrypted = storedRaw.startsWith(SESSION_ENC_PREFIX);
+            let plain = null;
             try {
-              const files = JSON.parse(chunkData.data);
-              for (const [fn, content] of Object.entries(files)) {
-                const filePath = path.join(AUTH_DIR, fn);
-                fs.writeFileSync(filePath, content, 'utf-8');
-                restoredCount++;
-              }
-            } catch (e) {}
+              plain = decryptSessionPayload(storedRaw);
+            } catch (e) {
+              console.warn(`[WA-WEB AUTH] chunk_${i} could not be decrypted (${e.message}) — skipping`);
+            }
+            if (plain) {
+              restoredChunkPayloads[i] = plain;      // keep PLAINTEXT in memory so the diff stays valid
+              chunkWasEncrypted[i] = wasEncrypted;
+              try {
+                const files = JSON.parse(plain);
+                for (const [fn, content] of Object.entries(files)) {
+                  const filePath = path.join(AUTH_DIR, fn);
+                  fs.writeFileSync(filePath, content, 'utf-8');
+                  restoredCount++;
+                }
+              } catch (e) {}
+            }
           }
         }
       }
@@ -3023,6 +3036,58 @@ let isSyncingSession = false;
 let lastAuthFingerprint = '';
 let lastChunkPayloads = [];
 let lastMetaTotalChunks = -1;
+let chunkWasEncrypted = [];       // per-chunk: was the stored copy already encrypted?
+
+// ===========================================================================
+// 🔐 SESSION ENCRYPTION AT REST
+// ===========================================================================
+// This Firestore project is readable WITHOUT authentication, and the WhatsApp
+// session IS the account's cryptographic identity (advSecretKey, noiseKey,
+// signedIdentityKey…). Storing it as plaintext would let anyone clone the
+// account. Chunks are therefore encrypted with AES-256-GCM using a key that
+// only exists in the server environment (WA_SESSION_KEY).
+//
+// Backwards compatible: plaintext legacy chunks are still read, then rewritten
+// encrypted on the next sync. If no key is configured the app keeps working in
+// plaintext (with a warning) so nothing ever breaks.
+const SESSION_ENC_PREFIX = 'enc:v1:';
+let sessionKeyCache = null;
+let sessionKeyWarned = false;
+
+function sessionKey() {
+  if (sessionKeyCache !== null) return sessionKeyCache;
+  const raw = String(process.env.WA_SESSION_KEY || '').trim();
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) { sessionKeyCache = Buffer.from(raw, 'hex'); return sessionKeyCache; }
+  if (raw.length >= 24) { sessionKeyCache = crypto.createHash('sha256').update(raw).digest(); return sessionKeyCache; }
+  if (!sessionKeyWarned) {
+    sessionKeyWarned = true;
+    console.warn('[WA-WEB AUTH] ⚠️ WA_SESSION_KEY is not set — session chunks will be stored UNENCRYPTED.');
+  }
+  sessionKeyCache = null;
+  return null;
+}
+
+function encryptSessionPayload(plain) {
+  const key = sessionKey();
+  if (!key) return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
+  return SESSION_ENC_PREFIX + iv.toString('base64') + ':' + cipher.getAuthTag().toString('base64') + ':' + body.toString('base64');
+}
+
+// Returns the plaintext for both encrypted and legacy-plaintext payloads.
+function decryptSessionPayload(stored) {
+  const s = String(stored || '');
+  if (!s.startsWith(SESSION_ENC_PREFIX)) return s;              // legacy plaintext
+  const key = sessionKey();
+  if (!key) throw new Error('chunk is encrypted but WA_SESSION_KEY is not set');
+  const parts = s.slice(SESSION_ENC_PREFIX.length).split(':');
+  if (parts.length !== 3) throw new Error('malformed encrypted chunk');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parts[0], 'base64'));
+  decipher.setAuthTag(Buffer.from(parts[1], 'base64'));
+  return Buffer.concat([decipher.update(Buffer.from(parts[2], 'base64')), decipher.final()]).toString('utf8');
+}
 
 async function syncSessionToFirestore(db) {
   if (!db || isSyncingSession) return;
@@ -3058,14 +3123,15 @@ async function syncSessionToFirestore(db) {
     const totalFiles = Object.keys(filesMap).length;
     if (totalFiles === 0) return;
 
-    // Split into chunks under 450KB each
+    // Split into chunks under 200KB each. Encryption adds ~2x (base64 of base64),
+    // so this keeps every stored document comfortably below Firestore's 1MB limit.
     const chunks = [];
     let currentChunk = {};
     let currentChunkSize = 0;
 
     for (const [filename, content] of Object.entries(filesMap)) {
       const entrySize = filename.length + content.length + 20;
-      if (currentChunkSize + entrySize > 450 * 1024) {
+      if (currentChunkSize + entrySize > 200 * 1024) {
         chunks.push(currentChunk);
         currentChunk = {};
         currentChunkSize = 0;
@@ -3079,14 +3145,27 @@ async function syncSessionToFirestore(db) {
 
     // Layer 2: write ONLY the chunks whose content actually changed
     let written = 0;
+    const keyPresent = !!sessionKey();
     for (let i = 0; i < chunks.length; i++) {
       const payload = JSON.stringify(chunks[i]);
-      if (payload === lastChunkPayloads[i]) continue;
+      // Skip only when content is unchanged AND the stored copy is already in the
+      // desired form. An existing plaintext chunk is rewritten once encrypted.
+      const storedIsEncrypted = chunkWasEncrypted[i] === true;
+      if (payload === lastChunkPayloads[i] && (!keyPresent || storedIsEncrypted)) continue;
+
+      let stored = payload;
+      let encryptedNow = false;
+      if (keyPresent) {
+        const enc = encryptSessionPayload(payload);
+        if (enc) { stored = enc; encryptedNow = true; }
+      }
       await setDoc(doc(db, "waWebSessionChunks", `chunk_${i}`), {
-        data: payload,
+        data: stored,
+        encrypted: encryptedNow,
         updatedAt: Date.now()
       });
       lastChunkPayloads[i] = payload;
+      chunkWasEncrypted[i] = encryptedNow;
       written++;
       await new Promise(r => setTimeout(r, 150));   // Layer 3: calm spacing between writes
     }
