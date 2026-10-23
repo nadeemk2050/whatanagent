@@ -82,10 +82,17 @@ export async function mediaSelfTest() {
     return { ok: false, processor: sharpState, reason: 'image processor not available — media will only be size-capped' };
   }
   try {
-    const w = 1600, h = 1200;
+    // 3200x2400 ≈ a real 7.7 MP phone photo, with noise so the number is honest.
+    const w = 3200, h = 2400;
     const raw = Buffer.alloc(w * h * 3);
-    for (let i = 0; i < raw.length; i++) raw[i] = (i * 37) & 255;
-    const original = await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 92 }).toBuffer();
+    // Cheap deterministic PRNG so JPEG cannot compress the pattern away — this makes
+    // the reported reduction realistic instead of flattering.
+    let seed = 123456789;
+    for (let i = 0; i < raw.length; i++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      raw[i] = (seed >> 16) & 255;
+    }
+    const original = await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 95 }).toBuffer();
 
     const res = await prepareMediaForAi(original, 'image/jpeg', 'image');
     const meta = await sharp(res.buffer).metadata();
