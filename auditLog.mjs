@@ -38,11 +38,16 @@ export async function audit(agentId, entry = {}) {
   };
   try {
     if (agentId) await addDoc(collection(auditDb, 'agents', agentId, 'auditLog'), row);
-    const ref = doc(auditDb, 'appData', 'auditFeed');
-    const snap = await getDoc(ref);
-    const items = snap.exists() ? (snap.data().items || []) : [];
-    items.push({ agentId: sstr(agentId, 80), ...row });
-    await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+    // The global feed is a whole-array rewrite, so routine traffic (e.g. every single
+    // reply) passes feed:false to avoid needless outbound egress. Everything else keeps
+    // writing to the feed by default.
+    if (entry.feed !== false) {
+      const ref = doc(auditDb, 'appData', 'auditFeed');
+      const snap = await getDoc(ref);
+      const items = snap.exists() ? (snap.data().items || []) : [];
+      items.push({ agentId: sstr(agentId, 80), ...row });
+      await setDoc(ref, { items: items.slice(-200) }, { merge: true });
+    }
   } catch (e) { /* auditing must never break a reply */ }
   return row;
 }

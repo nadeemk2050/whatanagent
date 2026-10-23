@@ -21,6 +21,7 @@ import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
+import { mediaPrepReport } from './mediaPrep.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -194,7 +195,8 @@ app.get('/api/diagnostics', diagGuard, (req, res) => {
     res.json({
       ok: true,
       instance: instanceReport(path.join(__dirname, 'auth_info_baileys')),
-      bandwidth: bandwidthReport({ top: 20 })
+      bandwidth: bandwidthReport({ top: 20 }),
+      media: mediaPrepReport()
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

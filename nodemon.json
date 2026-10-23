@@ -25,7 +25,8 @@
                   "meetingRoom.mjs",
                   "ruleBook.mjs",
                   "ruleBookApi.mjs",
-                  "bandwidthTracker.mjs"
+                  "bandwidthTracker.mjs",
+                  "mediaPrep.mjs"
               ],
     "ext":  "js,mjs,json",
     "ignore":  [

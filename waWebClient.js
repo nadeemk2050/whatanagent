@@ -16,6 +16,7 @@ import { evaluateReplyPolicy, recordUsage } from './officeControls.mjs';
 import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, enforceScript as romaniseScript } from './ruleBook.mjs';
+import { prepareMediaForAi } from './mediaPrep.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -4105,7 +4106,24 @@ export async function initWaWeb(db = null) {
                     };
                     console.log(`[WA-WEB MULTIMODAL] 📥 Downloaded ${mediaType} (${(buffer.length/1024).toFixed(1)} KB) for AI processing`);
 
-                    if (mediaType === 'audio') {
+                    // 🖼️ Shrink BEFORE upload: a 4 MB photo becomes ~200 KB, so every
+                    // vision/ASR call below (primary, retry, fallback) sends far less egress.
+                    try {
+                      const prep = await prepareMediaForAi(mediaData.buffer, mediaData.mimetype, mediaData.mediaType);
+                      if (prep.changed) {
+                        mediaData.buffer = prep.buffer;
+                        mediaData.mimetype = prep.mimetype;
+                        console.log('[WA-WEB MULTIMODAL] 🗜️ Downscaled ' + prep.note + ' (egress saving)');
+                      }
+                      if (prep.skipped) {
+                        console.warn('[WA-WEB MULTIMODAL] ⏭️ Skipped AI media upload: ' + prep.note);
+                        mediaData = null;
+                      }
+                    } catch (prepErr) {
+                      console.warn('[WA-WEB MULTIMODAL] media prep skipped:', (prepErr.message || '').slice(0, 120));
+                    }
+
+                    if (mediaType === 'audio' && mediaData) {
                       transcribedAudioText = await transcribeAudioBuffer(buffer, mediaData.mimetype);
                       if (transcribedAudioText) {
                         console.log('[WA-WEB MULTIMODAL] 🎙️ Transcribed Audio:', transcribedAudioText);
@@ -4345,7 +4363,7 @@ export async function initWaWeb(db = null) {
                       touchClientActivity(answeredBy, remoteJid, brain && brain.name, remoteJid.endsWith('@g.us') ? 'group' : 'person').catch(() => {});
                       audit(answeredBy, {
                         action: 'replied', summary: 'Replied to ' + ((brain && brain.name) || 'chat'),
-                        chat: remoteJid, status: 'ok'
+                        chat: remoteJid, status: 'ok', feed: false
                       }).catch(() => {});
                     }
                   } catch (e) { /* bookkeeping is best effort */ }
