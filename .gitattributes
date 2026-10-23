@@ -1,0 +1,9 @@
+# Shell scripts and server config must keep LF endings on every platform.
+*.sh          text eol=lf
+deploy/*      text eol=lf
+*.service     text eol=lf
+Caddyfile     text eol=lf
+
+# YAML used by Render must be LF too
+render.yaml   text eol=lf
+nodemon.json  text eol=lf

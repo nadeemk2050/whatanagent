@@ -1,0 +1,31 @@
+[Unit]
+Description=WhatAnAgent — WhatsApp AI Agent (Node.js)
+Documentation=https://github.com/nadeemk2050/whatanagent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+# Logs go to journald:  journalctl -u whatanagent -f
+StandardOutput=journal
+StandardError=journal
+
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__APP_DIR__
+
+[Install]
+WantedBy=multi-user.target

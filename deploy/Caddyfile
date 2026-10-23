@@ -1,0 +1,32 @@
+# Caddy — automatic HTTPS (Let's Encrypt) + reverse proxy to the Node app.
+# Replace __DOMAIN__ with your hostname (the installer does this for you).
+# The domain must already point at this server's public IP.
+
+__DOMAIN__ {
+	encode gzip zstd
+
+	# Long-lived dashboard assets / uploads
+	request_body {
+		max_size 35MB
+	}
+
+	reverse_proxy 127.0.0.1:3000 {
+		# Let the app see the real client IP behind the proxy
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+
+		# WhatsApp status polling can be slow on a cold model call
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+
+	log {
+		output file /var/log/caddy/whatanagent.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}
