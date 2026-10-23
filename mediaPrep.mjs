@@ -14,9 +14,17 @@
 // we fall back to size caps instead of breaking the reply.
 // ============================================================================
 
+// Tunable without a code change: OCR of invoice/document photos needs more pixels
+// than a chat photo. 1536px keeps small print readable and still saves ~94%.
+function envInt(name, def, lo, hi) {
+  const v = Number(process.env[name]);
+  if (!Number.isFinite(v) || v <= 0) return def;
+  return Math.min(hi, Math.max(lo, Math.round(v)));
+}
+
 export const MEDIA_LIMITS = {
-  maxEdgePx: 1024,          // longest edge after resize — plenty for vision + OCR
-  jpegQuality: 78,
+  maxEdgePx: envInt('MEDIA_MAX_EDGE_PX', 1536, 640, 2048),
+  jpegQuality: envInt('MEDIA_JPEG_QUALITY', 80, 40, 95),
   maxImageBytes: 1 * 1024 * 1024,   // if an image is STILL bigger, do not upload it
   maxAudioBytes: 8 * 1024 * 1024,   // long voice notes are not worth the egress
   maxDocBytes: 5 * 1024 * 1024
