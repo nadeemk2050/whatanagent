@@ -1,0 +1,55 @@
+name: Deploy to Tencent Lighthouse
+
+# =============================================================================
+# This replaces Render's autoDeploy: every push to master goes live on the VPS.
+# Requires three repository secrets (Settings -> Secrets and variables -> Actions):
+#   DEPLOY_HOST     101.32.170.58
+#   DEPLOY_USER     ubuntu
+#   DEPLOY_SSH_KEY  private key whose public half is in the server's authorized_keys
+# =============================================================================
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:        # lets you deploy manually from the Actions tab
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ] || [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::error::DEPLOY_HOST / DEPLOY_SSH_KEY secrets are not set. Deploy skipped."
+            exit 1
+          fi
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "BRANCH=${GITHUB_REF_NAME} bash /opt/whatanagent/deploy/deploy.sh"
+
+      - name: Public health check
+        if: success()
+        run: |
+          set -e
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 "https://whatanagent.duckdns.org/healthz" || echo 000)
+            echo "attempt $i -> HTTP $CODE"
+            if [ "$CODE" = "200" ]; then echo "HTTPS endpoint healthy"; exit 0; fi
+            sleep 6
+          done
+          echo "::warning::HTTPS health check did not return 200 yet (DNS/HTTPS may still be setting up)"

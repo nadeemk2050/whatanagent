@@ -49,7 +49,8 @@ sudo systemctl restart "$SERVICE" || { echo "FATAL: restart failed"; exit 1; }
 log "health check: $HEALTH_URL"
 OK=0
 for i in $(seq 1 "$HEALTH_RETRIES"); do
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" 2>/dev/null || echo 000)"
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" 2>/dev/null)"
+  CODE="${CODE:-000}"
   if [ "$CODE" = "200" ]; then OK=1; break; fi
   echo "  attempt $i/$HEALTH_RETRIES -> HTTP $CODE"
   sleep "$HEALTH_SLEEP"
@@ -65,6 +66,7 @@ git reset --hard "$PREV_SHA"
 if [ -f package-lock.json ]; then npm ci --omit=dev >/dev/null 2>&1 || npm install --omit=dev >/dev/null 2>&1; fi
 sudo systemctl restart "$SERVICE"
 sleep 5
-CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" 2>/dev/null || echo 000)"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" 2>/dev/null)"
+CODE="${CODE:-000}"
 echo "  after rollback: HTTP $CODE"
 exit 1
