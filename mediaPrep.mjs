@@ -66,6 +66,35 @@ export function mediaPrepReport() {
   };
 }
 
+// Self-test: proves the image processor really works in this runtime (e.g. after a
+// deploy, so you are not relying on the lazy load to find out the hard way).
+export async function mediaSelfTest() {
+  const sharp = await loadSharp();
+  if (!sharp) {
+    return { ok: false, processor: sharpState, reason: 'image processor not available — media will only be size-capped' };
+  }
+  try {
+    const w = 1600, h = 1200;
+    const raw = Buffer.alloc(w * h * 3);
+    for (let i = 0; i < raw.length; i++) raw[i] = (i * 37) & 255;
+    const original = await sharp(raw, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 92 }).toBuffer();
+
+    const res = await prepareMediaForAi(original, 'image/jpeg', 'image');
+    const meta = await sharp(res.buffer).metadata();
+    return {
+      ok: res.changed && res.buffer.length < original.length,
+      processor: sharpState,
+      originalKB: Math.round(original.length / 1024),
+      resultKB: Math.round(res.buffer.length / 1024),
+      reductionPercent: Math.round((1 - res.buffer.length / original.length) * 100),
+      dimensions: meta.width + 'x' + meta.height,
+      mimetype: res.mimetype
+    };
+  } catch (e) {
+    return { ok: false, processor: sharpState, reason: (e.message || String(e)).slice(0, 200) };
+  }
+}
+
 // Returns { buffer, mimetype, mediaType, changed, skipped, note }
 export async function prepareMediaForAi(buffer, mimetype, mediaType) {
   const untouched = { buffer, mimetype, mediaType, changed: false, skipped: false, note: '' };

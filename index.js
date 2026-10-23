@@ -21,7 +21,7 @@ import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
-import { mediaPrepReport } from './mediaPrep.mjs';
+import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -205,6 +205,12 @@ app.get('/api/diagnostics', diagGuard, (req, res) => {
 app.post('/api/diagnostics/bandwidth/reset', diagGuard, (req, res) => {
   resetBandwidth();
   res.json({ ok: true, reset: true });
+});
+
+// Proves the image downscaler works in this exact runtime (after a deploy, etc).
+app.get('/api/diagnostics/media/selftest', diagGuard, async (req, res) => {
+  try { res.json({ ok: true, test: await mediaSelfTest() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // --- WHATSAPP WEB (BAILEYS MULTI-DEVICE CLIENT) REST ENDPOINTS ---
