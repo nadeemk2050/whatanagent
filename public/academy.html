@@ -292,6 +292,10 @@
 <script>
 /* ======================= helpers ======================= */
 const $ = (id) => document.getElementById(id);
+// This page can be served from Firebase Hosting (no backend there) or from the API
+// itself. On Firebase, send API calls to the Tencent API origin instead.
+const API_ORIGIN = (location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com'))
+  ? 'https://whatanagent.duckdns.org' : '';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nl2br = (s) => esc(s).replace(/\n/g, '<br>');
 let toastTimer = null;
@@ -308,7 +312,7 @@ async function saveToken() {
 
   // Verify the token before pretending it worked.
   try {
-    const res = await fetch('/api/agents/meta', { headers: { 'x-admin-token': v } });
+    const res = await fetch(API_ORIGIN + '/api/agents/meta', { headers: { 'x-admin-token': v } });
     if (res.status === 401) { $('tokenMsg').textContent = '❌ Token rejected — check the value.'; return; }
     if (res.status === 503) { $('tokenMsg').textContent = '❌ ADMIN_TOKEN is not set on this server.'; return; }
     if (!res.ok) { $('tokenMsg').textContent = '❌ Server error ' + res.status; return; }
@@ -322,7 +326,7 @@ async function saveToken() {
   toast('✅ Token accepted');
 }
 async function api(path, opts = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(API_ORIGIN + path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken(), ...(opts.headers || {}) }
   });

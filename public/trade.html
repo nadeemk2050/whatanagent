@@ -9,9 +9,9 @@
     <script>
         // Forward all API requests to production Render backend when running on Firebase Hosting or external host
         (function() {
-            const isRenderOrigin = location.origin === 'https://whatanagent.onrender.com';
+            const isRenderOrigin = location.origin === 'https://whatanagent.duckdns.org';
             if (!isRenderOrigin) {
-                const API_BASE = 'https://whatanagent.onrender.com/';
+                const API_BASE = 'https://whatanagent.duckdns.org/';
                 const origFetch = window.fetch.bind(window);
                 window.fetch = function(input, init) {
                     if (typeof input === 'string') {

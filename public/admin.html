@@ -3503,7 +3503,7 @@
         (function() {
             const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
             if (!isFirebaseHost) return;
-            const API_BASE = 'https://whatanagent.onrender.com/';
+            const API_BASE = 'https://whatanagent.duckdns.org/';
             const origFetch = window.fetch.bind(window);
             window.fetch = function(input, init) {
                 if (typeof input === 'string' && (input.startsWith('api/') || input.startsWith('/api/'))) {
@@ -8504,7 +8504,7 @@
 
         function getBackendBaseUrl() {
             const isFirebaseHost = location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com');
-            return isFirebaseHost ? 'https://whatanagent.onrender.com' : '';
+            return isFirebaseHost ? 'https://whatanagent.duckdns.org' : '';
         }
 
         function downloadWaMedia(jid, msgId, defaultName) {
