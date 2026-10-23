@@ -2,6 +2,7 @@ import makeWASocketPkg, { DisconnectReason, useMultiFileAuthState, fetchLatestBa
 import QRCode from 'qrcode';
 import pino from 'pino';
 import crypto from 'crypto';
+import zlib from 'zlib';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -2977,7 +2978,9 @@ async function restoreSessionFromFirestore(db) {
           const chunkData = chunkSnap.data();
           if (chunkData && chunkData.data) {
             const storedRaw = String(chunkData.data);
-            const wasEncrypted = storedRaw.startsWith(SESSION_ENC_PREFIX);
+            // Only v2 (gzip+encrypted) counts as "already in the desired form", so any
+            // plaintext or v1 chunk is rewritten on the next sync.
+            const wasEncrypted = storedRaw.startsWith(SESSION_ENC_PREFIX_GZ);
             let plain = null;
             try {
               plain = decryptSessionPayload(storedRaw);
@@ -3004,6 +3007,19 @@ async function restoreSessionFromFirestore(db) {
       lastChunkPayloads = restoredChunkPayloads;
       lastMetaTotalChunks = totalChunks;
       console.log(`[WA-WEB AUTH] Restored ${restoredCount} session files from Firestore chunks (write-diff primed)`);
+
+      // If any stored chunk is still plaintext (or the older v1 format), re-encrypt it
+      // now instead of waiting for the next WhatsApp keystore event — otherwise the
+      // readable copy would sit in Firestore indefinitely.
+      const needsRewrite = chunkWasEncrypted.some((v, i) => restoredChunkPayloads[i] !== undefined && v !== true);
+      if (needsRewrite) {
+        if (sessionKey()) {
+          console.log('[WA-WEB AUTH] 🔐 Upgrading stored session chunks to encrypted v2…');
+          setTimeout(() => { syncSessionToFirestore(db).catch(() => {}); }, 6000);
+        } else {
+          console.warn('[WA-WEB AUTH] ⚠️ WA_SESSION_KEY missing — existing plaintext chunks left as-is.');
+        }
+      }
     } else {
       // Backward compatibility check for individual files
       const legacySnap = await getDocs(collection(db, "waWebSession"));
@@ -3050,9 +3066,15 @@ let chunkWasEncrypted = [];       // per-chunk: was the stored copy already encr
 // Backwards compatible: plaintext legacy chunks are still read, then rewritten
 // encrypted on the next sync. If no key is configured the app keeps working in
 // plaintext (with a warning) so nothing ever breaks.
-const SESSION_ENC_PREFIX = 'enc:v1:';
+const SESSION_ENC_PREFIX = 'enc:v1:';        // first format (no compression)
+const SESSION_ENC_PREFIX_GZ = 'enc:v2:';     // gzip + AES-256-GCM (current)
 let sessionKeyCache = null;
 let sessionKeyWarned = false;
+
+function isEncryptedPayload(s) {
+  const v = String(s || '');
+  return v.startsWith(SESSION_ENC_PREFIX) || v.startsWith(SESSION_ENC_PREFIX_GZ);
+}
 
 function sessionKey() {
   if (sessionKeyCache !== null) return sessionKeyCache;
@@ -3067,26 +3089,33 @@ function sessionKey() {
   return null;
 }
 
+// gzip first: one WhatsApp app-state file alone is ~757KB of repetitive JSON, which
+// would exceed Firestore's 1MB document limit once base64-encoded. Compression makes
+// every chunk several times smaller AND still leaves the data unreadable without the key.
 function encryptSessionPayload(plain) {
   const key = sessionKey();
   if (!key) return null;
+  const gz = zlib.gzipSync(Buffer.from(String(plain), 'utf8'), { level: 9 });
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const body = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
-  return SESSION_ENC_PREFIX + iv.toString('base64') + ':' + cipher.getAuthTag().toString('base64') + ':' + body.toString('base64');
+  const body = Buffer.concat([cipher.update(gz), cipher.final()]);
+  return SESSION_ENC_PREFIX_GZ + iv.toString('base64') + ':' + cipher.getAuthTag().toString('base64') + ':' + body.toString('base64');
 }
 
-// Returns the plaintext for both encrypted and legacy-plaintext payloads.
+// Returns the plaintext for encrypted (v1/v2) and legacy-plaintext payloads.
 function decryptSessionPayload(stored) {
   const s = String(stored || '');
-  if (!s.startsWith(SESSION_ENC_PREFIX)) return s;              // legacy plaintext
+  const isV2 = s.startsWith(SESSION_ENC_PREFIX_GZ);
+  if (!isV2 && !s.startsWith(SESSION_ENC_PREFIX)) return s;   // legacy plaintext
   const key = sessionKey();
   if (!key) throw new Error('chunk is encrypted but WA_SESSION_KEY is not set');
-  const parts = s.slice(SESSION_ENC_PREFIX.length).split(':');
+  const prefix = isV2 ? SESSION_ENC_PREFIX_GZ : SESSION_ENC_PREFIX;
+  const parts = s.slice(prefix.length).split(':');
   if (parts.length !== 3) throw new Error('malformed encrypted chunk');
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parts[0], 'base64'));
   decipher.setAuthTag(Buffer.from(parts[1], 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(parts[2], 'base64')), decipher.final()]).toString('utf8');
+  const plainBuf = Buffer.concat([decipher.update(Buffer.from(parts[2], 'base64')), decipher.final()]);
+  return isV2 ? zlib.gunzipSync(plainBuf).toString('utf8') : plainBuf.toString('utf8');
 }
 
 async function syncSessionToFirestore(db) {
@@ -3123,15 +3152,15 @@ async function syncSessionToFirestore(db) {
     const totalFiles = Object.keys(filesMap).length;
     if (totalFiles === 0) return;
 
-    // Split into chunks under 200KB each. Encryption adds ~2x (base64 of base64),
-    // so this keeps every stored document comfortably below Firestore's 1MB limit.
+    // Split into ~700KB chunks. Each chunk is gzipped before encryption, so the stored
+    // document is tiny (a 679KB chunk becomes ~35KB), while fewer chunks mean fewer writes.
     const chunks = [];
     let currentChunk = {};
     let currentChunkSize = 0;
 
     for (const [filename, content] of Object.entries(filesMap)) {
       const entrySize = filename.length + content.length + 20;
-      if (currentChunkSize + entrySize > 200 * 1024) {
+      if (currentChunkSize + entrySize > 700 * 1024) {
         chunks.push(currentChunk);
         currentChunk = {};
         currentChunkSize = 0;
