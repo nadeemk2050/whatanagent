@@ -20,6 +20,7 @@ import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.m
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
+import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -66,6 +67,10 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+
+// 📡 Count outbound bytes per destination BEFORE anything makes a network call,
+// so /api/diagnostics can show what is consuming the bandwidth allowance.
+installBandwidthTracker();
 
 // Gemini model used by the dashboard features (KB test, AI assistant, OCR, suggest ...).
 // `gemini-flash-latest` is Google's rolling alias for the current Flash model, so this keeps
@@ -179,6 +184,25 @@ app.get(['/trade', '/trade-accounts', '/trades'], (req, res) => {
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'whatanagent', role: NODE_ROLE, staging: STAGING_MODE, dryRun: DRY_RUN, schedulers: schedulerState, uptimeSec: Math.round(process.uptime()) });
+});
+
+// 📡 Diagnostics — what plan am I on, what is eating the bandwidth, is the session persistent?
+// Admin-guarded (fail-closed): no ADMIN_TOKEN on the server -> 503.
+const diagGuard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'diagnostics' });
+app.get('/api/diagnostics', diagGuard, (req, res) => {
+  try {
+    res.json({
+      ok: true,
+      instance: instanceReport(path.join(__dirname, 'auth_info_baileys')),
+      bandwidth: bandwidthReport({ top: 20 })
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+app.post('/api/diagnostics/bandwidth/reset', diagGuard, (req, res) => {
+  resetBandwidth();
+  res.json({ ok: true, reset: true });
 });
 
 // --- WHATSAPP WEB (BAILEYS MULTI-DEVICE CLIENT) REST ENDPOINTS ---

@@ -24,7 +24,8 @@
                   "modelSwitcher.mjs",
                   "meetingRoom.mjs",
                   "ruleBook.mjs",
-                  "ruleBookApi.mjs"
+                  "ruleBookApi.mjs",
+                  "bandwidthTracker.mjs"
               ],
     "ext":  "js,mjs,json",
     "ignore":  [
