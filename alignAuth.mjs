@@ -1,17 +1,17 @@
 // ============================================================================
-// 🔐 ALIGNTASKS AUTH — staff credentials, sessions, and the team unlock gate
+// ðŸ” ALIGNTASKS AUTH â€” staff credentials, sessions, and the team unlock gate
 // ============================================================================
 // Design decisions (boss-approved):
-//   • Staff sign in with NAME + PASSWORD only. No email, no phone.
-//   • Staff names + password hashes are maintained in the APP's own data
+//   â€¢ Staff sign in with NAME + PASSWORD only. No email, no phone.
+//   â€¢ Staff names + password hashes are maintained in the APP's own data
 //     (a chmod-600 JSON file on the server, never Firestore, because the
 //     Firestore catch-all rule leaves most collections world-readable).
-//   • Passwords are scrypt-hashed with a per-user salt and compared in
+//   â€¢ Passwords are scrypt-hashed with a per-user salt and compared in
 //     constant time. Plaintext is never stored or logged.
-//   • Two token types, both HMAC-signed and short lived:
-//       staff session  —— proves who the person is
-//       team unlock    —— proves they entered the team password (12h)
-//   • Nobody can see another person's individual task, including the owner.
+//   â€¢ Two token types, both HMAC-signed and short lived:
+//       staff session  â€”â€” proves who the person is
+//       team unlock    â€”â€” proves they entered the team password (12h)
+//   â€¢ Nobody can see another person's individual task, including the owner.
 //
 // The HMAC secret comes from ALIGN_SESSION_SECRET, or is generated once and
 // kept in data/secret.key (chmod 600) so sessions survive restarts.
@@ -202,6 +202,7 @@ const publicStaff = (r) => ({
   createdAt: r.createdAt || 0, updatedAt: r.updatedAt || 0,
   hasPassword: !!r.hash, lockedUntil: r.lockedUntil || 0,
   lastLoginAt: r.lastLoginAt || 0,
+  aliases: r.aliases || [],
   // optional profile details
   jobTitle: r.jobTitle || '', department: r.department || '',
   phone: r.phone || '', whatsapp: r.whatsapp || '',
@@ -256,7 +257,7 @@ export function setStaffProfileFields(handle, patch = {}) {
     rec[f] = String(patch[f] == null ? '' : patch[f]).slice(0, f === 'bio' ? 500 : 80).trim();
   }
   rec.updatedAt = Date.now();
-  staff[h] = rec;
+  staff[rec.handle] = rec;
   saveStaff(staff);
   return publicStaff(rec);
 }
@@ -267,7 +268,48 @@ export function listStaff() {
 
 export function getStaffByHandle(handle) {
   const h = normalizeHandle(handle);
-  return loadStaff()[h] || null;
+  if (!h) return null;
+  const staff = loadStaff();
+  if (staff[h]) return staff[h];
+  // legacy email / alternate names resolve through aliases
+  for (const rec of Object.values(staff)) {
+    const list = Array.isArray(rec.aliases) ? rec.aliases : [];
+    if (list.some(a => String(a).trim().toLowerCase() === String(handle).trim().toLowerCase())) return rec;
+  }
+  return null;
+}
+
+// Import staff that already exist elsewhere (e.g. the old Firestore staff list),
+// preserving their Firebase uid, role, teams and email aliases.
+export function importStaff({ handle, name, uid, role = 'member', teamIds = [], aliases = [], active = true }) {
+  const h = normalizeHandle(handle || name);
+  if (!h) throw new Error('A name is required.');
+  const staff = loadStaff();
+  const existing = staff[h];
+  if (existing) {
+    existing.name = existing.name || name;
+    existing.uid = existing.uid || uid;
+    existing.aliases = Array.from(new Set([...(existing.aliases || []), ...aliases.filter(Boolean)])).slice(0, 10);
+    existing.updatedAt = Date.now();
+    staff[h] = existing;
+    saveStaff(staff);
+    return publicStaff(existing);
+  }
+  const rec = {
+    uid: uid || ('staff_' + crypto.randomBytes(9).toString('hex')),
+    handle: h,
+    name: String(name || handle).trim().slice(0, 60),
+    role: role === 'owner' ? 'owner' : (role === 'admin' ? 'admin' : 'member'),
+    teamIds: Array.isArray(teamIds) ? teamIds.slice(0, 50) : [],
+    aliases: Array.from(new Set(aliases.filter(Boolean))).slice(0, 10),
+    active: active !== false,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  staff[rec.handle] = rec;
+  saveStaff(staff);
+  authAudit({ action: 'staff_imported', handle: h, note: 'uid=' + rec.uid });
+  return publicStaff(rec);
 }
 
 export function getStaffByUid(uid) {
@@ -275,7 +317,7 @@ export function getStaffByUid(uid) {
 }
 
 // Create or update a staff member. `password` is optional on update (keeps the old one).
-export function upsertStaff({ handle, name, password, role = 'member', teamIds = [], active = true, uid = '' }) {
+export function upsertStaff({ handle, name, password, role = 'member', teamIds = [], active = true, uid = '', aliases = [] }) {
   const h = normalizeHandle(handle || name);
   if (!h || h.length < 2) throw new Error('Name must be at least 2 characters.');
   if (!String(name || '').trim()) throw new Error('A display name is required.');
@@ -297,6 +339,14 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
   rec.teamIds = Array.isArray(teamIds) ? teamIds.map(t => String(t).slice(0, 80)).slice(0, 50) : (rec.teamIds || []);
   rec.active = active !== false;
   rec.updatedAt = Date.now();
+  if (Array.isArray(aliases)) {
+    rec.aliases = Array.from(new Set([...(rec.aliases || []), ...aliases.map(a => String(a).trim().toLowerCase()).filter(Boolean)])).slice(0, 10);
+  }
+  // An alias must never point at two people.
+  for (const [otherHandle, other] of Object.entries(staff)) {
+    if (otherHandle === h || !Array.isArray(other.aliases) || !rec.aliases) continue;
+    other.aliases = other.aliases.filter(a => !rec.aliases.includes(a));
+  }
 
   if (password) {
     const h2 = hashPassword(password);
@@ -305,7 +355,7 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
     rec.passwordChangedAt = Date.now();
   }
 
-  staff[h] = rec;
+  staff[rec.handle] = rec;
   saveStaff(staff);
   authAudit({ action: existing ? 'staff_updated' : 'staff_created', handle: h, note: existing ? '' : 'uid=' + rec.uid });
   return publicStaff(rec);
@@ -328,7 +378,7 @@ export function deleteStaff(handle) {
 export function loginStaff(handle, password) {
   const h = normalizeHandle(handle);
   const staff = loadStaff();
-  const rec = staff[h];
+  const rec = getStaffByHandle(handle);
 
   if (!rec) {
     authAudit({ action: 'login_failed', handle: h, ok: false, note: 'unknown name' });
@@ -340,6 +390,11 @@ export function loginStaff(handle, password) {
   if (rec.active === false) {
     authAudit({ action: 'login_blocked', handle: h, ok: false, note: 'inactive' });
     throw new Error('This account is disabled. Ask the owner.');
+  }
+
+  if (!rec.hash) {
+    authAudit({ action: 'login_blocked', handle: h, ok: false, note: 'no-password' });
+    throw new Error('This name has no password yet. Ask the owner to set one.');
   }
 
   if (rec.lockedUntil && rec.lockedUntil > Date.now()) {
@@ -354,12 +409,12 @@ export function loginStaff(handle, password) {
       rec.lockedUntil = Date.now() + LOCK_MINUTES * 60000;
       rec.failedAttempts = 0;
       authAudit({ action: 'login_locked', handle: h, ok: false, note: LOCK_MINUTES + 'min' });
-      staff[h] = rec;
+      staff[rec.handle] = rec;
       saveStaff(staff);
       throw new Error('Too many wrong attempts. Try again in ' + LOCK_MINUTES + ' minute(s).');
     }
     authAudit({ action: 'login_failed', handle: h, ok: false, note: 'attempt ' + rec.failedAttempts });
-    staff[h] = rec;
+    staff[rec.handle] = rec;
     saveStaff(staff);
     throw new Error('Name or password is incorrect.');
   }
@@ -367,7 +422,7 @@ export function loginStaff(handle, password) {
   rec.failedAttempts = 0;
   rec.lockedUntil = 0;
   rec.lastLoginAt = Date.now();
-  staff[h] = rec;
+  staff[rec.handle] = rec;
   saveStaff(staff);
 
   authAudit({ action: 'login_ok', handle: h });
@@ -444,3 +499,4 @@ export function unlockTeam({ teamId, password, staff }) {
   authAudit({ action: 'team_unlock_ok', teamId: id, handle: staff.handle });
   return out;
 }
+

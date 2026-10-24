@@ -89,6 +89,27 @@ function noAdmin(res) {
   });
 }
 
+// The board's Firestore rules resolve a member's teams from `users/<uid>.teamIds`.
+// A staff member who signs in with a name (custom token) may not have that document
+// yet, so keep it in sync from the staff record — otherwise their reads are denied.
+async function ensureBoardUser(rec) {
+  if (!rec || !rec.uid) return;
+  try {
+    const ref = alignDb().collection(`${ALIGN_BASE}/users`).doc(rec.uid);
+    const data = {
+      name: rec.name || rec.handle,
+      email: String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase(),
+      role: rec.role === 'owner' ? 'owner' : (rec.role === 'admin' ? 'admin' : 'user'),
+      teamIds: rec.teamIds || [],
+      active: rec.active !== false
+    };
+    const snap = await ref.get();
+    await ref.set(snap.exists ? data : Object.assign({ createdAt: new Date() }, data), { merge: true });
+  } catch (e) {
+    console.warn('[ALIGN] users doc sync skipped: ' + sstr(e.message, 120));
+  }
+}
+
 // ---------------------------------------------------------------- routes
 export function registerAlignRoutes(app) {
   const api = '/api/align';
@@ -119,7 +140,10 @@ export function registerAlignRoutes(app) {
       let customToken = null;
       try {
         const rec = getStaffByUid(out.staff.uid);
-        if (rec && rec.uid) customToken = await alignAuth().createCustomToken(rec.uid);
+        if (rec && rec.uid) {
+          await ensureBoardUser(rec);
+          customToken = await alignAuth().createCustomToken(rec.uid);
+        }
       } catch (e) {
         // Not fatal: the staff session still works for every API call.
         console.warn('[ALIGN] custom token not issued: ' + sstr(e.message, 120));
@@ -261,7 +285,8 @@ export function registerAlignRoutes(app) {
       const saved = upsertStaff({
         handle, name, password, uid,
         role: b.role, teamIds: Array.isArray(b.teamIds) ? b.teamIds : undefined,
-        active: b.active
+        active: b.active,
+        aliases: Array.isArray(b.aliases) ? b.aliases : undefined
       });
       res.json({ ok: true, staff: saved });
     } catch (e) {
@@ -273,6 +298,68 @@ export function registerAlignRoutes(app) {
   app.delete(api + '/staff/:handle', guard, (req, res) => {
     try {
       deleteStaff(req.params.handle);
+      res.json({ ok: true });
+    } catch (e) { bad(res, e.message); }
+  });
+
+  // ---- team staff management (owner session, no dashboard token needed) ----
+  // This is the panel inside AlignTasks: the owner is already signed in with a
+  // staff name + password, so requiring ADMIN_TOKEN here would be a second login.
+  app.get(api + '/team/staff', requireStaff, requireOwner, (req, res) => {
+    res.json({ ok: true, staff: listStaff() });
+  });
+
+  app.post(api + '/team/staff', requireStaff, requireOwner, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const handle = normalizeHandle(b.handle || b.name);
+      const name = sstr(b.name, 60).trim();
+      const password = sstr(b.password, 200);
+      if (!handle || !name) return bad(res, 'A name is required.');
+      if (handle.length < 2) return bad(res, 'Name must be at least 2 characters.');
+      const existing = getStaffByHandle(handle);
+      if (!existing && !password) return bad(res, 'Set a password for the new member.');
+      if (password && password.length < 6) return bad(res, 'Password must be at least 6 characters.');
+
+      let uid = (existing || {}).uid || '';
+      try {
+        const auth = alignAuth();
+        if (!uid) {
+          const created = await auth.createUser({
+            email: `${handle.replace(/\s+/g, '.')}@staff.align.internal`,
+            password,
+            displayName: name,
+            disabled: b.active === false
+          });
+          uid = created.uid;
+        } else if (password) {
+          await auth.updateUser(uid, { password });
+        }
+        if (uid && b.active !== undefined) await auth.updateUser(uid, { disabled: b.active === false });
+      } catch (e) {
+        console.warn('[ALIGN] Firebase user step skipped: ' + sstr(e.message, 140));
+      }
+
+      const saved = upsertStaff({
+        handle, name, password, uid,
+        role: b.role,
+        teamIds: Array.isArray(b.teamIds) ? b.teamIds : undefined,
+        active: b.active,
+        aliases: Array.isArray(b.aliases) ? b.aliases : undefined
+      });
+      authAudit({ action: 'owner_staff_save', handle: saved.handle, note: 'by ' + req.staff.handle });
+      try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
+      res.json({ ok: true, staff: saved });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, e.message);
+    }
+  });
+
+  app.delete(api + '/team/staff/:handle', requireStaff, requireOwner, (req, res) => {
+    try {
+      deleteStaff(req.params.handle);
+      authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
   });
@@ -494,8 +581,48 @@ export function registerAlignRoutes(app) {
     }
   });
 
-  app.post(api + '/task/delete', requireStaff, async (req, res) => {
+  // Add a comment. Gated + attributed by the server so the author is truthful.
+  app.post(api + '/task/comment', requireStaff, async (req, res) => {
     try {
+      const b = req.body || {};
+      const teamId = sstr(b.teamId, 80);
+      const gate = requireUnlock(req, res, teamId);
+      if (!gate) return;
+
+      const id = sstr(b.id, 120);
+      const kind = b.kind === 'assigned' ? 'assigned' : 'shared';
+      const text = sstr(b.text, 800).trim();
+      if (!id) return bad(res, 'A task id is required.');
+      if (!text) return bad(res, 'Write a comment first.');
+
+      const ref = board(collectionFor(kind)).doc(id);
+      const cur = await ref.get();
+      if (!cur.exists) return bad(res, 'Task not found.', 404);
+      const existing = cur.data() || {};
+      if (existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
+      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
+        return bad(res, 'This task belongs to someone else.', 403);
+      }
+
+      const stamp = stampOf(req.staff);
+      const comments = Array.isArray(existing.comments) ? existing.comments.slice(-49) : [];
+      comments.push({
+        text,
+        authorUid: stamp.uid,
+        authorHandle: stamp.handle,
+        authorName: stamp.name,
+        createdAt: Date.now()
+      });
+      await ref.set({ comments, updatedAt: Date.now(), updatedByUid: stamp.uid, updatedByName: stamp.name }, { merge: true });
+      await auditTaskEvent(id, 'commented', stamp, { teamId, kind, description: text.slice(0, 120) });
+      res.json({ ok: true, comments });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post(api + '/task/delete', requireStaff, async (req, res) => {    try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
       const gate = requireUnlock(req, res, teamId);

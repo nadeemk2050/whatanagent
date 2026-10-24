@@ -89,11 +89,15 @@ service cloud.firestore {
         allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
       }
 
-      // flat board collections: tasks, tasks_for_all, projects, staff
+      // flat board collections: projects, staff, …
+      // `tasks` and `tasks_for_all` are READ-ONLY for every client. All writes go
+      // through /api/align/task/* where the server checks the staff session and the
+      // team unlock, and writes the stamps itself — so the gate cannot be bypassed
+      // from devtools or the Firebase REST API.
       match /{col}/{docId} {
         allow read: if inMyTeam(appId, resource.data.get('teamId', ''));
-        allow create: if createdInMyTeam(appId);
-        allow update, delete: if inMyTeam(appId, resource.data.get('teamId', ''));
+        allow create: if col != 'tasks' && col != 'tasks_for_all' && createdInMyTeam(appId);
+        allow update, delete: if col != 'tasks' && col != 'tasks_for_all' && inMyTeam(appId, resource.data.get('teamId', ''));
       }
     }
 

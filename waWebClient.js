@@ -19,6 +19,8 @@ import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, enforceScript as romaniseScript } from './ruleBook.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
+import { alignDb, ALIGN_BASE } from './alignAdmin.mjs';
+import { listStaff as alignStaffList, getStaffByHandle as alignStaffByHandle } from './alignAuth.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -330,17 +332,44 @@ async function bossCancelTask(q) {
 const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
 const ALIGNTASKS_BASE = 'artifacts/' + ALIGNTASKS_APP_ID + '/public/data';
 
+// The board's Firestore rules only allow signed-in team members to read, and reserve all
+// task writes for the API. The server therefore talks to the board through the Admin SDK.
+function alignBoardCol(name) {
+  try { return alignDb().collection(ALIGNTASKS_BASE + '/' + name); } catch (e) { return null; }
+}
+async function alignBoardDocs(name, opts) {
+  const col = alignBoardCol(name);
+  if (!col) return [];
+  const o = opts || {};
+  let q = col;
+  if (o.field) q = q.where(o.field, '==', o.value);
+  const snap = await q.limit(o.limit || 3000).get();
+  const out = [];
+  snap.forEach(d => out.push(Object.assign({ id: d.id }, d.data() || {})));
+  return out;
+}
+async function alignBoardAdd(name, data) {
+  const col = alignBoardCol(name);
+  if (!col) throw new Error('AlignTasks storage is not configured on this server.');
+  const ref = await col.add(data);
+  return ref;
+}
+// Works with both client-SDK refs and Admin SDK refs.
+async function alignSetDoc(ref, patch) {
+  if (!ref) return;
+  if (typeof ref.set === 'function') return ref.set(patch, { merge: true });
+  return setDoc(ref, patch, { merge: true });
+}
+
 // AlignTasks 2.0 — board documents carry a `teamId`. Server-side writers (boss orders, Note Book,
 // reminder jobs) must stamp the SAME team the board users see, otherwise their docs are invisible
 // on the team-scoped board. Resolved once and cached for 5 minutes.
 let alignPrimaryTeam = { at: 0, id: '' };
 export async function getPrimaryAlignTeamId() {
-  if (!globalDb) return '';
   if (alignPrimaryTeam.id && (Date.now() - alignPrimaryTeam.at) < 5 * 60 * 1000) return alignPrimaryTeam.id;
   let id = '';
   try {
-    const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/teams'));
-    const teams = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}));
+    const teams = await alignBoardDocs('teams');
     const primary = teams.find(t => t.settings && t.settings.isPrimary) || teams[0];
     if (primary) id = primary.id;
   } catch (e) { /* teams collection may not exist yet (pre-migration) */ }
@@ -350,26 +379,32 @@ export async function getPrimaryAlignTeamId() {
 
 let staffDirCache = { at: 0, list: [] };
 async function alignTasksStaffDirectory() {
-  if (!globalDb) return [];
   // Cache for 5 minutes - the staff list rarely changes and each boss task command used to
   // re-read the staff + users collections from Firestore every single time.
   if (staffDirCache.list.length && (Date.now() - staffDirCache.at) < 5 * 60 * 1000) return staffDirCache.list;
   const map = new Map();
+
+  // AlignTasks 2.0 staff (name + password accounts) are the authority: they carry the uid the
+  // task must be assigned to, plus any legacy email in `aliases`.
   try {
-    const staffSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/staff'));
-    staffSnap.forEach(d => {
-      const s = d.data() || {};
+    for (const s of alignStaffList()) {
+      if (s.active === false) continue;
+      const email = String((s.aliases && s.aliases[0]) || (s.handle + '@staff.align.internal')).toLowerCase();
+      map.set(email, { name: s.name, email: email, uid: s.uid, handle: s.handle, aliases: s.aliases || [], role: s.role });
+    }
+  } catch (e) { /* staff file not readable yet */ }
+
+  try {
+    for (const s of await alignBoardDocs('staff')) {
       const email = String(s.email || '').toLowerCase();
-      if (email) map.set(email, { name: String(s.name || '').trim() || email.split('@')[0], email: email, uid: s.uid || '' });
-    });
+      if (email && !map.has(email)) map.set(email, { name: String(s.name || '').trim() || email.split('@')[0], email: email, uid: s.uid || '', handle: '' });
+    }
   } catch (e) { /* staff collection optional */ }
   try {
-    const usersSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/users'));
-    usersSnap.forEach(d => {
-      const u = d.data() || {};
+    for (const u of await alignBoardDocs('users')) {
       const email = String(u.email || '').toLowerCase();
-      if (email && u.active !== false && !map.has(email)) map.set(email, { name: String(u.name || '').trim() || email.split('@')[0], email: email, uid: d.id });
-    });
+      if (email && u.active !== false && !map.has(email)) map.set(email, { name: String(u.name || '').trim() || email.split('@')[0], email: email, uid: u.id, handle: '' });
+    }
   } catch (e) { /* users collection optional */ }
   staffDirCache = { at: Date.now(), list: Array.from(map.values()) };
   return staffDirCache.list;
@@ -379,16 +414,19 @@ function alignTaskFindStaff(raw, staff) {
   const q = String(raw || '').trim().toLowerCase();
   if (!q) return { error: 'Give me a team member name (e.g. assign to Ahmed).' };
   if (q.includes('@')) {
-    const hit = staff.find(s => s.email === q);
+    const hit = staff.find(s => s.email === q || (s.aliases || []).includes(q));
     return hit ? { person: hit } : { error: 'No board user with the email ' + q + '.' };
   }
   const scored = [];
   for (const s of staff) {
     const n = s.name.toLowerCase();
     const first = n.split(' ')[0];
+    const handle = String(s.handle || '').toLowerCase();
     let score = 0;
     if (n === q) score = 100;
+    else if (handle && handle === q) score = 100;
     else if (n.includes(q)) score = 80;
+    else if (handle && handle.includes(q)) score = 75;
     else if (q.includes(n)) score = 70;
     else if (first === q || q.startsWith(first + ' ')) score = 60;
     if (score) scored.push({ s: s, score: score });
@@ -427,20 +465,21 @@ function dubaiYmd(ms) {
 // renderAdminIndividualTasks) - so every boss-added task must have its assignee present in the
 // `staff` collection, otherwise the task is written but INVISIBLE. This upserts a staff entry.
 async function ensureAlignTasksStaffDoc(person) {
-  if (!globalDb || !person || !person.email) return;
+  if (!person || !person.email) return;
   try {
-    const staffCol = collection(globalDb, ALIGNTASKS_BASE + '/staff');
-    const snap = await getDocs(query(staffCol, where('email', '==', person.email)));
+    const col = alignBoardCol('staff');
+    if (!col) return;
+    const existing = await alignBoardDocs('staff', { field: 'email', value: person.email, limit: 5 });
     const teamId = await getPrimaryAlignTeamId();
     const data = Object.assign(
       { name: person.name || person.email.split('@')[0], email: person.email, uid: person.uid || '' },
       teamId ? { teamId: teamId } : {}
     );
-    if (snap.empty) {
-      await addDoc(staffCol, data);
+    if (!existing.length) {
+      await col.add(data);
       console.log('[ALIGNTASKS] ➕ Created board staff entry for ' + data.name + ' (' + person.email + ')');
     } else {
-      await setDoc(snap.docs[0].ref, data, { merge: true });
+      await col.doc(existing[0].id).set(data, { merge: true });
     }
   } catch (e) {
     console.warn('[ALIGNTASKS] Could not ensure staff entry:', e.message);
@@ -449,14 +488,10 @@ async function ensureAlignTasksStaffDoc(person) {
 
 // Team owner (admin) info - used to populate ownerAdminUid/Email on General tasks created by the boss
 export async function alignTasksOwnerAdmin() {
-  if (!globalDb) return { uid: '', email: '' };
   try {
-    const snap = await getDocs(query(collection(globalDb, ALIGNTASKS_BASE + '/users'), where('role', '==', 'admin')));
-    const d = snap.docs[0];
-    if (d) {
-      const u = d.data() || {};
-      return { uid: u.ownerAdminUid || d.id, email: String(u.ownerAdminEmail || u.email || '').toLowerCase() };
-    }
+    const admins = await alignBoardDocs('users', { field: 'role', value: 'admin', limit: 5 });
+    const u = admins[0];
+    if (u) return { uid: u.ownerAdminUid || u.id, email: String(u.ownerAdminEmail || u.email || '').toLowerCase() };
   } catch (e) { /* fall through */ }
   return { uid: '', email: '' };
 }
@@ -492,7 +527,6 @@ export async function logBossOrder(entries) {
 }
 
 export async function bossAlignTaskAdd(p) {
-  if (!globalDb) return { ok: false, error: 'No database connection' };
   const title = String((p && (p.title || p.task || p.description)) || '').trim();
   if (!title) return { ok: false, error: 'Tell me what the task is, Boss.' };
   const rawAssignee = String((p && (p.assignee || p.assignTo || p.who)) || '').trim();
@@ -516,7 +550,7 @@ export async function bossAlignTaskAdd(p) {
       ownerAdminEmail: owner.email
     };
     if (teamId) task.teamId = teamId;
-    const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'), task);
+    const ref = await alignBoardAdd('tasks_for_all', task);
     console.log('[ALIGNTASKS] ➕ Boss added GENERAL task "' + title + '"' + (due.value ? (' due ' + due.value) : ''));
     return { ok: true, id: ref.id, task: task, general: true, dueTs: due.ts || null };
   }
@@ -530,31 +564,31 @@ export async function bossAlignTaskAdd(p) {
   const task = {
     description: title,
     assigneeEmail: who.person.email,
+    assigneeUid: who.person.uid || '',
+    assigneeName: who.person.name,
     dueDate: due.value || '',
     status: 'To Do',
     comments: [],
     createdAt: new Date(),
     createdBy: 'boss-waweb',
+    createdByName: 'Boss (WhatsApp)',
     ownerAdminUid: who.person.uid || '',
     ownerAdminEmail: '',
     setAlarm: false
   };
   if (teamId) task.teamId = teamId;
   await ensureAlignTasksStaffDoc(who.person);   // board visibility: the admin view renders only staff sections
-  const ref = await addDoc(collection(globalDb, ALIGNTASKS_BASE + '/tasks'), task);
+  const ref = await alignBoardAdd('tasks', task);
   console.log('[ALIGNTASKS] ➕ Boss added task "' + title + '" for ' + who.person.name + (due.value ? (' due ' + due.value) : ''));
   return { ok: true, id: ref.id, task: task, assignee: who.person, dueTs: due.ts || null };
 }
 
 export async function bossAlignTaskList(p) {
-  if (!globalDb) return { ok: false, error: 'No database connection' };
   let tasks = [];
-  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
-  snap.forEach(d => tasks.push(Object.assign({ id: d.id, _src: 'individual' }, d.data() || {})));
-  const gSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'));
-  gSnap.forEach(d => tasks.push(Object.assign({ id: d.id, _src: 'general' }, d.data() || {})));
+  for (const t of await alignBoardDocs('tasks')) tasks.push(Object.assign({ _src: 'individual' }, t));
+  for (const t of await alignBoardDocs('tasks_for_all')) tasks.push(Object.assign({ _src: 'general' }, t));
   const staff = await alignTasksStaffDirectory();
-  const nameOf = (email) => { const s = staff.find(x => x.email === String(email || '').toLowerCase()); return s ? s.name : (email || 'unassigned'); };
+  const nameOf = (email) => { const s = staff.find(x => x.email === String(email || '').toLowerCase() || (x.aliases || []).includes(String(email || '').toLowerCase())); return s ? s.name : (email || 'unassigned'); };
   const now = Date.now();
   let label = '';
   const qWho = p && (p.assignee || p.assignedTo || p.who || p.person);
@@ -583,18 +617,24 @@ export async function bossAlignTaskList(p) {
 }
 
 export async function bossAlignTaskDone(p) {
-  if (!globalDb) return { ok: false, error: 'No database connection' };
   const q = String((p && (p.title || p.task || p.match)) || '').trim().toLowerCase();
   if (!q) return { ok: false, error: 'Which task should I mark done, Boss? Give me a few words from its description.' };
-  const snap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks'));
   const all = [];
-  snap.forEach(d => all.push(Object.assign({ id: d.id, ref: d.ref }, d.data() || {})));
-  const gSnap = await getDocs(collection(globalDb, ALIGNTASKS_BASE + '/tasks_for_all'));
-  gSnap.forEach(d => all.push(Object.assign({ id: d.id, ref: d.ref }, d.data() || {})));
+  for (const t of await alignBoardDocs('tasks')) all.push(Object.assign({ _col: 'tasks' }, t));
+  for (const t of await alignBoardDocs('tasks_for_all')) all.push(Object.assign({ _col: 'tasks_for_all' }, t));
   const match = all.filter(t => t.status !== 'Done' && String(t.description || '').toLowerCase().includes(q));
   if (!match.length) return { ok: false, error: 'No open task matches "' + q + '".' };
   if (match.length > 1) return { ok: false, error: 'More than one task matches: ' + match.slice(0, 5).map(t => '"' + String(t.description).substring(0, 40) + '"').join(' | ') + ' - be more specific.' };
-  await setDoc(match[0].ref, { status: 'Done', completedBy: 'boss-waweb', completedAt: new Date(), lastUpdatedBy: 'boss-waweb', lastUpdatedAt: new Date() }, { merge: true });
+  const col = alignBoardCol(match[0]._col);
+  if (!col) return { ok: false, error: 'AlignTasks storage is not configured on this server.' };
+  await col.doc(match[0].id).set({
+    status: 'Done',
+    completedBy: 'boss-waweb',
+    completedByName: 'Boss (WhatsApp)',
+    completedAt: new Date(),
+    lastUpdatedBy: 'boss-waweb',
+    lastUpdatedAt: new Date()
+  }, { merge: true });
   console.log('[ALIGNTASKS] ✅ Boss marked done: ' + match[0].description);
   return { ok: true, task: match[0] };
 }
@@ -1140,7 +1180,45 @@ let alignQueueUnsub = null;
 let alignTasksUnsubA = null;
 let alignTasksUnsubB = null;
 let alignStaffUnsub = null;
+let alignTasksPollTimer = null;
+let alignStaffPollAt = 0;
 const alignTasksCache = new Map();     // task id -> { ref, data, src }
+
+// Admin-SDK board poll: feeds alignTasksCache (due reminders + completion announcements) and
+// refresh the staff WhatsApp map. Replaces the onSnapshot listeners the rules used to deny.
+async function alignPollBoard() {
+  let db2;
+  try { db2 = alignDb(); } catch (e) { return; }
+  const readCol = async (name) => {
+    const snap = await db2.collection(ALIGNTASKS_BASE + '/' + name).limit(3000).get();
+    const rows = [];
+    snap.forEach(d => rows.push({ id: d.id, ref: d.ref, data: d.data() || {} }));
+    return rows;
+  };
+  for (const src of ['tasks', 'tasks_for_all']) {
+    let rows;
+    try { rows = await readCol(src); } catch (e) { continue; }
+    for (const row of rows) {
+      const prev = alignTasksCache.get(row.id);
+      if (prev && prev.data && prev.data.status !== 'Done' && row.data.status === 'Done') {
+        announceTaskCompletion(row.ref, row.data).catch(() => {});
+      }
+      alignTasksCache.set(row.id, { ref: row.ref, data: row.data, src: src });
+    }
+  }
+  if (Date.now() - alignStaffPollAt > 10 * 60 * 1000) {
+    alignStaffPollAt = Date.now();
+    try {
+      alignStaffWaMap.clear();
+      for (const row of await readCol('staff')) {
+        const v = row.data;
+        const email = String(v.email || '').toLowerCase();
+        if (!email) continue;
+        alignStaffWaMap.set(email, { name: String(v.name || '').trim(), wa: normalizeWaNumber(v.whatsappNumber || '') });
+      }
+    } catch (e) { /* staff collection optional */ }
+  }
+}
 const alignStaffWaMap = new Map();     // email -> { name, wa }
 let alignQueueBusy = false;
 let lastGroupsIndexAt = 0;
@@ -1391,7 +1469,7 @@ async function announceTaskCompletion(ref, task) {
       if (pth) alignAnnouncedRecently.delete(pth);   // allow retry (marker NOT written)
     }
     // write the sent-marker ONLY after a successful send so the catch-up sweep can retry failures
-    if (sent) await setDoc(ref, { waAnnounceSentAt: Date.now() }, { merge: true }).catch(() => {});
+    if (sent) await alignSetDoc(ref, { waAnnounceSentAt: Date.now() }).catch(() => {});
   } catch (e) { console.warn('[ALIGN ANNOUNCE] failed: ' + ((e && e.message) || e)); }
 }
 
@@ -1516,7 +1594,7 @@ async function alignNotifyTick() {
         if (!target) target = normalizeWaNumber(waWebKnowledgeBase.bossPhone || (waWebKnowledgeBase.bossKnowledge && waWebKnowledgeBase.bossKnowledge.bossPhone) || '+971529244592');
       }
       if (!target) {
-        await setDoc(entry.ref, { reminderSentAt: now, reminderSkipReason: 'no-whatsapp-number' }, { merge: true }).catch(() => {});
+        await alignSetDoc(entry.ref, { reminderSentAt: now, reminderSkipReason: 'no-whatsapp-number' }).catch(() => {});
         console.log('[ALIGN WA] ⚠️ Task due but no WhatsApp number saved anywhere - reminder skipped: "' + String(v.description || '').substring(0, 50) + '"');
         continue;
       }
@@ -1526,7 +1604,7 @@ async function alignNotifyTick() {
         '\n👉 Please update the board when done.';
       try {
         await sendWaWebMessage(target + '@s.whatsapp.net', msg);
-        await setDoc(entry.ref, { reminderSentAt: now }, { merge: true });
+        await alignSetDoc(entry.ref, { reminderSentAt: now });
         console.log('[ALIGN WA] ⏰ Due reminder sent to +' + target + ' (' + targetName + ') for "' + String(v.description || '').substring(0, 50) + '"');
       } catch (e) {
         console.warn('[ALIGN WA] due reminder send failed:', (e && e.message) || e);
@@ -1555,29 +1633,11 @@ function initAlignNotifySystem(db) {
         if (d.status === 'pending') processAlignQueueItem(ch.doc.ref, d);
       });
     }, () => {});
-    const handleTaskSnap = (snap, src) => {
-      snap.docChanges().forEach(ch => {
-        if (ch.type === 'removed') { alignTasksCache.delete(ch.doc.id); return; }
-        const data = ch.doc.data() || {};
-        const prev = alignTasksCache.get(ch.doc.id);
-        // status transition -> Done (from any client: webapp, Android, WhatsApp) = group completion announcement
-        if (ch.type === 'modified' && prev && prev.data && prev.data.status !== 'Done' && data.status === 'Done') {
-          announceTaskCompletion(ch.doc.ref, data).catch(() => {});
-        }
-        alignTasksCache.set(ch.doc.id, { ref: ch.doc.ref, data: data, src: src });
-      });
-    };
-    alignTasksUnsubA = onSnapshot(collection(db, ALIGNTASKS_BASE + '/tasks'), s => handleTaskSnap(s, 'tasks'), () => {});
-    alignTasksUnsubB = onSnapshot(collection(db, ALIGNTASKS_BASE + '/tasks_for_all'), s => handleTaskSnap(s, 'tasks_for_all'), () => {});
-    alignStaffUnsub = onSnapshot(collection(db, ALIGNTASKS_BASE + '/staff'), s => {
-      alignStaffWaMap.clear();
-      s.forEach(d => {
-        const v = d.data() || {};
-        const email = String(v.email || '').toLowerCase();
-        if (!email) return;
-        alignStaffWaMap.set(email, { name: String(v.name || '').trim(), wa: normalizeWaNumber(v.whatsappNumber || '') });
-      });
-    }, () => {});
+    // The board rules reserve reads for signed-in members and all task writes for the API,
+    // so the server watches the board with a light Admin-SDK poll instead of onSnapshot
+    // (which the rules denied). 45s matches the reminder tick.
+    alignTasksPollTimer = setInterval(() => { alignPollBoard().catch(() => {}); }, 45000);
+    setTimeout(() => { alignPollBoard().catch(() => {}); }, 8000);
     // Announcements config (assigned WhatsApp group + weekly summary schedule) - live from Firestore
     alignAnnounceUnsub = onSnapshot(doc(db, 'appData', 'alignAnnounceConfig'), ds => {
       alignAnnounceConfig = ds.exists() ? (ds.data() || {}) : {};

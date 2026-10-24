@@ -1508,6 +1508,29 @@
             }
             
             // --- UI Rendering ---
+            // "Created by Nadeem Khan · 24 Oct 14:32" – names come from the server-written
+            // stamps (createdByName / updatedByName / completedByName), falling back to the
+            // legacy email prefix on tasks that were never touched by the API.
+            function taskStampName(task, kind) {
+                const nameField = kind === 'created' ? 'createdByName' : (kind === 'updated' ? 'updatedByName' : 'completedByName');
+                const idField = kind === 'created' ? 'createdBy' : (kind === 'updated' ? 'updatedBy' : 'completedBy');
+                const atField = kind === 'created' ? 'createdAt' : (kind === 'updated' ? 'updatedAt' : 'completedAt');
+                const name = task[nameField] || (task[idField] ? String(task[idField]).split('@')[0] : '');
+                if (!name) return '';
+                const when = task[atField] ? formatTaskTimestamp(task[atField]) : '';
+                return when ? `${name} · ${when}` : name;
+            }
+            function taskStampsHTML(task) {
+                const parts = [];
+                const created = taskStampName(task, 'created');
+                if (created) parts.push(`<div>🖊 Created by ${created}</div>`);
+                const updated = taskStampName(task, 'updated');
+                if (updated && updated !== created) parts.push(`<div>✏️ Edited by ${updated}</div>`);
+                const completed = task.status === 'Done' ? taskStampName(task, 'completed') : '';
+                if (completed) parts.push(`<div>✅ Finished by ${completed}</div>`);
+                return parts.join('');
+            }
+
             function createBaseTaskListItemHTML(task, type, identifiers) {
                 const isDone = task.status === 'Done';
                 const dueDate = task.dueDate ? new Date(task.dueDate) : null;
@@ -1523,10 +1546,8 @@
                     actionButtons += `<button class="delete-button p-1 text-gray-400 hover:text-red-500" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
                 }
 
-                let metaHTML = '';
-                if (task.createdBy) metaHTML += `<div>Created by ${task.createdBy.split('@')[0]} at ${formatTaskTimestamp(task.createdAt)}</div>`;
-                if (isDone && task.completedBy) metaHTML += `<div>Finished by ${task.completedBy.split('@')[0]} at ${formatTaskTimestamp(task.completedAt)}</div>`;
-                
+                let metaHTML = taskStampsHTML(task);
+
                 const repeatIcon = (task.repeat && task.repeat.type !== 'none') ? `<button class="repeat-icon-button" data-due-date="${task.dueDate}" data-repeat-type="${task.repeat.type}" data-repeat-remaining="${task.repeat.remaining || 'Infinity'}"><svg class="repeat-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.6A9 9 0 0 1 12 3a9 9 0 0 1 8.4 5.4"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.4A9 9 0 0 1 12 21a9 9 0 0 1-8.4-5.4"/></svg></button>` : '';
                 const alarmIcon = task.setAlarm ? `<svg class="alarm-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/><path d="M6.38 18.7 4 21"/><path d="M17.64 18.67 20 21"/></svg>` : '';
 
@@ -2125,9 +2146,7 @@
                     adminButtons += `<button class="delete-button p-1 text-gray-400 hover:text-red-500" data-task-type="tasks_for_all" data-task-id="${task.id}"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
                 }
                 
-                let metaHTML = '';
-                if (task.createdBy) metaHTML += `<div>Created by ${task.createdBy.split('@')[0]} at ${formatTaskTimestamp(task.createdAt)}</div>`;
-                 if (isCompleted && task.completedBy) metaHTML += `<div>Finished by ${task.completedBy.split('@')[0]} at ${formatTaskTimestamp(task.completedAt)}</div>`;
+                let metaHTML = taskStampsHTML(task);
                 
                 return `
                      <div class="task-list-item">
@@ -3602,12 +3621,27 @@
                 }
             });
             
-            document.getElementById('comment-modal-form').addEventListener('submit', e => {
+            document.getElementById('comment-modal-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const commentText = document.getElementById('comment-modal-input').value.trim();
                 if (commentText && currentCommentingTask && currentUser) {
                     const { type, projectId, taskId } = currentCommentingTask;
                     const newComment = { text: commentText, authorEmail: currentUser.email, createdAt: new Date() };
+
+                    // 🎯 Team tasks: gated + attributed by the server.
+                    if (type === 'tasks' || type === 'tasks_for_all') {
+                        if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                        try {
+                            await window.alignApi('/task/comment', {
+                                method: 'POST',
+                                teamId: teamCtx.teamId,
+                                body: { teamId: teamCtx.teamId, id: taskId, kind: type === 'tasks' ? 'assigned' : 'shared', text: commentText }
+                            });
+                            document.getElementById('comment-modal-input').value = '';
+                        } catch (err) { alert('Could not add the comment: ' + err.message); }
+                        return;
+                    }
+
                     let docRef;
                     if (type === 'project') docRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId);
                     else docRef = db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
@@ -3722,9 +3756,35 @@
                 }
 
                 let docRef;
-                if (taskType === 'project') docRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId);
-                else docRef = db.collection(`/artifacts/${appId}/public/data/${taskType}`).doc(taskId);
+                if (taskType === 'project') {
+                    docRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId);
+                    docRef.update(updateData).then(() => editTaskModal.classList.add('hidden'));
+                    return;
+                }
 
+                // 🎯 Team tasks: gated + server-stamped.
+                if (taskType === 'tasks' || taskType === 'tasks_for_all') {
+                    if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                    try {
+                        const body = {
+                            teamId: teamCtx.teamId,
+                            id: taskId,
+                            kind: taskType === 'tasks' ? 'assigned' : 'shared',
+                            description: updateData.description,
+                            dueDate: updateData.dueDate || ''
+                        };
+                        if (currentUserProfile.role === 'admin' && taskType !== 'tasks_for_all') {
+                            body.assigneeHandle = document.getElementById('edit-task-assignee').value;
+                        }
+                        await window.alignApi('/task/update', { method: 'POST', teamId: teamCtx.teamId, body });
+                        editTaskModal.classList.add('hidden');
+                    } catch (err) {
+                        alert('Could not save the task: ' + err.message);
+                    }
+                    return;
+                }
+
+                docRef = db.collection(`/artifacts/${appId}/public/data/${taskType}`).doc(taskId);
                 docRef.update(updateData).then(() => editTaskModal.classList.add('hidden'));
             });
 
@@ -4099,6 +4159,16 @@
                     </div>
                 </div>
                 <div id="pfTeams" style="margin-top:14px;"></div>
+                <div id="pfStaffAdmin" style="display:none;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:14px;">
+                    <div style="font-size:12.5px;font-weight:800;color:#1e1b4b;margin-bottom:4px;">🔑 Team logins</div>
+                    <div style="font-size:11px;color:#64748b;margin-bottom:8px;line-height:1.45;">Each person signs in with their <b>name</b> and this password — no email needed. Setting it here also creates their Firebase identity.</div>
+                    <div id="pfStaffList" style="max-height:250px;overflow:auto;display:flex;flex-direction:column;gap:6px;"></div>
+                    <div style="display:flex;gap:6px;margin-top:10px;">
+                        <input id="pfNewStaffName" placeholder="New member name" style="flex:1;min-width:0;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                        <input id="pfNewStaffPass" placeholder="Password" style="width:110px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                        <button id="pfAddStaff" style="padding:8px 12px;background:#1e1b4b;color:#fff;border:none;border-radius:8px;font-weight:800;font-size:12.5px;cursor:pointer;">Add</button>
+                    </div>
+                </div>
                 <div style="display:flex;gap:8px;margin-top:16px;">
                     <button id="pfSave" style="flex:1;padding:11px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:13.5px;cursor:pointer;">💾 Save profile</button>
                     <button id="pfLogout" style="padding:11px 14px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Log out</button>
@@ -4169,6 +4239,7 @@
         // ---------------------------------------------------------- gate UI
         let gateMode = 'login';
         let pendingTeams = [];
+        let confirmStaff = null;
 
         // Freeze the page behind the gate so the flow really is controlled:
         // no scrolling, no tabbing to hidden controls, no accidental clicks.
@@ -4195,7 +4266,9 @@
             if (mode === 'login') {
                 $('gateTitle').textContent = 'Sign in to AlignTasks';
                 $('gateSub').textContent = 'Enter your name and password — no email needed.';
+                $('gatePwLabel').style.display = 'block';
                 $('gatePwLabel').textContent = 'Your password';
+                $('gatePassword').style.display = '';
                 $('gatePassword').setAttribute('autocomplete', 'current-password');
                 $('gateNameWrap').style.display = 'block';
                 $('gateTeamWrap').style.display = 'none';
@@ -4203,10 +4276,25 @@
                 $('gateSubmit').style.background = '#2563eb';
                 $('gateSkip').style.display = 'none';            // identity cannot be skipped
                 $('gateHint').textContent = 'This step is required. Your personal tasks stay private to you.';
+            } else if (mode === 'confirm') {
+                const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
+                $('gateTitle').textContent = 'Confirm it is you';
+                $('gateSub').textContent = 'This device is still signed in as ' + nm + '.';
+                $('gatePwLabel').style.display = 'none';
+                $('gatePassword').style.display = 'none';
+                $('gateNameWrap').style.display = 'none';
+                $('gateTeamWrap').style.display = 'none';
+                $('gateSubmit').textContent = 'Continue as ' + nm;
+                $('gateSubmit').style.background = '#16a34a';
+                $('gateSkip').style.display = 'block';
+                $('gateSkip').textContent = 'Not you? Sign in as someone else';
+                $('gateHint').textContent = 'The team password is asked next, every time the app opens.';
             } else {
                 $('gateTitle').textContent = 'Unlock the team';
                 $('gateSub').textContent = 'Tasks are locked. Enter the TEAM password to create, complete or delete tasks.';
+                $('gatePwLabel').style.display = 'block';
                 $('gatePwLabel').textContent = 'Team password';
+                $('gatePassword').style.display = '';
                 $('gatePassword').setAttribute('autocomplete', 'off');
                 $('gateNameWrap').style.display = 'none';
                 $('gateTeamWrap').style.display = 'block';
@@ -4218,6 +4306,7 @@
                 $('gateSubmit').textContent = 'Unlock team';
                 $('gateSubmit').style.background = '#7c3aed';
                 $('gateSkip').style.display = 'block';           // read-only browsing is allowed
+                $('gateSkip').textContent = 'Browse read-only';
                 $('gateHint').textContent = 'Unlocking lasts 12 hours on this device.';
             }
             setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
@@ -4287,11 +4376,14 @@
                     const d = await completeLogin(name, pw);
                     $('gatePassword').value = '';
                     pendingTeams = await loadTeams();
-                    // If the current team is already unlocked this session, go straight in.
-                    const cur = (window.teamCtx && window.teamCtx.teamId) || '';
-                    if (cur && unlockFor(cur)) { hideGate(); return; }
                     if (pendingTeams.length) { showGate('unlock'); return; }
                     hideGate();
+                } else if (gateMode === 'confirm') {
+                    // Identity stays, but the team password is re-asked on every app open.
+                    pendingTeams = await loadTeams();
+                    if (pendingTeams.length) { showGate('unlock'); return; }
+                    hideGate();
+                    loadProfile();
                 } else {
                     const teamId = $('gateTeam').value;
                     const pw = $('gatePassword').value;
@@ -4312,11 +4404,23 @@
             }
         });
 
-        $('gateSkip').addEventListener('click', () => {
+        $('gateSkip').addEventListener('click', async () => {
             if (gateMode === 'login') {
                 $('gateError').textContent = 'Please sign in with your name and password to continue.';
                 $('gateError').style.display = 'block';
                 return;                            // identity gate can never be skipped
+            }
+            if (gateMode === 'confirm') {
+                // Hand the device to another team member.
+                setSession('');
+                confirmStaff = null;
+                try { localStorage.removeItem(UKEY); } catch (e) {}
+                try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
+                pendingTeams = [];
+                $('gateName').value = '';
+                $('gatePassword').value = '';
+                showGate('login');
+                return;
             }
             hideGate();                            // team gate: read-only browsing allowed
         });
@@ -4334,21 +4438,40 @@
         };
 
         // ---------------------------------------------------------- auto gate
-        // Wait until the app has a signed-in Firebase user, then require staff login.
+        // The staff gate is shown on EVERY app open, not just when the 12h token is
+        // missing: a valid session asks "Continue as <name>", otherwise name+password.
+        // The team unlock is deliberately dropped at boot so the team password is
+        // always required again on a fresh open (owner choice).
+        try { localStorage.removeItem(UKEY); } catch (e) {}
         let ticks = 0;
+        let earlyGate = false;
         const timer = setInterval(async () => {
             ticks++;
             if (ticks > 200) { clearInterval(timer); return; }
-            if (!window.currentUser) return;
+            if (!window.currentUser) {
+                // No Firebase session yet (e.g. a team member on a new device): after a short
+                // grace period let them sign in with name + password instead of waiting forever.
+                if (!earlyGate && ticks > 26 && $('alignGate').style.display !== 'block') {
+                    earlyGate = true;
+                    showGate('login');
+                }
+                return;
+            }
             clearInterval(timer);
-            if (!getSession()) { showGate('login'); return; }
-            try {
-                const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': getSession() } });
-                if (!r.ok) { setSession(''); showGate('login'); return; }
-                const cur = (window.teamCtx && window.teamCtx.teamId) || '';
-                if (!cur || !unlockFor(cur)) { pendingTeams = await loadTeams(); showGate('unlock'); }
+            confirmStaff = null;
+            if (getSession()) {
+                try {
+                    const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': getSession() } });
+                    if (r.ok) { const d = await r.json(); confirmStaff = d.staff || null; }
+                } catch (e) { /* offline: fall through to the full login */ }
+            }
+            if (confirmStaff) {
                 loadProfile();
-            } catch (e) { showGate('login'); }
+                showGate('confirm');
+            } else {
+                setSession('');
+                showGate('login');
+            }
         }, 300);
 
         // ---------------------------------------------------------- profile chip
@@ -4406,7 +4529,83 @@
                   teams.map(t => '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;">' + t + '</span>').join('')
                 : '<div style="font-size:11px;color:#94a3b8;">No teams assigned yet — ask the owner.</div>';
             pfMsg('', true);
+            if (p.role === 'owner' || p.role === 'admin') {
+                $('pfStaffAdmin').style.display = 'block';
+                loadStaffAdmin().catch(() => {});
+            } else {
+                $('pfStaffAdmin').style.display = 'none';
+            }
         }
+
+        // -------- owner: team logins (name + password accounts) --------
+        let staffAdminList = [];
+        async function loadStaffAdmin() {
+            const d = await api('/team/staff');
+            const list = d.staff || [];
+            staffAdminList = list;
+            const box = $('pfStaffList');
+            if (!list.length) { box.innerHTML = '<div style="font-size:11.5px;color:#94a3b8;">No logins yet.</div>'; return; }
+            box.innerHTML = list.map(s => {
+                const badge = s.hasPassword
+                    ? '<span style="color:#15803d;font-weight:700;">password set</span>'
+                    : '<span style="color:#b45309;font-weight:700;">no password</span>';
+                const off = s.active === false ? ' <span style="color:#b91c1c;font-weight:700;">· disabled</span>' : '';
+                return '<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px;">' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<div style="font-size:12.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (s.name || s.handle) + (s.role === 'owner' ? ' 👑' : '') + off + '</div>' +
+                        '<div style="font-size:10.5px;color:#64748b;">@' + s.handle + ' · ' + s.role + ' · ' + badge + '</div>' +
+                    '</div>' +
+                    '<button data-staff-pass="' + s.handle + '" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔑</button>' +
+                    '<button data-staff-toggle="' + s.handle + '" data-staff-active="' + (s.active !== false) + '" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">' + (s.active === false ? '✅' : '⛔') + '</button>' +
+                    (s.role === 'owner' ? '' : '<button data-staff-del="' + s.handle + '" style="padding:5px 8px;background:#fff;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;color:#b91c1c;cursor:pointer;">🗑</button>') +
+                '</div>';
+            }).join('');
+        }
+
+        $('pfStaffList').addEventListener('click', async (e) => {
+            const passBtn = e.target.closest('[data-staff-pass]');
+            const togBtn = e.target.closest('[data-staff-toggle]');
+            const delBtn = e.target.closest('[data-staff-del]');
+            const findStaff = (h) => staffAdminList.find(x => x.handle === h) || { handle: h, name: h };
+            try {
+                if (passBtn) {
+                    const h = passBtn.dataset.staffPass;
+                    const pw = prompt('New password for ' + h + ' (min 6 characters):');
+                    if (!pw) return;
+                    if (pw.length < 6) { pfMsg('Password must be at least 6 characters.', false); return; }
+                    const s = findStaff(h);
+                    await api('/team/staff', { method: 'POST', body: { handle: h, name: s.name || h, password: pw, role: s.role, active: s.active !== false } });
+                    pfMsg('✅ Password updated for ' + (s.name || h) + '.', true);
+                    await loadStaffAdmin();
+                } else if (togBtn) {
+                    const h = togBtn.dataset.staffToggle;
+                    const makeActive = togBtn.dataset.staffActive !== 'true';
+                    const s = findStaff(h);
+                    await api('/team/staff', { method: 'POST', body: { handle: h, name: s.name || h, role: s.role, active: makeActive } });
+                    pfMsg(makeActive ? '✅ ' + (s.name || h) + ' can sign in again.' : '⛔ ' + (s.name || h) + ' is disabled.', true);
+                    await loadStaffAdmin();
+                } else if (delBtn) {
+                    const h = delBtn.dataset.staffDel;
+                    if (!confirm('Remove the login for ' + h + '? Their tasks stay, but they will not be able to sign in.')) return;
+                    await api('/team/staff/' + encodeURIComponent(h), { method: 'DELETE' });
+                    pfMsg('🗑 Login removed for ' + h + '.', true);
+                    await loadStaffAdmin();
+                }
+            } catch (err) { pfMsg('❌ ' + err.message, false); }
+        });
+
+        $('pfAddStaff').addEventListener('click', async () => {
+            const nm = $('pfNewStaffName').value.trim();
+            const pw = $('pfNewStaffPass').value;
+            if (!nm || !pw) { pfMsg('Enter a name and a password (min 6).', false); return; }
+            if (pw.length < 6) { pfMsg('Password must be at least 6 characters.', false); return; }
+            try {
+                await api('/team/staff', { method: 'POST', body: { name: nm, handle: nm, password: pw, role: 'member' } });
+                $('pfNewStaffName').value = ''; $('pfNewStaffPass').value = '';
+                pfMsg('✅ ' + nm + ' can now sign in with that name and password.', true);
+                await loadStaffAdmin();
+            } catch (err) { pfMsg('❌ ' + err.message, false); }
+        });
 
         function closeProfile() { $('alignProfile').style.display = 'none'; }
 
