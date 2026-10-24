@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.2 - comments are a full-screen chat: tiny author names, bubbles with your own replies on the right, pinned composer, newest message always in view."
+val releaseNotes = "2.3 - WhatsApp contacts: send a task reminder to any individual contact (favourites first, searchable list, star to save). The server now publishes a contacts index too."
 
 android {
     namespace = "com.assigntask.app"
@@ -35,8 +35,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "2.2"
+        versionCode = 11
+        versionName = "2.3"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

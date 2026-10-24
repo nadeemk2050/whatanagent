@@ -2514,6 +2514,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
     var showQuickReminderConfirm by remember(task.id) { mutableStateOf(false) }
     var showReminderRepliesDialog by remember(task.id) { mutableStateOf(false) }
     var showWaTargetsPicker by remember(task.id) { mutableStateOf(false) }
+    var showWaContacts by remember(task.id) { mutableStateOf(false) }
     var swipeOffsetPx by remember(task.id) { mutableFloatStateOf(0f) }
     var showInfoSheet by remember(task.id) { mutableStateOf(false) }
     val maxSwipePx = with(density) { 156.dp.toPx() }
@@ -2644,6 +2645,11 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                     Icon(Icons.Default.Send, "WhatsApp Reminder", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF25D366))
                 }
 
+                // 📇 individual WhatsApp contacts (favourites + search), same as the web picker
+                IconButton(onClick = { showWaContacts = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Contacts, "WhatsApp contacts", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF0E7490))
+                }
+
                 // 2.0: send from the member's own WhatsApp — no server session involved
                 IconButton(onClick = {
                     val text = buildString {
@@ -2696,6 +2702,10 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 sendAlignWhatsAppReminder(waDialogContext, task, selected)
             }
         )
+    }
+
+    if (showWaContacts) {
+        WhatsAppContactsDialog(task = task, onDismiss = { showWaContacts = false })
     }
 
     if (showWaTargetsPicker) {
@@ -2852,6 +2862,124 @@ fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task, targ
         .addOnFailureListener { e ->
             Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
         }
+}
+
+// 📇 Send a task reminder to any individual WhatsApp contact (favourites + searchable list).
+// Reads the shared index the server keeps fresh, so no team session is needed on the phone.
+@Composable
+fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var allContacts by remember { mutableStateOf(listOf<Triple<String, String, String>>()) } // name, phone, jid
+    var favorites by remember { mutableStateOf(setOf<String>()) }                            // keys that are starred
+    var loading by remember { mutableStateOf(true) }
+    var query by remember { mutableStateOf("") }
+    val selected = remember { mutableStateMapOf<String, Boolean>() }
+
+    fun key(c: Triple<String, String, String>) = c.second.ifBlank { c.third }
+
+    fun loadFavorites() {
+        FirebaseFirestore.getInstance().collection("alignWaGroupFavorites").limit(80).get()
+            .addOnSuccessListener { snap ->
+                favorites = snap.documents.mapNotNull { d ->
+                    val v = d.data ?: return@mapNotNull null
+                    if ((v["type"] as? String) != "contact") return@mapNotNull null
+                    (v["phone"] as? String)?.takeIf { it.isNotBlank() } ?: (v["jid"] as? String) ?: d.id
+                }.toSet()
+            }
+    }
+
+    fun loadContacts() {
+        loading = true
+        FirebaseFirestore.getInstance().document("appData/alignWaGroupsIndex").get()
+            .addOnSuccessListener { snap ->
+                val raw = snap.data?.get("contacts") as? List<*>
+                allContacts = (raw ?: emptyList()).mapNotNull { item ->
+                    val m = item as? Map<*, *> ?: return@mapNotNull null
+                    val name = (m["name"] as? String) ?: ""
+                    val phone = (m["phone"] as? String) ?: ""
+                    val jid = (m["jid"] as? String) ?: ""
+                    if (name.isBlank() && phone.isBlank() && jid.isBlank()) null else Triple(name, phone, jid)
+                }
+                loading = false
+            }
+            .addOnFailureListener { loading = false }
+    }
+
+    LaunchedEffect(Unit) { loadFavorites(); loadContacts() }
+
+    val shown = remember(allContacts, query, favorites) {
+        val q = query.trim().lowercase()
+        val list = allContacts.filter { c ->
+            q.isBlank() || c.first.lowercase().contains(q) || c.second.contains(q)
+        }
+        list.sortedByDescending { favorites.contains(key(it)) }.take(300)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("📇 WhatsApp contacts", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                IconButton(onClick = { loadContacts(); loadFavorites() }) { Icon(Icons.Default.Refresh, "Refresh") }
+            }
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it },
+                    placeholder = { Text("Search ${allContacts.size} contacts") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
+                Spacer(Modifier.height(6.dp))
+                if (loading) {
+                    Text("Loading contacts…", style = MaterialTheme.typography.bodySmall)
+                } else if (shown.isEmpty()) {
+                    Text("No contact matches.", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    Column(modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                        shown.forEach { c ->
+                            val k = key(c)
+                            val starred = favorites.contains(k)
+                            Row(modifier = Modifier.fillMaxWidth().clickable { selected[k] = !(selected[k] ?: false) },
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = selected[k] ?: false, onCheckedChange = { v -> selected[k] = v })
+                                Text(c.first.ifBlank { k }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                IconButton(onClick = {
+                                    val ref = FirebaseFirestore.getInstance().collection("alignWaGroupFavorites").document(k.replace("/", "_"))
+                                    if (starred) ref.delete() else ref.set(
+                                        mapOf("type" to "contact", "name" to c.first, "phone" to c.second, "jid" to c.third,
+                                            "savedAt" to System.currentTimeMillis(), "savedBy" to (FirebaseAuth.getInstance().currentUser?.email ?: ""))
+                                    ).addOnSuccessListener { loadFavorites() }
+                                }) { Text(if (starred) "⭐" else "☆", fontSize = 16.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val picked = shown.filter { selected[key(it)] == true }
+                if (picked.isEmpty()) { onDismiss(); return@Button }
+                val db = FirebaseFirestore.getInstance()
+                picked.forEach { c ->
+                    val target = c.second.ifBlank { c.third }
+                    val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
+                        (if (!task.dueDate.isNullOrBlank()) "\n🗓️ Due: " + task.dueDate else "") +
+                        "\n\nPlease check and update the board when done."
+                    db.collection("alignWaQueue").add(mapOf(
+                        "target" to target, "targetType" to "contact", "message" to msg,
+                        "taskId" to task.id, "taskTitle" to task.description.take(80),
+                        "toName" to c.first, "status" to "pending",
+                        "source" to "aligntasks-android", "createdAt" to System.currentTimeMillis()
+                    ))
+                }
+                Toast.makeText(context, "✅ Queued for ${picked.size} contact(s)", Toast.LENGTH_SHORT).show()
+                onDismiss()
+            }) { Text("Send") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

@@ -1248,7 +1248,20 @@ export async function refreshWaGroupsIndex(force = false) {
     }
     if (!groups.length) return 0;   // never clobber a good index with an empty one
     groups.sort((a, b) => a.name.localeCompare(b.name));
-    await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, updatedAt: Date.now() }, { merge: true });
+    // Individual contacts too, so the Android app can offer them without a team session.
+    const contacts = [];
+    for (const chat of waWebState.chats.values()) {
+      if (!chat || chat.isGroup) continue;
+      const id = String(chat.id || '');
+      if (!id || /@(g\.us|broadcast|newsletter)$/i.test(id)) continue;
+      const phone = String(chat.realPhone || chat.phone || '').replace(/[^0-9]/g, '');
+      const name = String(chat.name || '').trim() || (phone ? '+' + phone : '');
+      if (!name || !(phone || /@/.test(id))) continue;
+      contacts.push({ name, jid: id, phone });
+      if (contacts.length >= 3000) break;
+    }
+    contacts.sort((a, b) => a.name.localeCompare(b.name));
+    await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, contacts, contactCount: contacts.length, updatedAt: Date.now() }, { merge: true });
     lastGroupsIndexAt = Date.now();
     console.log('[ALIGN WA] 📢 Groups index updated: ' + groups.length + ' WhatsApp groups available for reminders');
     return groups.length;
@@ -1290,9 +1303,21 @@ export async function fetchWaGroupsLive(force = false) {
   if (groups.length && fp !== waGroupsFingerprint && globalDb) {
     waGroupsFingerprint = fp;
     try {
-      await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, updatedAt: Date.now() }, { merge: true });
+      const contacts = [];
+      for (const chat of waWebState.chats.values()) {
+        if (!chat || chat.isGroup) continue;
+        const id = String(chat.id || '');
+        if (!id || /@(g\.us|broadcast|newsletter)$/i.test(id)) continue;
+        const phone = String(chat.realPhone || chat.phone || '').replace(/[^0-9]/g, '');
+        const name = String(chat.name || '').trim() || (phone ? '+' + phone : '');
+        if (!name || !(phone || /@/.test(id))) continue;
+        contacts.push({ name, jid: id, phone });
+        if (contacts.length >= 3000) break;
+      }
+      contacts.sort((a, b) => a.name.localeCompare(b.name));
+      await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, contacts, contactCount: contacts.length, updatedAt: Date.now() }, { merge: true });
       lastGroupsIndexAt = Date.now();
-      console.log('[ALIGN WA] 📢 Groups index refreshed automatically: ' + groups.length + ' groups');
+      console.log('[ALIGN WA] 📢 Groups index refreshed automatically: ' + groups.length + ' groups, ' + contacts.length + ' contacts');
     } catch (e) { /* the index is only a cache for other screens */ }
   }
   return groups;
