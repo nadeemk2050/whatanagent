@@ -3622,6 +3622,12 @@
                                 }
 
                                 if (!teamCtx.teamId) await bootstrapTeams(user);
+                                if (!teamCtx.teamId) {
+                                    appError.textContent = 'You are not in a team yet, so there is nothing to show. Ask an owner to add you to their team.';
+                                    appError.classList.remove('hidden');
+                                } else {
+                                    appError.classList.add('hidden');
+                                }
                                 showMainSection('tasks-page');
                             }
                         } else {

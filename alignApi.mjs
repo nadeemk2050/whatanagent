@@ -137,16 +137,48 @@ async function ensureBoardUser(rec) {
   if (!rec || !rec.uid) return;
   try {
     const ref = alignDb().collection(`${ALIGN_BASE}/users`).doc(rec.uid);
+    const email = String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase();
+    const snap = await ref.get();
+    const existing = snap.exists ? (snap.data() || {}) : {};
+
+    // Team membership must never be wiped: fall back to what the board already knows,
+    // then to the board staff directory (which carries the team of a newly added member).
+    let teamIds = Array.isArray(rec.teamIds) && rec.teamIds.length ? rec.teamIds.slice() : [];
+    if (!teamIds.length && Array.isArray(existing.teamIds) && existing.teamIds.length) {
+      teamIds = existing.teamIds.slice();
+    }
+    if (!teamIds.length) {
+      try {
+        const staffCol = alignDb().collection(`${ALIGN_BASE}/staff`);
+        const found = await staffCol.where('email', '==', email).get();
+        let hit = found.docs.find(d => String((d.data() || {}).teamId || ''));
+        if (!hit) {
+          const byHandle = await staffCol.get();
+          hit = byHandle.docs.find(d => {
+            const v = d.data() || {};
+            return String(v.handle || v.name || '').toLowerCase() === String(rec.handle || '').toLowerCase() && v.teamId;
+          });
+        }
+        const teamId = hit ? String((hit.data() || {}).teamId || '') : '';
+        if (teamId) teamIds = [teamId];
+      } catch (e) { /* directory may be unavailable */ }
+    }
+
     const data = {
       name: rec.name || rec.handle,
-      email: String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase(),
+      email,
       // The board UI enables its management screens for role 'admin', so an AlignTasks
       // owner/admin must land there too (a member maps to 'user').
       role: (rec.role === 'owner' || rec.role === 'admin') ? 'admin' : 'user',
-      teamIds: rec.teamIds || [],
+      teamIds,
       active: rec.active !== false
     };
-    const snap = await ref.get();
+    if (teamIds.length) {
+      data.defaultTeamId = existing.defaultTeamId && teamIds.includes(existing.defaultTeamId) ? existing.defaultTeamId : teamIds[0];
+      const roles = Object.assign({}, existing.teamRoles || {});
+      teamIds.forEach(id => { if (!roles[id]) roles[id] = (rec.role === 'owner' ? 'owner' : 'member'); });
+      data.teamRoles = roles;
+    }
     await ref.set(snap.exists ? data : Object.assign({ createdAt: new Date() }, data), { merge: true });
   } catch (e) {
     console.warn('[ALIGN] users doc sync skipped: ' + sstr(e.message, 120));
@@ -405,10 +437,25 @@ export function registerAlignRoutes(app) {
         console.warn('[ALIGN] Firebase user step skipped: ' + sstr(e.message, 140));
       }
 
+      // A new login must land in a team, otherwise Firestore shows them nothing.
+      let teamIds = Array.isArray(b.teamIds) && b.teamIds.length ? b.teamIds : undefined;
+      if (!teamIds && req.staff && req.staff.uid) {
+        try {
+          const myRec = getStaffByUid(req.staff.uid);
+          if (myRec && Array.isArray(myRec.teamIds) && myRec.teamIds.length) {
+            teamIds = myRec.teamIds.slice();
+          } else {
+            const u = await alignDb().doc(`${ALIGN_BASE}/users/${req.staff.uid}`).get();
+            const t = u.exists ? (u.data() || {}).teamIds : null;
+            if (Array.isArray(t) && t.length) teamIds = t.slice();
+          }
+        } catch (e) { /* ignore — stays without teams */ }
+      }
+
       const saved = upsertStaff({
         handle, name, password, uid,
         role: b.role,
-        teamIds: Array.isArray(b.teamIds) ? b.teamIds : undefined,
+        teamIds,
         active: b.active,
         aliases: Array.isArray(b.aliases) ? b.aliases : undefined
       });
