@@ -7,8 +7,8 @@ Everything below is implemented and verified against production unless marked TO
 | Layer | Who needs it | What it proves | Lasts |
 |---|---|---|---|
 | **Firebase sign-in** | Owner (email + password) | Account ownership | Firebase default |
-| **Staff gate** - name + password | Every staff member | *Who* you are (no email, no phone) | **12 hours** |
-| **Team gate** - team password | Everyone, **including the owner**, before any task write | You may act on this team's board | **12 hours** |
+| **Staff gate** - name + password | Every staff member, **on every app open** | *Who* you are (no email, no phone) | 12 h token, but the page is shown each load |
+| **Team gate** - team password | Everyone, **including the owner**, before any task write | You may act on this team's board | 12 h token, asked again on every app open |
 
 Staff are identified by a **name handle** (`ali khan`), not an email. Each staff
 member still has one hidden synthetic Firebase identity
@@ -18,6 +18,17 @@ the person never sees or types it.
 Members migrated from the old board keep their real Firebase uid and their old
 email as an **alias**, so `assigneeEmail` values written before the migration
 still resolve to the right person.
+
+### Gate behaviour on load
+
+- Valid 12 h staff token -> "Confirm it is you - Continue as <name>" (one tap),
+  plus "Not you? Sign in as someone else" to hand the device over.
+- No token -> full "Sign in to AlignTasks" (name + password).
+- A team member on a brand-new device reaches the same form after ~8 s even
+  without a Firebase session; the login returns a custom token, so their Firebase
+  identity is created on the spot (`users/<uid>` is synced by the server).
+- The stored team unlock is cleared at boot, so the team password is always asked
+  again on a fresh open.
 
 ## 2. What the owner can do without the team password
 
