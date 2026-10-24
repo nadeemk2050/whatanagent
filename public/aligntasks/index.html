@@ -4064,9 +4064,11 @@
          Layered on top so no existing logic is modified.
          ================================================================ -->
     <div id="alignGate" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.92);z-index:99999;overflow:auto;padding:20px;">
-        <div style="max-width:420px;margin:6vh auto;background:#fff;border-radius:18px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+        <div style="max-width:420px;margin:6vh auto;background:#fff;border-radius:18px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;position:relative;">
+            <button id="gateClose" type="button" title="Close and browse read-only (no task create or edit)"
+                    style="position:absolute;top:12px;right:12px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;color:#475569;border:none;border-radius:9999px;font-size:15px;font-weight:800;cursor:pointer;line-height:1;">✖</button>
             <div style="font-size:40px;text-align:center;line-height:1;">🔐</div>
-            <h2 id="gateTitle" style="text-align:center;font-size:19px;font-weight:800;color:#0f172a;margin:10px 0 4px;">Sign in to AlignTasks</h2>
+            <h2 id="gateTitle" style="text-align:center;font-size:19px;font-weight:800;color:#0f172a;margin:10px 0 4px;">Team Login</h2>
             <p id="gateSub" style="text-align:center;font-size:12.5px;color:#64748b;margin:0 0 18px;line-height:1.5;">Enter your name and password — no email needed.</p>
 
             <div id="gateError" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:12.5px;padding:9px 11px;border-radius:10px;margin-bottom:12px;"></div>
@@ -4080,8 +4082,16 @@
 
                 <div id="gateTeamWrap" style="display:none;">
                     <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Team</label>
-                    <select id="gateTeam"
-                            style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;"></select>
+                    <!-- Custom dropdown: a native <select> popup can paint behind the modal card. -->
+                    <input type="hidden" id="gateTeam" value="">
+                    <div style="position:relative;margin-bottom:12px;">
+                        <button id="gateTeamBtn" type="button"
+                                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#0f172a;text-align:left;cursor:pointer;box-sizing:border-box;">
+                            <span id="gateTeamLabel">Choose a team</span><span style="color:#64748b;">▾</span>
+                        </button>
+                        <div id="gateTeamList"
+                             style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 18px 40px rgba(15,23,42,.22);max-height:230px;overflow:auto;z-index:20;"></div>
+                    </div>
                 </div>
 
                 <label id="gatePwLabel" style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your password</label>
@@ -4250,6 +4260,7 @@
         let gateMode = 'login';
         let pendingTeams = [];
         let confirmStaff = null;
+        let gateTeamId = '';
 
         // Freeze the page behind the gate so the flow really is controlled:
         // no scrolling, no tabbing to hidden controls, no accidental clicks.
@@ -4267,14 +4278,96 @@
             document.body.style.pointerEvents = '';
         }
 
+        // The team picker is a custom dropdown inside the card (a native <select> popup can
+        // render behind the modal) and it loads the teams itself, so it is never empty.
+        function renderTeamOptions(loadIfEmpty) {
+            const listEl = $('gateTeamList');
+            const labelEl = $('gateTeamLabel');
+            if (!pendingTeams.length) {
+                $('gateTeam').value = '';
+                labelEl.textContent = 'Loading teams…';
+                listEl.innerHTML = '<div style="padding:11px 13px;font-size:12.5px;color:#94a3b8;">Loading teams…</div>';
+                if (loadIfEmpty !== false) {
+                    loadTeams().then(list => {
+                        pendingTeams = list;
+                        if (gateMode === 'unlock') renderTeamOptions(false);
+                    }).catch(() => {
+                        labelEl.textContent = 'Could not load teams';
+                        listEl.innerHTML = '<div style="padding:11px 13px;font-size:12.5px;color:#b91c1c;">Could not load teams. Check your connection and try again.</div>';
+                    });
+                }
+                return;
+            }
+            const curTeam = (window.teamCtx && window.teamCtx.teamId) || '';
+            if (!gateTeamId || !pendingTeams.some(t => t.id === gateTeamId)) {
+                const withPw = pendingTeams.find(t => t.hasPassword);
+                gateTeamId = (curTeam && pendingTeams.some(t => t.id === curTeam)) ? curTeam : (withPw ? withPw.id : pendingTeams[0].id);
+            }
+            $('gateTeam').value = gateTeamId;
+            const chosen = pendingTeams.find(t => t.id === gateTeamId) || {};
+            labelEl.textContent = (chosen.name || chosen.id || 'Choose a team') + (chosen.hasPassword === false ? ' (no password set)' : '');
+            listEl.innerHTML = pendingTeams.map(t =>
+                '<button type="button" data-team="' + t.id + '" style="display:block;width:100%;text-align:left;padding:11px 13px;border:none;border-bottom:1px solid #f1f5f9;background:' + (t.id === gateTeamId ? '#eef2ff' : '#fff') + ';font-size:13.5px;font-weight:600;color:#1e293b;cursor:pointer;">' +
+                    (t.name || t.id) +
+                    (t.hasPassword === false ? ' <span style="color:#b45309;font-weight:700;font-size:11px;">(no password set)</span>' : '') +
+                '</button>'
+            ).join('');
+        }
+
+        $('gateTeamBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const listEl = $('gateTeamList');
+            const open = listEl.style.display !== 'block';
+            listEl.style.display = open ? 'block' : 'none';
+            if (open && !pendingTeams.length) renderTeamOptions(true);
+        });
+        $('gateTeamList').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-team]');
+            if (!b) return;
+            e.stopPropagation();
+            gateTeamId = b.dataset.team;
+            $('gateTeamList').style.display = 'none';
+            renderTeamOptions(false);
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#gateTeamBtn') && !e.target.closest('#gateTeamList')) {
+                const listEl = $('gateTeamList');
+                if (listEl) listEl.style.display = 'none';
+            }
+        });
+
+        // Read-only mode: the gate can be dismissed, but every task write still needs the
+        // staff session + team password, so nothing can be created or edited without it.
+        function enterReadOnly() {
+            hideGate(false);
+            let b = document.getElementById('alignReadOnly');
+            if (b) return;
+            b = document.createElement('div');
+            b.id = 'alignReadOnly';
+            b.style.cssText = 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:9998;background:#0f172a;color:#fff;padding:9px 12px;border-radius:12px;font-size:12px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.32);font-family:system-ui,-apple-system,sans-serif;max-width:92vw;';
+            b.innerHTML = '<span>👁 Read-only — sign in to create or edit tasks</span>' +
+                '<button id="alignReadOnlySignIn" type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Sign in</button>';
+            document.body.appendChild(b);
+            document.getElementById('alignReadOnlySignIn').onclick = () => {
+                b.remove();
+                if (window.firebase && firebase.auth) firebase.auth().signOut().catch(() => {});
+                showGate(getSession() ? 'confirm' : 'login');
+            };
+        }
+        function exitReadOnly() {
+            const b = document.getElementById('alignReadOnly');
+            if (b) b.remove();
+        }
+
         function showGate(mode) {
             gateMode = mode;
             $('alignGate').style.display = 'block';
+            $('gateTeamList').style.display = 'none';
             freeze();
             const er = $('gateError'); er.style.display = 'none'; er.textContent = '';
 
             if (mode === 'login') {
-                $('gateTitle').textContent = 'Sign in to AlignTasks';
+                $('gateTitle').textContent = 'Team Login';
                 $('gateSub').textContent = 'Enter your name and password — no email needed.';
                 $('gatePwLabel').style.display = 'block';
                 $('gatePwLabel').textContent = 'Your password';
@@ -4284,8 +4377,9 @@
                 $('gateTeamWrap').style.display = 'none';
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#2563eb';
-                $('gateSkip').style.display = 'none';            // identity cannot be skipped
-                $('gateHint').textContent = 'This step is required. Your personal tasks stay private to you.';
+                $('gateSkip').style.display = 'block';
+                $('gateSkip').textContent = 'Continue as admin (read-only — no task create or edit)';
+                $('gateHint').textContent = 'Your name and password are needed to create or edit tasks. Your personal tasks stay private to you.';
             } else if (mode === 'confirm') {
                 const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
                 $('gateTitle').textContent = 'Confirm it is you';
@@ -4308,28 +4402,21 @@
                 $('gatePassword').setAttribute('autocomplete', 'off');
                 $('gateNameWrap').style.display = 'none';
                 $('gateTeamWrap').style.display = 'block';
-                const sel = $('gateTeam');
-                sel.innerHTML = pendingTeams.map(t =>
-                    '<option value="' + t.id + '">' + (t.name || t.id) + (t.hasPassword ? '' : ' (no password set)') + '</option>'
-                ).join('');
-                // Preselect the team the app is showing, else the first one that actually has
-                // a password (a passwordless team would just bounce the user).
-                const curTeam = (window.teamCtx && window.teamCtx.teamId) || '';
-                const withPw = pendingTeams.find(t => t.hasPassword);
-                if (curTeam && pendingTeams.some(t => t.id === curTeam)) sel.value = curTeam;
-                else if (withPw) sel.value = withPw.id;
+                renderTeamOptions(true);
                 $('gateSubmit').textContent = 'Unlock team';
                 $('gateSubmit').style.background = '#7c3aed';
                 $('gateSkip').style.display = 'block';           // read-only browsing is allowed
-                $('gateSkip').textContent = 'Browse read-only';
-                $('gateHint').textContent = 'Unlocking lasts 12 hours on this device.';
+                $('gateSkip').textContent = 'Continue as admin (read-only — no task create or edit)';
+                $('gateHint').textContent = 'Click ✖ to close and browse without creating or editing tasks.';
             }
             setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
         }
 
-        function hideGate() {
+        function hideGate(keepReadOnly) {
             $('alignGate').style.display = 'none';
+            $('gateTeamList').style.display = 'none';
             unfreeze();
+            if (keepReadOnly !== false) exitReadOnly();
         }
 
         // Block Escape and any attempt to dismiss the identity gate.
@@ -4342,7 +4429,7 @@
         $('alignGate').addEventListener('click', (e) => {
             if (e.target === $('alignGate') && gateMode === 'login') {
                 e.stopPropagation();
-                $('gateError').textContent = 'Please sign in to continue.';
+                $('gateError').textContent = 'Sign in to create or edit tasks, or press ✖ to browse read-only.';
                 $('gateError').style.display = 'block';
             }
         });
@@ -4422,9 +4509,8 @@
 
         $('gateSkip').addEventListener('click', async () => {
             if (gateMode === 'login') {
-                $('gateError').textContent = 'Please sign in with your name and password to continue.';
-                $('gateError').style.display = 'block';
-                return;                            // identity gate can never be skipped
+                enterReadOnly();                   // admin / browse mode: no task create or edit
+                return;
             }
             if (gateMode === 'confirm') {
                 // Hand the device to another team member.
@@ -4434,12 +4520,19 @@
                 try { localStorage.removeItem(UKEY); } catch (e) {}
                 try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
                 pendingTeams = [];
+                gateTeamId = '';
                 $('gateName').value = '';
                 $('gatePassword').value = '';
                 showGate('login');
                 return;
             }
-            hideGate();                            // team gate: read-only browsing allowed
+            enterReadOnly();                       // team gate: read-only browsing is allowed
+        });
+
+        $('gateClose').addEventListener('click', (e) => {
+            e.stopPropagation();
+            $('gateTeamList').style.display = 'none';
+            enterReadOnly();
         });
 
         // ---------------------------------------------------------- expose helpers
