@@ -15,6 +15,12 @@ data class Task(
     val completedAt: Any? = null,
     val lastUpdatedBy: String? = null,
     val lastUpdatedAt: Any? = null,
+    // Server-written "who edited what" stamps (a comment never sets these)
+    val updatedByName: String = "",
+    val editedByName: String = "",
+    val editedAt: Any? = null,
+    val editedFields: List<String> = emptyList(),
+    val assigneeName: String = "",
     val repeat: Map<String, Any>? = null,
     val allDay: Boolean = false,
     val alarmEnabled: Boolean = false,

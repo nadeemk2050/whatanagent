@@ -74,6 +74,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.ModalBottomSheet
 
 private const val WEB_APP_ID = "1:410197132578:web:97cfc3ae33f39ed3df917b"
 private const val REMINDER_BASE = "/artifacts/$WEB_APP_ID/public/data"
@@ -2511,6 +2513,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
     var showReminderRepliesDialog by remember(task.id) { mutableStateOf(false) }
     var showWaTargetsPicker by remember(task.id) { mutableStateOf(false) }
     var swipeOffsetPx by remember(task.id) { mutableFloatStateOf(0f) }
+    var showInfoSheet by remember(task.id) { mutableStateOf(false) }
     val maxSwipePx = with(density) { 156.dp.toPx() }
 
     fun startSenderRinging(callId: String?, selectedRecipients: List<String>) {
@@ -2538,7 +2541,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 Spacer(Modifier.width(4.dp))
                 Text("Edit")
             }
-            if (isAdmin) {
+            if (true) {   // delete is open to every member — the password is the gate ("anything with abcd")
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
@@ -2600,15 +2603,31 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                         style = MaterialTheme.typography.labelSmall,
                         color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
-                if (task.createdBy.isNotEmpty()) {
-                    Text("By ${task.createdBy.substringBefore('@')}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(0.45f))
-                }
-                if (isDone && !task.completedBy.isNullOrEmpty()) {
-                    Text("Done by ${task.completedBy!!.substringBefore('@')}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(0.45f))
+                if (task.createdBy.isNotEmpty() || task.editedByName.isNotBlank() || (isDone && !task.completedBy.isNullOrEmpty())) {
+                    // One tiny line + ⓘ: all the stamps live in the sheet (same as the web board)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val metaBits = buildList {
+                            if (task.createdBy.isNotEmpty()) add("🖊 " + task.createdBy.substringBefore('@'))
+                            val editedBy = task.editedByName.ifBlank { task.updatedByName }
+                            if (editedBy.isNotBlank()) add("✏️ " + editedBy.substringBefore('@'))
+                            if (isDone && !task.completedBy.isNullOrEmpty()) add("✅ " + task.completedBy!!.substringBefore('@'))
+                        }
+                        Text(
+                            text = metaBits.joinToString("   "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.45f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        IconButton(onClick = { showInfoSheet = true }, modifier = Modifier.size(24.dp)) {
+                            Icon(
+                                Icons.Default.Info, "Task details",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurface.copy(0.38f)
+                            )
+                        }
+                    }
                 }
             }
             val waReminderContext = LocalContext.current
@@ -2645,6 +2664,12 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                     Icon(Icons.Default.Groups, "Reminder Replies", modifier = Modifier.size(18.dp))
                 }
             }
+        }
+    }
+
+    if (showInfoSheet) {
+        ModalBottomSheet(onDismissRequest = { showInfoSheet = false }) {
+            TaskDetailsSheet(task = task, isDone = isDone)
         }
     }
 
@@ -2711,6 +2736,51 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
         )
     }
 
+}
+
+// Everything about a task in one place — same content as the ⓘ tooltip on the web board.
+@Composable
+fun TaskDetailsSheet(task: Task, isDone: Boolean) {
+    val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
+    fun stampText(v: Any?): String = when (v) {
+        null -> ""
+        is com.google.firebase.Timestamp -> sdf.format(v.toDate())
+        is Date -> sdf.format(v)
+        is Long -> sdf.format(Date(v))
+        is String -> v
+        else -> ""
+    }
+    fun row(label: String, value: String) {
+        if (value.isBlank()) return
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(0.55f),
+                modifier = Modifier.width(96.dp))
+            Text(value, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text(
+            text = task.description.ifBlank { "Task" },
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+        )
+        Spacer(Modifier.height(4.dp))
+        row("👥 Assigned", task.assigneeName.ifBlank { task.assigneeEmail.substringBefore('@') }.ifBlank { "Anyone can do it" })
+        row("🗓 Due", task.dueDate?.let { formatDueDate(it) } ?: "")
+        row("🖊 Created", listOf(task.createdBy.substringBefore('@'), stampText(task.createdAt)).filter { it.isNotBlank() }.joinToString(" · "))
+        val editedBy = task.editedByName.ifBlank { task.updatedByName }
+        if (editedBy.isNotBlank()) {
+            val what = if (task.editedFields.isNotEmpty()) " (" + task.editedFields.joinToString(", ") + ")" else ""
+            row("✏️ Edited", listOf(editedBy.substringBefore('@'), stampText(task.editedAt ?: task.lastUpdatedAt)).filter { it.isNotBlank() }.joinToString(" · ") + what)
+        }
+        if (isDone) {
+            row("✅ Finished", listOf(task.completedBy?.substringBefore('@') ?: "", stampText(task.completedAt)).filter { it.isNotBlank() }.joinToString(" · "))
+        }
+        row("💬 Comments", if (task.comments.isEmpty()) "" else task.comments.size.toString())
+        row("🔁 Repeats", task.repeatType.takeIf { it != "none" } ?: "")
+        Spacer(Modifier.height(8.dp))
+    }
 }
 
 private fun normalizeWaDigitsAndroid(raw: String?): String {

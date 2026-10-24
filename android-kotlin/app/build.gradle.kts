@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "Release pipeline baseline: signed builds are now published automatically. Feature parity work (board, comments, reminders, AI brain, alerts) lands phase by phase."
+val releaseNotes = "2.1 - task row parity: one compact line with created/edited/done stamps, a tap-open (i) sheet with full details (who edited and what changed), and delete available to every member behind the action password."
 
 android {
     namespace = "com.assigntask.app"
@@ -35,8 +35,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.0.8"
+        versionCode = 9
+        versionName = "2.1"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).
