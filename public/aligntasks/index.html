@@ -1424,10 +1424,18 @@
             async function bulkCompleteShown() {
                 const rows = bulkTargets().filter(r => r.task.status !== 'Done');
                 if (!rows.length) { alert('Nothing to complete in this view.'); return; }
+                if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
                 if (!confirm('Mark ' + rows.length + ' task(s) as done?')) return;
                 let ok = 0;
                 for (const r of rows) {
-                    try { await boardCol(r.col).doc(r.task.id).update({ status: 'Done' }); ok++; } catch (e) { console.warn('bulk complete', e); }
+                    try {
+                        await window.alignApi('/task/update', {
+                            method: 'POST',
+                            teamId: teamCtx.teamId,
+                            body: { teamId: teamCtx.teamId, id: r.task.id, kind: r.col === 'tasks' ? 'assigned' : 'shared', status: 'Done' }
+                        });
+                        ok++;
+                    } catch (e) { console.warn('bulk complete', e); }
                 }
                 alert('✅ ' + ok + ' of ' + rows.length + ' marked done.');
             }
@@ -1435,10 +1443,18 @@
             async function bulkDeleteShown() {
                 const rows = bulkTargets();
                 if (!rows.length) { alert('Nothing to delete in this view.'); return; }
+                if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
                 if (!confirm('Delete ' + rows.length + ' task(s)? This cannot be undone.')) return;
                 let ok = 0;
                 for (const r of rows) {
-                    try { await boardCol(r.col).doc(r.task.id).delete(); ok++; } catch (e) { console.warn('bulk delete', e); }
+                    try {
+                        await window.alignApi('/task/delete', {
+                            method: 'POST',
+                            teamId: teamCtx.teamId,
+                            body: { teamId: teamCtx.teamId, id: r.task.id, kind: r.col === 'tasks' ? 'assigned' : 'shared' }
+                        });
+                        ok++;
+                    } catch (e) { console.warn('bulk delete', e); }
                 }
                 alert('🗑️ ' + ok + ' of ' + rows.length + ' deleted.');
             }
@@ -3534,47 +3550,48 @@
 
                  if (!description || !assigneeEmail) return;
 
-                 const taskData = {
-                     description,
-                     assigneeEmail,
-                     dueDate,
-                     status: 'To Do',
-                     comments: [],
-                     teamId: teamCtx.teamId,
-                     createdAt: new Date(),
-                     createdBy: currentUser.email,
-                     ownerAdminUid: getTeamOwnerUid(),
-                     ownerAdminEmail: getTeamOwnerEmail(),
-                     setAlarm,
-                     alarmSound
-                 };
-                 if (repeatType !== 'none') {
-                     taskData.repeat = { type: repeatType };
-                     if (repeatCount) taskData.repeat.remaining = parseInt(repeatCount);
+                 // 🎯 Server-gated, server-stamped write.
+                 if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                 try {
+                     await window.alignApi('/task/create', {
+                         method: 'POST',
+                         teamId: teamCtx.teamId,
+                         body: {
+                             teamId: teamCtx.teamId,
+                             kind: 'assigned',
+                             description,
+                             assigneeHandle: assigneeEmail,
+                             dueDate,
+                             priority: setAlarm ? 'high' : ''
+                         }
+                     });
+                 } catch (err) {
+                     alert('Could not assign the task: ' + err.message);
+                     return;
                  }
-                 
-                 db.collection(`/artifacts/${appId}/public/data/tasks`).add(taskData);
                  form.reset();
                  alert('Task assigned successfully!');
                  clearTimeout(assignTaskTimeout);
                  assignTaskTimeout = setTimeout(() => assignTaskFormContainer.classList.add('hidden'), 3000);
             });
 
-            document.getElementById('task-for-all-form').addEventListener('submit', e => {
+            document.getElementById('task-for-all-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const description = document.getElementById('new-task-for-all-description').value.trim();
                 if(!description) return;
-                boardCol('tasks_for_all').add({
-                    description,
-                    status: 'To Do',
-                    comments: [],
-                    teamId: teamCtx.teamId,
-                    createdAt: new Date(),
-                    createdBy: currentUser.email,
-                    ownerAdminUid: getTeamOwnerUid(),
-                    ownerAdminEmail: getTeamOwnerEmail()
-                });
-                e.target.reset();
+                // 🎯 Server-gated write: needs the team password, and the server
+                // writes the "created by / at" stamps so they cannot be forged.
+                if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                try {
+                    await window.alignApi('/task/create', {
+                        method: 'POST',
+                        teamId: teamCtx.teamId,
+                        body: { teamId: teamCtx.teamId, kind: 'shared', description }
+                    });
+                    e.target.reset();
+                } catch (err) {
+                    alert('Could not add the task: ' + err.message);
+                }
             });
             
             document.getElementById('comment-modal-form').addEventListener('submit', e => {
@@ -3938,6 +3955,248 @@
 
 
         });
+    </script>
+
+    <!-- ================================================================
+         🔐 TWO-LAYER GATE — staff name+password, then the team password.
+         Layered on top so no existing logic is modified.
+         ================================================================ -->
+    <div id="alignGate" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.92);z-index:99999;overflow:auto;padding:20px;">
+        <div style="max-width:420px;margin:6vh auto;background:#fff;border-radius:18px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+            <div style="font-size:40px;text-align:center;line-height:1;">🔐</div>
+            <h2 id="gateTitle" style="text-align:center;font-size:19px;font-weight:800;color:#0f172a;margin:10px 0 4px;">Sign in to AlignTasks</h2>
+            <p id="gateSub" style="text-align:center;font-size:12.5px;color:#64748b;margin:0 0 18px;line-height:1.5;">Enter your name and password — no email needed.</p>
+
+            <div id="gateError" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:12.5px;padding:9px 11px;border-radius:10px;margin-bottom:12px;"></div>
+
+            <form id="gateForm">
+                <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your name</label>
+                <input id="gateName" autocomplete="username" placeholder="e.g. Nadeem Khan"
+                       style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+
+                <div id="gateTeamWrap" style="display:none;">
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Team</label>
+                    <select id="gateTeam"
+                            style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;"></select>
+                </div>
+
+                <label id="gatePwLabel" style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your password</label>
+                <input id="gatePassword" type="password" autocomplete="current-password" placeholder="••••••••"
+                       style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:16px;box-sizing:border-box;">
+
+                <button id="gateSubmit" type="submit"
+                        style="width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">
+                    Continue
+                </button>
+                <button id="gateSkip" type="button"
+                        style="width:100%;padding:9px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer;margin-top:8px;">
+                    Cancel
+                </button>
+            </form>
+
+            <div id="gateHint" style="font-size:11px;color:#94a3b8;text-align:center;margin-top:12px;line-height:1.5;"></div>
+        </div>
+    </div>
+
+    <script>
+    /* ==================================================================
+       AlignTasks gate: staff session + team unlock.
+       All API calls carry the session/unlock tokens; the server enforces
+       both, so the gate cannot be bypassed from the browser.
+       ================================================================== */
+    (function () {
+        const API = 'https://whatanagent.duckdns.org/api/align';
+        const SKEY = 'align_staff_session';
+        const UKEY = 'align_team_unlock';   // { teamId: { token, expiresAt } }
+
+        const $ = (id) => document.getElementById(id);
+
+        function getSession() { try { return localStorage.getItem(SKEY) || ''; } catch (e) { return ''; } }
+        function setSession(t) { try { t ? localStorage.setItem(SKEY, t) : localStorage.removeItem(SKEY); } catch (e) {} }
+        function getUnlocks() { try { return JSON.parse(localStorage.getItem(UKEY) || '{}'); } catch (e) { return {}; } }
+        function saveUnlock(teamId, token, expiresAt) {
+            const all = getUnlocks();
+            all[teamId] = { token, expiresAt };
+            try { localStorage.setItem(UKEY, JSON.stringify(all)); } catch (e) {}
+        }
+        function unlockFor(teamId) {
+            const all = getUnlocks();
+            const u = all[teamId];
+            if (!u || !u.token) return '';
+            if (u.expiresAt && u.expiresAt < Date.now()) return '';
+            return u.token;
+        }
+
+        async function api(path, opts = {}) {
+            const headers = Object.assign(
+                { 'Content-Type': 'application/json' },
+                opts.headers || {}
+            );
+            const s = getSession();
+            if (s) headers['x-align-session'] = s;
+            const teamId = opts.teamId || (window.teamCtx && window.teamCtx.teamId);
+            if (teamId) {
+                const u = unlockFor(teamId);
+                if (u) headers['x-align-unlock'] = u;
+            }
+            const res = await fetch(API + path, {
+                method: opts.method || 'GET',
+                headers,
+                body: opts.body ? JSON.stringify(opts.body) : undefined
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 401 && !opts.noRedirect) {
+                setSession('');
+                showGate('login');
+            }
+            if (res.status === 403 && data.needsUnlock) {
+                showGate('unlock');
+            }
+            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            return data;
+        }
+
+        // ---------------------------------------------------------- gate UI
+        let gateMode = 'login';
+        let pendingTeams = [];
+
+        function showGate(mode) {
+            gateMode = mode;
+            $('alignGate').style.display = 'block';
+            const er = $('gateError'); er.style.display = 'none'; er.textContent = '';
+
+            if (mode === 'login') {
+                $('gateTitle').textContent = 'Sign in to AlignTasks';
+                $('gateSub').textContent = 'Enter your name and password — no email needed.';
+                $('gatePwLabel').textContent = 'Your password';
+                $('gatePassword').setAttribute('autocomplete', 'current-password');
+                $('gateTeamWrap').style.display = 'none';
+                $('gateSubmit').textContent = 'Continue';
+                $('gateSubmit').style.background = '#2563eb';
+            } else {
+                $('gateTitle').textContent = 'Unlock the team';
+                $('gateSub').textContent = 'Tasks are locked. Enter the TEAM password to create, complete or delete tasks.';
+                $('gatePwLabel').textContent = 'Team password';
+                $('gatePassword').setAttribute('autocomplete', 'off');
+                $('gateTeamWrap').style.display = 'block';
+                const sel = $('gateTeam');
+                sel.innerHTML = pendingTeams.map(t =>
+                    '<option value="' + t.id + '">' + (t.name || t.id) + (t.hasPassword ? '' : ' (no password set)') + '</option>'
+                ).join('');
+                if (window.teamCtx && window.teamCtx.teamId) sel.value = window.teamCtx.teamId;
+                $('gateSubmit').textContent = 'Unlock team';
+                $('gateSubmit').style.background = '#7c3aed';
+            }
+            $('gateHint').textContent = mode === 'login'
+                ? 'Your personal tasks stay private to you. Team tasks need the team password.'
+                : 'Unlocking lasts 12 hours on this device.';
+            setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
+        }
+
+        function hideGate() { $('alignGate').style.display = 'none'; }
+
+        async function completeLogin(name, password) {
+            const r = await fetch(API + '/staff/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, password })
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || 'Login failed');
+            setSession(d.session);
+
+            // Give the browser a real Firebase identity as well (best effort).
+            if (d.customToken) {
+                try {
+                    if (window.firebase && firebase.auth) await firebase.auth().signInWithCustomToken(d.customToken);
+                } catch (e) { console.warn('[gate] custom token sign-in skipped:', e.message); }
+            }
+            return d;
+        }
+
+        async function loadTeams() {
+            try {
+                const r = await fetch(API + '/teams', { headers: { 'x-align-session': getSession() } });
+                const d = await r.json();
+                return d.teams || [];
+            } catch (e) { return []; }
+        }
+
+        $('gateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = $('gateSubmit');
+            const er = $('gateError');
+            er.style.display = 'none';
+            btn.disabled = true;
+            const label = btn.textContent;
+            btn.textContent = 'Please wait…';
+
+            try {
+                if (gateMode === 'login') {
+                    const name = $('gateName').value.trim();
+                    const pw = $('gatePassword').value;
+                    if (!name || !pw) throw new Error('Enter your name and password.');
+                    const d = await completeLogin(name, pw);
+                    $('gatePassword').value = '';
+                    pendingTeams = await loadTeams();
+                    // If the current team is already unlocked this session, go straight in.
+                    const cur = (window.teamCtx && window.teamCtx.teamId) || '';
+                    if (cur && unlockFor(cur)) { hideGate(); return; }
+                    if (pendingTeams.length) { showGate('unlock'); return; }
+                    hideGate();
+                } else {
+                    const teamId = $('gateTeam').value;
+                    const pw = $('gatePassword').value;
+                    if (!teamId) throw new Error('Choose a team.');
+                    const d = await api('/team/unlock', { method: 'POST', body: { teamId, password: pw } });
+                    saveUnlock(teamId, d.token, d.expiresAt);
+                    $('gatePassword').value = '';
+                    hideGate();
+                    if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
+                }
+            } catch (err) {
+                er.textContent = err.message;
+                er.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = label;
+            }
+        });
+
+        $('gateSkip').addEventListener('click', () => {
+            if (gateMode === 'login') return;      // cannot skip the identity gate
+            hideGate();                            // may browse read-only
+        });
+
+        // ---------------------------------------------------------- expose helpers
+        window.alignApi = api;
+        window.alignSession = getSession;
+        window.alignUnlockFor = unlockFor;
+        window.alignRequireUnlock = async function () {
+            const teamId = (window.teamCtx && window.teamCtx.teamId) || '';
+            if (teamId && unlockFor(teamId)) return true;
+            pendingTeams = await loadTeams();
+            showGate('unlock');
+            return false;
+        };
+
+        // ---------------------------------------------------------- auto gate
+        // Wait until the app has a signed-in Firebase user, then require staff login.
+        let ticks = 0;
+        const timer = setInterval(async () => {
+            ticks++;
+            if (ticks > 200) { clearInterval(timer); return; }
+            if (!window.currentUser) return;
+            clearInterval(timer);
+            if (!getSession()) { showGate('login'); return; }
+            try {
+                const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': getSession() } });
+                if (!r.ok) { setSession(''); showGate('login'); return; }
+                const cur = (window.teamCtx && window.teamCtx.teamId) || '';
+                if (!cur || !unlockFor(cur)) { pendingTeams = await loadTeams(); showGate('unlock'); }
+            } catch (e) { showGate('login'); }
+        }, 300);
+    })();
     </script>
 </body>
 </html>
