@@ -31,6 +31,16 @@
         .view-nav-item:hover { background: #f1f5f9; }
         .view-nav-item.active { background: #3b82f6; color: #fff; }
         .task-meta { font-size: 10px; color: #6b7280; margin-top: 4px; }
+        /* Tiny ⓘ badge: all stamps/assignment live in a hover tooltip, so a task row stays one line */
+        .task-info-wrap { position: relative; display: inline-flex; vertical-align: middle; margin-left: 5px; }
+        .task-info-btn { font-size: 12px; line-height: 1; color: #9ca3af; cursor: help; user-select: none; }
+        .task-info-wrap:hover .task-info-btn, .task-info-wrap:focus-within .task-info-btn { color: #2563eb; }
+        .task-info-pop { display: none; position: absolute; left: 0; top: 100%; margin-top: 3px; z-index: 70; background: #111827; color: #f9fafb; font-size: 11px; line-height: 1.45; padding: 6px 9px; border-radius: 8px; width: max-content; max-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,.28); text-align: left; white-space: normal; font-weight: 400; }
+        .task-info-wrap:hover .task-info-pop, .task-info-wrap:focus-within .task-info-pop { display: block; }
+        .task-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        /* Comments: full-page chat view */
+        .comment-chat-scroll { overflow-y: auto; }
+        .comment-author { font-size: 10px; color: #6b7280; line-height: 1.2; }
         .repeat-icon-button { background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; vertical-align: middle; }
         .repeat-icon, .alarm-icon { width: 12px; height: 12px; display: inline-block; margin-left: 6px; color: #9ca3af; }
         .project-title.clickable { cursor: pointer; }
@@ -345,13 +355,20 @@
             <div id="notification-list" class="p-6 max-h-80 overflow-y-auto"></div>
         </div>
     </div>
-    <div id="comment-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Task Comments</h3><button id="comment-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <p id="comment-modal-task-description" class="px-6 text-gray-600 text-sm mt-1 max-w-md"></p>
-            <div id="comment-modal-list" class="p-6 h-80 overflow-y-auto"></div>
-            <form id="comment-modal-form" class="p-6 bg-gray-50 rounded-b-xl flex gap-2"><input type="text" id="comment-modal-input" placeholder="Add a comment..." class="flex-grow p-2 border border-gray-300 rounded-lg" /><button type="submit" class="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700">Send</button></form>
+    <div id="comment-modal" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+        <div class="px-4 py-2.5 border-b flex items-center gap-3 bg-white shrink-0">
+            <button id="comment-modal-close" class="text-gray-500 hover:text-gray-900 text-2xl leading-none px-1" title="Back to tasks">←</button>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-bold text-gray-800 leading-tight">💬 Comments</h3>
+                <p id="comment-modal-task-description" class="text-xs text-gray-500 truncate"></p>
+            </div>
+            <span id="comment-modal-count" class="text-[11px] text-gray-400 shrink-0"></span>
         </div>
+        <div id="comment-modal-list" class="comment-chat-scroll flex-grow p-3 sm:p-4 bg-gray-50 space-y-2.5"></div>
+        <form id="comment-modal-form" class="p-3 bg-white border-t flex gap-2 shrink-0">
+            <input type="text" id="comment-modal-input" placeholder="Write a comment…" autocomplete="off" class="flex-grow p-2 border border-gray-300 rounded-lg text-sm" />
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">Send</button>
+        </form>
     </div>
     <div id="profile-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
@@ -1484,24 +1501,52 @@
             // "Created by Nadeem Khan · 24 Oct 14:32" – names come from the server-written
             // stamps (createdByName / updatedByName / completedByName), falling back to the
             // legacy email prefix on tasks that were never touched by the API.
+            // All the small print (assignment, due date, who created/edited/finished it, what was
+            // changed) is folded into ONE tiny ⓘ badge per task, shown on hover — so a task row
+            // stays a single line and never wastes vertical space.
             function taskStampName(task, kind) {
-                const nameField = kind === 'created' ? 'createdByName' : (kind === 'updated' ? 'updatedByName' : 'completedByName');
-                const idField = kind === 'created' ? 'createdBy' : (kind === 'updated' ? 'updatedBy' : 'completedBy');
-                const atField = kind === 'created' ? 'createdAt' : (kind === 'updated' ? 'updatedAt' : 'completedAt');
+                const nameField = kind === 'created' ? 'createdByName' : (kind === 'edited' ? 'editedByName' : (kind === 'updated' ? 'updatedByName' : 'completedByName'));
+                const idField = kind === 'created' ? 'createdBy' : (kind === 'edited' ? 'editedBy' : (kind === 'updated' ? 'updatedBy' : 'completedBy'));
+                const atField = kind === 'created' ? 'createdAt' : (kind === 'edited' ? 'editedAt' : (kind === 'updated' ? 'updatedAt' : 'completedAt'));
                 const name = task[nameField] || (task[idField] ? String(task[idField]).split('@')[0] : '');
                 if (!name) return '';
                 const when = task[atField] ? formatTaskTimestamp(task[atField]) : '';
                 return when ? `${name} · ${when}` : name;
             }
-            function taskStampsHTML(task) {
-                const parts = [];
+            function taskInfoLines(task) {
+                const lines = [];
+                const assignee = task.assigneeName || (task.assigneeEmail ? personNameByEmail(task.assigneeEmail) : '');
+                lines.push(assignee ? '👤 Assigned to ' + assignee : '👥 Anyone can do it');
+                if (task.dueDate) lines.push('🗓 Due: ' + formatTaskTimestamp(new Date(task.dueDate)));
+                const repeated = task.repeat && (task.repeat.type ? task.repeat.type : task.repeat);
+                if (repeated && repeated !== 'none') lines.push('🔁 Repeats: ' + repeated);
                 const created = taskStampName(task, 'created');
-                if (created) parts.push(`<div>🖊 Created by ${created}</div>`);
-                const updated = taskStampName(task, 'updated');
-                if (updated && updated !== created) parts.push(`<div>✏️ Edited by ${updated}</div>`);
-                const completed = task.status === 'Done' ? taskStampName(task, 'completed') : '';
-                if (completed) parts.push(`<div>✅ Finished by ${completed}</div>`);
-                return parts.join('');
+                if (created) lines.push('🖊 Created by ' + created);
+                // "Edited" only for a real change of the task — commenting never sets these stamps.
+                const edited = taskStampName(task, 'edited');
+                if (edited) {
+                    const fields = Array.isArray(task.editedFields) && task.editedFields.length ? ' (' + task.editedFields.join(', ') + ')' : '';
+                    lines.push('✏️ Edited by ' + edited + fields);
+                }
+                if (task.status === 'Done') {
+                    const finished = taskStampName(task, 'completed');
+                    if (finished) lines.push('✅ Finished by ' + finished);
+                }
+                const log = Array.isArray(task.editLog) ? task.editLog.slice(-4, -1) : [];
+                log.forEach(e => {
+                    if (!e || !e.by) return;
+                    lines.push('↺ ' + e.by + ' · ' + formatTaskTimestamp(new Date(e.at || 0)) + (e.fields && e.fields.length ? ' (' + e.fields.join(', ') + ')' : ''));
+                });
+                const comments = Array.isArray(task.comments) ? task.comments.length : 0;
+                if (comments) lines.push('💬 ' + comments + ' comment' + (comments === 1 ? '' : 's'));
+                return lines;
+            }
+            function taskInfoHTML(task) {
+                const lines = taskInfoLines(task);
+                return `<span class="task-info-wrap" tabindex="0" title="${waEsc(lines.join('\\n'))}">` +
+                    `<span class="task-info-btn" aria-label="Task details">ⓘ</span>` +
+                    `<span class="task-info-pop">${lines.map(l => `<span class="block">${waEsc(l)}</span>`).join('')}</span>` +
+                    `</span>`;
             }
 
             function createBaseTaskListItemHTML(task, type, identifiers) {
@@ -1519,27 +1564,20 @@
                     actionButtons += `<button class="delete-button p-1 text-gray-400 hover:text-red-500" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
                 }
 
-                let metaHTML = taskStampsHTML(task);
-
                 const repeatIcon = (task.repeat && task.repeat.type !== 'none') ? `<button class="repeat-icon-button" data-due-date="${task.dueDate}" data-repeat-type="${task.repeat.type}" data-repeat-remaining="${task.repeat.remaining || 'Infinity'}"><svg class="repeat-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.6A9 9 0 0 1 12 3a9 9 0 0 1 8.4 5.4"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.4A9 9 0 0 1 12 21a9 9 0 0 1-8.4-5.4"/></svg></button>` : '';
                 const alarmIcon = task.setAlarm ? `<svg class="alarm-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/><path d="M6.38 18.7 4 21"/><path d="M17.64 18.67 20 21"/></svg>` : '';
 
                 return `
                     <div class="task-list-item">
                         <input type="checkbox" class="task-checkbox" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} ${isDone ? 'checked' : ''}>
-                        <div class="flex-grow ml-3 min-w-0">
-                             <p class="text-sm break-words ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${repeatIcon}${alarmIcon}</p>
-                             <div class="task-meta">${metaHTML}</div>
-                             <div class="flex justify-between items-center mt-2">
-                                <div>
-                                    ${dueDate ? `<span class="text-xs font-semibold px-2 py-1 rounded-full ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}">${formatTaskTimestamp(dueDate)}</span>` : ''}
-                                </div>
-                                <div class="flex items-center gap-2">
+                        <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+                             <p class="text-sm break-words flex-1 min-w-[10rem] ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${repeatIcon}${alarmIcon}${taskInfoHTML(task)}${dueDate && isOverdue ? '<span class="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">' + formatTaskTimestamp(dueDate) + '</span>' : ''}</p>
+                             <div class="task-row-actions">
+                                    ${dueDate && !isOverdue ? `<span class="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-600">${formatTaskTimestamp(dueDate)}</span>` : ''}
                                     <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} title="Send a WhatsApp reminder to the assigned member">💬 Remind</button>
                                     <button class="task-wa-button text-xs px-2 py-1 rounded-lg bg-green-600 text-white border border-green-700 font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">📲 Quick send</button>
                                     <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>Comments (${task.comments?.length || 0})</button>
                                     ${actionButtons}
-                                </div>
                              </div>
                         </div>
                     </div>
@@ -2186,32 +2224,18 @@
                     adminButtons += `<button class="delete-button p-1 text-gray-400 hover:text-red-500" data-task-type="tasks_for_all" data-task-id="${task.id}"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
                 }
                 
-                let metaHTML = taskStampsHTML(task);
-
-                // Who is responsible, when it is due, and whether it repeats — small print.
-                const repType = task.repeat ? (task.repeat.type || task.repeat) : 'none';
-                const extra = [];
-                extra.push(task.assigneeName
-                    ? '👤 Assigned to ' + waEsc(task.assigneeName)
-                    : '👥 Anyone can do it');
-                if (task.dueDate) extra.push('🗓 ' + formatTaskTimestamp(task.dueDate));
-                if (repType && repType !== 'none') extra.push('🔁 ' + waEsc(repType));
-                const extraHTML = '<div class="task-meta">' + extra.join(' · ') + '</div>';
-
+                // Who is responsible, when it is due, whether it repeats — all inside the ⓘ badge.
                 return `
                      <div class="task-list-item">
                         <input type="checkbox" class="task-checkbox" data-task-type="tasks_for_all" data-task-id="${task.id}" ${isCompleted ? 'checked' : ''}>
-                        <div class="flex-grow ml-3 min-w-0">
-                            <p class="text-sm break-words ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}</p>
-                            ${extraHTML}
-                            <div class="task-meta">${metaHTML}</div>
-                            <div class="flex justify-end items-center mt-2">
-                                <div class="flex items-center gap-2">
-                                    <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="tasks_for_all" data-task-id="${task.id}" title="Send a WhatsApp reminder for this general task">💬 Remind</button>
-                                    <button class="task-wa-button text-xs px-2 py-1 rounded-lg bg-green-600 text-white border border-green-700 font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">📲 Quick send</button>
-                                    <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="tasks_for_all" data-task-id="${task.id}">Comments (${task.comments?.length || 0})</button>
-                                    ${adminButtons}
-                                </div>
+                        <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <p class="text-sm break-words flex-1 min-w-[10rem] ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${taskInfoHTML(task)}</p>
+                            <div class="task-row-actions">
+                                ${task.dueDate ? `<span class="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-600">${formatTaskTimestamp(new Date(task.dueDate))}</span>` : ''}
+                                <button class="wa-remind-button text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-task-type="tasks_for_all" data-task-id="${task.id}" title="Send a WhatsApp reminder for this general task">💬 Remind</button>
+                                <button class="task-wa-button text-xs px-2 py-1 rounded-lg bg-green-600 text-white border border-green-700 font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">📲 Quick send</button>
+                                <button class="comment-button flex items-center gap-1 text-xs text-gray-500" data-task-type="tasks_for_all" data-task-id="${task.id}">Comments (${task.comments?.length || 0})</button>
+                                ${adminButtons}
                             </div>
                         </div>
                     </div>
@@ -2781,18 +2805,7 @@
                 }
                 const box = document.createElement('div');
                 renderToggableList(box, tasks, 'project', { projectId });
-                // show the preferred person under each project task
-                box.querySelectorAll('.task-checkbox').forEach(cb => {
-                    const t = tasks.find(x => x.id === cb.getAttribute('data-task-id'));
-                    if (!t || !t.assigneeEmail) return;
-                    const item = cb.closest('.task-list-item');
-                    if (!item) return;
-                    const meta = document.createElement('div');
-                    meta.className = 'task-meta';
-                    meta.textContent = '👤 ' + personNameByEmail(t.assigneeEmail);
-                    const stamps = item.querySelector('.task-meta');
-                    if (stamps) stamps.insertAdjacentElement('afterend', meta);
-                });
+                // The preferred person, due date and stamps are all inside each row's ⓘ badge.
                 listEl.innerHTML = box.innerHTML;
             }
 
@@ -3121,20 +3134,46 @@
             }
 
             // --- Modal Functions (Comment & Edit Staff) ---
+            function paintCommentList(listEl, comments) {
+                if (!comments.length) {
+                    listEl.innerHTML = '<p class="text-gray-400 text-center text-sm mt-8">No comments yet — start the conversation below.</p>';
+                    return;
+                }
+                const myEmail = String((currentUser && currentUser.email) || '').toLowerCase();
+                listEl.innerHTML = comments.map(c => {
+                    const author = c.authorName || personNameByEmail(c.authorEmail) || String(c.authorEmail || '').split('@')[0] || 'someone';
+                    const mine = String(c.authorEmail || '').toLowerCase() === myEmail;
+                    const when = c.createdAt ? formatTaskTimestamp(c.createdAt) : '';
+                    return `<div class="flex flex-col ${mine ? 'items-end' : 'items-start'}">` +
+                        `<span class="comment-author px-1">${waEsc(author)}${when ? ' · ' + waEsc(when) : ''}</span>` +
+                        `<div class="mt-0.5 max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words ${mine ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-800'}">${waEsc(c.text)}</div>` +
+                        `</div>`;
+                }).join('');
+                listEl.scrollTop = listEl.scrollHeight;
+            }
+            // Show a just-sent comment straight away, so the chat feels live.
+            function appendLocalComment(text) {
+                const listEl = document.getElementById('comment-modal-list');
+                if (!listEl) return;
+                if (listEl.querySelector('p')) listEl.innerHTML = '';
+                const me = myDisplayName();
+                const wrap = document.createElement('div');
+                wrap.innerHTML = `<div class="flex flex-col items-end"><span class="comment-author px-1">${waEsc(me)} · ${waEsc(formatTaskTimestamp(new Date()))}</span><div class="mt-0.5 max-w-[85%] rounded-2xl px-3 py-1.5 text-sm whitespace-pre-wrap break-words bg-blue-600 text-white">${waEsc(text)}</div></div>`;
+                listEl.appendChild(wrap.firstElementChild);
+                listEl.scrollTop = listEl.scrollHeight;
+                const countEl = document.getElementById('comment-modal-count');
+                const n = listEl.children.length;
+                if (countEl) countEl.textContent = n + ' comment' + (n === 1 ? '' : 's');
+            }
             function openCommentModal(task, identifiers) {
                 currentCommentingTask = identifiers;
                 document.getElementById('comment-modal-task-description').textContent = task.description;
-                const listEl = document.getElementById('comment-modal-list');
-                
-                 if (task.comments && task.comments.length > 0) {
-                    const sortedComments = [...task.comments].sort((a, b) => (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0) - (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0));
-                    listEl.innerHTML = sortedComments.map(comment => `
-                        <div class="flex gap-3 mb-4">
-                            <div><p class="font-semibold text-gray-700 text-sm">${comment.authorEmail}</p><p class="bg-gray-100 p-3 rounded-lg text-gray-800 text-sm mt-1">${comment.text}</p><p class="text-gray-400 text-xs text-right mt-1">${formatTaskTimestamp(comment.createdAt)}</p></div>
-                        </div>`).join('');
-                } else {
-                     listEl.innerHTML = '<p class="text-gray-500 text-center mt-8">No comments yet.</p>';
-                }
+                const sorted = [...(task.comments || [])].sort((a, b) => {
+                    const ms = v => v && v.toDate ? v.toDate().getTime() : (v ? new Date(v).getTime() : 0);
+                    return ms(a.createdAt) - ms(b.createdAt);
+                });
+                document.getElementById('comment-modal-count').textContent = sorted.length ? (sorted.length + ' comment' + (sorted.length === 1 ? '' : 's')) : '';
+                paintCommentList(document.getElementById('comment-modal-list'), sorted);
                 commentModal.classList.remove('hidden');
             }
             document.getElementById('comment-modal-close').addEventListener('click', () => commentModal.classList.add('hidden'));
@@ -4305,8 +4344,13 @@
                 if (commentText && currentCommentingTask && currentUser) {
                     const { type, projectId, taskId } = currentCommentingTask;
                     const newComment = { text: commentText, authorEmail: currentUser.email, createdAt: new Date() };
+                    const afterSend = () => {
+                        document.getElementById('comment-modal-input').value = '';
+                        appendLocalComment(commentText);
+                    };
 
-                    // 🎯 Team tasks: gated + attributed by the server.
+                    // 🎯 Team tasks: gated + attributed by the server. A comment is a conversation,
+                    // never an edit — the server no longer touches the edit stamps.
                     if (type === 'tasks' || type === 'tasks_for_all') {
                         if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
                         try {
@@ -4315,7 +4359,7 @@
                                 teamId: teamCtx.teamId,
                                 body: { teamId: teamCtx.teamId, id: taskId, kind: type === 'tasks' ? 'assigned' : 'shared', text: commentText }
                             });
-                            document.getElementById('comment-modal-input').value = '';
+                            afterSend();
                         } catch (err) { alert('Could not add the comment: ' + err.message); }
                         return;
                     }
@@ -4324,7 +4368,7 @@
                     if (type === 'project') docRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId);
                     else docRef = db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
                     docRef.update({ comments: firebase.firestore.FieldValue.arrayUnion(newComment) });
-                     document.getElementById('comment-modal-input').value = '';
+                    afterSend();
                 }
             });
 

@@ -884,8 +884,27 @@ export function registerAlignRoutes(app) {
       }
 
       await ref.set(patch, { merge: true });
+      // Only a real change to the task counts as an edit — a comment must never make a task
+      // look "edited". The changed fields are kept so the board can say WHAT was modified.
+      const changes = [];
+      if (patch.description !== undefined && String(patch.description) !== String(existing.description || '')) changes.push('text');
+      if (patch.dueDate !== undefined && String(patch.dueDate || '') !== String(existing.dueDate || '')) changes.push('due date');
+      if (patch.priority !== undefined && String(patch.priority || '') !== String(existing.priority || '')) changes.push('priority');
+      if (patch.assigneeEmail !== undefined && String(patch.assigneeEmail || '') !== String(existing.assigneeEmail || '')) changes.push('assignee');
+      if (patch.projectId !== undefined && String(patch.projectId || '') !== String(existing.projectId || '')) changes.push('project');
+      if (changes.length) {
+        const log = Array.isArray(existing.editLog) ? existing.editLog.slice(-19) : [];
+        log.push({ by: stamp.name, at: Date.now(), fields: changes });
+        await ref.set({
+          editedAt: new Date(),
+          editedByUid: stamp.uid,
+          editedByName: stamp.name,
+          editedFields: changes,
+          editLog: log
+        }, { merge: true });
+      }
       await auditTaskEvent(id, patch.status === 'Done' ? 'completed' : 'updated', stamp, { teamId, kind });
-      res.json({ ok: true });
+      res.json({ ok: true, edited: changes.length > 0, fields: changes });
     } catch (e) {
       if (e.code === 'align-no-admin') return noAdmin(res);
       res.status(500).json({ ok: false, error: e.message });
@@ -922,7 +941,15 @@ export function registerAlignRoutes(app) {
         authorName: stamp.name,
         createdAt: Date.now()
       });
-      await ref.set({ comments, updatedAt: new Date(), updatedByUid: stamp.uid, updatedByName: stamp.name }, { merge: true });
+      // A comment is a conversation, not a modification of the task: it must NOT touch the
+      // edit stamps (that made every commented task show "Edited by …").
+      await ref.set({
+        comments,
+        lastCommentAt: new Date(),
+        lastCommentByUid: stamp.uid,
+        lastCommentByName: stamp.name,
+        commentCount: comments.length
+      }, { merge: true });
       await auditTaskEvent(id, 'commented', stamp, { teamId, kind, description: text.slice(0, 120) });
       res.json({ ok: true, comments });
     } catch (e) {
