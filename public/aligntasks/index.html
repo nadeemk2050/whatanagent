@@ -3760,10 +3760,19 @@
                 if (button.classList.contains('delete-button')) {
                     const confirmed = await promptForAdminPassword('Delete Task');
                     if (confirmed) {
-                        let docRef;
-                        if (taskType === 'project') docRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId);
-                        else docRef = db.collection(`/artifacts/${appId}/public/data/${taskType}`).doc(taskId);
-                        docRef.delete();
+                        if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                        try {
+                            if (taskType === 'project') {
+                                // project sub-tasks still go through Firestore for now
+                                db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId).delete();
+                            } else {
+                                await window.alignApi('/task/delete', {
+                                    method: 'POST',
+                                    teamId: teamCtx.teamId,
+                                    body: { teamId: teamCtx.teamId, id: taskId, kind: taskType === 'tasks' ? 'assigned' : 'shared' }
+                                });
+                            }
+                        } catch (err) { alert('Could not delete the task: ' + err.message); }
                     }
                 } else if (button.classList.contains('edit-task-button')) {
                     openEditTaskModal(button.dataset);
@@ -3881,6 +3890,31 @@
 
                 const { taskType, taskId, projectId } = checkbox.dataset;
 
+                // 🎯 Team tasks: server-gated + server-stamped.
+                //    Personal tasks and project sub-tasks keep their existing path.
+                if (taskType === 'tasks' || taskType === 'tasks_for_all') {
+                    if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) {
+                        checkbox.checked = !isChecked;
+                        return;
+                    }
+                    try {
+                        await window.alignApi('/task/update', {
+                            method: 'POST',
+                            teamId: teamCtx.teamId,
+                            body: {
+                                teamId: teamCtx.teamId,
+                                id: taskId,
+                                kind: taskType === 'tasks' ? 'assigned' : 'shared',
+                                status: isChecked ? 'Done' : 'Pending'
+                            }
+                        });
+                    } catch (err) {
+                        checkbox.checked = !isChecked;
+                        alert('Could not update the task: ' + err.message);
+                    }
+                    return;
+                }
+
                 let docRef, collectionRef;
                 if (taskType === 'personal_tasks') {
                     collectionRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`);
@@ -3970,9 +4004,11 @@
             <div id="gateError" style="display:none;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:12.5px;padding:9px 11px;border-radius:10px;margin-bottom:12px;"></div>
 
             <form id="gateForm">
-                <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your name</label>
-                <input id="gateName" autocomplete="username" placeholder="e.g. Nadeem Khan"
-                       style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+                <div id="gateNameWrap">
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your name</label>
+                    <input id="gateName" autocomplete="username" placeholder="e.g. Nadeem Khan"
+                           style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+                </div>
 
                 <div id="gateTeamWrap" style="display:none;">
                     <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Team</label>
@@ -3988,9 +4024,8 @@
                         style="width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">
                     Continue
                 </button>
-                <button id="gateSkip" type="button"
-                        style="width:100%;padding:9px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer;margin-top:8px;">
-                    Cancel
+                <button id="gateSkip" type="button" style="display:none;width:100%;padding:9px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer;margin-top:8px;">
+                    Browse read-only
                 </button>
             </form>
 
@@ -4060,9 +4095,26 @@
         let gateMode = 'login';
         let pendingTeams = [];
 
+        // Freeze the page behind the gate so the flow really is controlled:
+        // no scrolling, no tabbing to hidden controls, no accidental clicks.
+        function freeze() {
+            document.documentElement.style.overflow = 'hidden';
+            const main = document.querySelector('body > *:not(#alignGate):not(script)');
+            if (main) main.setAttribute('aria-hidden', 'true');
+            document.body.style.pointerEvents = 'none';
+            $('alignGate').style.pointerEvents = 'auto';
+        }
+        function unfreeze() {
+            document.documentElement.style.overflow = '';
+            const main = document.querySelector('body > *:not(#alignGate):not(script)');
+            if (main) main.removeAttribute('aria-hidden');
+            document.body.style.pointerEvents = '';
+        }
+
         function showGate(mode) {
             gateMode = mode;
             $('alignGate').style.display = 'block';
+            freeze();
             const er = $('gateError'); er.style.display = 'none'; er.textContent = '';
 
             if (mode === 'login') {
@@ -4070,14 +4122,18 @@
                 $('gateSub').textContent = 'Enter your name and password — no email needed.';
                 $('gatePwLabel').textContent = 'Your password';
                 $('gatePassword').setAttribute('autocomplete', 'current-password');
+                $('gateNameWrap').style.display = 'block';
                 $('gateTeamWrap').style.display = 'none';
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#2563eb';
+                $('gateSkip').style.display = 'none';            // identity cannot be skipped
+                $('gateHint').textContent = 'This step is required. Your personal tasks stay private to you.';
             } else {
                 $('gateTitle').textContent = 'Unlock the team';
                 $('gateSub').textContent = 'Tasks are locked. Enter the TEAM password to create, complete or delete tasks.';
                 $('gatePwLabel').textContent = 'Team password';
                 $('gatePassword').setAttribute('autocomplete', 'off');
+                $('gateNameWrap').style.display = 'none';
                 $('gateTeamWrap').style.display = 'block';
                 const sel = $('gateTeam');
                 sel.innerHTML = pendingTeams.map(t =>
@@ -4086,14 +4142,31 @@
                 if (window.teamCtx && window.teamCtx.teamId) sel.value = window.teamCtx.teamId;
                 $('gateSubmit').textContent = 'Unlock team';
                 $('gateSubmit').style.background = '#7c3aed';
+                $('gateSkip').style.display = 'block';           // read-only browsing is allowed
+                $('gateHint').textContent = 'Unlocking lasts 12 hours on this device.';
             }
-            $('gateHint').textContent = mode === 'login'
-                ? 'Your personal tasks stay private to you. Team tasks need the team password.'
-                : 'Unlocking lasts 12 hours on this device.';
             setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
         }
 
-        function hideGate() { $('alignGate').style.display = 'none'; }
+        function hideGate() {
+            $('alignGate').style.display = 'none';
+            unfreeze();
+        }
+
+        // Block Escape and any attempt to dismiss the identity gate.
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && $('alignGate').style.display === 'block' && gateMode === 'login') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }, true);
+        $('alignGate').addEventListener('click', (e) => {
+            if (e.target === $('alignGate') && gateMode === 'login') {
+                e.stopPropagation();
+                $('gateError').textContent = 'Please sign in to continue.';
+                $('gateError').style.display = 'block';
+            }
+        });
 
         async function completeLogin(name, password) {
             const r = await fetch(API + '/staff/login', {
@@ -4164,8 +4237,12 @@
         });
 
         $('gateSkip').addEventListener('click', () => {
-            if (gateMode === 'login') return;      // cannot skip the identity gate
-            hideGate();                            // may browse read-only
+            if (gateMode === 'login') {
+                $('gateError').textContent = 'Please sign in with your name and password to continue.';
+                $('gateError').style.display = 'block';
+                return;                            // identity gate can never be skipped
+            }
+            hideGate();                            // team gate: read-only browsing allowed
         });
 
         // ---------------------------------------------------------- expose helpers
@@ -4196,6 +4273,25 @@
                 if (!cur || !unlockFor(cur)) { pendingTeams = await loadTeams(); showGate('unlock'); }
             } catch (e) { showGate('login'); }
         }, 300);
+
+        // ---------------------------------------------------------- heartbeat
+        // Every 5 minutes re-validate the staff session. If it expired (12h) or was
+        // revoked, the identity gate comes straight back — the session cannot be
+        // outlived. Also drops an expired team unlock back to the team gate.
+        setInterval(async () => {
+            if (!window.currentUser) return;
+            const s = getSession();
+            if (!s) { showGate('login'); return; }
+            try {
+                const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': s } });
+                if (!r.ok) { setSession(''); showGate('login'); return; }
+                const cur = (window.teamCtx && window.teamCtx.teamId) || '';
+                if (cur && !unlockFor(cur) && $('alignGate').style.display !== 'block') {
+                    pendingTeams = await loadTeams();
+                    showGate('unlock');
+                }
+            } catch (e) { /* offline: leave the user where they are */ }
+        }, 5 * 60 * 1000);
     })();
     </script>
 </body>
