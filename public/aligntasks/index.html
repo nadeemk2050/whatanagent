@@ -4406,6 +4406,7 @@
         }
 
         async function enterReadOnly() {
+            gateBootDone = true;      // the boot check must not re-open the gate after this
             hideGate(false);
             const hasIdentity = await ensureFirebaseIdentity();
             // Nothing signed in at all: keep the gate (there is no app to show behind it).
