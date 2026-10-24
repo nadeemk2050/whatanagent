@@ -651,6 +651,7 @@
             </div>
         </div>
     </div>
+    <div id="task-action-menu" class="hidden fixed w-48 bg-white rounded-xl shadow-2xl border border-gray-200 p-1" style="z-index:96"></div>
     <div id="password-confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm">
             <div class="p-6 text-center">
@@ -2471,6 +2472,75 @@
                 if (confirmResolve) confirmResolve(true);
             });
 
+            // --- Tap/click a task row → Edit / Delete (unlocked by the shared action password) ---
+            const TASK_ACTION_PASSWORD = 'abcd';
+            let taskMenuCtx = null;
+            function closeTaskActionMenu() {
+                const m = document.getElementById('task-action-menu');
+                if (m) m.classList.add('hidden');
+                taskMenuCtx = null;
+            }
+            function openTaskActionMenu(ev, row) {
+                const cb = row.querySelector('.task-checkbox');
+                const menu = document.getElementById('task-action-menu');
+                if (!cb || !menu) return;
+                const taskType = cb.getAttribute('data-task-type') || '';
+                const taskId = cb.getAttribute('data-task-id') || '';
+                if (!taskId || !taskType) return;
+                taskMenuCtx = { taskId: taskId, taskType: taskType, projectId: cb.getAttribute('data-project-id') || '' };
+                const label = ((row.querySelector('p') || {}).innerText || 'this task').trim().replace(/\s+/g, ' ').slice(0, 60);
+                menu.innerHTML =
+                    '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(label) + '</p>' +
+                    '<button type="button" class="task-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">✏️ Edit task</button>' +
+                    '<button type="button" class="task-menu-delete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600">🗑 Delete task</button>' +
+                    '<button type="button" class="task-menu-cancel w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 text-gray-500">Cancel</button>';
+                menu.classList.remove('hidden');
+                const w = menu.offsetWidth || 192;
+                const h = menu.offsetHeight || 140;
+                const x = Math.min(Math.max(8, ev.clientX), Math.max(8, window.innerWidth - w - 8));
+                const y = Math.min(Math.max(8, ev.clientY), Math.max(8, window.innerHeight - h - 8));
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+            }
+            document.body.addEventListener('click', e => {
+                const menuEl = document.getElementById('task-action-menu');
+                if (e.target.closest('#task-action-menu')) return;          // handled by the menu itself
+                if (!menuEl || menuEl.classList.contains('hidden')) {
+                    const row = e.target.closest('.task-list-item');
+                    if (row && !e.target.closest('button, input, a, label, .task-info-wrap, select, textarea')) openTaskActionMenu(e, row);
+                    return;
+                }
+                closeTaskActionMenu();   // any other click dismisses an open menu
+            });
+            document.getElementById('task-action-menu').addEventListener('click', async e => {
+                const ctx = taskMenuCtx;
+                const wantEdit = !!e.target.closest('.task-menu-edit');
+                const wantDelete = !!e.target.closest('.task-menu-delete');
+                if (!ctx || (!wantEdit && !wantDelete)) { closeTaskActionMenu(); return; }
+                closeTaskActionMenu();
+                const ok = await promptForAdminPassword(wantEdit ? 'Edit this task — password' : 'Delete this task — password');
+                if (!ok) return;
+                if (wantEdit) {
+                    if (ctx.taskType === 'personal_tasks') openEditPersonalTaskModal(ctx.taskId);
+                    else await openEditTaskModal({ taskId: ctx.taskId, taskType: ctx.taskType, projectId: ctx.projectId });
+                    return;
+                }
+                if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                try {
+                    if (ctx.taskType === 'project') {
+                        await db.collection(`/artifacts/${appId}/public/data/projects/${ctx.projectId}/tasks`).doc(ctx.taskId).delete();
+                    } else if (ctx.taskType === 'personal_tasks') {
+                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId).delete();
+                    } else {
+                        await window.alignApi('/task/delete', {
+                            method: 'POST',
+                            teamId: teamCtx.teamId,
+                            body: { teamId: teamCtx.teamId, id: ctx.taskId, kind: ctx.taskType === 'tasks' ? 'assigned' : 'shared', adminPassword: TASK_ACTION_PASSWORD }
+                        });
+                    }
+                } catch (err) { alert('Could not delete the task: ' + err.message); }
+            });
+
             // --- Password Confirmation Modal Logic ---
             let passwordResolve = null;
             function promptForAdminPassword(title) {
@@ -2488,7 +2558,8 @@
             });
             document.getElementById('password-confirm-modal-confirm').addEventListener('click', () => {
                 const passwordInput = document.getElementById('password-confirm-modal-input');
-                if (passwordInput.value === 'abcd') {
+                // Case does not matter ("ABCD" = "abcd").
+                if (String(passwordInput.value || '').trim().toLowerCase() === TASK_ACTION_PASSWORD) {
                     passwordConfirmModal.classList.add('hidden');
                     if (passwordResolve) passwordResolve(true);
                 } else {
@@ -4735,7 +4806,9 @@
                             id: taskId,
                             kind: taskType === 'tasks' ? 'assigned' : 'shared',
                             description: updateData.description,
-                            dueDate: updateData.dueDate || ''
+                            dueDate: updateData.dueDate || '',
+                            // the row menu already asked for it; harmless for the owner
+                            adminPassword: TASK_ACTION_PASSWORD
                         };
                         if (currentUserProfile.role === 'admin' && taskType !== 'tasks_for_all') {
                             body.assigneeHandle = document.getElementById('edit-task-assignee').value;
@@ -4801,7 +4874,7 @@
                                 await window.alignApi('/task/delete', {
                                     method: 'POST',
                                     teamId: teamCtx.teamId,
-                                    body: { teamId: teamCtx.teamId, id: taskId, kind: taskType === 'tasks' ? 'assigned' : 'shared' }
+                                    body: { teamId: teamCtx.teamId, id: taskId, kind: taskType === 'tasks' ? 'assigned' : 'shared', adminPassword: TASK_ACTION_PASSWORD }
                                 });
                             }
                         } catch (err) { alert('Could not delete the task: ' + err.message); }

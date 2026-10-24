@@ -29,6 +29,13 @@ import {
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
 const bad = (res, msg, code = 400) => res.status(code).json({ ok: false, error: msg });
+// The shared action password lets ANY team member edit/delete ANY task (boss rule: "with
+// this password we can do anything"). Case-insensitive; override with ALIGN_ACTION_PASSWORD.
+const actionPassword = () => String(process.env.ALIGN_ACTION_PASSWORD || process.env.ALIGN_STAFF_EDIT_PASSWORD || 'abcd').trim().toLowerCase();
+function actionPasswordOk(b) {
+  const given = String((b && (b.adminPassword || b.actionPassword || b.password)) || '').trim().toLowerCase();
+  return !!given && given === actionPassword();
+}
 
 // ---------------------------------------------------------------- helpers
 function sessionOf(req) {
@@ -881,13 +888,13 @@ export function registerAlignRoutes(app) {
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
       if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
-      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
-        return bad(res, 'This task belongs to someone else.', 403);
+      // Any team member may change it with the shared action password ("anything" rule).
+      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner' && !actionPasswordOk(b)) {
+        return bad(res, 'This task belongs to someone else — enter the action password to change it.', 403);
       }
 
       const stamp = stampOf(req.staff);
-      const patch = { updatedAt: new Date(), updatedByUid: stamp.uid, updatedByName: stamp.name };
-      if (!existing.teamId) patch.teamId = teamId;
+      const patch = { updatedAt: new Date(), updatedByUid: stamp.uid, updatedByName: stamp.name };      if (!existing.teamId) patch.teamId = teamId;
       if (b.description !== undefined) patch.description = sstr(b.description, 1000);
       if (b.dueDate !== undefined) patch.dueDate = sstr(b.dueDate, 40);
       if (b.priority !== undefined) patch.priority = sstr(b.priority, 20);
@@ -962,8 +969,9 @@ export function registerAlignRoutes(app) {
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
       if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
-      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
-        return bad(res, 'This task belongs to someone else.', 403);
+      // Any team member may change it with the shared action password ("anything" rule).
+      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner' && !actionPasswordOk(b)) {
+        return bad(res, 'This task belongs to someone else — enter the action password to change it.', 403);
       }
 
       const stamp = stampOf(req.staff);
@@ -1005,8 +1013,9 @@ export function registerAlignRoutes(app) {
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
       if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
-      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
-        return bad(res, 'This task belongs to someone else.', 403);
+      // Any team member may change it with the shared action password ("anything" rule).
+      if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner' && !actionPasswordOk(b)) {
+        return bad(res, 'This task belongs to someone else — enter the action password to change it.', 403);
       }
 
       await ref.delete();
