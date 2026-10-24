@@ -94,42 +94,6 @@ function requireManager(req, res, next) {
   }).catch(() => res.status(401).json({ ok: false, error: 'Sign in as the owner to manage team members.' }));
 }
 
-// The team gate. Every task write calls this.
-function requireUnlock(req, res, teamId) {
-  if (!teamId) { bad(res, 'A team is required.'); return null; }
-  const token = unlockOf(req);
-  if (!token) {
-    res.status(403).json({ ok: false, error: 'Team locked. Enter the team password to make changes.', needsUnlock: true, teamId });
-    return null;
-  }
-  const t = verifyTeamUnlock(token, teamId);
-  if (!t) {
-    res.status(403).json({ ok: false, error: 'Team unlocked session expired. Please enter the team password again.', needsUnlock: true, teamId });
-    return null;
-  }
-  if (t.uid !== req.staff.uid) {
-    res.status(403).json({ ok: false, error: 'This unlock belongs to a different person. Unlock the team again.', needsUnlock: true, teamId });
-    return null;
-  }
-  return t;
-}
-
-// Gate for writes that are not tied to one team (private tasks): the person must be
-// signed in with their name + password AND have unlocked a team on this device.
-function requireUnlockAny(req, res) {
-  const token = unlockOf(req);
-  if (!token) {
-    res.status(403).json({ ok: false, error: 'Team locked. Sign in and unlock the team to make changes.', needsUnlock: true });
-    return null;
-  }
-  const t = verifyAnyTeamUnlock(token, req.staff.uid);
-  if (!t) {
-    res.status(403).json({ ok: false, error: 'Team unlocked session expired. Please unlock the team again.', needsUnlock: true });
-    return null;
-  }
-  return t;
-}
-
 const stampOf = (staff) => ({
   uid: staff.uid,
   handle: staff.handle,
@@ -520,7 +484,6 @@ export function registerAlignRoutes(app) {
 
   app.post(api + '/personal', requireStaff, async (req, res) => {
     try {
-      if (!requireUnlockAny(req, res)) return;
       const b = req.body || {};
       const desc = sstr(b.description || b.text, 500).trim();
       if (!desc) return bad(res, 'Describe the task.');
@@ -550,7 +513,6 @@ export function registerAlignRoutes(app) {
 
   app.patch(api + '/personal/:id', requireStaff, async (req, res) => {
     try {
-      if (!requireUnlockAny(req, res)) return;
       const b = req.body || {};
       const patch = { updatedAt: Date.now(), updatedByUid: req.staff.uid, updatedByName: req.staff.name };
       if (b.description !== undefined) patch.description = sstr(b.description, 500);
@@ -577,7 +539,6 @@ export function registerAlignRoutes(app) {
 
   app.delete(api + '/personal/:id', requireStaff, async (req, res) => {
     try {
-      if (!requireUnlockAny(req, res)) return;
       await alignDb().doc(`${ALIGN_BASE}/users/${req.staff.uid}/personal_tasks/${req.params.id}`).delete();
       res.json({ ok: true });
     } catch (e) {
@@ -620,8 +581,6 @@ export function registerAlignRoutes(app) {
     try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
-      const gate = requireUnlock(req, res, teamId);
-      if (!gate) return;
 
       const desc = sstr(b.description, 1000).trim();
       if (!desc) return bad(res, 'Describe the task.');
@@ -671,8 +630,6 @@ export function registerAlignRoutes(app) {
     try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
-      const gate = requireUnlock(req, res, teamId);
-      if (!gate) return;
 
       const id = sstr(b.id, 120);
       const kind = b.kind === 'assigned' ? 'assigned' : 'shared';
@@ -732,8 +689,6 @@ export function registerAlignRoutes(app) {
     try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
-      const gate = requireUnlock(req, res, teamId);
-      if (!gate) return;
 
       const id = sstr(b.id, 120);
       const kind = b.kind === 'assigned' ? 'assigned' : 'shared';
@@ -771,8 +726,6 @@ export function registerAlignRoutes(app) {
   app.post(api + '/task/delete', requireStaff, async (req, res) => {    try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
-      const gate = requireUnlock(req, res, teamId);
-      if (!gate) return;
 
       const id = sstr(b.id, 120);
       const kind = b.kind === 'assigned' ? 'assigned' : 'shared';

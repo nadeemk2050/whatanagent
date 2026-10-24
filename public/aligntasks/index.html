@@ -4223,20 +4223,6 @@
                            style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
                 </div>
 
-                <div id="gateTeamWrap" style="display:none;">
-                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Team</label>
-                    <!-- Custom dropdown: a native <select> popup can paint behind the modal card. -->
-                    <input type="hidden" id="gateTeam" value="">
-                    <div style="position:relative;margin-bottom:12px;">
-                        <button id="gateTeamBtn" type="button"
-                                style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;color:#0f172a;text-align:left;cursor:pointer;box-sizing:border-box;">
-                            <span id="gateTeamLabel">Choose a team</span><span style="color:#64748b;">▾</span>
-                        </button>
-                        <div id="gateTeamList"
-                             style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:6px;background:#fff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 18px 40px rgba(15,23,42,.22);max-height:230px;overflow:auto;z-index:20;"></div>
-                    </div>
-                </div>
-
                 <label id="gatePwLabel" style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Your password</label>
                 <input id="gatePassword" type="password" autocomplete="current-password" placeholder="••••••••"
                        style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:16px;box-sizing:border-box;">
@@ -4333,15 +4319,14 @@
 
     <script>
     /* ==================================================================
-       AlignTasks gate: staff session + team unlock.
-       All API calls carry the session/unlock tokens; the server enforces
-       both, so the gate cannot be bypassed from the browser.
+       AlignTasks gate: team (name + password) sign-in.
+       Every API call carries the staff session token; the server enforces it,
+       so the gate cannot be bypassed from the browser.
        ================================================================== */
     (function () {
         const API = 'https://whatanagent.duckdns.org/api/align';
         const SKEY = 'align_staff_session';
         const SNAME = 'align_staff_name';
-        const UKEY = 'align_team_unlock';   // { teamId: { token, expiresAt } }
 
         const $ = (id) => document.getElementById(id);
 
@@ -4355,20 +4340,6 @@
         function firebaseUser() {
             try { return (window.firebase && firebase.auth) ? firebase.auth().currentUser : null; } catch (e) { return null; }
         }
-        function getUnlocks() { try { return JSON.parse(localStorage.getItem(UKEY) || '{}'); } catch (e) { return {}; } }
-        function saveUnlock(teamId, token, expiresAt) {
-            const all = getUnlocks();
-            all[teamId] = { token, expiresAt };
-            try { localStorage.setItem(UKEY, JSON.stringify(all)); } catch (e) {}
-        }
-        function unlockFor(teamId) {
-            const all = getUnlocks();
-            const u = all[teamId];
-            if (!u || !u.token) return '';
-            if (u.expiresAt && u.expiresAt < Date.now()) return '';
-            return u.token;
-        }
-
         async function api(path, opts = {}) {
             const headers = Object.assign(
                 { 'Content-Type': 'application/json' },
@@ -4383,19 +4354,6 @@
                     const fu = (window.firebase && firebase.auth) ? firebase.auth().currentUser : null;
                     if (fu) headers['x-firebase-token'] = await fu.getIdToken();
                 } catch (e) { /* ignore: the session may still authorise it */ }
-            }
-            const teamId = opts.teamId || (window.teamCtx && window.teamCtx.teamId);
-            if (teamId) {
-                const u = unlockFor(teamId);
-                if (u) headers['x-align-unlock'] = u;
-            } else {
-                // Writes that are not tied to one team (private tasks) still prove the
-                // team gate was passed: send any unexpired unlock for this device.
-                const all = getUnlocks();
-                for (const k of Object.keys(all)) {
-                    const u = all[k];
-                    if (u && u.token && (!u.expiresAt || u.expiresAt > Date.now())) { headers['x-align-unlock'] = u.token; break; }
-                }
             }
             const res = await fetch(API + path + (opts.method && opts.method !== 'GET' ? '' : (path.includes('?') ? '&' : '?') + '_t=' + Date.now()), {
                 method: opts.method || 'GET',
@@ -4416,18 +4374,13 @@
                 setSession('');
                 showGate('login');
             }
-            if (res.status === 403 && data.needsUnlock) {
-                showGate('unlock');
-            }
             if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
             return data;
         }
 
         // ---------------------------------------------------------- gate UI
         let gateMode = 'login';
-        let pendingTeams = [];
         let confirmStaff = null;
-        let gateTeamId = '';
         let gateBootDone = false;
 
         // Freeze the page behind the gate so the flow really is controlled:
@@ -4446,66 +4399,8 @@
             document.body.style.pointerEvents = '';
         }
 
-        // The team picker is a custom dropdown inside the card (a native <select> popup can
-        // render behind the modal) and it loads the teams itself, so it is never empty.
-        function renderTeamOptions(loadIfEmpty) {
-            const listEl = $('gateTeamList');
-            const labelEl = $('gateTeamLabel');
-            if (!pendingTeams.length) {
-                $('gateTeam').value = '';
-                labelEl.textContent = 'Loading teams…';
-                listEl.innerHTML = '<div style="padding:11px 13px;font-size:12.5px;color:#94a3b8;">Loading teams…</div>';
-                if (loadIfEmpty !== false) {
-                    loadTeams().then(list => {
-                        pendingTeams = list;
-                        if (gateMode === 'unlock') renderTeamOptions(false);
-                    }).catch(() => {
-                        labelEl.textContent = 'Could not load teams';
-                        listEl.innerHTML = '<div style="padding:11px 13px;font-size:12.5px;color:#b91c1c;">Could not load teams. Check your connection and try again.</div>';
-                    });
-                }
-                return;
-            }
-            const curTeam = (window.teamCtx && window.teamCtx.teamId) || '';
-            if (!gateTeamId || !pendingTeams.some(t => t.id === gateTeamId)) {
-                const withPw = pendingTeams.find(t => t.hasPassword);
-                gateTeamId = (curTeam && pendingTeams.some(t => t.id === curTeam)) ? curTeam : (withPw ? withPw.id : pendingTeams[0].id);
-            }
-            $('gateTeam').value = gateTeamId;
-            const chosen = pendingTeams.find(t => t.id === gateTeamId) || {};
-            labelEl.textContent = (chosen.name || chosen.id || 'Choose a team') + (chosen.hasPassword === false ? ' (no password set)' : '');
-            listEl.innerHTML = pendingTeams.map(t =>
-                '<button type="button" data-team="' + t.id + '" style="display:block;width:100%;text-align:left;padding:11px 13px;border:none;border-bottom:1px solid #f1f5f9;background:' + (t.id === gateTeamId ? '#eef2ff' : '#fff') + ';font-size:13.5px;font-weight:600;color:#1e293b;cursor:pointer;">' +
-                    (t.name || t.id) +
-                    (t.hasPassword === false ? ' <span style="color:#b45309;font-weight:700;font-size:11px;">(no password set)</span>' : '') +
-                '</button>'
-            ).join('');
-        }
-
-        $('gateTeamBtn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const listEl = $('gateTeamList');
-            const open = listEl.style.display !== 'block';
-            listEl.style.display = open ? 'block' : 'none';
-            if (open && !pendingTeams.length) renderTeamOptions(true);
-        });
-        $('gateTeamList').addEventListener('click', (e) => {
-            const b = e.target.closest('[data-team]');
-            if (!b) return;
-            e.stopPropagation();
-            gateTeamId = b.dataset.team;
-            $('gateTeamList').style.display = 'none';
-            renderTeamOptions(false);
-        });
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#gateTeamBtn') && !e.target.closest('#gateTeamList')) {
-                const listEl = $('gateTeamList');
-                if (listEl) listEl.style.display = 'none';
-            }
-        });
-
         // Read-only mode: the gate can be dismissed, but every task write still needs the
-        // staff session + team password, so nothing can be created or edited without it.
+        // team (name + password) sign-in, so nothing can be created or edited without it.
         // The app needs a Firebase identity to render. If the browser has a staff session but
         // no Firebase user (fresh origin/tab, or after a sign-out) mint one from the session,
         // so closing the gate never dumps the person on the email login screen.
@@ -4557,7 +4452,6 @@
         function showGate(mode) {
             gateMode = mode;
             $('alignGate').style.display = 'block';
-            $('gateTeamList').style.display = 'none';
             freeze();
             const er = $('gateError'); er.style.display = 'none'; er.textContent = '';
 
@@ -4569,47 +4463,29 @@
                 $('gatePassword').style.display = '';
                 $('gatePassword').setAttribute('autocomplete', 'current-password');
                 $('gateNameWrap').style.display = 'block';
-                $('gateTeamWrap').style.display = 'none';
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#2563eb';
                 $('gateSkip').style.display = 'block';
                 $('gateSkip').textContent = 'Continue read-only (no task create or edit)';
                 $('gateHint').textContent = 'Your name and password are needed to create or edit tasks. Your personal tasks stay private to you.';
-            } else if (mode === 'confirm') {
+            } else {
                 const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
                 $('gateTitle').textContent = 'Confirm it is you';
                 $('gateSub').textContent = 'This device is still signed in as ' + nm + '.';
                 $('gatePwLabel').style.display = 'none';
                 $('gatePassword').style.display = 'none';
                 $('gateNameWrap').style.display = 'none';
-                $('gateTeamWrap').style.display = 'none';
                 $('gateSubmit').textContent = 'Continue as ' + nm;
                 $('gateSubmit').style.background = '#16a34a';
                 $('gateSkip').style.display = 'block';
                 $('gateSkip').textContent = 'Not you? Sign in as someone else';
-                $('gateHint').textContent = 'The team password is asked next, every time the app opens.';
-            } else {
-                $('gateTitle').textContent = 'Unlock the team';
-                $('gateSub').textContent = 'Tasks are locked. Enter the TEAM password to create, complete or delete tasks.';
-                $('gatePwLabel').style.display = 'block';
-                $('gatePwLabel').textContent = 'Team password';
-                $('gatePassword').style.display = '';
-                $('gatePassword').setAttribute('autocomplete', 'off');
-                $('gateNameWrap').style.display = 'none';
-                $('gateTeamWrap').style.display = 'block';
-                renderTeamOptions(true);
-                $('gateSubmit').textContent = 'Unlock team';
-                $('gateSubmit').style.background = '#7c3aed';
-                $('gateSkip').style.display = 'block';           // read-only browsing is allowed
-                $('gateSkip').textContent = 'Continue read-only (no task create or edit)';
-                $('gateHint').textContent = 'Click ✖ to close and browse without creating or editing tasks.';
+                $('gateHint').textContent = 'Tasks can be created or edited straight after this step.';
             }
-            setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
+            setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gateSubmit')).focus(); } catch (e) {} }, 120);
         }
 
         function hideGate(keepReadOnly) {
             $('alignGate').style.display = 'none';
-            $('gateTeamList').style.display = 'none';
             unfreeze();
             if (keepReadOnly !== false) exitReadOnly();
         }
@@ -4649,14 +4525,6 @@
             return d;
         }
 
-        async function loadTeams() {
-            try {
-                const r = await fetch(API + '/teams', { headers: { 'x-align-session': getSession() } });
-                const d = await r.json();
-                return d.teams || [];
-            } catch (e) { return []; }
-        }
-
         $('gateForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = $('gateSubmit');
@@ -4671,26 +4539,15 @@
                     const name = $('gateName').value.trim();
                     const pw = $('gatePassword').value;
                     if (!name || !pw) throw new Error('Enter your name and password.');
-                    const d = await completeLogin(name, pw);
+                    await completeLogin(name, pw);
                     gateBootDone = true;      // the boot check must not re-show the gate after this
                     $('gatePassword').value = '';
-                    pendingTeams = await loadTeams();
-                    if (pendingTeams.length) { showGate('unlock'); return; }
-                    hideGate();
-                } else if (gateMode === 'confirm') {
-                    // Identity stays, but the team password is re-asked on every app open.
-                    gateBootDone = true;
-                    pendingTeams = await loadTeams();
-                    if (pendingTeams.length) { showGate('unlock'); return; }
                     hideGate();
                     loadProfile();
+                    if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
                 } else {
-                    const teamId = $('gateTeam').value;
-                    const pw = $('gatePassword').value;
-                    if (!teamId) throw new Error('Choose a team.');
-                    const d = await api('/team/unlock', { method: 'POST', body: { teamId, password: pw } });
-                    saveUnlock(teamId, d.token, d.expiresAt);
-                    $('gatePassword').value = '';
+                    // Confirm: the identity stays, straight in.
+                    gateBootDone = true;
                     hideGate();
                     loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
@@ -4705,57 +4562,44 @@
         });
 
         $('gateSkip').addEventListener('click', async () => {
-            if (gateMode === 'login') {
-                enterReadOnly();                   // admin / browse mode: no task create or edit
-                return;
-            }
             if (gateMode === 'confirm') {
                 // Hand the device to another team member.
                 setSession('');
                 setSessionName('');
                 confirmStaff = null;
-                try { localStorage.removeItem(UKEY); } catch (e) {}
                 try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
-                pendingTeams = [];
-                gateTeamId = '';
                 $('gateName').value = '';
                 $('gatePassword').value = '';
                 showGate('login');
                 return;
             }
-            enterReadOnly();                       // team gate: read-only browsing is allowed
+            enterReadOnly();                       // browse only: no task create or edit
         });
 
         $('gateClose').addEventListener('click', (e) => {
             e.stopPropagation();
-            $('gateTeamList').style.display = 'none';
             enterReadOnly();
         });
 
         // ---------------------------------------------------------- expose helpers
         window.alignApi = api;
         window.alignSession = getSession;
-        window.alignUnlockFor = unlockFor;
         window.alignShowGate = showGate;
+        // Task writes need the team (name + password) sign-in; nothing more.
         window.alignRequireUnlock = async function () {
-            const teamId = (window.teamCtx && window.teamCtx.teamId) || '';
-            if (teamId && unlockFor(teamId)) return true;
-            // Admin / read-only mode: explain instead of throwing the gate back at them.
+            if (getSession()) return true;
             if (document.getElementById('alignReadOnly')) {
                 alert('Read-only — team sign in to create or edit tasks.');
                 return false;
             }
-            pendingTeams = await loadTeams();
-            showGate('unlock');
+            showGate('login');
             return false;
         };
 
         // ---------------------------------------------------------- auto gate
         // The staff gate is shown on EVERY app open, not just when the 12h token is
         // missing: a valid session asks "Continue as <name>", otherwise name+password.
-        // The team unlock is deliberately dropped at boot so the team password is
-        // always required again on a fresh open (owner choice).
-        try { localStorage.removeItem(UKEY); } catch (e) {}
+        // There is no third (team password) step any more.
         let ticks = 0;
         let earlyGate = false;
         const timer = setInterval(async () => {
@@ -4978,15 +4822,14 @@
         });
 
         $('pfLogout').addEventListener('click', async () => {
-            try { setSession(''); localStorage.removeItem(UKEY); } catch (e) {}
+            try { setSession(''); } catch (e) {}
             try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
             location.reload();
         });
 
         // ---------------------------------------------------------- heartbeat
         // Every 5 minutes re-validate the staff session. If it expired (12h) or was
-        // revoked, the identity gate comes straight back — the session cannot be
-        // outlived. Also drops an expired team unlock back to the team gate.
+        // revoked, the sign-in gate comes straight back — the session cannot be outlived.
         setInterval(async () => {
             if (!firebaseUser()) return;
             const s = getSession();
@@ -4995,11 +4838,6 @@
                 const r = await fetch(API + '/staff/me?_t=' + Date.now(), { headers: { 'x-align-session': s }, cache: 'no-store' });
                 if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); showGate('login'); return; }
                 if (!r.ok) return;   // server hiccup: keep the person signed in
-                const cur = (window.teamCtx && window.teamCtx.teamId) || '';
-                if (cur && !unlockFor(cur) && $('alignGate').style.display !== 'block') {
-                    pendingTeams = await loadTeams();
-                    showGate('unlock');
-                }
             } catch (e) { /* offline: leave the user where they are */ }
         }, 5 * 60 * 1000);
     })();

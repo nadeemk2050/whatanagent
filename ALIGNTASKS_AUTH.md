@@ -4,46 +4,35 @@ Everything below is implemented and verified against production unless marked TO
 
 ## 1. How people get in
 
-| Layer | Who needs it | What it proves | Lasts |
+| Step | Who | What it proves | Lasts |
 |---|---|---|---|
-| **Firebase sign-in** | Owner (email + password) | Account ownership | Firebase default |
-| **Staff gate** - name + password | Every staff member, **on every app open** | *Who* you are (no email, no phone) | 12 h token, but the page is shown each load |
-| **Team gate** - team password | Everyone, **including the owner**, before any task write | You may act on this team's board | 12 h token, asked again on every app open |
+| **1. Main login** | Everyone (email + password) | Account ownership; opens the app | Firebase default |
+| **2. Team login** - name + password | Everyone, **required to create or edit tasks** | *Who* you are on the board | 12 hours |
 
-Staff are identified by a **name handle** (`ali khan`), not an email. Each staff
-member still has one hidden synthetic Firebase identity
-(`<handle>@staff.align.internal`) so team membership and rules keep working -
-the person never sees or types it.
+There is **no third step** any more: once the team login is done, tasks (team and
+private) and management work directly. The old "team password" unlock screen has
+been removed from the UI and from the server rules.
+
+Staff are identified by a **name handle** (`ali khan`), never an email. Each member
+still has one hidden synthetic Firebase identity
+(`<handle>@staff.align.internal`) so team membership and rules keep working - the
+person never sees or types it.
 
 Members migrated from the old board keep their real Firebase uid and their old
 email as an **alias**, so `assigneeEmail` values written before the migration
 still resolve to the right person.
 
-### Gate behaviour on load
+## 2. What each person can do
 
-- Valid 12 h staff token -> "Confirm it is you - Continue as <name>" (one tap),
-  plus "Not you? Sign in as someone else" to hand the device over.
-- No token -> full "Sign in to AlignTasks" (name + password).
-- A team member on a brand-new device reaches the same form after ~8 s even
-  without a Firebase session; the login returns a custom token, so their Firebase
-  identity is created on the spot (`users/<uid>` is synced by the server).
-- The stored team unlock is cleared at boot, so the team password is always asked
-  again on a fresh open.
-- The gate can be dismissed at any point with the **✖** button (or
-  "Continue as admin (read-only)"). The person then browses everything they are
-  allowed to read, but every task write is still refused — create/edit needs the
-  staff session and the team password — and a "Read-only" banner offers sign-in.
-- The team picker is a dropdown drawn inside the card (a native `<select>` popup
-  can paint behind the modal) and it loads the teams itself.
+| Action | Needs |
+|---|---|
+| View the board (read-only browsing) | main login |
+| **Create / edit / complete / delete any task** (team or private) | main login **+ team login** |
+| Manage masters: members, emails, WhatsApp, address, remarks, passwords | main login (owner/admin) or team login |
+| Read a member's stored team-login password | owner/admin (audited) |
 
-## 2. What the owner can do without the team password
-
-Reading, plus management: staff records, team password, invites, settings.
-Creating, editing, completing or deleting a task **always** requires the team gate.
-
-The owner manages logins from the profile menu -> **Team logins**: set a
-password, disable, or remove any member. That panel uses the owner's staff
-session, not the dashboard admin token.
+Closing the gate with **✖** drops you into read-only browsing; every write then
+fails with "Read-only - team sign in to create or edit tasks".
 
 ## 3. Stamps - un-fakeable
 
