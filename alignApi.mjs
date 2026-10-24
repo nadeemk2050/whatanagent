@@ -412,8 +412,38 @@ export function registerAlignRoutes(app) {
         active: b.active,
         aliases: Array.isArray(b.aliases) ? b.aliases : undefined
       });
-      authAudit({ action: 'owner_staff_save', handle: saved.handle, note: 'by ' + (req.manager ? req.manager.handle : 'firebase-owner') });
+      authAudit({ action: 'staff_save', handle: saved.handle, note: 'by ' + (req.staff ? req.staff.handle : 'unknown') });
       try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
+      // Mirror into the board staff directory (once per team) so the new member also shows
+      // up in assignee pickers. Never creates duplicates.
+      try {
+        const rec = getStaffByHandle(saved.handle) || {};
+        const teams = Array.isArray(rec.teamIds) ? rec.teamIds : [];
+        const email = String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase();
+        for (const teamId of teams) {
+          const col = alignDb().collection(`${ALIGN_BASE}/staff`);
+          const found = await col.where('teamId', '==', teamId).get();
+          const hit = found.docs.find(d => {
+            const v = d.data() || {};
+            return String(v.email || '').toLowerCase() === email
+              || String(v.handle || v.name || '').toLowerCase() === String(rec.handle || '').toLowerCase();
+          });
+          const data = {
+            name: rec.name || saved.name,
+            handle: rec.handle,
+            email,
+            role: rec.role || 'member',
+            teamId,
+            uid: rec.uid || '',
+            active: rec.active !== false,
+            updatedAt: new Date()
+          };
+          if (hit) await hit.ref.set(data, { merge: true });
+          else await col.add(Object.assign({ createdAt: new Date() }, data));
+        }
+      } catch (e) {
+        console.warn('[ALIGN] board staff mirror skipped: ' + sstr(e.message, 120));
+      }
       res.json({ ok: true, staff: saved });
     } catch (e) {
       if (e.code === 'align-no-admin') return noAdmin(res);

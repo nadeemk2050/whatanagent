@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v34'; // Change this version number (v2, v3, etc.) every time you deploy
+﻿const CACHE_NAME = 'task-board-cache-v35'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -24,7 +24,7 @@ self.addEventListener('install', event => {
 });
 
 function offlineResponse() {
-  return new Response('You are offline — AlignTasks will load again when the connection returns.', {
+  return new Response('You are offline â€” AlignTasks will load again when the connection returns.', {
     status: 503,
     statusText: 'Offline',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -41,7 +41,7 @@ self.addEventListener('fetch', event => {
   // Only http(s) can be cached; browser extensions inject chrome-extension:// requests
   // into the page and caching those throws "Request scheme 'chrome-extension' is unsupported".
   if (!/^https?:$/i.test(url.protocol)) return;
-  // NEVER touch API or data traffic. A cached — or synthetic "503 Offline" — response for
+  // NEVER touch API or data traffic. A cached â€” or synthetic "503 Offline" â€” response for
   // /api/align/* or Firestore breaks sign-in, task saves and live listeners.
   if (url.origin !== self.location.origin) return;
   if (url.pathname.indexOf('/api/') === 0) return;
@@ -88,7 +88,7 @@ self.addEventListener('fetch', event => {
             caches.open(CACHE_NAME)
               .then(cache => {
                 // Only same-origin / http(s) requests can be cached; browser extensions
-                // (chrome-extension://…) and other schemes throw here.
+                // (chrome-extension://â€¦) and other schemes throw here.
                 if (!/^https?:$/i.test(new URL(event.request.url).protocol)) return;
                 cache.put(event.request, responseToCache).catch(() => {});
               })

@@ -1085,6 +1085,23 @@
                     }, { merge: true });
 
                     await upsertStaffRecord(trimmedName, normalizedEmail, newUid, whatsappNumber);
+
+                    // The board record alone cannot log in — create the TEAM LOGIN (name +
+                    // password) as well, otherwise the new member gets "name or password wrong".
+                    try {
+                        await window.alignApi('/team/staff', {
+                            method: 'POST',
+                            body: {
+                                name: trimmedName,
+                                handle: trimmedName,
+                                password,
+                                role: 'member',
+                                aliases: [normalizedEmail]
+                            }
+                        });
+                    } catch (e) {
+                        console.warn('team login not created:', (e && e.message) || e);
+                    }
                 } finally {
                     await secondaryAuth.signOut().catch(() => {});
                     await secondaryApp.delete().catch(() => {});
@@ -5073,7 +5090,7 @@
                     const isTaskWrite = /^\/(task|personal)/.test(path);
                     throw new Error(isTaskWrite
                         ? 'Read-only — team sign in to create or edit tasks.'
-                            : (data.error || 'Please sign in as the owner to manage team members.'));
+                            : (data.error || 'Team sign in first — then team members can be managed.'));
                 }
                 setSession('');
                 showGate('login');
@@ -5513,7 +5530,7 @@
             if (!nm || !pw) { pfMsg('Enter a name and a password (min 6).', false); return; }
             if (pw.length < 6) { pfMsg('Password must be at least 6 characters.', false); return; }
             try {
-                await api('/team/staff', { method: 'POST', body: { name: nm, handle: nm, password: pw, role: 'member' } });
+                await api('/team/staff', { method: 'POST', body: { name: nm, handle: nm, password: pw, role: 'member', teamIds: (myProfile && myProfile.teamIds) || [] } });
                 $('pfNewStaffName').value = ''; $('pfNewStaffPass').value = '';
                 pfMsg('✅ ' + nm + ' can now sign in with that name and password.', true);
                 await loadStaffAdmin();

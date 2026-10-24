@@ -366,10 +366,17 @@ export function getStaffByHandle(handle) {
   if (!h) return null;
   const staff = loadStaff();
   if (staff[h]) return staff[h];
+  const asked = String(handle || '').trim().toLowerCase();
   // legacy email / alternate names resolve through aliases
   for (const rec of Object.values(staff)) {
     const list = Array.isArray(rec.aliases) ? rec.aliases : [];
-    if (list.some(a => String(a).trim().toLowerCase() === String(handle).trim().toLowerCase())) return rec;
+    if (list.some(a => String(a).trim().toLowerCase() === asked)) return rec;
+  }
+  // People type their display name ("Nadeem Khan") rather than the short login name
+  // ("nadeem"), so accept that too — ignoring capitalisation and spacing.
+  const squashed = h.replace(/\s+/g, ' ');
+  for (const rec of Object.values(staff)) {
+    if (normalizeHandle(rec.name) === squashed) return rec;
   }
   return null;
 }
