@@ -522,9 +522,29 @@
         </div>
     </div>
     <div id="edit-staff-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Staff Member</h3><button id="edit-staff-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name <span class="text-xs text-gray-400">(cannot be changed)</span></label><input id="edit-staff-name" type="text" readonly class="w-full mt-1 p-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div><div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="pt-2 border-t"><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /><div id="edit-staff-msg" class="text-xs mt-1 hidden"></div></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden" style="max-height:92vh;">
+            <div class="px-5 py-3 border-b flex justify-between items-center shrink-0">
+                <h3 class="text-lg font-bold text-gray-800">Edit Team Member</h3>
+                <button id="edit-staff-modal-close" type="button" title="Close without saving"
+                        style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;color:#475569;border:none;border-radius:9999px;font-size:16px;font-weight:800;cursor:pointer;line-height:1;">&times;</button>
+            </div>
+            <form id="edit-staff-form" class="px-5 py-4 space-y-4 flex-1 overflow-y-auto" style="scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;-webkit-overflow-scrolling:touch;">
+                <input type="hidden" id="edit-staff-id">
+                <div><label class="text-sm font-medium text-gray-700">Name <span class="text-xs text-gray-400">(cannot be changed)</span></label><input id="edit-staff-name" type="text" readonly class="w-full mt-1 p-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div>
+                <div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+            </form>
+            <div class="px-5 py-3 border-t bg-gray-50 shrink-0">
+                <div id="edit-staff-msg" class="text-xs mb-2 hidden"></div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" id="edit-staff-cancel" class="bg-gray-200 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-300">Close</button>
+                    <button type="submit" form="edit-staff-form" id="edit-staff-save" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Update &amp; Save</button>
+                </div>
+            </div>
         </div>
     </div>
     <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2967,6 +2987,13 @@
                 editStaffModal.classList.remove('hidden');
             }
             document.getElementById('edit-staff-modal-close').addEventListener('click', () => editStaffModal.classList.add('hidden'));
+            const editStaffCancel = document.getElementById('edit-staff-cancel');
+            if (editStaffCancel) editStaffCancel.addEventListener('click', () => {
+                document.getElementById('edit-staff-password').value = '';
+                document.getElementById('edit-staff-adminpw').value = '';
+                const m = document.getElementById('edit-staff-msg'); m.textContent = ''; m.className = 'text-xs mb-2 hidden';
+                editStaffModal.classList.add('hidden');
+            });
             document.getElementById('wa-remind-modal-close').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
             document.getElementById('wa-remind-cancel').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
             document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
@@ -3658,12 +3685,14 @@
                 const password = (document.getElementById('edit-staff-password') || {}).value || '';
                 const adminPassword = (document.getElementById('edit-staff-adminpw') || {}).value || '';
                 const msg = document.getElementById('edit-staff-msg');
-                const show = (text, ok) => { msg.textContent = text; msg.className = 'text-xs mt-1 ' + (ok ? 'text-green-600' : 'text-red-600'); };
+                const show = (text, ok) => { msg.textContent = text; msg.className = 'text-xs mb-2 ' + (ok ? 'text-green-600' : 'text-red-600'); };
 
                 if (!name || !email) { show('Name and email are required.', false); return; }
                 if (password && password.length < 6) { show('Login password must be at least 6 characters.', false); return; }
                 if (!adminPassword) { show('Enter the admin password to save.', false); return; }
 
+                const saveBtn = document.getElementById('edit-staff-save');
+                if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
                 try {
                     // The server checks the admin password and writes the login record
                     // (name, email alias, WhatsApp, address, remarks, password).
@@ -3687,6 +3716,8 @@
                     setTimeout(() => { editStaffModal.classList.add('hidden'); }, 1200);
                 } catch (err) {
                     show('❌ ' + err.message, false);
+                } finally {
+                    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Update & Save'; }
                 }
             });
 
@@ -4287,6 +4318,14 @@
             if (teamId) {
                 const u = unlockFor(teamId);
                 if (u) headers['x-align-unlock'] = u;
+            } else {
+                // Writes that are not tied to one team (private tasks) still prove the
+                // team gate was passed: send any unexpired unlock for this device.
+                const all = getUnlocks();
+                for (const k of Object.keys(all)) {
+                    const u = all[k];
+                    if (u && u.token && (!u.expiresAt || u.expiresAt > Date.now())) { headers['x-align-unlock'] = u.token; break; }
+                }
             }
             const res = await fetch(API + path + (opts.method && opts.method !== 'GET' ? '' : (path.includes('?') ? '&' : '?') + '_t=' + Date.now()), {
                 method: opts.method || 'GET',

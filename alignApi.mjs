@@ -20,7 +20,7 @@ import {
   ALIGN_BASE, board, alignDb, alignAuth, alignAdminStatus
 } from './alignAdmin.mjs';
 import {
-  loginStaff, verifyStaffSession, verifyTeamUnlock, issueStaffSession,
+  loginStaff, verifyStaffSession, verifyTeamUnlock, verifyAnyTeamUnlock, issueStaffSession,
   upsertStaff, listStaff, getStaffByHandle, getStaffByUid, deleteStaff,
   setTeamPassword, teamHasPassword, unlockTeam, authAudit, recentAuthEvents,
   normalizeHandle, SESSION_HOURS, UNLOCK_HOURS,
@@ -69,6 +69,22 @@ function requireUnlock(req, res, teamId) {
   }
   if (t.uid !== req.staff.uid) {
     res.status(403).json({ ok: false, error: 'This unlock belongs to a different person. Unlock the team again.', needsUnlock: true, teamId });
+    return null;
+  }
+  return t;
+}
+
+// Gate for writes that are not tied to one team (private tasks): the person must be
+// signed in with their name + password AND have unlocked a team on this device.
+function requireUnlockAny(req, res) {
+  const token = unlockOf(req);
+  if (!token) {
+    res.status(403).json({ ok: false, error: 'Team locked. Sign in and unlock the team to make changes.', needsUnlock: true });
+    return null;
+  }
+  const t = verifyAnyTeamUnlock(token, req.staff.uid);
+  if (!t) {
+    res.status(403).json({ ok: false, error: 'Team unlocked session expired. Please unlock the team again.', needsUnlock: true });
     return null;
   }
   return t;
@@ -451,6 +467,7 @@ export function registerAlignRoutes(app) {
 
   app.post(api + '/personal', requireStaff, async (req, res) => {
     try {
+      if (!requireUnlockAny(req, res)) return;
       const b = req.body || {};
       const desc = sstr(b.description || b.text, 500).trim();
       if (!desc) return bad(res, 'Describe the task.');
@@ -480,6 +497,7 @@ export function registerAlignRoutes(app) {
 
   app.patch(api + '/personal/:id', requireStaff, async (req, res) => {
     try {
+      if (!requireUnlockAny(req, res)) return;
       const b = req.body || {};
       const patch = { updatedAt: Date.now(), updatedByUid: req.staff.uid, updatedByName: req.staff.name };
       if (b.description !== undefined) patch.description = sstr(b.description, 500);
@@ -506,6 +524,7 @@ export function registerAlignRoutes(app) {
 
   app.delete(api + '/personal/:id', requireStaff, async (req, res) => {
     try {
+      if (!requireUnlockAny(req, res)) return;
       await alignDb().doc(`${ALIGN_BASE}/users/${req.staff.uid}/personal_tasks/${req.params.id}`).delete();
       res.json({ ok: true });
     } catch (e) {

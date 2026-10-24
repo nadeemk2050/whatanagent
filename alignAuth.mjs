@@ -162,6 +162,15 @@ export function verifyTeamUnlock(token, teamId) {
   return t;
 }
 
+// Any valid unlock that belongs to this person — used by writes that are not tied to a
+// single team (private tasks) but must still prove the team gate was passed.
+export function verifyAnyTeamUnlock(token, uid) {
+  const t = unsign(token);
+  if (!t || t.typ !== 'team') return null;
+  if (uid && t.uid !== uid) return null;
+  return t;
+}
+
 // --------------------------------------------------------------------------- audit
 export function authAudit(event) {
   try {
