@@ -2892,8 +2892,8 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
         loading = true
         FirebaseFirestore.getInstance().document("appData/alignWaGroupsIndex").get()
             .addOnSuccessListener { snap ->
-                val raw = snap.data?.get("contacts") as? List<*>
-                allContacts = (raw ?: emptyList()).mapNotNull { item ->
+                val raw = (snap.data?.get("contacts") as? List<*>) ?: emptyList<Any?>()
+                allContacts = raw.mapNotNull { item ->
                     val m = item as? Map<*, *> ?: return@mapNotNull null
                     val name = (m["name"] as? String) ?: ""
                     val phone = (m["phone"] as? String) ?: ""
