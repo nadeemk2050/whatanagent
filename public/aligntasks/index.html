@@ -1389,7 +1389,7 @@
                 const indTitle = document.getElementById('individual-tasks-title');
                 if (indTitle) indTitle.textContent = owner ? 'Individual Tasks Overview (All Staff)' : 'My Individual Tasks';
                 const forAllForm = document.getElementById('task-for-all-form');
-                if (forAllForm) forAllForm.style.display = owner ? 'flex' : 'none';
+                if (forAllForm) forAllForm.style.display = 'flex';   // every member may add a general task
                 const createProj = document.getElementById('admin-create-project-container');
                 if (createProj) createProj.classList.toggle('hidden', !owner);
                 const assign = document.getElementById('admin-assign-task-container');
@@ -2838,14 +2838,15 @@
                 listEl.innerHTML = '<p class="text-gray-500 text-sm text-center py-6">Loading completed tasks…</p>';
                 try {
                     const base = `/artifacts/${appId}/public/data/`;
-                    const forAllSnap = await db.collection(base + 'tasks_for_all').where('status', '==', 'Done').get();
+                    const tid = teamCtx.teamId;
+                    const forAllSnap = await db.collection(base + 'tasks_for_all').where('teamId', '==', tid).where('status', '==', 'Done').get();
                     const forAllDone = forAllSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                     let teamDone = [];
                     if (currentUserProfile.role === 'admin') {
-                        const snap = await db.collection(base + 'tasks').where('status', '==', 'Done').get();
+                        const snap = await db.collection(base + 'tasks').where('teamId', '==', tid).where('status', '==', 'Done').get();
                         teamDone = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     } else {
-                        const snap = await db.collection(base + 'tasks').where('assigneeEmail', '==', currentUser.email).get();
+                        const snap = await db.collection(base + 'tasks').where('teamId', '==', tid).where('assigneeEmail', '==', currentUser.email).get();
                         teamDone = snap.docs.filter(d => d.data().status === 'Done').map(d => ({ id: d.id, ...d.data() }));
                     }
                     completedCounts.forAll = forAllDone.length;
@@ -3690,8 +3691,8 @@
                 e.preventDefault();
                 const description = document.getElementById('new-task-for-all-description').value.trim();
                 if(!description) return;
-                // 🎯 Server-gated write: needs the team password, and the server
-                // writes the "created by / at" stamps so they cannot be forged.
+                // 🎯 Server-gated write: needs the team sign-in, and the server writes the
+                // "created by / at" stamps so they cannot be forged.
                 if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
                 try {
                     await window.alignApi('/task/create', {
