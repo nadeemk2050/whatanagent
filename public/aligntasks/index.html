@@ -3095,7 +3095,6 @@
                     taskView = chip.getAttribute('data-view') || 'all';
                     try { localStorage.setItem('alignTaskView', taskView); } catch (e) {}
                     applyTaskFilters();
-                }, error => { console.warn('[projects] sub-task listener:', (error && error.code) || error); }
                 });
             });
             const bulkCompleteBtn = document.getElementById('bulk-complete');
@@ -3152,7 +3151,7 @@
                     const unread = notifications.filter(n => !n.read);
                     document.getElementById('notification-dot').classList.toggle('hidden', unread.length === 0);
                     renderNotifications(notifications);
-                });
+                }, error => { console.warn('[notifications] listener:', (error && error.code) || error); });
                 currentUnsubscribes.push(unsub);
 
                 unsub = boardScope('tasks_for_all').onSnapshot(
