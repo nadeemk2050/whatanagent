@@ -96,6 +96,25 @@ export function verifyPassword(plain, rec) {
   } catch (e) { return false; }
 }
 
+// Capitalisation never matters for a team password ("Nadeem@2026" == "nadeem@2026").
+export const passwordKey = (plain) => String(plain || '').toLowerCase();
+
+// Verify the way people actually type: exact first (old hashes), then case-insensitive,
+// and as a last resort against the encrypted copy kept for the reveal feature.
+export function verifyPasswordLoose(plain, rec) {
+  if (!rec) return false;
+  const typed = String(plain || '');
+  if (verifyPassword(typed, rec)) return true;
+  const low = passwordKey(typed);
+  if (low !== typed && verifyPassword(low, rec)) return true;
+  // legacy record whose hash was made from mixed case: compare the stored copy
+  try {
+    const stored = decryptPassword(rec.passwordEnc);
+    if (stored && passwordKey(stored) === low) return true;
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
 // --------------------------------------------------------------------------- handles
 export const normalizeHandle = (s) => String(s || '')
   .trim().toLowerCase()
@@ -425,9 +444,10 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
   }
 
   if (password) {
-    const h2 = hashPassword(password);
+    const h2 = hashPassword(passwordKey(password));
     rec.salt = h2.salt; rec.hash = h2.hash; rec.algo = h2.algo;
     rec.passwordEnc = encryptPassword(String(password));
+    rec.passwordCaseInsensitive = true;
     rec.failedAttempts = 0; rec.lockedUntil = 0;
     rec.passwordChangedAt = Date.now();
   }
@@ -480,7 +500,7 @@ export function loginStaff(handle, password) {
     throw new Error('Too many wrong attempts. Try again in ' + mins + ' minute(s).');
   }
 
-  if (!verifyPassword(String(password || ''), rec)) {
+  if (!verifyPasswordLoose(String(password || ''), rec)) {
     rec.failedAttempts = (rec.failedAttempts || 0) + 1;
     if (rec.failedAttempts >= MAX_FAILED) {
       rec.lockedUntil = Date.now() + LOCK_MINUTES * 60000;

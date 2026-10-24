@@ -331,13 +331,13 @@ export function registerAlignRoutes(app) {
         if (!uid) {
           const created = await auth.createUser({
             email: `${handle.replace(/\s+/g, '.')}@staff.align.internal`,
-            password: password,
+            password: String(password).toLowerCase(),
             displayName: name,
             disabled: b.active === false
           });
           uid = created.uid;
         } else if (password) {
-          await auth.updateUser(uid, { password });
+          await auth.updateUser(uid, { password: String(password).toLowerCase() });
         }
         if (uid && b.active !== undefined) await auth.updateUser(uid, { disabled: b.active === false });
       } catch (e) {
@@ -392,13 +392,13 @@ export function registerAlignRoutes(app) {
         if (!uid) {
           const created = await auth.createUser({
             email: `${handle.replace(/\s+/g, '.')}@staff.align.internal`,
-            password,
+            password: String(password).toLowerCase(),
             displayName: name,
             disabled: b.active === false
           });
           uid = created.uid;
         } else if (password) {
-          await auth.updateUser(uid, { password });
+          await auth.updateUser(uid, { password: String(password).toLowerCase() });
         }
         if (uid && b.active !== undefined) await auth.updateUser(uid, { disabled: b.active === false });
       } catch (e) {
@@ -483,7 +483,7 @@ export function registerAlignRoutes(app) {
       if (saved && password) {
         try {
           if (saved.uid && /^[A-Za-z0-9]{20,}$/.test(saved.uid)) {
-            await alignAuth().updateUser(saved.uid, { password, displayName: name, disabled: saved.active === false });
+            await alignAuth().updateUser(saved.uid, { password: String(password).toLowerCase(), displayName: name, disabled: saved.active === false });
           }
         } catch (e) { console.warn('[ALIGN] Firebase password sync skipped: ' + sstr(e.message, 120)); }
         try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }

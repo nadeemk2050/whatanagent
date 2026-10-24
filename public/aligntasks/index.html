@@ -5244,6 +5244,7 @@
 
         $('gateForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            gateBootDone = true;      // stop the boot check re-opening/re-confirming mid-login
             const btn = $('gateSubmit');
             const er = $('gateError');
             er.style.display = 'none';
