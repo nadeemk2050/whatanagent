@@ -2792,10 +2792,11 @@
                     return;
                 }
                 const pending = tasks.filter(t => t.status !== 'Done');
-                const doneCount = tasks.length - pending.length;
-                const rows = pending.map(t => personalProjectTaskRow(projectId, t)).join('');
-                listEl.innerHTML = (rows || '<p class="text-gray-500 text-sm py-2">Everything in this project is done 🎉</p>') +
-                    (doneCount ? `<div class="task-meta mt-2">${doneCount} completed</div>` : '');
+                const doneTasks = tasks.filter(t => t.status === 'Done');
+                const rows = pending.map(t => personalProjectTaskRow(projectId, t, false)).join('');
+                const doneRows = doneTasks.map(t => personalProjectTaskRow(projectId, t, true)).join('');
+                listEl.innerHTML = (rows || (doneTasks.length ? '<p class="text-gray-500 text-sm py-2">Everything here is done 🎉</p>' : '')) +
+                    (doneRows ? '<div class="task-meta mt-2">' + doneTasks.length + ' completed</div>' + doneRows : '');
             }
 
             function watchPersonalProjectTasks(project) {
@@ -2807,13 +2808,13 @@
                 ppTaskUnsubs.set(project.id, unsub);
             }
 
-            function personalProjectTaskRow(projectId, task) {
+            function personalProjectTaskRow(projectId, task, done) {
                 return `
                     <div class="task-list-item">
-                        <input type="checkbox" class="pp-task-checkbox" data-pp-id="${projectId}" data-task-id="${task.id}">
+                        <input type="checkbox" class="pp-task-checkbox" data-pp-id="${projectId}" data-task-id="${task.id}" ${done ? 'checked' : ''}>
                         <div class="flex-grow ml-3 min-w-0">
-                            <p class="text-sm break-words text-gray-800">${waEsc(task.description)}</p>
-                            <div class="task-meta">${task.dueDate ? '🗓 ' + formatTaskTimestamp(task.dueDate) : 'No due date'}</div>
+                            <p class="text-sm break-words ${done ? 'line-through text-gray-400' : 'text-gray-800'}">${waEsc(task.description)}</p>
+                            <div class="task-meta">${task.dueDate ? '🗓 ' + formatTaskTimestamp(task.dueDate) : 'No due date'}${done ? ' · ✅ completed' : ''}</div>
                         </div>
                         <button class="pp-task-delete" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete task" style="border:none;background:transparent;color:#ef4444;cursor:pointer;">🗑</button>
                     </div>`;
