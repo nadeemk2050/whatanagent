@@ -577,6 +577,94 @@ export function registerAlignRoutes(app) {
     res.json({ ok: true, events: recentAuthEvents(Number(req.query.max) || 100) });
   });
 
+  // ============================================================ WhatsApp bridge
+  // AlignTasks reminders are sent by THIS server through the WhatsApp Web session it
+  // already holds (the linked company account — the same login as the dashboard), so a
+  // reminder is a real WhatsApp message; no browser, phone or WhatsApp app must be open.
+  // The Playwright-free plumbing lives in waWebClient.js (sendWaWebMessage / getWaWebChats).
+  let waModCache = null;
+  const waMod = async () => (waModCache || (waModCache = await import('./waWebClient.js')));
+  const waDigits = (raw) => {
+    let d = String(raw || '').replace(/[^0-9]/g, '');
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.startsWith('0')) d = '971' + d.slice(1);   // UAE local 05x -> 9715x
+    return d;
+  };
+
+  app.get(api + '/wa/status', requireStaff, async (req, res) => {
+    try {
+      const wa = await waMod();
+      const st = wa.getWaWebStatus() || {};
+      let groups = 0;
+      try {
+        const snap = await alignDb().doc('appData/alignWaGroupsIndex').get();
+        const v = snap.exists ? (snap.data() || {}) : {};
+        groups = Number(v.count) || (Array.isArray(v.groups) ? v.groups.length : 0);
+      } catch (e) { /* the index is optional */ }
+      res.json({
+        ok: true,
+        connected: st.status === 'connected',
+        status: st.status || 'disconnected',
+        phone: (st.user && st.user.phone) || '',
+        name: (st.user && st.user.name) || '',
+        groups
+      });
+    } catch (e) {
+      res.json({ ok: true, connected: false, status: 'unavailable', phone: '', name: '', groups: 0, error: sstr(e.message, 120) });
+    }
+  });
+
+  app.get(api + '/wa/groups', requireStaff, async (req, res) => {
+    try {
+      const wa = await waMod();
+      const list = (wa.getWaWebChats() || [])
+        .filter(c => c && c.isGroup)
+        .map(c => ({ jid: c.id, name: String(c.name || 'Group').trim() }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ ok: true, total: list.length, groups: list.slice(0, 1000) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: sstr(e.message, 160) });
+    }
+  });
+
+  // Send a reminder now (or a plain message) to members / groups / any phone number.
+  app.post(api + '/wa/send', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const message = sstr(b.message, 900).trim();
+      if (!message) return bad(res, 'Write the message first.');
+      const targets = Array.isArray(b.targets) ? b.targets.slice(0, 25) : [];
+      if (!targets.length) return bad(res, 'Pick at least one member, group or number.');
+      const wa = await waMod();
+      const st = wa.getWaWebStatus() || {};
+      if (st.status !== 'connected') {
+        return bad(res, 'The linked WhatsApp is not connected right now (' + (st.status || 'offline') + '). Nothing was sent.', 503);
+      }
+      const results = [];
+      for (const t of targets) {
+        const isGroup = t.type === 'group' || /@g\.us$/i.test(String(t.id || ''));
+        const jid = isGroup ? String(t.id || '').trim() : (waDigits(t.id) ? waDigits(t.id) + '@s.whatsapp.net' : '');
+        const label = sstr(t.name, 80).trim() || jid;
+        if (!jid) { results.push({ name: label, ok: false, error: 'no-whatsapp-number' }); continue; }
+        try {
+          await Promise.race([
+            wa.sendWaWebMessage(jid, message),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+          ]);
+          results.push({ name: label, ok: true });
+        } catch (e) {
+          results.push({ name: label, ok: false, error: sstr(e.message || e, 160) });
+        }
+      }
+      const sent = results.filter(r => r.ok).length;
+      authAudit({ action: 'wa_reminder', handle: req.staff.handle, note: sent + '/' + results.length + ' sent' });
+      res.json({ ok: sent > 0, sent, failed: results.length - sent, results, from: (st.user && st.user.phone) || '' });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, sstr(e.message || e, 200));
+    }
+  });
+
   // ============================================================ personal tasks
   // Private to the signed-in staff member. No team gate; never shared.
   app.get(api + '/personal', requireStaff, async (req, res) => {

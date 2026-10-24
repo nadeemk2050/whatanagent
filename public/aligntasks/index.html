@@ -255,11 +255,13 @@
                             <div>
                                 <label class="text-sm font-medium text-gray-700">Reminders — how they are sent</label>
                                 <select id="team-reminder-mode" class="w-full mt-1 p-2 border rounded-lg bg-white">
+                                    <option value="server">Automatic — sent by the linked WhatsApp (recommended)</option>
                                     <option value="handoff">Open WhatsApp — I press send (no server needed)</option>
-                                    <option value="server">Automatic sending by the server (needs the linked company WhatsApp)</option>
                                 </select>
+                                <div id="team-wa-bridge" class="hidden mt-2 text-xs rounded-lg px-3 py-2 border"></div>
                             </div>
                         </div>
+                        <button id="team-wa-test" class="mt-4 ml-2 bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700">💬 Send me a test message</button>
                         <button id="team-save-button" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">💾 Save Team Settings</button>
                         <button id="team-export-button" class="mt-4 ml-2 bg-white border border-gray-300 px-4 py-2 rounded-lg font-semibold hover:bg-gray-50">⬇️ Export team (JSON)</button>
                         <p id="team-settings-message" class="hidden text-sm mt-3"></p>
@@ -400,6 +402,7 @@
             <div class="p-6 border-b flex justify-between items-center"><h3 id="wa-remind-title" class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
             <div class="p-6 space-y-3 max-h-[75vh] overflow-y-auto">
                 <p id="wa-remind-task-text" class="text-sm text-gray-600"></p>
+                <div id="wa-remind-bridge" class="hidden text-xs rounded-lg px-3 py-2 border"></div>
                 <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
                 <div id="wa-remind-members" class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
                 <div>
@@ -755,7 +758,7 @@
             // ================== AlignTasks 2.0 — TEAMS ==================
             // Every board document carries a `teamId`. It is written on create and filtered on read,
             // so each team only ever sees its own tasks, projects, members and comments.
-            let teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'handoff' };
+            let teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'server' };
             let teamsCache = {};          // teamId -> { id, name, ownerUid, ownerEmail, settings }
             let staffListCache = [];      // current team's staff (used for WhatsApp hand-off)
             let boardTasksCache = {};     // taskId -> task (used by the quick-send button)
@@ -1226,7 +1229,7 @@
                 // Legacy compatibility: parts of the 1.5-era UI still test role === 'admin'.
                 // Map the team role onto that field in memory so both code paths agree.
                 if (currentUserProfile) currentUserProfile.role = (teamCtx.role === 'owner') ? 'admin' : 'user';
-                teamCtx.reminderMode = (t.settings && t.settings.reminderMode) || 'handoff';
+                teamCtx.reminderMode = (t.settings && t.settings.reminderMode) || 'server';
                 if (currentUser && currentUserProfile && currentUserProfile.defaultTeamId !== teamId) {
                     boardCol('users').doc(currentUser.uid).update({ defaultTeamId: teamId }).catch(() => {});
                 }
@@ -1569,6 +1572,41 @@
                     }, { merge: true });
                 } catch (e) { console.warn('contact book save:', e); }
             }
+            // ===== Live link to the connected WhatsApp Web session (held by the server) =====
+            let waBridgeCache = null;
+            async function waBridgeStatus(force) {
+                if (!force && waBridgeCache && (Date.now() - waBridgeCache.at) < 20000) return waBridgeCache;
+                let out;
+                try {
+                    out = await window.alignApi('/wa/status');
+                } catch (e) {
+                    out = { connected: false, status: 'unreachable', phone: '', name: '', error: e.message };
+                }
+                waBridgeCache = Object.assign({ at: Date.now() }, out || {});
+                return waBridgeCache;
+            }
+            function paintWaBridge(elId, st) {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                el.classList.remove('hidden', 'border-green-300', 'bg-green-50', 'text-green-800', 'border-amber-300', 'bg-amber-50', 'text-amber-800');
+                if (st.connected) {
+                    el.classList.add('border-green-300', 'bg-green-50', 'text-green-800');
+                    el.innerHTML = '🟢 WhatsApp connected as <b>' + waEsc(st.name || 'company number') + '</b>' +
+                        (st.phone ? (' (+' + waEsc(st.phone) + ')') : '') +
+                        ' — reminders go out from this number automatically' + (st.groups ? (' · ' + st.groups + ' groups available') : '') + '.';
+                } else {
+                    el.classList.add('border-amber-300', 'bg-amber-50', 'text-amber-800');
+                    const why = st.status === 'unreachable' ? 'the app cannot reach the server'
+                        : (st.status === 'unavailable' ? 'WhatsApp is not available on this server' : ('status: ' + waEsc(st.status || 'unknown')));
+                    el.innerHTML = '🟠 The linked WhatsApp is offline right now (' + why + '). Reminders stay queued and leave the moment it reconnects — or use “Open WhatsApp”.';
+                }
+            }
+            async function paintWaBridges(force) {
+                const st = await waBridgeStatus(force);
+                paintWaBridge('wa-remind-bridge', st);
+                paintWaBridge('team-wa-bridge', st);
+                return st;
+            }
             async function openWaRemindPicker(type, taskId, projectId) {
                 const taskRef = (type === 'personal_tasks')
                     ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
@@ -1613,6 +1651,7 @@
                 document.getElementById('wa-remind-message').value = waScheduleDefaults();
                 resetWaScheduleFields();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
+                paintWaBridges();
             }
             // ===== WhatsApp group favorites for task reminders (webapp side) =====
             let waGroupFavoritesCache = [];
@@ -1643,12 +1682,20 @@
                 const list = document.getElementById('wa-remind-groups-list');
                 list.innerHTML = '<p class="text-xs text-gray-500 p-1">Loading groups from the WhatsApp session…</p>';
                 try {
-                    const snap = await db.doc('appData/alignWaGroupsIndex').get();
-                    const data = snap.exists ? (snap.data() || {}) : {};
-                    waGroupsIndexCache = Array.isArray(data.groups) ? data.groups : [];
-                    if (data.updatedAt) {
-                        const when = new Date(data.updatedAt).toLocaleString();
-                        document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + waGroupsIndexCache.length + ' groups (updated ' + when + ')';
+                    // Live list straight from the connected session (always current).
+                    let live = null;
+                    try { live = await window.alignApi('/wa/groups'); } catch (e) { live = null; }
+                    if (live && live.ok && Array.isArray(live.groups) && live.groups.length) {
+                        waGroupsIndexCache = live.groups;
+                        document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + live.groups.length + ' groups (live from WhatsApp)';
+                    } else {
+                        const snap = await db.doc('appData/alignWaGroupsIndex').get();
+                        const data = snap.exists ? (snap.data() || {}) : {};
+                        waGroupsIndexCache = Array.isArray(data.groups) ? data.groups : [];
+                        if (data.updatedAt) {
+                            const when = new Date(data.updatedAt).toLocaleString();
+                            document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + waGroupsIndexCache.length + ' groups (updated ' + when + ')';
+                        }
                     }
                 } catch (e) { waGroupsIndexCache = []; }
                 renderWaGroupManager();
@@ -1771,19 +1818,42 @@
                         return;
                     }
                     if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
+                    const bridge = await waBridgeStatus(true);
                     let sent = 0;
-                    for (const tg of targets) {
-                        const msg = baseMessage + (tg.type === 'group' ? '\n👥 Group reminder' : ('\n👤 For: ' + tg.name));
-                        await db.collection('alignWaQueue').add({
-                            target: tg.id, targetType: tg.type, message: msg,
-                            taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
-                            toName: tg.name, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
+                    let failed = 0;
+                    let firstError = '';
+                    let queuedInstead = false;
+                    if (bridge.connected) {
+                        const res = await window.alignApi('/wa/send', {
+                            method: 'POST',
+                            body: { message: baseMessage, targets: targets.map(tg => ({ type: tg.type, id: tg.id, name: tg.name })) }
                         });
-                        sent++;
+                        sent = Number(res && res.sent) || 0;
+                        failed = Number(res && res.failed) || 0;
+                        const fail = ((res && res.results) || []).find(x => !x.ok);
+                        if (fail) firstError = fail.name + ' — ' + (fail.error || 'not delivered');
+                    } else {
+                        // WhatsApp is offline: leave it in the queue, the server flushes it on reconnect.
+                        for (const tg of targets) {
+                            const msg = baseMessage + (tg.type === 'group' ? '\n👥 Group reminder' : ('\n👤 For: ' + tg.name));
+                            await db.collection('alignWaQueue').add({
+                                target: tg.id, targetType: tg.type, message: msg,
+                                taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
+                                toName: tg.name, status: 'pending', source: 'aligntasks-web', createdAt: new Date()
+                            });
+                            sent++;
+                        }
+                        queuedInstead = true;
                     }
                     document.getElementById('wa-remind-modal').classList.add('hidden');
                     waRemindCtx = null;
-                    alert('✅ Reminder queued for ' + sent + ' destination' + (sent === 1 ? '' : 's') + '. It will be sent from WhatsApp within seconds. 💬');
+                    if (queuedInstead) {
+                        alert('✅ Reminder queued for ' + sent + ' destination' + (sent === 1 ? '' : 's') + '. The linked WhatsApp is offline right now — it is sent automatically as soon as it reconnects. 💬');
+                    } else if (failed) {
+                        alert('⚠️ Sent to ' + sent + ' of ' + (sent + failed) + ' destination' + ((sent + failed) === 1 ? '' : 's') + '.' + (firstError ? ('\n❌ ' + firstError) : ''));
+                    } else {
+                        alert('✅ Sent on WhatsApp to ' + sent + ' destination' + (sent === 1 ? '' : 's') + (bridge.phone ? (' from +' + bridge.phone) : '') + '. 💬');
+                    }
                 } catch (e) {
                     alert('❌ ' + (e.message || 'Failed to queue reminder'));
                 } finally {
@@ -3175,7 +3245,46 @@
             const newTeamBtn = document.getElementById('new-team-button');
             if (newTeamBtn) newTeamBtn.addEventListener('click', () => createNewTeamPrompt());
             const menuTeamSettings = document.getElementById('menu-team-settings');
-            if (menuTeamSettings) menuTeamSettings.addEventListener('click', () => { showMainSection('settings-page'); loadInvites(); });
+            if (menuTeamSettings) menuTeamSettings.addEventListener('click', () => { showMainSection('settings-page'); loadInvites(); paintWaBridges(); });
+            const teamWaTestBtn = document.getElementById('team-wa-test');
+            if (teamWaTestBtn) teamWaTestBtn.addEventListener('click', async () => {
+                const orig = teamWaTestBtn.innerText;
+                teamWaTestBtn.disabled = true;
+                teamWaTestBtn.innerText = '…sending';
+                try {
+                    let phone = '';
+                    const email = String((currentUser && currentUser.email) || '').toLowerCase();
+                    if (email) {
+                        try {
+                            const snap = await boardScope('staff').where('email', '==', email).limit(1).get();
+                            if (!snap.empty) phone = normalizeWaNumberClient(snap.docs[0].get('whatsappNumber') || '');
+                        } catch (e) { /* the staff directory is optional */ }
+                    }
+                    if (!phone) phone = normalizeWaNumberClient(document.getElementById('profile-whatsapp') ? document.getElementById('profile-whatsapp').value : '');
+                    if (!phone) phone = normalizeWaNumberClient(prompt('Which WhatsApp number should receive the test message? (e.g. +971501234567)') || '');
+                    if (!phone) return;
+                    const st = await waBridgeStatus(true);
+                    paintWaBridges();
+                    if (!st.connected) {
+                        alert('🟠 The linked WhatsApp is offline right now (' + (st.status || 'unknown') + '). The test needs it online — try again once it reconnects.');
+                        return;
+                    }
+                    const res = await window.alignApi('/wa/send', {
+                        method: 'POST',
+                        body: {
+                            message: '✅ AlignTasks test — this message was sent by the linked WhatsApp' + (st.phone ? (' (+' + st.phone + ')') : '') + ', so task reminders will reach you here.',
+                            targets: [{ type: 'direct', id: phone, name: 'test' }]
+                        }
+                    });
+                    if (res && res.ok) alert('✅ Test message sent to +' + phone + ' — check WhatsApp.');
+                    else alert('❌ Could not send: ' + ((((res || {}).results || [])[0] || {}).error || 'unknown error'));
+                } catch (e) {
+                    alert('❌ ' + (e.message || 'Test failed'));
+                } finally {
+                    teamWaTestBtn.disabled = false;
+                    teamWaTestBtn.innerText = orig;
+                }
+            });
             const teamSaveBtn = document.getElementById('team-save-button');
             if (teamSaveBtn) teamSaveBtn.addEventListener('click', () => saveTeamSettings());
             const teamExportBtn = document.getElementById('team-export-button');
@@ -3407,7 +3516,7 @@
                     ownerEmail: role === 'owner' ? String(user.email || '').toLowerCase() : '',
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     createdBy: String(user.email || '').toLowerCase(),
-                    settings: { reminderMode: 'handoff', allowMemberInvites: false }
+                    settings: { reminderMode: 'server', allowMemberInvites: false }
                 });
                 const userRef = boardCol('users').doc(user.uid);
                 const snap = await userRef.get();
@@ -3649,7 +3758,7 @@
                     currentUnsubscribes = [];
                     if(alarmCheckInterval) clearInterval(alarmCheckInterval);
                     // clear team state so a signed-out visitor never sees stale team data
-                    teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'handoff' };
+                    teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'server' };
                     teamsCache = {};
                     staffListCache = [];
                     boardTasksCache = {};
