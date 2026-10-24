@@ -4765,7 +4765,7 @@
                 }
             }
             if (confirmStaff) {
-                loadProfile();
+                if (getSession()) loadProfile();
                 showGate('confirm');
             } else {
                 showGate('login');
