@@ -3548,15 +3548,27 @@
              auth.onAuthStateChanged(async user => {
                 currentUser = user;
                 loadingIndicator.classList.add('hidden');
-                
+                 
                 if (user) {
                     const userDocRef = db.collection(`/artifacts/${appId}/public/data/users`).doc(user.uid);
-                    
-                    const userDocSnap = await userDocRef.get().catch(error => {
-                        showAppError('Could not verify user profile.', error);
-                        auth.signOut();
-                        return null;
-                    });
+
+                    // The identity can be mid-swap (team sign-in uses a custom token), and a
+                    // single denied read then must not throw the person back to the login form.
+                    let userDocSnap = null;
+                    for (let attempt = 0; attempt < 3 && !userDocSnap; attempt++) {
+                        userDocSnap = await userDocRef.get().catch(async error => {
+                            console.warn('[profile] read attempt ' + (attempt + 1) + ' failed:', error && error.code);
+                            if (attempt === 2) showAppError('Could not verify user profile.', error);
+                            await new Promise(r => setTimeout(r, 700));
+                            return null;
+                        });
+                    }
+                    if (!userDocSnap) {
+                        // Leave the app hidden but never sign the person out while a team
+                        // sign-in may still be completing; the board retry loop recovers.
+                        recoverBoardListeners('profile read failed');
+                        return;
+                    }
 
                     if (userDocSnap && !userDocSnap.exists) {
                         await provisionNewAccount(user);
@@ -3600,6 +3612,11 @@
                     currentUnsubscribes.push(unsub);
 
                 } else {
+                    // A staff sign-in briefly reports "no user" while it swaps the Firebase
+                    // identity with a custom token. Do not flash the login screen for that.
+                    if (window.__alignIdentitySwitching && (Date.now() - window.__alignIdentitySwitching) < 15000) {
+                        return;
+                    }
                     appScreen.classList.add('hidden');
                     authScreen.classList.remove('hidden');
                     currentUnsubscribes.forEach(unsub => unsub());
@@ -5097,7 +5114,12 @@
                 if (!r.ok) return false;
                 const d = await r.json();
                 if (d.customToken && window.firebase && firebase.auth) {
-                    await firebase.auth().signInWithCustomToken(d.customToken);
+                    window.__alignIdentitySwitching = Date.now();
+                    try {
+                        await firebase.auth().signInWithCustomToken(d.customToken);
+                    } finally {
+                        window.__alignIdentitySwitching = Date.now();
+                    }
                     return true;
                 }
             } catch (e) { /* leave them on the app's own sign-in */ }
@@ -5199,10 +5221,21 @@
 
             // Give the browser a real Firebase identity as well (best effort).
             if (d.customToken) {
+                window.__alignIdentitySwitching = Date.now();
                 try {
                     if (window.firebase && firebase.auth) await firebase.auth().signInWithCustomToken(d.customToken);
                 } catch (e) { console.warn('[gate] custom token sign-in skipped:', e.message); }
+                finally { window.__alignIdentitySwitching = Date.now(); }
             }
+            // The identity swap can leave the app shell hidden; make sure we land inside.
+            try {
+                if (firebaseUser()) {
+                    document.getElementById('app-screen').classList.remove('hidden');
+                    document.getElementById('auth-screen').classList.add('hidden');
+                    const ld = document.getElementById('loading-indicator');
+                    if (ld) ld.classList.add('hidden');
+                }
+            } catch (e) { /* ignore */ }
             return d;
         }
 
