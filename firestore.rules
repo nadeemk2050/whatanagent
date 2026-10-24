@@ -83,6 +83,14 @@ service cloud.firestore {
         match /notifications/{noteId} {
           allow read, write: if signedIn() && request.auth.uid == uid;
         }
+
+        // private projects (with their own task list) — only the owner may read or write
+        match /personal_projects/{projectId} {
+          allow read, write: if signedIn() && request.auth.uid == uid;
+          match /tasks/{taskId} {
+            allow read, write: if signedIn() && request.auth.uid == uid;
+          }
+        }
       }
 
       // project sub-tasks

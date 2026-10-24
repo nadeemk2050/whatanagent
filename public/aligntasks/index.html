@@ -24,9 +24,12 @@
         .staff-selection-list::-webkit-scrollbar { width: 6px; }
         .staff-selection-list::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
         .staff-selection-list::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
-        .nav-button { transition: all 0.2s ease-in-out; }
-        .nav-button.active { background-color: #3b82f6; color: white; }
-        .nav-button:not(.active) { background-color: #e5e7eb; color: #374151; }
+        .section-nav-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: none; background: #fff; color: #374151; font-weight: 600; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+        .section-nav-item:hover { background: #f1f5f9; }
+        .section-nav-item.active { background: #3b82f6; color: #fff; }
+        .view-nav-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 12px; border: none; background: #fff; color: #374151; font-weight: 600; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+        .view-nav-item:hover { background: #f1f5f9; }
+        .view-nav-item.active { background: #3b82f6; color: #fff; }
         .task-meta { font-size: 10px; color: #6b7280; margin-top: 4px; }
         .repeat-icon-button { background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; vertical-align: middle; }
         .repeat-icon, .alarm-icon { width: 12px; height: 12px; display: inline-block; margin-left: 6px; color: #9ca3af; }
@@ -92,7 +95,7 @@
         <header class="sticky top-0 z-40 w-full bg-white border-b border-gray-200 shadow-sm">
             <div class="w-full px-3 sm:px-6 py-2">
                 <div class="flex justify-between items-center gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0" style="order:1;">
                         <h1 class="text-xl sm:text-3xl font-bold text-gray-800 leading-none truncate">AlignTasks <span id="app-version-label" class="hidden sm:inline text-[10px] text-gray-400 font-medium align-middle ml-1">V2.0</span></h1>
                         <!-- kept for compatibility with existing code, no longer shown -->
                         <div id="user-info-badge" class="hidden"></div>
@@ -102,7 +105,7 @@
                             <button id="new-team-button">＋ New Team</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 sm:gap-3">
+                    <div class="flex items-center gap-2 sm:gap-3" style="order:3;">
                         <!-- ✅ Completed Tasks (moved up here to save vertical space) -->
                         <button id="completed-tasks-button" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm whitespace-nowrap" title="Completed tasks">
                             ✅ <span class="hidden sm:inline">Completed</span> <span id="completed-tasks-count" class="bg-white text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
@@ -140,13 +143,47 @@
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="bg-gray-200 p-1 rounded-lg flex gap-1 mt-2">
-                    <button id="nav-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">Tasks for All</button>
-                    <button id="nav-personal-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm flex items-center justify-center gap-1">
-                        <span>🔒</span><span>My Personal Tasks</span>
-                    </button>
-                    <button id="nav-projects-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">Project Management</button>
+                    <div class="flex-1 flex items-center justify-center gap-2 flex-wrap min-w-0" style="order:2;">
+                        <div id="section-nav" style="position:relative;display:inline-flex;align-items:center;gap:2px;background:#e5e7eb;border-radius:11px;padding:3px;">
+                            <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#3b82f6;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;">
+                                <span id="section-nav-label">Tasks for All</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <button id="task-search-toggle" type="button" title="Search tasks" aria-label="Search tasks" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:#334155;opacity:.75;border-radius:8px;cursor:pointer;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            </button>
+                            <button id="task-add-toggle" type="button" title="Add general task" aria-label="Add general task" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:#334155;opacity:.9;border-radius:8px;cursor:pointer;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            </button>
+                            <div id="section-nav-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);overflow:hidden;z-index:60;min-width:210px;">
+                                <button id="nav-tasks-button" type="button" class="section-nav-item" data-label="Tasks for All"><span>📋</span><span>Tasks for All</span></button>
+                                <button id="nav-personal-tasks-button" type="button" class="section-nav-item" data-label="My Personal Tasks"><span>🔒</span><span>My Personal Tasks</span></button>
+                                <button id="nav-projects-button" type="button" class="section-nav-item" data-label="Project Management"><span>📁</span><span>Project Management</span></button>
+                                <button id="nav-personal-projects-button" type="button" class="section-nav-item" data-label="My Personal Projects"><span>🗂</span><span>My Personal Projects</span></button>
+                            </div>
+                        </div>
+                        <!-- View filter: All / Today / Overdue / Completed (list, not chips) -->
+                        <div id="view-nav" style="position:relative;display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:11px;padding:3px;">
+                            <button id="view-nav-toggle" type="button" title="Filter tasks" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;color:#334155;font-weight:800;font-size:12.5px;cursor:pointer;">
+                                <span id="view-nav-label">All</span>
+                                <span id="task-filter-count" style="font-size:10px;font-weight:800;color:#1d4ed8;background:#dbeafe;border-radius:9999px;padding:1px 6px;">0</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div id="view-nav-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);overflow:hidden;z-index:60;min-width:180px;">
+                                <button type="button" class="view-nav-item" data-view="all"><span>🗂</span><span>All</span></button>
+                                <button type="button" class="view-nav-item" data-view="today"><span>📅</span><span>Today's Tasks</span></button>
+                                <button type="button" class="view-nav-item" data-view="overdue"><span>⏰</span><span>Overdue</span></button>
+                                <button type="button" class="view-nav-item" data-view="done"><span>✅</span><span>Completed</span></button>
+                            </div>
+                        </div>
+                        <!-- Personal task counters / filters — only in the My Personal Tasks section -->
+                        <div id="personal-nav" style="display:none;align-items:center;gap:3px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:11px;padding:3px;">
+                            <button class="personal-filter-tab px-2 py-1 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white" data-filter="all" title="All personal tasks">📋 <span id="personal-stat-total">0</span></button>
+                            <button class="personal-filter-tab px-2 py-1 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="todo" title="To do">⏳ <span id="personal-stat-todo">0</span></button>
+                            <button class="personal-filter-tab px-2 py-1 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="urgent" title="Urgent / high">⚡ <span id="personal-stat-urgent">0</span></button>
+                            <button class="personal-filter-tab px-2 py-1 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="done" title="Completed">✅ <span id="personal-stat-done">0</span></button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -157,49 +194,19 @@
             <!-- Main Content Sections -->
             <main>
                 <!-- Tasks Section -->
-                <section id="tasks-page" class="main-section space-y-6">
-                    <!-- 2.0: search · saved views · bulk actions -->
-                    <div id="task-filter-bar" class="bg-white p-4 rounded-xl shadow-sm space-y-3">
-                        <div class="flex flex-wrap gap-2 items-center">
+                <section id="tasks-page" class="main-section space-y-4">
+                    <!-- search panel — only rendered when the 🔍 in the top bar is clicked -->
+                    <div id="task-filter-bar" class="bg-white p-3 rounded-xl shadow-sm" style="display:none;">
+                        <div id="task-search-panel" class="flex flex-wrap gap-2 items-center">
                             <input id="task-search" type="text" placeholder="🔍 Search tasks (text or member)…" class="flex-1 min-w-[200px] p-2 border border-gray-300 rounded-lg text-sm" />
                             <select id="task-filter-assignee" class="p-2 border border-gray-300 rounded-lg text-sm bg-white min-w-[170px]">
                                 <option value="">All members</option>
                             </select>
-                        </div>
-                        <div class="flex flex-wrap gap-2 items-center">
-                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="all">All</button>
-                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="today">📅 My Day</button>
-                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="overdue">⏰ Overdue</button>
-                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="unassigned">👤 Unassigned</button>
-                            <button class="task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border" data-view="done">✅ Done</button>
-                            <span id="task-filter-count" class="text-xs text-gray-500 ml-auto"></span>
-                        </div>
-                        <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
-                            <button id="bulk-complete" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700">✅ Complete all shown</button>
-                            <button id="bulk-whatsapp" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100">📲 WhatsApp all shown</button>
-                            <button id="bulk-delete" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100">🗑️ Delete all shown</button>
+                            <button id="task-search-close" type="button" class="px-2 py-2 text-gray-400 hover:text-gray-700 text-lg leading-none" title="Close search">✖</button>
                         </div>
                     </div>
                     <div>
-                        <h2 class="text-2xl font-bold mb-4">General Tasks (For All)</h2>
                         <div class="bg-white rounded-xl shadow-sm p-4">
-                            <form id="task-for-all-form" class="pb-4 mb-4 border-b space-y-2">
-                                <input type="text" id="new-task-for-all-description" placeholder="New general task…" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm" required/>
-                                <div class="flex flex-wrap gap-2">
-                                    <select id="new-task-for-all-assignee" class="p-2 border border-gray-300 rounded-lg text-sm bg-white flex-1 min-w-[150px]" title="Who is responsible?">
-                                        <option value="">👥 Anyone (unassigned)</option>
-                                    </select>
-                                    <input type="datetime-local" id="new-task-for-all-due" class="p-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-[190px]" title="Due date &amp; time"/>
-                                    <select id="new-task-for-all-repeat" class="p-2 border border-gray-300 rounded-lg text-sm bg-white flex-1 min-w-[140px]" title="Repeat">
-                                        <option value="none">🔁 Does not repeat</option>
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="annually">Annually</option>
-                                    </select>
-                                    <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 whitespace-nowrap">＋ Add General Task</button>
-                                </div>
-                            </form>
                             <div id="tasks-for-all-todo-list"></div>
                             <button id="tasks-for-all-toggle-completed" class="text-sm text-blue-500 mt-2 hidden">Show 0 Completed</button>
                             <div id="tasks-for-all-done-list" class="hidden"></div>
@@ -208,26 +215,14 @@
 
                                     </section>
 
-                <!-- Projects Section -->
-                <section id="projects-page" class="main-section hidden space-y-8">
-                    <div id="admin-create-project-container" class="hidden">
-                         <h2 id="create-project-header" class="section-header text-2xl font-bold mb-4">Create New Project</h2>
-                         <div id="create-project-form-container" class="bg-white p-6 rounded-xl shadow-sm hidden">
-                            <form id="create-project-form" class="space-y-4">
-                                <input type="text" id="new-project-name" placeholder="New Project Name" class="p-2 border rounded-lg w-full" required />
-                                <div>
-                                    <label class="text-sm font-medium text-gray-700">Select Staff to Add</label>
-                                    <div id="project-staff-selection" class="mt-2 p-2 border rounded-lg max-h-48 overflow-y-auto staff-selection-list"></div>
-                                </div>
-                                <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Create Project</button>
-                            </form>
-                        </div>
-                    </div>
+                <!-- Project Management: shared projects for the whole team -->
+                <section id="projects-page" class="main-section hidden space-y-4">
+                    <div id="projects-container" class="space-y-3"></div>
+                </section>
 
-                    <div>
-                        <h2 id="projects-section-title" class="text-2xl font-bold mb-4"></h2>
-                        <div id="projects-container" class="space-y-8"></div>
-                    </div>
+                <!-- My Personal Projects: private to the signed-in user -->
+                <section id="personal-projects-page" class="main-section hidden space-y-4">
+                    <div id="personal-projects-container" class="space-y-3"></div>
                 </section>
                 
                 <!-- Settings Section (Admin Only) -->
@@ -306,143 +301,21 @@
                 </section>
 
                 <!-- Personal Tasks Section (Strictly Private to the logged-in user) -->
-                <section id="personal-tasks-page" class="main-section hidden space-y-6">
-                    <!-- Section Header Banner -->
-                    <div class="bg-gradient-to-r from-purple-700 via-indigo-700 to-blue-700 text-white rounded-2xl p-6 shadow-md relative overflow-hidden">
-                        <div class="relative z-10">
-                            <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-2xl">🔒</span>
-                                    <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">My Personal Tasks</h2>
-                                </div>
-                                <span class="bg-white/20 backdrop-blur-md text-white text-xs font-semibold px-3 py-1 rounded-full border border-white/30">
-                                    Private &amp; Confidential (Only visible to you)
-                                </span>
-                            </div>
-                            <p class="text-purple-100 text-sm max-w-2xl leading-relaxed">
-                                Keep your private tasks, reminders, and daily to-dos strictly for your own use. Other team members and staff cannot view this page. From here, you can also send and schedule WhatsApp messages to any team member, group, or any external phone number worldwide.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Quick Stats Cards -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">All Tasks</p>
-                                <p id="personal-stat-total" class="text-2xl font-black text-gray-800 mt-0.5">0</p>
-                            </div>
-                            <div class="p-2.5 bg-purple-50 text-purple-600 rounded-lg text-lg">📋</div>
-                        </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">To Do</p>
-                                <p id="personal-stat-todo" class="text-2xl font-black text-blue-600 mt-0.5">0</p>
-                            </div>
-                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-lg text-lg">⏳</div>
-                        </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Urgent / High</p>
-                                <p id="personal-stat-urgent" class="text-2xl font-black text-red-600 mt-0.5">0</p>
-                            </div>
-                            <div class="p-2.5 bg-red-50 text-red-600 rounded-lg text-lg">⚡</div>
-                        </div>
-                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider">Completed</p>
-                                <p id="personal-stat-done" class="text-2xl font-black text-green-600 mt-0.5">0</p>
-                            </div>
-                            <div class="p-2.5 bg-green-50 text-green-600 rounded-lg text-lg">✅</div>
-                        </div>
-                    </div>
-
-                    <!-- Add Personal Task Card -->
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5 space-y-4">
-                        <div class="flex items-center justify-between border-b pb-3">
-                            <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
-                                <span class="text-purple-600 text-xl">➕</span> Add New Personal Task
-                            </h3>
-                            <span class="text-xs text-gray-400">Recorded only under your account</span>
-                        </div>
-                        <form id="add-personal-task-form" class="space-y-4">
-                            <div>
-                                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Task Title / What needs to be done *</label>
-                                <input type="text" id="personal-task-desc" placeholder="e.g. Call broker about trade contract, verify customs payment..." class="w-full p-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none" required />
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🏷️ Category</label>
-                                    <select id="personal-task-category" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
-                                        <option value="General">🏷️ General</option>
-                                        <option value="Calls & WhatsApp">📞 Calls & WhatsApp</option>
-                                        <option value="Trade & Deals">🤝 Trade & Deals</option>
-                                        <option value="Finance & Payments">💰 Finance & Payments</option>
-                                        <option value="Follow-up">📌 Follow-up</option>
-                                        <option value="Private">🔒 Private</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">⚡ Priority</label>
-                                    <select id="personal-task-priority" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
-                                        <option value="normal">🔵 Normal</option>
-                                        <option value="high">🟠 High Priority</option>
-                                        <option value="urgent">🔴 Urgent</option>
-                                        <option value="low">⚪ Low Priority</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🗓️ Due Date & Time</label>
-                                    <input type="datetime-local" id="personal-task-duedate" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400" />
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">🔁 Repeat Cycle</label>
-                                    <select id="personal-task-repeat" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-purple-400">
-                                        <option value="none">Does not repeat</option>
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">📝 Notes & Memo (Optional)</label>
-                                    <textarea id="personal-task-notes" rows="2" placeholder="Details, phone numbers, contact names, reference codes..." class="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none"></textarea>
-                                </div>
-                            </div>
-                            <div class="flex justify-end pt-1">
-                                <button type="submit" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl shadow transition-all flex items-center gap-2">
-                                    <span>➕ Save Personal Task</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
-                    <!-- Search and Filter Toolbar -->
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-4 space-y-3">
-                        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-                            <div class="relative flex-grow">
-                                <input type="text" id="personal-search-input" placeholder="🔍 Search personal tasks & notes..." class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-400 focus:outline-none" />
-                                <span class="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
-                            </div>
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <select id="personal-category-filter" class="p-2 border border-gray-300 rounded-xl text-sm bg-white">
-                                    <option value="all">All Categories</option>
-                                    <option value="General">General</option>
-                                    <option value="Calls & WhatsApp">Calls & WhatsApp</option>
-                                    <option value="Trade & Deals">Trade & Deals</option>
-                                    <option value="Finance & Payments">Finance & Payments</option>
-                                    <option value="Follow-up">Follow-up</option>
-                                    <option value="Private">Private</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="flex gap-2 flex-wrap border-t pt-3">
-                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-purple-600 text-white" data-filter="all">All Tasks (<span id="tab-count-all">0</span>)</button>
-                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="todo">⏳ To Do (<span id="tab-count-todo">0</span>)</button>
-                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="urgent">⚡ Urgent / High (<span id="tab-count-urgent">0</span>)</button>
-                            <button class="personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-gray-100 text-gray-700 hover:bg-gray-200" data-filter="done">✅ Completed (<span id="tab-count-done">0</span>)</button>
+                <section id="personal-tasks-page" class="main-section hidden space-y-4">
+                    <!-- search panel — opened from the 🔍 icon in the top bar -->
+                    <div id="personal-filter-bar" class="bg-white p-3 rounded-xl shadow-sm" style="display:none;">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <input type="text" id="personal-search-input" placeholder="🔍 Search personal tasks & notes…" class="flex-1 min-w-[200px] p-2 border border-gray-300 rounded-lg text-sm" />
+                            <select id="personal-category-filter" class="p-2 border border-gray-300 rounded-lg text-sm bg-white min-w-[170px]">
+                                <option value="all">All Categories</option>
+                                <option value="General">General</option>
+                                <option value="Calls &amp; WhatsApp">Calls &amp; WhatsApp</option>
+                                <option value="Trade &amp; Deals">Trade &amp; Deals</option>
+                                <option value="Finance &amp; Payments">Finance &amp; Payments</option>
+                                <option value="Follow-up">Follow-up</option>
+                                <option value="Private">Private</option>
+                            </select>
+                            <button id="personal-search-close" type="button" class="px-2 py-2 text-gray-400 hover:text-gray-700 text-lg leading-none" title="Close search">✖</button>
                         </div>
                     </div>
 
@@ -985,7 +858,6 @@
             const individualTasksContainer = document.getElementById('individual-tasks-container');
             const individualTasksTitle = document.getElementById('individual-tasks-title');
             const staffListContainer = document.getElementById('staff-list-container');
-            const projectStaffSelection = document.getElementById('project-staff-selection');
             
             // Modal Elements
             const commentModal = document.getElementById('comment-modal');
@@ -1005,8 +877,6 @@
             // Collapsible Form Elements
             const assignTaskHeader = document.getElementById('assign-task-header');
             const assignTaskFormContainer = document.getElementById('assign-task-form-container');
-            const createProjectHeader = document.getElementById('create-project-header');
-            const createProjectFormContainer = document.getElementById('create-project-form-container');
 
             // --- PWA Install Logic ---
             let deferredPrompt;
@@ -1359,8 +1229,7 @@
                 if (projTitle) projTitle.textContent = owner ? 'All Projects' : 'My Assigned Projects';
                 const indTitle = document.getElementById('individual-tasks-title');
                 if (indTitle) indTitle.textContent = owner ? 'Individual Tasks Overview (All Staff)' : 'My Individual Tasks';
-                const forAllForm = document.getElementById('task-for-all-form');
-                if (forAllForm) forAllForm.style.display = 'block';   // every member may add a general task
+                // Add-task and search are reached from the ＋ / 🔍 icons in the "Tasks for All" tab.
                 const createProj = document.getElementById('admin-create-project-container');
                 if (createProj) createProj.classList.toggle('hidden', !owner);
                 const assign = document.getElementById('admin-assign-task-container');
@@ -1371,6 +1240,7 @@
 
             // ================== 2.0: search / saved views / bulk actions ==================
             let taskView = localStorage.getItem('alignTaskView') || 'all';
+            if (!['all', 'today', 'overdue', 'done'].includes(taskView)) taskView = 'all';   // 'unassigned' view retired
             let taskSearch = '';
             let taskAssigneeFilter = '';
             let boardForAllRaw = [];
@@ -1404,12 +1274,15 @@
                 renderTasksForAll(general);
                 if (isOwner()) renderAdminIndividualTasks(individual, staffListCache);
                 else renderUserIndividualTasks(individual);
+                const total = general.length + individual.length;
                 const cnt = document.getElementById('task-filter-count');
-                if (cnt) cnt.textContent = (general.length + individual.length) + ' task(s) shown';
-                document.querySelectorAll('.task-view-chip').forEach(b => {
-                    const on = b.getAttribute('data-view') === taskView;
-                    b.className = 'task-view-chip px-3 py-1.5 rounded-full text-xs font-semibold border ' +
-                        (on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50');
+                if (cnt) { cnt.textContent = total; cnt.title = total + ' task(s) shown'; }
+                // Filter list in the top bar: highlight the active view and show its name.
+                const viewLabels = { all: 'All', today: "Today's Tasks", overdue: 'Overdue', done: 'Completed' };
+                const vLabel = document.getElementById('view-nav-label');
+                if (vLabel) vLabel.textContent = viewLabels[taskView] || 'All';
+                document.querySelectorAll('.view-nav-item').forEach(b => {
+                    b.classList.toggle('active', b.getAttribute('data-view') === taskView);
                 });
             }
 
@@ -1493,13 +1366,52 @@
                 waHandoffShow('Send ' + rows.length + ' task(s) via WhatsApp', items, waTemplateReminder(first));
             }
             
+            let currentSection = 'tasks-page';
             function showMainSection(sectionId) {
                 document.querySelectorAll('.main-section').forEach(section => section.classList.add('hidden'));
                 document.getElementById(sectionId)?.classList.remove('hidden');
+                currentSection = sectionId;
 
                 navTasksButton.classList.toggle('active', sectionId === 'tasks-page');
                 if (navPersonalTasksButton) navPersonalTasksButton.classList.toggle('active', sectionId === 'personal-tasks-page');
                 navProjectsButton.classList.toggle('active', sectionId === 'projects-page');
+                const navPersonalProjectsButton = document.getElementById('nav-personal-projects-button');
+                if (navPersonalProjectsButton) navPersonalProjectsButton.classList.toggle('active', sectionId === 'personal-projects-page');
+
+                // The top bar shows the current section name and hides the list.
+                const labels = {
+                    'tasks-page': 'Tasks for All',
+                    'personal-tasks-page': 'My Personal Tasks',
+                    'projects-page': 'Project Management',
+                    'personal-projects-page': 'My Personal Projects'
+                };
+                const labelEl = document.getElementById('section-nav-label');
+                if (labelEl && labels[sectionId]) labelEl.textContent = labels[sectionId];
+                const menu = document.getElementById('section-nav-menu');
+                if (menu) menu.style.display = 'none';
+
+                // Personal counters take the place of the task-view filter while in that section.
+                const personalNav = document.getElementById('personal-nav');
+                if (personalNav) personalNav.style.display = sectionId === 'personal-tasks-page' ? 'inline-flex' : 'none';
+                const viewNav = document.getElementById('view-nav');
+                if (viewNav) viewNav.style.display = sectionId === 'tasks-page' ? 'inline-flex' : 'none';
+                // Search only applies to the two task lists.
+                const searchBtn = document.getElementById('task-search-toggle');
+                if (searchBtn) searchBtn.style.display = (sectionId === 'tasks-page' || sectionId === 'personal-tasks-page') ? 'inline-flex' : 'none';
+                const addBtn = document.getElementById('task-add-toggle');
+                if (addBtn) {
+                    const addTitles = {
+                        'tasks-page': 'Add general task',
+                        'personal-tasks-page': 'Add personal task',
+                        'projects-page': 'New project',
+                        'personal-projects-page': 'New personal project'
+                    };
+                    const t = addTitles[sectionId] || 'Add';
+                    addBtn.title = t;
+                    addBtn.setAttribute('aria-label', t);
+                }
+                if (sectionId !== 'personal-tasks-page') showPersonalSearch(false);
+                if (sectionId !== 'tasks-page') showTaskSearch(false);
 
                 if (sectionId === 'settings-page') {
                     navTasksButton.classList.remove('active');
@@ -2560,6 +2472,7 @@
                         document.getElementById('personal-task-priority').value = 'normal';
                         document.getElementById('personal-task-category').value = 'General';
                         document.getElementById('personal-task-repeat').value = 'none';
+                        showPersonalTaskForm(false);
                     } catch (err) {
                         alert('❌ Could not add personal task: ' + (err.message || err));
                     }
@@ -2628,7 +2541,7 @@
                     currentPersonalFilter = tab.getAttribute('data-filter') || 'all';
                     document.querySelectorAll('.personal-filter-tab').forEach(b => {
                         const isActive = b.getAttribute('data-filter') === currentPersonalFilter;
-                        b.className = 'personal-filter-tab px-3 py-1.5 rounded-lg text-xs font-bold transition-all ' +
+                        b.className = 'personal-filter-tab px-2 py-1 rounded-lg text-xs font-bold transition-all ' +
                             (isActive ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200');
                     });
                     renderPersonalTasks();
@@ -2659,151 +2572,267 @@
                 personalCategoryFilter.addEventListener('change', () => renderPersonalTasks());
             }
 
-            async function renderProjects(projects, staffList) {
-                projectsContainer.innerHTML = '';
-                if (projects.length === 0) {
-                    projectsContainer.innerHTML = `<p class="text-center text-gray-500">${currentUserProfile.role === 'admin' ? 'No projects created yet.' : 'You are not assigned to any projects.'}</p>`;
+            // ===== 📁 TEAM PROJECTS  ·  🗂 MY PERSONAL PROJECTS =====
+            const projectTaskUnsubs = new Map();          // projectId -> unsubscribe
+            const expandedProjects = new Set();           // projectIds the user opened
+            let staffDirectory = [];                      // latest staff snapshot (email + name)
+            let projectsCache = [];                       // latest projects snapshot
+            let personalProjectsCache = [];
+            const ppTaskUnsubs = new Map();
+            const expandedPersonalProjects = new Set();
+
+            function projectTasksCol(projectId) {
+                return db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`);
+            }
+            function personalProjectsCol() {
+                return db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_projects`);
+            }
+            function personNameByEmail(email) {
+                const found = (staffDirectory || []).find(s => String(s.email || '').toLowerCase() === String(email || '').toLowerCase());
+                return (found && found.name) || String(email || '').split('@')[0];
+            }
+            function myDisplayName() {
+                return (currentUserProfile && (currentUserProfile.name || currentUserProfile.handle)) || (currentUser && currentUser.email) || 'me';
+            }
+
+            function projectCounts(projectId, tasks) {
+                const total = tasks.length;
+                const done = tasks.filter(t => t.status === 'Done').length;
+                const doneEl = document.querySelector(`[data-proj-done="${projectId}"]`);
+                const totalEl = document.querySelector(`[data-proj-total="${projectId}"]`);
+                if (doneEl) doneEl.textContent = done;
+                if (totalEl) totalEl.textContent = total;
+                const ppDone = document.querySelector(`[data-pp-done="${projectId}"]`);
+                const ppTotal = document.querySelector(`[data-pp-total="${projectId}"]`);
+                if (ppDone) ppDone.textContent = done;
+                if (ppTotal) ppTotal.textContent = total;
+            }
+
+            function renderProjects(projects, staffList) {
+                staffDirectory = (staffList && staffList.length) ? staffList : staffDirectory;
+                projectsCache = projects || [];
+                const host = document.getElementById('projects-container');
+                if (!host) return;
+
+                const alive = new Set(projectsCache.map(p => p.id));
+                [...projectTaskUnsubs.keys()].forEach(id => {
+                    if (!alive.has(id)) { const u = projectTaskUnsubs.get(id); if (u) u(); projectTaskUnsubs.delete(id); }
+                });
+
+                if (!projectsCache.length) {
+                    host.innerHTML = '<div class="bg-white rounded-xl shadow-sm p-6 text-center text-sm text-gray-500">No projects yet — tap <b>＋</b> in the top bar to create one.</div>';
                     return;
                 }
 
-                const projectsWithCounts = await Promise.all(projects.map(async project => {
-                    const tasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).where('teamId', '==', teamCtx.teamId).where('status', '==', 'To Do');
-                    const tasksSnap = await tasksRef.get();
-                    return { ...project, pendingTaskCount: tasksSnap.size };
-                }));
+                host.innerHTML = projectsCache.map(p => {
+                    const open = expandedProjects.has(p.id);
+                    const members = (p.members || []).map(personNameByEmail).join(', ');
+                    const due = p.dueDate ? '🗓 ' + formatTaskTimestamp(p.dueDate) : '';
+                    const canManage = isOwner() || String(p.createdBy || '') === String((currentUser && currentUser.email) || '');
+                    return `
+                        <div class="bg-white rounded-xl shadow-sm" data-project-id="${p.id}">
+                            <div class="flex items-center gap-2 p-3">
+                                <button class="project-toggle flex-1 min-w-0 text-left" data-project-id="${p.id}">
+                                    <div class="font-bold text-gray-800 truncate">📁 ${waEsc(p.name)}</div>
+                                    <div class="task-meta">👥 ${waEsc(members || '—')}${due ? ' · ' + due : ''}</div>
+                                </button>
+                                <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap" title="completed / total tasks">✅ <span data-proj-done="${p.id}">0</span>/<span data-proj-total="${p.id}">0</span></span>
+                                <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
+                                ${canManage ? `<button class="project-delete" data-project-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;cursor:pointer;">🗑</button>` : ''}
+                                <button class="project-toggle text-gray-400 text-xs px-1" data-project-id="${p.id}" title="Open / close">${open ? '▲' : '▼'}</button>
+                            </div>
+                            <div id="project-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
+                                <div id="project-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
+                            </div>
+                        </div>`;
+                }).join('');
 
-                projectsWithCounts.sort((a, b) => b.pendingTaskCount - a.pendingTaskCount);
-
-                projectsWithCounts.forEach(project => {
-                    const projectEl = document.createElement('div');
-                    projectEl.className = 'bg-white p-6 rounded-xl shadow-sm';
-                    
-                    let adminButtons = '';
-                    if (currentUserProfile.role === 'admin') {
-                        adminButtons = `<div class="flex items-center gap-2"><button class="edit-project-button text-blue-500 text-xs" data-id="${project.id}" data-name="${project.name}">Edit</button><button class="delete-project-button text-red-500 text-xs" data-id="${project.id}">Delete Project</button></div>`;
-                    }
-                    
-                    projectEl.innerHTML = `
-                        <div class="flex justify-between items-start">
-                             <h3 class="project-title clickable text-xl font-bold text-blue-600 mb-4" data-project-id="${project.id}">${project.name}</h3>
-                             ${adminButtons}
-                        </div>
-                        <div id="project-content-${project.id}" class="hidden">Loading tasks...</div>
-                    `;
-                    
-                    projectsContainer.appendChild(projectEl);
-                    renderProjectContent(project, staffList);
-                });
+                projectsCache.forEach(p => { watchProjectTasks(p); paintProjectTasks(p.id); });
             }
 
-            function renderProjectContent(project, staffList) {
-                const contentEl = document.getElementById(`project-content-${project.id}`);
-                if (!contentEl) return;
-
-                const projectTasksRef = db.collection(`/artifacts/${appId}/public/data/projects/${project.id}/tasks`).where('teamId', '==', teamCtx.teamId).orderBy("createdAt", "desc");
-                
-                let query = projectTasksRef;
-                if (currentUserProfile.role !== 'admin') {
-                    query = query.where('assigneeEmail', '==', currentUser.email);
+            const projectTasksCache = {};
+            function paintProjectTasks(projectId) {
+                const tasks = projectTasksCache[projectId] || [];
+                const listEl = document.getElementById(`project-tasks-${projectId}`);
+                if (!listEl) return;
+                projectCounts(projectId, tasks);
+                if (!tasks.length) {
+                    listEl.innerHTML = '<p class="text-gray-500 text-sm py-2">No tasks yet — use ＋ to add the first one.</p>';
+                    return;
                 }
+                const box = document.createElement('div');
+                renderToggableList(box, tasks, 'project', { projectId });
+                // show the preferred person under each project task
+                box.querySelectorAll('.task-checkbox').forEach(cb => {
+                    const t = tasks.find(x => x.id === cb.getAttribute('data-task-id'));
+                    if (!t || !t.assigneeEmail) return;
+                    const item = cb.closest('.task-list-item');
+                    if (!item) return;
+                    const meta = document.createElement('div');
+                    meta.className = 'task-meta';
+                    meta.textContent = '👤 ' + personNameByEmail(t.assigneeEmail);
+                    const stamps = item.querySelector('.task-meta');
+                    if (stamps) stamps.insertAdjacentElement('afterend', meta);
+                });
+                listEl.innerHTML = box.innerHTML;
+            }
 
-                const unsub = query.onSnapshot(tasksSnapshot => {
-                    const tasks = tasksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    const membersData = staffList.filter(s => project.members.includes(s.email));
+            function watchProjectTasks(project) {
+                if (projectTaskUnsubs.has(project.id)) return;
+                const unsub = projectTasksCol(project.id)
+                    .where('teamId', '==', teamCtx.teamId)
+                    .onSnapshot(snap => {
+                        projectTasksCache[project.id] = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByCreatedDesc);
+                        paintProjectTasks(project.id);
+                    }, error => console.warn('[project tasks]', (error && error.code) || error));
+                projectTaskUnsubs.set(project.id, unsub);
+            }
 
-                    if (currentUserProfile.role === 'admin') {
-                         let staffHTML = membersData.map(staff => {
-                            const staffTasks = tasks.filter(t => t.assigneeEmail === staff.email);
-                            const taskListContainer = document.createElement('div');
-                            renderToggableList(taskListContainer, staffTasks, 'project', {projectId: project.id});
+            // ---------- create project / add project task ----------
+            function fillProjectMembersList() {
+                const box = document.getElementById('project-members-list');
+                const hint = document.getElementById('project-members-hint');
+                if (!box) return;
+                const myUid = (currentUser && currentUser.uid) || '';
+                const myEmail = String((currentUser && currentUser.email) || '').toLowerCase();
+                box.innerHTML = (staffDirectory || []).map(s => {
+                    const isMe = (s.uid && s.uid === myUid) || String(s.email || '').toLowerCase() === myEmail;
+                    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:#334155;cursor:pointer;">
+                        <input type="checkbox" class="project-member-cb" value="${waEsc(s.email || '')}" data-uid="${waEsc(s.uid || '')}" data-name="${waEsc(s.name || '')}" ${isMe ? 'checked' : ''}>
+                        <span>${waEsc(s.name || s.email || '')}${isMe ? ' <span style="color:#94a3b8;">(you)</span>' : ''}</span>
+                    </label>`;
+                }).join('') || '<p style="font-size:12px;color:#94a3b8;padding:6px;">No team members found.</p>';
+                if (hint) hint.textContent = '(at least one is required)';
+            }
 
-                            return `<div class="mt-4"><h4 class="text-sm font-semibold text-gray-700">${staff.name}</h4>${taskListContainer.innerHTML}</div>`;
-                         }).join('');
+            // A project is visible to its creator and to every assigned member.
+            function isProjectMember(project) {
+                if (!project) return false;
+                const uid = (currentUser && currentUser.uid) || '';
+                const email = String((currentUser && currentUser.email) || '').toLowerCase();
+                if (project.creatorUid && project.creatorUid === uid) return true;
+                if (project.createdBy && String(project.createdBy).toLowerCase() === email) return true;
+                if ((project.memberUids || []).includes(uid)) return true;
+                return (project.members || []).some(m => String(m).toLowerCase() === email);
+            }
 
-                         contentEl.innerHTML = `
-                            <form class="admin-add-task-form space-y-2 mb-6 border-b pb-6" data-project-id="${project.id}">
-                                <input type="text" placeholder="New task for this project..." class="new-task-description p-2 border rounded-lg w-full" required />
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                                    <select class="new-task-assignee p-2 border rounded-lg bg-white">
-                                        ${membersData.map(m => `<option value="${m.email}">${m.name}</option>`).join('')}
-                                    </select>
-                                    <input type="datetime-local" class="new-task-duedate p-2 border rounded-lg" />
-                                    <div class="flex items-end gap-2">
-                                        <div class="flex-grow">
-                                            <select class="new-task-repeat p-2 border rounded-lg bg-white w-full">
-                                                <option value="none">Does not repeat</option>
-                                                <option value="daily">Daily</option>
-                                                <option value="weekly">Weekly</option>
-                                                <option value="monthly">Monthly</option>
-                                                <option value="annually">Annually</option>
-                                            </select>
-                                        </div>
-                                        <div class="new-task-repeat-count-container hidden">
-                                            <input type="number" class="new-task-repeat-count p-2 border rounded-lg w-24" placeholder="Times" min="1">
-                                        </div>
-                                    </div>
-                                </div>
-                                 <div class="flex items-center gap-4 mt-2">
-                                    <div class="flex items-center gap-2">
-                                        <input type="checkbox" id="admin-project-task-alarm" class="new-task-alarm h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <label for="admin-project-task-alarm" class="text-sm font-medium text-gray-700">Set Alarm</label>
-                                    </div>
-                                    <div class="flex-grow">
-                                        <label class="text-sm font-medium text-gray-700">Alarm Sound</label>
-                                        <select class="new-task-alarm-sound mt-1 p-2 border rounded-lg bg-white w-full">
-                                            <option value="alarm_classic.mp3">Classic Alarm</option>
-                                            <option value="hurry_up.mp3">Hurry Up</option>
-                                            <option value="gentle_chime.mp3">Gentle Chime</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Assign Task</button>
-                            </form>
-                            <div>${staffHTML}</div>`;
-                    } else { // User View
-                         const taskListContainer = document.createElement('div');
-                         renderToggableList(taskListContainer, tasks, 'project', {projectId: project.id});
-                         contentEl.innerHTML = `
-                            <form class="user-add-task-form space-y-2 mb-4 border-b pb-4" data-project-id="${project.id}">
-                                <input type="text" placeholder="Add a task for myself in this project..." class="new-task-description p-2 border rounded-lg w-full" required />
-                                <div class="flex gap-2 items-center flex-wrap">
-                                     <input type="datetime-local" class="new-task-duedate p-2 border rounded-lg flex-grow" />
-                                     <div class="flex items-end gap-2">
-                                        <div class="flex-grow">
-                                            <select class="new-task-repeat p-2 border rounded-lg bg-white w-full">
-                                                <option value="none">Does not repeat</option>
-                                                <option value="daily">Daily</option>
-                                                <option value="weekly">Weekly</option>
-                                                <option value="monthly">Monthly</option>
-                                                <option value="annually">Annually</option>
-                                            </select>
-                                        </div>
-                                        <div class="new-task-repeat-count-container hidden">
-                                           <input type="number" class="new-task-repeat-count p-2 border rounded-lg w-24" placeholder="Times" min="1">
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-4 mt-2">
-                                    <div class="flex items-center gap-2">
-                                        <input type="checkbox" id="user-project-task-alarm" class="new-task-alarm h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <label for="user-project-task-alarm" class="text-sm font-medium text-gray-700">Set Alarm</label>
-                                    </div>
-                                    <div class="flex-grow">
-                                        <label class="text-sm font-medium text-gray-700">Alarm Sound</label>
-                                        <select class="new-task-alarm-sound mt-1 p-2 border rounded-lg bg-white w-full">
-                                            <option value="alarm_classic.mp3">Classic Alarm</option>
-                                            <option value="hurry_up.mp3">Hurry Up</option>
-                                            <option value="gentle_chime.mp3">Gentle Chime</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600">Add Task</button>
-                            </form>
-                            ${taskListContainer.innerHTML}
-                        `;
-                    }
-                }, error => showAppError(`Error loading tasks for project "${project.name}".`, error));
-                currentUnsubscribes.push(unsub);
+            function showProjectModal(show) {
+                const m = document.getElementById('project-modal');
+                if (m) m.style.display = show ? 'block' : 'none';
+                if (show) {
+                    fillProjectMembersList();
+                    const input = document.getElementById('project-name-input');
+                    if (input) input.focus();
+                }
+            }
+            function showProjectTaskModal(show, project) {
+                const m = document.getElementById('project-task-modal');
+                if (m) m.style.display = show ? 'block' : 'none';
+                if (!show) return;
+                document.getElementById('project-task-project-id').value = project ? project.id : '';
+                const sub = document.getElementById('project-task-modal-sub');
+                if (sub) sub.textContent = project ? project.name : '';
+                const sel = document.getElementById('project-task-assignee');
+                if (sel) {
+                    const members = (project && project.members && project.members.length)
+                        ? staffDirectory.filter(s => project.members.includes(s.email))
+                        : staffDirectory;
+                    sel.innerHTML = members.map(s => `<option value="${waEsc(s.email || '')}">${waEsc(s.name || s.email || '')}</option>`).join('');
+                    const me = (currentUser && currentUser.email) || '';
+                    if ([...sel.options].some(o => o.value === me)) sel.value = me;
+                }
+                const input = document.getElementById('project-task-desc');
+                if (input) input.focus();
+            }
+
+            // ---------- 🗂 personal projects ----------
+            function renderPersonalProjects(projects) {
+                personalProjectsCache = projects || [];
+                const host = document.getElementById('personal-projects-container');
+                if (!host) return;
+                const alive = new Set(personalProjectsCache.map(p => p.id));
+                [...ppTaskUnsubs.keys()].forEach(id => {
+                    if (!alive.has(id)) { const u = ppTaskUnsubs.get(id); if (u) u(); ppTaskUnsubs.delete(id); }
+                });
+                if (!personalProjectsCache.length) {
+                    host.innerHTML = '<div class="bg-white rounded-xl shadow-sm p-6 text-center text-sm text-gray-500">No personal projects yet — tap <b>＋</b> in the top bar to create one.</div>';
+                    return;
+                }
+                host.innerHTML = personalProjectsCache.map(p => {
+                    const open = expandedPersonalProjects.has(p.id);
+                    const due = p.dueDate ? '🗓 ' + formatTaskTimestamp(p.dueDate) : '';
+                    return `
+                        <div class="bg-white rounded-xl shadow-sm" data-pp-id="${p.id}">
+                            <div class="flex items-center gap-2 p-3">
+                                <button class="pp-toggle flex-1 min-w-0 text-left" data-pp-id="${p.id}">
+                                    <div class="font-bold text-gray-800 truncate">🗂 ${waEsc(p.name)}</div>
+                                    <div class="task-meta">🔒 Private${due ? ' · ' + due : ''}</div>
+                                </button>
+                                <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap">✅ <span data-pp-done="${p.id}">0</span>/<span data-pp-total="${p.id}">0</span></span>
+                                <button class="pp-add-task" data-pp-id="${p.id}" title="Add a task" style="width:26px;height:26px;border-radius:8px;border:1px solid #ddd6fe;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
+                                <button class="pp-delete" data-pp-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;cursor:pointer;">🗑</button>
+                                <button class="pp-toggle text-gray-400 text-xs px-1" data-pp-id="${p.id}">${open ? '▲' : '▼'}</button>
+                            </div>
+                            <div id="pp-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
+                                <div id="pp-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
+                            </div>
+                        </div>`;
+                }).join('');
+                personalProjectsCache.forEach(p => { watchPersonalProjectTasks(p); paintPersonalProjectTasks(p.id); });
+            }
+
+            const ppTasksCache = {};
+            function paintPersonalProjectTasks(projectId) {
+                const tasks = ppTasksCache[projectId] || [];
+                const listEl = document.getElementById(`pp-tasks-${projectId}`);
+                if (!listEl) return;
+                projectCounts(projectId, tasks);
+                if (!tasks.length) {
+                    listEl.innerHTML = '<p class="text-gray-500 text-sm py-2">No tasks yet — use ＋ to add the first one.</p>';
+                    return;
+                }
+                const pending = tasks.filter(t => t.status !== 'Done');
+                const doneCount = tasks.length - pending.length;
+                const rows = pending.map(t => personalProjectTaskRow(projectId, t)).join('');
+                listEl.innerHTML = (rows || '<p class="text-gray-500 text-sm py-2">Everything in this project is done 🎉</p>') +
+                    (doneCount ? `<div class="task-meta mt-2">${doneCount} completed</div>` : '');
+            }
+
+            function watchPersonalProjectTasks(project) {
+                if (ppTaskUnsubs.has(project.id)) return;
+                const unsub = personalProjectsCol().doc(project.id).collection('tasks').onSnapshot(snap => {
+                    ppTasksCache[project.id] = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort(sortByCreatedDesc);
+                    paintPersonalProjectTasks(project.id);
+                }, error => console.warn('[personal project tasks]', (error && error.code) || error));
+                ppTaskUnsubs.set(project.id, unsub);
+            }
+
+            function personalProjectTaskRow(projectId, task) {
+                return `
+                    <div class="task-list-item">
+                        <input type="checkbox" class="pp-task-checkbox" data-pp-id="${projectId}" data-task-id="${task.id}">
+                        <div class="flex-grow ml-3 min-w-0">
+                            <p class="text-sm break-words text-gray-800">${waEsc(task.description)}</p>
+                            <div class="task-meta">${task.dueDate ? '🗓 ' + formatTaskTimestamp(task.dueDate) : 'No due date'}</div>
+                        </div>
+                        <button class="pp-task-delete" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete task" style="border:none;background:transparent;color:#ef4444;cursor:pointer;">🗑</button>
+                    </div>`;
+            }
+
+            function showPersonalProjectModal(show) {
+                const m = document.getElementById('personal-project-modal');
+                if (m) m.style.display = show ? 'block' : 'none';
+                if (show) { const i = document.getElementById('personal-project-name'); if (i) i.focus(); }
+            }
+            function showPersonalProjectTaskModal(show, project) {
+                const m = document.getElementById('personal-project-task-modal');
+                if (m) m.style.display = show ? 'block' : 'none';
+                if (!show) return;
+                document.getElementById('personal-project-task-project-id').value = project ? project.id : '';
+                const sub = document.getElementById('personal-project-task-sub');
+                if (sub) sub.textContent = project ? project.name : '';
+                const i = document.getElementById('personal-project-task-desc');
+                if (i) i.focus();
             }
 
             function renderTasksForAll(tasks) {
@@ -2814,8 +2843,15 @@
                 const todoTasks = tasks.filter(t => t.status === 'To Do');
                 const doneTasks = tasks.filter(t => t.status === 'Done');
 
-                todoList.innerHTML = todoTasks.length > 0 ? todoTasks.map(createTaskForAllListItemHTML).join('') : '<p class="text-gray-500 text-sm p-2">No shared tasks.</p>';
-                // Completed tasks moved to the dedicated ✅ Completed Tasks view
+                // In the "Completed" filter the finished tasks are listed right here.
+                if (taskView === 'done') {
+                    todoList.innerHTML = doneTasks.length > 0
+                        ? doneTasks.map(createTaskForAllListItemHTML).join('')
+                        : '<p class="text-gray-500 text-sm p-2">No completed tasks yet.</p>';
+                } else {
+                    todoList.innerHTML = todoTasks.length > 0 ? todoTasks.map(createTaskForAllListItemHTML).join('') : '<p class="text-gray-500 text-sm p-2">No shared tasks.</p>';
+                }
+                // Completed tasks also live in the dedicated ✅ Completed Tasks view
                 doneList.innerHTML = '';
                 toggleButton.classList.add('hidden');
                 completedCounts.forAll = doneTasks.length;
@@ -2950,8 +2986,8 @@
                         </div>
                     </div>`).join('') : `<p class="text-gray-500 text-xs text-center">No team members yet.</p>`;
 
-                projectStaffSelection.innerHTML = staff.length > 0 ? staff.map(s => `
-                    <label class="flex items-center space-x-2 p-1"><input type="checkbox" class="project-staff-member" value="${s.email}" data-name="${s.name}"><span>${s.name}</span></label>`).join('') : `<p class="text-gray-500 text-xs">Add staff first.</p>`;
+                // keep the latest directory for the project modals (member pickers)
+                staffDirectory = staff;
 
                 const _indAssignee2 = document.getElementById('individual-task-assignee');
             if (_indAssignee2) _indAssignee2.innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : `<option disabled>Add staff first</option>`;
@@ -3088,19 +3124,15 @@
             if (taskSearchEl) taskSearchEl.addEventListener('input', e => { taskSearch = e.target.value || ''; applyTaskFilters(); });
             const assigneeFilterEl = document.getElementById('task-filter-assignee');
             if (assigneeFilterEl) assigneeFilterEl.addEventListener('change', e => { taskAssigneeFilter = e.target.value || ''; applyTaskFilters(); });
-            document.querySelectorAll('.task-view-chip').forEach(chip => {
-                chip.addEventListener('click', () => {
-                    taskView = chip.getAttribute('data-view') || 'all';
+            document.querySelectorAll('.view-nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    taskView = item.getAttribute('data-view') || 'all';
                     try { localStorage.setItem('alignTaskView', taskView); } catch (e) {}
+                    const menu = document.getElementById('view-nav-menu');
+                    if (menu) menu.style.display = 'none';
                     applyTaskFilters();
                 });
             });
-            const bulkCompleteBtn = document.getElementById('bulk-complete');
-            if (bulkCompleteBtn) bulkCompleteBtn.addEventListener('click', () => bulkCompleteShown());
-            const bulkDeleteBtn = document.getElementById('bulk-delete');
-            if (bulkDeleteBtn) bulkDeleteBtn.addEventListener('click', () => bulkDeleteShown());
-            const bulkWaBtn = document.getElementById('bulk-whatsapp');
-            if (bulkWaBtn) bulkWaBtn.addEventListener('click', () => bulkWhatsAppShown());
             applyTaskFilters();
             document.body.addEventListener('click', e => {
                 const copyBtn = e.target.closest('.invite-copy-btn');
@@ -3218,7 +3250,7 @@
                         projectsSnap => {
                             const projects = projectsSnap.docs
                                 .map(d => ({id: d.id, ...d.data()}))
-                                .filter(p => (p.members || []).includes(currentUser.email));
+                                .filter(p => isProjectMember(p));
                             renderProjects(projects, staffListCache);
                         },
                         error => showAppError('Error fetching your projects.', error)
@@ -3578,9 +3610,30 @@
                 setInlineMessage(profileFormMessage, '');
                 profileModal.classList.remove('hidden');
             });
+            // ---- Section dropdown in the top bar ----
+            const sectionNavToggle = document.getElementById('section-nav-toggle');
+            const sectionNavMenu = document.getElementById('section-nav-menu');
+            if (sectionNavToggle && sectionNavMenu) {
+                sectionNavToggle.addEventListener('click', e => {
+                    e.stopPropagation();
+                    sectionNavMenu.style.display = sectionNavMenu.style.display === 'block' ? 'none' : 'block';
+                });
+                document.addEventListener('click', e => {
+                    if (!sectionNavMenu.contains(e.target) && !sectionNavToggle.contains(e.target)) sectionNavMenu.style.display = 'none';
+                });
+                sectionNavMenu.querySelectorAll('.section-nav-item').forEach(item => {
+                    item.addEventListener('click', () => { sectionNavMenu.style.display = 'none'; });
+                });
+            }
+
             navTasksButton.addEventListener('click', () => showMainSection('tasks-page'));
             if (navPersonalTasksButton) navPersonalTasksButton.addEventListener('click', () => showMainSection('personal-tasks-page'));
             navProjectsButton.addEventListener('click', () => showMainSection('projects-page'));
+            const navPersonalProjectsBtn = document.getElementById('nav-personal-projects-button');
+            if (navPersonalProjectsBtn) navPersonalProjectsBtn.addEventListener('click', () => {
+                showMainSection('personal-projects-page');
+                startPersonalProjectsListener();
+            });
             if (menuPersonalTasks) menuPersonalTasks.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 showMainSection('personal-tasks-page');
@@ -3593,9 +3646,8 @@
             });
 
             // Collapsible Form Headers
-            let assignTaskTimeout, createProjectTimeout;
+            let assignTaskTimeout;
             if (assignTaskHeader && assignTaskFormContainer) assignTaskHeader.addEventListener('click', () => assignTaskFormContainer.classList.toggle('hidden'));
-            createProjectHeader.addEventListener('click', () => createProjectFormContainer.classList.toggle('hidden'));
 
             document.getElementById('add-staff-form').addEventListener('submit', e => {
                 e.preventDefault();
@@ -3620,31 +3672,6 @@
                         setTimeout(() => profileModal.classList.add('hidden'), 600);
                     })
                     .catch(error => setInlineMessage(profileFormMessage, error.message, true));
-            });
-            
-            document.getElementById('create-project-form').addEventListener('submit', e => {
-                e.preventDefault();
-                const name = document.getElementById('new-project-name').value.trim();
-                const selectedStaff = [...projectStaffSelection.querySelectorAll('input:checked')];
-                const members = selectedStaff.map(input => input.value);
-                
-                if (name && members.length > 0) {
-                    boardCol('projects').add({
-                        name,
-                        members,
-                        teamId: teamCtx.teamId,
-                        createdAt: new Date(),
-                        createdBy: currentUser.email,
-                        ownerAdminUid: getTeamOwnerUid(),
-                        ownerAdminEmail: getTeamOwnerEmail()
-                    });
-                    e.target.reset();
-                    alert('Project created successfully!');
-                    clearTimeout(createProjectTimeout);
-                    createProjectTimeout = setTimeout(() => createProjectFormContainer.classList.add('hidden'), 3000);
-                } else {
-                    alert('Please provide a project name and select at least one member.');
-                }
             });
             
             const assignIndividualTaskForm = document.getElementById('assign-individual-task-form');
@@ -3686,6 +3713,357 @@
                  assignTaskTimeout = setTimeout(() => assignTaskFormContainer.classList.add('hidden'), 3000);
             });
 
+            // The add form lives in a modal window opened from the ＋ icon in the "Tasks for All" tab.
+            function showGeneralTaskForm(show) {
+                const modal = document.getElementById('general-task-modal');
+                if (modal) modal.style.display = show ? 'block' : 'none';
+                if (show) {
+                    const input = document.getElementById('new-task-for-all-description');
+                    if (input) input.focus();
+                }
+            }
+            function closeGeneralTaskForm(reset) {
+                const form = document.getElementById('task-for-all-form');
+                if (reset && form) form.reset();
+                const rp = document.getElementById('new-task-for-all-repeat');
+                if (rp) rp.value = 'none';
+                showGeneralTaskForm(false);
+            }
+            document.getElementById('cancel-general-task-form').addEventListener('click', () => closeGeneralTaskForm(true));
+            document.getElementById('cancel-general-task-form-2').addEventListener('click', () => closeGeneralTaskForm(true));
+            document.getElementById('general-task-modal').addEventListener('click', e => {
+                if (e.target && e.target.id === 'general-task-modal') closeGeneralTaskForm(true);
+            });
+
+            // 🔒 Personal task modal (opened from the ＋ icon while in My Personal Tasks).
+            function showPersonalTaskForm(show) {
+                const modal = document.getElementById('personal-task-modal');
+                if (modal) modal.style.display = show ? 'block' : 'none';
+                if (show) {
+                    const input = document.getElementById('personal-task-desc');
+                    if (input) input.focus();
+                }
+            }
+            function closePersonalTaskForm(reset) {
+                const form = document.getElementById('add-personal-task-form');
+                if (reset && form) form.reset();
+                const rp = document.getElementById('personal-task-repeat');
+                if (rp) rp.value = 'none';
+                showPersonalTaskForm(false);
+            }
+            document.getElementById('cancel-personal-task-form').addEventListener('click', () => closePersonalTaskForm(true));
+            document.getElementById('cancel-personal-task-form-2').addEventListener('click', () => closePersonalTaskForm(true));
+            document.getElementById('personal-task-modal').addEventListener('click', e => {
+                if (e.target && e.target.id === 'personal-task-modal') closePersonalTaskForm(true);
+            });
+
+            document.addEventListener('keydown', e => {
+                if (e.key !== 'Escape') return;
+                const gm = document.getElementById('general-task-modal');
+                if (gm && gm.style.display === 'block') closeGeneralTaskForm(true);
+                const pm = document.getElementById('personal-task-modal');
+                if (pm && pm.style.display === 'block') closePersonalTaskForm(true);
+            });
+
+            // 🔍 in the top bar reveals the search + member filters.
+            function showTaskSearch(show) {
+                const bar = document.getElementById('task-filter-bar');
+                if (bar) bar.style.display = show ? 'block' : 'none';
+                const btn = document.getElementById('task-search-toggle');
+                if (btn) btn.style.opacity = show ? '1' : '.75';
+                if (show) {
+                    const input = document.getElementById('task-search');
+                    if (input) input.focus();
+                }
+            }
+            // 🔍 personal search panel (same idea for the private list).
+            function showPersonalSearch(show) {
+                const bar = document.getElementById('personal-filter-bar');
+                if (bar) bar.style.display = show ? 'block' : 'none';
+                if (show) {
+                    const input = document.getElementById('personal-search-input');
+                    if (input) input.focus();
+                }
+            }
+
+            // The ＋ and 🔍 icons follow the section that is open.
+            document.getElementById('task-add-toggle').addEventListener('click', () => {
+                if (currentSection === 'personal-tasks-page') { showPersonalTaskForm(true); return; }
+                if (currentSection === 'projects-page') { showProjectModal(true); return; }
+                if (currentSection === 'personal-projects-page') { showPersonalProjectModal(true); return; }
+                showMainSection('tasks-page');
+                showGeneralTaskForm(true);
+            });
+            document.getElementById('task-search-toggle').addEventListener('click', () => {
+                if (currentSection === 'personal-tasks-page') {
+                    const bar = document.getElementById('personal-filter-bar');
+                    showPersonalSearch(!(bar && bar.style.display === 'block'));
+                    return;
+                }
+                const bar = document.getElementById('task-filter-bar');
+                showTaskSearch(!(bar && bar.style.display === 'block'));
+            });
+            document.getElementById('task-search-close').addEventListener('click', () => showTaskSearch(false));
+            document.getElementById('personal-search-close').addEventListener('click', () => showPersonalSearch(false));
+
+            // ---------- 📁 projects: modals, cards, personal projects ----------
+            function closeProjectModal() {
+                const f = document.getElementById('project-create-form');
+                if (f) f.reset();
+                showProjectModal(false);
+            }
+            function closeProjectTaskModal() {
+                const f = document.getElementById('project-task-form');
+                if (f) f.reset();
+                showProjectTaskModal(false);
+            }
+            function closePersonalProjectModal() {
+                const f = document.getElementById('personal-project-form');
+                if (f) f.reset();
+                showPersonalProjectModal(false);
+            }
+            function closePersonalProjectTaskModal() {
+                const f = document.getElementById('personal-project-task-form');
+                if (f) f.reset();
+                showPersonalProjectTaskModal(false);
+            }
+            document.getElementById('cancel-project-modal').addEventListener('click', closeProjectModal);
+            document.getElementById('cancel-project-modal-2').addEventListener('click', closeProjectModal);
+            document.getElementById('project-modal').addEventListener('click', e => { if (e.target && e.target.id === 'project-modal') closeProjectModal(); });
+            document.getElementById('cancel-project-task-modal').addEventListener('click', closeProjectTaskModal);
+            document.getElementById('cancel-project-task-modal-2').addEventListener('click', closeProjectTaskModal);
+            document.getElementById('project-task-modal').addEventListener('click', e => { if (e.target && e.target.id === 'project-task-modal') closeProjectTaskModal(); });
+            document.getElementById('cancel-personal-project-modal').addEventListener('click', closePersonalProjectModal);
+            document.getElementById('cancel-personal-project-modal-2').addEventListener('click', closePersonalProjectModal);
+            document.getElementById('personal-project-modal').addEventListener('click', e => { if (e.target && e.target.id === 'personal-project-modal') closePersonalProjectModal(); });
+            document.getElementById('cancel-personal-project-task-modal').addEventListener('click', closePersonalProjectTaskModal);
+            document.getElementById('cancel-personal-project-task-modal-2').addEventListener('click', closePersonalProjectTaskModal);
+            document.getElementById('personal-project-task-modal').addEventListener('click', e => { if (e.target && e.target.id === 'personal-project-task-modal') closePersonalProjectTaskModal(); });
+
+            document.addEventListener('keydown', e => {
+                if (e.key !== 'Escape') return;
+                ['project-modal', 'project-task-modal', 'personal-project-modal', 'personal-project-task-modal'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && el.style.display === 'block') el.style.display = 'none';
+                });
+            });
+
+            // create a team project
+            document.getElementById('project-create-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const name = document.getElementById('project-name-input').value.trim();
+                const dueDate = document.getElementById('project-due-input').value || '';
+                const checkedBoxes = [...document.querySelectorAll('.project-member-cb:checked')];
+                const members = checkedBoxes.map(cb => cb.value).filter(Boolean);
+                const memberUids = checkedBoxes.map(cb => cb.getAttribute('data-uid')).filter(Boolean);
+                if (!name) return;
+                if (!members.length) { alert('Select at least one team member — the creator can be the only one.'); return; }
+                try {
+                    await boardCol('projects').add({
+                        name,
+                        members,
+                        memberUids,
+                        dueDate,
+                        teamId: teamCtx.teamId,
+                        createdAt: new Date(),
+                        createdBy: (currentUser && currentUser.email) || '',
+                        createdByName: myDisplayName(),
+                        creatorUid: (currentUser && currentUser.uid) || ''
+                    });
+                    closeProjectModal();
+                } catch (err) {
+                    alert('❌ Could not create the project: ' + (err.message || err));
+                }
+            });
+
+            // add a task inside a team project
+            document.getElementById('project-task-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const projectId = document.getElementById('project-task-project-id').value;
+                const description = document.getElementById('project-task-desc').value.trim();
+                const dueDate = document.getElementById('project-task-due').value || '';
+                const assigneeEmail = document.getElementById('project-task-assignee').value || '';
+                if (!projectId || !description) return;
+                try {
+                    await projectTasksCol(projectId).add({
+                        description,
+                        dueDate,
+                        assigneeEmail,
+                        assigneeName: personNameByEmail(assigneeEmail),
+                        status: 'To Do',
+                        teamId: teamCtx.teamId,
+                        createdAt: new Date(),
+                        createdBy: (currentUser && currentUser.email) || '',
+                        createdByName: myDisplayName()
+                    });
+                    closeProjectTaskModal();
+                } catch (err) {
+                    alert('❌ Could not add the task: ' + (err.message || err));
+                }
+            });
+
+            // project card interactions (delegated)
+            document.getElementById('projects-container').addEventListener('click', async e => {
+                const toggleBtn = e.target.closest('.project-toggle');
+                if (toggleBtn) {
+                    const id = toggleBtn.getAttribute('data-project-id');
+                    const content = document.getElementById('project-content-' + id);
+                    if (!content) return;
+                    const willOpen = content.style.display === 'none';
+                    content.style.display = willOpen ? '' : 'none';
+                    if (willOpen) expandedProjects.add(id); else expandedProjects.delete(id);
+                    const project = projectsCache.find(p => p.id === id);
+                    if (project) { watchProjectTasks(project); paintProjectTasks(id); }
+                    return;
+                }
+                const addBtn = e.target.closest('.project-add-task');
+                if (addBtn) {
+                    const project = projectsCache.find(p => p.id === addBtn.getAttribute('data-project-id'));
+                    if (project) showProjectTaskModal(true, project);
+                    return;
+                }
+                const delBtn = e.target.closest('.project-delete');
+                if (delBtn) {
+                    const id = delBtn.getAttribute('data-project-id');
+                    const project = projectsCache.find(p => p.id === id);
+                    if (!project) return;
+                    if (!confirm('Delete the project "' + project.name + '" and all its tasks?')) return;
+                    try {
+                        const tasksSnap = await projectTasksCol(id).where('teamId', '==', teamCtx.teamId).get();
+                        await Promise.all(tasksSnap.docs.map(d => d.ref.delete()));
+                        await boardCol('projects').doc(id).delete();
+                        const u = projectTaskUnsubs.get(id); if (u) u();
+                        projectTaskUnsubs.delete(id);
+                        expandedProjects.delete(id);
+                        delete projectTasksCache[id];
+                    } catch (err) { alert('❌ ' + (err.message || err)); }
+                }
+            });
+
+            // ---------- 🗂 personal projects ----------
+            document.getElementById('personal-project-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const name = document.getElementById('personal-project-name').value.trim();
+                const dueDate = document.getElementById('personal-project-due').value || '';
+                if (!name) return;
+                try {
+                    await personalProjectsCol().add({
+                        name,
+                        dueDate,
+                        createdAt: new Date(),
+                        ownerUid: currentUser.uid
+                    });
+                    closePersonalProjectModal();
+                } catch (err) {
+                    alert('❌ Could not create the project: ' + (err.message || err));
+                }
+            });
+
+            document.getElementById('personal-project-task-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const projectId = document.getElementById('personal-project-task-project-id').value;
+                const description = document.getElementById('personal-project-task-desc').value.trim();
+                const dueDate = document.getElementById('personal-project-task-due').value || '';
+                if (!projectId || !description) return;
+                try {
+                    await personalProjectsCol().doc(projectId).collection('tasks').add({
+                        description,
+                        dueDate,
+                        status: 'To Do',
+                        createdAt: new Date()
+                    });
+                    closePersonalProjectTaskModal();
+                } catch (err) {
+                    alert('❌ Could not add the task: ' + (err.message || err));
+                }
+            });
+
+            document.getElementById('personal-projects-container').addEventListener('click', async e => {
+                const toggleBtn = e.target.closest('.pp-toggle');
+                if (toggleBtn) {
+                    const id = toggleBtn.getAttribute('data-pp-id');
+                    const content = document.getElementById('pp-content-' + id);
+                    if (!content) return;
+                    const willOpen = content.style.display === 'none';
+                    content.style.display = willOpen ? '' : 'none';
+                    if (willOpen) expandedPersonalProjects.add(id); else expandedPersonalProjects.delete(id);
+                    const project = personalProjectsCache.find(p => p.id === id);
+                    if (project) { watchPersonalProjectTasks(project); paintPersonalProjectTasks(id); }
+                    return;
+                }
+                const addBtn = e.target.closest('.pp-add-task');
+                if (addBtn) {
+                    const project = personalProjectsCache.find(p => p.id === addBtn.getAttribute('data-pp-id'));
+                    if (project) showPersonalProjectTaskModal(true, project);
+                    return;
+                }
+                const delTask = e.target.closest('.pp-task-delete');
+                if (delTask) {
+                    try {
+                        await personalProjectsCol().doc(delTask.getAttribute('data-pp-id')).collection('tasks').doc(delTask.getAttribute('data-task-id')).delete();
+                    } catch (err) { alert('❌ ' + (err.message || err)); }
+                    return;
+                }
+                const delBtn = e.target.closest('.pp-delete');
+                if (delBtn) {
+                    const id = delBtn.getAttribute('data-pp-id');
+                    const project = personalProjectsCache.find(p => p.id === id);
+                    if (!project) return;
+                    if (!confirm('Delete the personal project "' + project.name + '" and all its tasks?')) return;
+                    try {
+                        const tasksSnap = await personalProjectsCol().doc(id).collection('tasks').get();
+                        await Promise.all(tasksSnap.docs.map(d => d.ref.delete()));
+                        await personalProjectsCol().doc(id).delete();
+                        const u = ppTaskUnsubs.get(id); if (u) u();
+                        ppTaskUnsubs.delete(id);
+                        expandedPersonalProjects.delete(id);
+                        delete ppTasksCache[id];
+                    } catch (err) { alert('❌ ' + (err.message || err)); }
+                }
+            });
+
+            document.getElementById('personal-projects-container').addEventListener('change', async e => {
+                const cb = e.target.closest('.pp-task-checkbox');
+                if (!cb) return;
+                try {
+                    await personalProjectsCol().doc(cb.getAttribute('data-pp-id')).collection('tasks').doc(cb.getAttribute('data-task-id'))
+                        .update({ status: 'Done', completedAt: new Date() });
+                } catch (err) { alert('❌ ' + (err.message || err)); }
+            });
+
+            let personalProjectsUnsub = null;
+            let personalProjectsUid = '';
+            function startPersonalProjectsListener() {
+                if (!currentUser || !currentUser.uid) return;
+                if (personalProjectsUnsub && personalProjectsUid === currentUser.uid) return;
+                if (personalProjectsUnsub) { personalProjectsUnsub(); personalProjectsUnsub = null; }
+                personalProjectsUid = currentUser.uid;
+                personalProjectsUnsub = personalProjectsCol().onSnapshot(snap => {
+                    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                        .sort((a, b) => (b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0) - (a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0));
+                    renderPersonalProjects(list);
+                }, error => {
+                    console.warn('[personal projects]', (error && error.code) || error);
+                    const host = document.getElementById('personal-projects-container');
+                    if (host && !host.innerText.trim()) {
+                        host.innerHTML = '<div class="bg-white rounded-xl shadow-sm p-6 text-center text-sm text-gray-500">Personal projects are not available yet — the latest security rules still have to be published.</div>';
+                    }
+                });
+            }
+
+            // View filter list in the top bar (All / Today's Tasks / Overdue / Completed).
+            const viewNavToggle = document.getElementById('view-nav-toggle');
+            const viewNavMenu = document.getElementById('view-nav-menu');
+            if (viewNavToggle && viewNavMenu) {
+                viewNavToggle.addEventListener('click', e => {
+                    e.stopPropagation();
+                    viewNavMenu.style.display = viewNavMenu.style.display === 'block' ? 'none' : 'block';
+                });
+                document.addEventListener('click', e => {
+                    if (!viewNavMenu.contains(e.target) && !viewNavToggle.contains(e.target)) viewNavMenu.style.display = 'none';
+                });
+            }
+
             document.getElementById('task-for-all-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const description = document.getElementById('new-task-for-all-description').value.trim();
@@ -3705,6 +4083,7 @@
                     e.target.reset();
                     const rp = document.getElementById('new-task-for-all-repeat');
                     if (rp) rp.value = 'none';
+                    showGeneralTaskForm(false);
                 } catch (err) {
                     alert('Could not add the task: ' + err.message);
                 }
@@ -4322,6 +4701,235 @@
                 </div>
                 <div style="font-size:10.5px;color:#94a3b8;margin-top:10px;text-align:center;">Login name, role and teams are managed by the owner.</div>
             </div>
+        </div>
+    </div>
+
+    <!-- ＋ Add general task — opened from the + icon inside the "Tasks for All" tab -->
+    <div id="general-task-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:520px;width:100%;margin:8vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">＋ New general task</div>
+                    <div style="font-size:11px;opacity:.9;margin-top:2px;">Visible to the whole team · assign it or leave it open to anyone</div>
+                </div>
+                <button type="button" id="cancel-general-task-form" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="task-for-all-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Task</label>
+                    <input type="text" id="new-task-for-all-description" placeholder="What needs to be done?" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required/>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Assign to</label>
+                    <select id="new-task-for-all-assignee" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;">
+                        <option value="">👥 Anyone (unassigned)</option>
+                    </select>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:170px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Due date &amp; time</label>
+                        <input type="datetime-local" id="new-task-for-all-due" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;"/>
+                    </div>
+                    <div style="flex:1;min-width:150px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Repeat</label>
+                        <select id="new-task-for-all-repeat" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;">
+                            <option value="none">🔁 Does not repeat</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="annually">Annually</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>
+                    <button type="button" id="cancel-general-task-form-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🔒 New personal task — opened from the ＋ icon while in the My Personal Tasks section -->
+    <div id="personal-task-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:520px;width:100%;margin:7vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#6d28d9,#4f46e5);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">🔒 New personal task</div>
+                    <div style="font-size:11px;opacity:.9;margin-top:2px;">Strictly private — only you can see it</div>
+                </div>
+                <button type="button" id="cancel-personal-task-form" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="add-personal-task-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Task title *</label>
+                    <input type="text" id="personal-task-desc" placeholder="e.g. Call broker about trade contract, verify customs payment…" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required />
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:150px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Category</label>
+                        <select id="personal-task-category" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;">
+                            <option value="General">🏷️ General</option>
+                            <option value="Calls &amp; WhatsApp">📞 Calls &amp; WhatsApp</option>
+                            <option value="Trade &amp; Deals">🤝 Trade &amp; Deals</option>
+                            <option value="Finance &amp; Payments">💰 Finance &amp; Payments</option>
+                            <option value="Follow-up">📌 Follow-up</option>
+                            <option value="Private">🔒 Private</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:150px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Priority</label>
+                        <select id="personal-task-priority" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;">
+                            <option value="normal">🔵 Normal</option>
+                            <option value="high">🟠 High Priority</option>
+                            <option value="urgent">🔴 Urgent</option>
+                            <option value="low">⚪ Low Priority</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:170px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Due date &amp; time</label>
+                        <input type="datetime-local" id="personal-task-duedate" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" />
+                    </div>
+                    <div style="flex:1;min-width:150px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Repeat cycle</label>
+                        <select id="personal-task-repeat" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;">
+                            <option value="none">Does not repeat</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Notes &amp; memo (optional)</label>
+                    <textarea id="personal-task-notes" rows="2" placeholder="Details, phone numbers, contact names, reference codes…" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;"></textarea>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Save personal task</button>
+                    <button type="button" id="cancel-personal-task-form-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 📁 New team project — opened from the ＋ icon in the Project Management section -->
+    <div id="project-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:540px;width:100%;margin:6vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">📁 New team project</div>
+                    <div style="font-size:11px;opacity:.92;margin-top:2px;">Several members can work on it together</div>
+                </div>
+                <button type="button" id="cancel-project-modal" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="project-create-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Project name *</label>
+                    <input type="text" id="project-name-input" placeholder="e.g. Simwar container — Oman launch" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required />
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Target due date</label>
+                    <input type="datetime-local" id="project-due-input" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" />
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Assign team members * <span id="project-members-hint" style="font-weight:600;color:#94a3b8;"></span></label>
+                    <div id="project-members-list" style="max-height:210px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:6px;"></div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Create project</button>
+                    <button type="button" id="cancel-project-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 📝 New task inside a team project — opened from the ＋ on the project row -->
+    <div id="project-task-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:520px;width:100%;margin:7vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">📝 New task</div>
+                    <div id="project-task-modal-sub" style="font-size:11px;opacity:.92;margin-top:2px;">—</div>
+                </div>
+                <button type="button" id="cancel-project-task-modal" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="project-task-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <input type="hidden" id="project-task-project-id" />
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Task details *</label>
+                    <input type="text" id="project-task-desc" placeholder="What has to be done?" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required />
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:170px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Due date &amp; time</label>
+                        <input type="datetime-local" id="project-task-due" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" />
+                    </div>
+                    <div style="flex:1;min-width:170px;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Preferred person</label>
+                        <select id="project-task-assignee" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff;box-sizing:border-box;"></select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>
+                    <button type="button" id="cancel-project-task-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🗂 New personal project (private) -->
+    <div id="personal-project-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:500px;width:100%;margin:8vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#6d28d9,#4f46e5);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">🗂 New personal project</div>
+                    <div style="font-size:11px;opacity:.92;margin-top:2px;">Private — nobody else can see it</div>
+                </div>
+                <button type="button" id="cancel-personal-project-modal" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="personal-project-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Project name *</label>
+                    <input type="text" id="personal-project-name" placeholder="e.g. My 2027 trade plan" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required />
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Target due date</label>
+                    <input type="datetime-local" id="personal-project-due" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" />
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Create project</button>
+                    <button type="button" id="cancel-personal-project-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 📝 New task inside a personal project -->
+    <div id="personal-project-task-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
+        <div style="max-width:480px;width:100%;margin:9vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#6d28d9,#4f46e5);color:#fff;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;line-height:1.2;">📝 New personal task</div>
+                    <div id="personal-project-task-sub" style="font-size:11px;opacity:.92;margin-top:2px;">—</div>
+                </div>
+                <button type="button" id="cancel-personal-project-task-modal" aria-label="Close" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;flex-shrink:0;">✖</button>
+            </div>
+            <form id="personal-project-task-form" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+                <input type="hidden" id="personal-project-task-project-id" />
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Task details *</label>
+                    <input type="text" id="personal-project-task-desc" placeholder="What has to be done?" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" required />
+                </div>
+                <div>
+                    <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Due date &amp; time</label>
+                    <input type="datetime-local" id="personal-project-task-due" style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" />
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <button type="submit" style="flex:1;padding:11px;background:#6d28d9;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>
+                    <button type="button" id="cancel-personal-project-task-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 
