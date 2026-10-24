@@ -200,8 +200,66 @@ const publicStaff = (r) => ({
   uid: r.uid, handle: r.handle, name: r.name, role: r.role || 'member',
   teamIds: r.teamIds || [], active: r.active !== false,
   createdAt: r.createdAt || 0, updatedAt: r.updatedAt || 0,
-  hasPassword: !!r.hash, lockedUntil: r.lockedUntil || 0
+  hasPassword: !!r.hash, lockedUntil: r.lockedUntil || 0,
+  lastLoginAt: r.lastLoginAt || 0,
+  // optional profile details
+  jobTitle: r.jobTitle || '', department: r.department || '',
+  phone: r.phone || '', whatsapp: r.whatsapp || '',
+  timezone: r.timezone || '', avatarEmoji: r.avatarEmoji || '',
+  bio: r.bio || '', language: r.language || ''
 });
+
+// Fields a staff member may change about themselves.
+const PROFILE_FIELDS = ['jobTitle', 'department', 'phone', 'whatsapp', 'timezone', 'avatarEmoji', 'bio', 'language', 'name'];
+
+// Self-service profile update. Cannot touch role, teams, handle or password.
+export function updateOwnProfile(uid, patch = {}) {
+  const staff = loadStaff();
+  const entry = Object.entries(staff).find(([, r]) => r.uid === uid);
+  if (!entry) throw new Error('Your staff record was not found.');
+  const [handle, rec] = entry;
+
+  for (const f of PROFILE_FIELDS) {
+    if (patch[f] === undefined) continue;
+    const v = String(patch[f] == null ? '' : patch[f]).slice(0, f === 'bio' ? 500 : 80).trim();
+    if (f === 'name') {
+      if (!v) throw new Error('Name cannot be empty.');
+      rec.name = v;
+    } else if (f === 'timezone') {
+      rec.timezone = v;
+    } else if (f === 'avatarEmoji') {
+      rec.avatarEmoji = Array.from(v).slice(0, 2).join('');
+    } else {
+      rec[f] = v;
+    }
+  }
+  rec.updatedAt = Date.now();
+  staff[handle] = rec;
+  saveStaff(staff);
+  authAudit({ action: 'profile_updated', handle });
+  return publicStaff(rec);
+}
+
+export function getOwnProfile(uid) {
+  const rec = Object.values(loadStaff()).find(r => r.uid === uid);
+  return rec ? publicStaff(rec) : null;
+}
+
+// Fields an owner may set when creating/updating a staff record.
+export function setStaffProfileFields(handle, patch = {}) {
+  const h = normalizeHandle(handle);
+  const staff = loadStaff();
+  if (!staff[h]) throw new Error('Staff member not found.');
+  const rec = staff[h];
+  for (const f of PROFILE_FIELDS) {
+    if (patch[f] === undefined) continue;
+    rec[f] = String(patch[f] == null ? '' : patch[f]).slice(0, f === 'bio' ? 500 : 80).trim();
+  }
+  rec.updatedAt = Date.now();
+  staff[h] = rec;
+  saveStaff(staff);
+  return publicStaff(rec);
+}
 
 export function listStaff() {
   return Object.values(loadStaff()).map(publicStaff).sort((a, b) => String(a.name).localeCompare(String(b.name)));

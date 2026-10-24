@@ -23,7 +23,8 @@ import {
   loginStaff, verifyStaffSession, verifyTeamUnlock, issueStaffSession,
   upsertStaff, listStaff, getStaffByHandle, getStaffByUid, deleteStaff,
   setTeamPassword, teamHasPassword, unlockTeam, authAudit, recentAuthEvents,
-  normalizeHandle, SESSION_HOURS, UNLOCK_HOURS
+  normalizeHandle, SESSION_HOURS, UNLOCK_HOURS,
+  getOwnProfile, updateOwnProfile, setStaffProfileFields
 } from './alignAuth.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
@@ -142,6 +143,29 @@ export function registerAlignRoutes(app) {
   });
 
   // ============================================================ team unlock
+  app.get(api + '/profile', requireStaff, (req, res) => {
+    const rec = getOwnProfile(req.staff.uid);
+    if (!rec) return res.status(404).json({ ok: false, error: 'Staff record not found.' });
+    res.json({
+      ok: true,
+      profile: rec,
+      editable: ['name', 'jobTitle', 'department', 'phone', 'whatsapp', 'timezone', 'avatarEmoji', 'bio', 'language'],
+      locked: ['handle', 'role', 'teamIds', 'active', 'password']
+    });
+  });
+
+  app.patch(api + '/profile', requireStaff, (req, res) => {
+    try {
+      const patch = req.body || {};
+      // Never allow privilege escalation through the profile route.
+      delete patch.role; delete patch.teamIds; delete patch.handle; delete patch.uid;
+      delete patch.active; delete patch.password; delete patch.hash; delete patch.salt;
+      const updated = updateOwnProfile(req.staff.uid, patch);
+      authAudit({ action: 'profile_view_or_edit', handle: updated.handle });
+      res.json({ ok: true, profile: updated });
+    } catch (e) { bad(res, e.message); }
+  });
+
   app.post(api + '/team/unlock', requireStaff, (req, res) => {
     try {
       const b = req.body || {};

@@ -101,7 +101,15 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                         <!-- Notification Bell -->
+                        <!-- 👤 Signed-in staff profile chip (name + role) -->
+                        <button id="profile-chip" class="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors" title="View or edit your profile" style="display:none;">
+                            <span id="profile-chip-avatar" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:#e0e7ff;font-size:16px;">👤</span>
+                            <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;">
+                                <span id="profile-chip-name" style="font-size:12.5px;font-weight:800;color:#0f172a;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+                                <span id="profile-chip-role" style="font-size:10px;color:#64748b;text-transform:capitalize;">—</span>
+                            </span>
+                        </button>
+                        <!-- Notification Bell -->
                         <button id="notification-bell-button" class="notification-bell p-2 rounded-full hover:bg-gray-200">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                             <div id="notification-dot" class="notification-dot hidden"></div>
@@ -4033,6 +4041,73 @@
         </div>
     </div>
 
+    <!-- ================================================================
+         👤 PROFILE — view and edit your own staff profile
+         ================================================================ -->
+    <div id="alignProfile" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:99998;overflow:auto;padding:20px;">
+        <div style="max-width:520px;margin:5vh auto;background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow:hidden;">
+            <div style="background:linear-gradient(135deg,#1e1b4b,#6d28d9);color:#fff;padding:16px 18px;display:flex;align-items:center;gap:12px;">
+                <span id="pfAvatar" style="display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:9999px;background:rgba(255,255,255,.18);font-size:22px;">👤</span>
+                <div style="flex:1;min-width:0;">
+                    <div id="pfTitleName" style="font-weight:800;font-size:16px;">My profile</div>
+                    <div id="pfTitleRole" style="font-size:11.5px;opacity:.85;"></div>
+                </div>
+                <button id="pfClose" style="background:rgba(255,255,255,.16);color:#fff;border:none;border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">✖ Close</button>
+            </div>
+            <div style="padding:18px;">
+                <div id="pfMsg" style="display:none;font-size:12.5px;padding:9px 11px;border-radius:10px;margin-bottom:12px;"></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="grid-column:1/-1;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Full name</label>
+                        <input id="pfName" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Login name <span style="color:#94a3b8;">(locked)</span></label>
+                        <input id="pfHandle" disabled style="width:100%;padding:9px 11px;border:1px solid #e2e8f0;border-radius:9px;font-size:13.5px;background:#f8fafc;color:#64748b;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Role <span style="color:#94a3b8;">(locked)</span></label>
+                        <input id="pfRole" disabled style="width:100%;padding:9px 11px;border:1px solid #e2e8f0;border-radius:9px;font-size:13.5px;background:#f8fafc;color:#64748b;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Job title</label>
+                        <input id="pfJobTitle" placeholder="e.g. Accounts Manager" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Department</label>
+                        <input id="pfDepartment" placeholder="e.g. Finance" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">WhatsApp number</label>
+                        <input id="pfWhatsapp" placeholder="+971 50 123 4567" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Phone</label>
+                        <input id="pfPhone" placeholder="optional" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Timezone</label>
+                        <input id="pfTimezone" placeholder="Asia/Dubai" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Avatar</label>
+                        <input id="pfAvatarEmoji" placeholder="👑" maxlength="4" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:16px;box-sizing:border-box;">
+                    </div>
+                    <div style="grid-column:1/-1;">
+                        <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">About me</label>
+                        <textarea id="pfBio" rows="2" placeholder="A short note shown on your profile" style="width:100%;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;font-size:13.5px;box-sizing:border-box;"></textarea>
+                    </div>
+                </div>
+                <div id="pfTeams" style="margin-top:14px;"></div>
+                <div style="display:flex;gap:8px;margin-top:16px;">
+                    <button id="pfSave" style="flex:1;padding:11px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:13.5px;cursor:pointer;">💾 Save profile</button>
+                    <button id="pfLogout" style="padding:11px 14px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Log out</button>
+                </div>
+                <div style="font-size:10.5px;color:#94a3b8;margin-top:10px;text-align:center;">Login name, role and teams are managed by the owner.</div>
+            </div>
+        </div>
+    </div>
+
     <script>
     /* ==================================================================
        AlignTasks gate: staff session + team unlock.
@@ -4225,6 +4300,7 @@
                     saveUnlock(teamId, d.token, d.expiresAt);
                     $('gatePassword').value = '';
                     hideGate();
+                    loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
                 }
             } catch (err) {
@@ -4271,8 +4347,105 @@
                 if (!r.ok) { setSession(''); showGate('login'); return; }
                 const cur = (window.teamCtx && window.teamCtx.teamId) || '';
                 if (!cur || !unlockFor(cur)) { pendingTeams = await loadTeams(); showGate('unlock'); }
+                loadProfile();
             } catch (e) { showGate('login'); }
         }, 300);
+
+        // ---------------------------------------------------------- profile chip
+        let myProfile = null;
+
+        function paintChip(p) {
+            if (!p) return;
+            myProfile = p;
+            const chip = $('profile-chip');
+            chip.style.display = 'flex';
+            $('profile-chip-avatar').textContent = p.avatarEmoji || '👤';
+            $('profile-chip-name').textContent = p.name || p.handle;
+            const role = (p.role || 'member');
+            $('profile-chip-role').textContent = p.jobTitle ? (p.jobTitle + ' · ' + role) : role;
+        }
+
+        async function loadProfile() {
+            try {
+                const d = await api('/profile', { noRedirect: true });
+                paintChip(d.profile);
+                return d.profile;
+            } catch (e) { return null; }
+        }
+
+        function pfMsg(text, good) {
+            const el = $('pfMsg');
+            el.textContent = text;
+            el.style.display = text ? 'block' : 'none';
+            el.style.background = good ? '#f0fdf4' : '#fef2f2';
+            el.style.border = '1px solid ' + (good ? '#bbf7d0' : '#fecaca');
+            el.style.color = good ? '#166534' : '#b91c1c';
+        }
+
+        async function openProfile() {
+            const p = myProfile || await loadProfile();
+            if (!p) { pfMsg('Could not load your profile. Sign in again.', false); }
+            $('alignProfile').style.display = 'block';
+            if (!p) return;
+            $('pfAvatar').textContent = p.avatarEmoji || '👤';
+            $('pfTitleName').textContent = p.name || p.handle;
+            $('pfTitleRole').textContent = (p.jobTitle ? p.jobTitle + ' · ' : '') + (p.role || 'member');
+            $('pfName').value = p.name || '';
+            $('pfHandle').value = p.handle || '';
+            $('pfRole').value = p.role || 'member';
+            $('pfJobTitle').value = p.jobTitle || '';
+            $('pfDepartment').value = p.department || '';
+            $('pfWhatsapp').value = p.whatsapp || '';
+            $('pfPhone').value = p.phone || '';
+            $('pfTimezone').value = p.timezone || '';
+            $('pfAvatarEmoji').value = p.avatarEmoji || '';
+            $('pfBio').value = p.bio || '';
+            const teams = (p.teamIds || []);
+            $('pfTeams').innerHTML = teams.length
+                ? '<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Teams</div>' +
+                  teams.map(t => '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;">' + t + '</span>').join('')
+                : '<div style="font-size:11px;color:#94a3b8;">No teams assigned yet — ask the owner.</div>';
+            pfMsg('', true);
+        }
+
+        function closeProfile() { $('alignProfile').style.display = 'none'; }
+
+        $('profile-chip').addEventListener('click', openProfile);
+        $('pfClose').addEventListener('click', closeProfile);
+        $('alignProfile').addEventListener('click', (e) => { if (e.target === $('alignProfile')) closeProfile(); });
+        if ($('menu-edit-profile')) $('menu-edit-profile').addEventListener('click', openProfile);
+
+        $('pfSave').addEventListener('click', async () => {
+            const btn = $('pfSave');
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                const body = {
+                    name: $('pfName').value.trim(),
+                    jobTitle: $('pfJobTitle').value.trim(),
+                    department: $('pfDepartment').value.trim(),
+                    whatsapp: $('pfWhatsapp').value.trim(),
+                    phone: $('pfPhone').value.trim(),
+                    timezone: $('pfTimezone').value.trim(),
+                    avatarEmoji: $('pfAvatarEmoji').value.trim(),
+                    bio: $('pfBio').value.trim()
+                };
+                const d = await api('/profile', { method: 'PATCH', body });
+                paintChip(d.profile);
+                closeProfile();
+            } catch (err) {
+                pfMsg('❌ ' + err.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '💾 Save profile';
+            }
+        });
+
+        $('pfLogout').addEventListener('click', async () => {
+            try { setSession(''); localStorage.removeItem(UKEY); } catch (e) {}
+            try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
+            location.reload();
+        });
 
         // ---------------------------------------------------------- heartbeat
         // Every 5 minutes re-validate the staff session. If it expired (12h) or was
