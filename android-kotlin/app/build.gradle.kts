@@ -1,11 +1,11 @@
-import java.util.Properties
+﻿import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
-// Release signing — credentials live in android-kotlin/keystore.properties (gitignored, NEVER committed).
+// Release signing â€” credentials live in android-kotlin/keystore.properties (gitignored, NEVER committed).
 // The keystore itself is kept OUTSIDE this public repo: C:/app2026/aligntasks-keystore/aligntasks-release.jks
 // If the file is missing the release build falls back to unsigned (debug builds are unaffected).
 val keystoreProps = Properties().apply {
@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.1 - task row parity: one compact line with created/edited/done stamps, a tap-open (i) sheet with full details (who edited and what changed), and delete available to every member behind the action password."
+val releaseNotes = "2.2 - comments are a full-screen chat: tiny author names, bubbles with your own replies on the right, pinned composer, newest message always in view."
 
 android {
     namespace = "com.assigntask.app"
@@ -35,8 +35,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.1"
+        versionCode = 10
+        versionName = "2.2"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

@@ -76,6 +76,8 @@ import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
 
 private const val WEB_APP_ID = "1:410197132578:web:97cfc3ae33f39ed3df917b"
 private const val REMINDER_BASE = "/artifacts/$WEB_APP_ID/public/data"
@@ -3433,46 +3435,124 @@ fun CompletedToggle(doneTasks: List<Task>, taskType: String, projectId: String?,
 fun CommentsDialog(task: Task, taskType: String, projectId: String?,
                    currentUserEmail: String, vm: AppViewModel, onDismiss: () -> Unit) {
     var commentText by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Comments", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(modifier = Modifier.heightIn(max = 400.dp)) {
-                Text(task.description, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                if (task.comments.isEmpty()) {
-                    Text("No comments yet.", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
-                } else {
-                    Column(modifier = Modifier.verticalScroll(rememberScrollState()).weight(1f, fill = false)) {
-                        task.comments.forEach { comment ->
-                            val author = (comment["authorEmail"] as? String)?.substringBefore('@') ?: "?"
-                            val text = comment["text"] as? String ?: ""
-                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
-                                .padding(8.dp)) {
-                                Text(author, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                Text(text, style = MaterialTheme.typography.bodySmall)
-                            }
+    val scroll = rememberScrollState()
+    val myEmail = currentUserEmail.lowercase()
+    val sdf = remember { SimpleDateFormat("dd MMM, h:mm a", Locale.getDefault()) }
+    val sorted = remember(task.comments) { task.comments.sortedBy { commentTimeMs(it["createdAt"]) } }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(modifier = Modifier.fillMaxSize().imePadding()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.ArrowBack, "Back") }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("💬 Comments", style = MaterialTheme.typography.titleSmall)
+                        if (task.description.isNotBlank()) {
+                            Text(
+                                task.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
+                    if (sorted.isNotEmpty()) {
+                        Text(
+                            "${sorted.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+                            modifier = Modifier.padding(end = 10.dp)
+                        )
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(value = commentText, onValueChange = { commentText = it },
-                        label = { Text("Add comment") }, modifier = Modifier.weight(1f), singleLine = true)
+                HorizontalDivider()
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(scroll)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    if (sorted.isEmpty()) {
+                        Text(
+                            "No comments yet — start the conversation below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+                            modifier = Modifier.padding(top = 24.dp)
+                        )
+                    }
+                    sorted.forEach { c -> CommentBubble(c, myEmail, sdf) }
+                }
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = commentText,
+                        onValueChange = { commentText = it },
+                        placeholder = { Text("Write a comment…") },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 3
+                    )
                     Spacer(Modifier.width(8.dp))
                     Button(onClick = {
                         if (commentText.isNotBlank()) {
-                            vm.addComment(task.id, taskType, projectId, commentText, currentUserEmail)
+                            vm.addComment(task.id, taskType, projectId, commentText.trim(), currentUserEmail)
                             commentText = ""
                         }
-                    }) { Text("Post") }
+                    }) { Text("Send") }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } }
-    )
+        }
+    }
+    LaunchedEffect(sorted.size) { if (sorted.isNotEmpty()) scroll.animateScrollTo(scroll.maxValue) }
+}
+
+private fun commentTimeMs(v: Any?): Long = when (v) {
+    null -> 0L
+    is com.google.firebase.Timestamp -> v.toDate().time
+    is Date -> v.time
+    is Long -> v
+    else -> 0L
+}
+
+// Tiny author name (10sp) + bubble — matches the web comments page.
+@Composable
+private fun CommentBubble(c: Map<String, Any>, myEmail: String, sdf: SimpleDateFormat) {
+    val email = (c["authorEmail"] as? String) ?: ""
+    val author = (c["authorName"] as? String)?.takeIf { it.isNotBlank() }
+        ?: email.substringBefore('@').ifBlank { "someone" }
+    val text = (c["text"] as? String) ?: ""
+    val mine = email.lowercase() == myEmail
+    val ms = commentTimeMs(c["createdAt"])
+    val whenText = if (ms > 0L) sdf.format(Date(ms)) else ""
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        horizontalAlignment = if (mine) Alignment.End else Alignment.Start
+    ) {
+        Text(
+            text = author + (if (whenText.isNotBlank()) " · $whenText" else ""),
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        Surface(
+            color = if (mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.padding(top = 2.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
+    }
 }
 
 @Composable
