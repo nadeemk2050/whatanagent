@@ -1,8 +1,8 @@
-﻿{
-  "versionCode": 7,
-  "versionName": "2.0",
-  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-2.0.apk",
-  "notes": "Teams & invitations, per-team boards, filter views + bulk actions, and device-side WhatsApp sending.",
+{
+  "versionCode": 8,
+  "versionName": "2.0.8",
+  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-2.0.8.apk",
+  "notes": "Release pipeline baseline: signed builds are now published automatically. Feature parity work (board, comments, reminders, AI brain, alerts) lands phase by phase.",
   "mandatory": false,
-  "publishedAt": "2026-10-12"
+  "publishedAt": "2026-10-24"
 }
