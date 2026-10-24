@@ -2487,12 +2487,12 @@
                                         ${catBadge}
                                         ${dueBadge}
                                         ${repeatBadge}
-                                        <span class="text-xs text-gray-400 font-mono ml-auto">🔒 Private</span>
+                                        <span class="text-xs text-gray-400 font-mono ml-auto">🔒 Private to ${waEsc(t.createdByName || t.ownerName || 'me')}</span>
                                     </div>
                                     <h4 class="text-sm font-semibold text-gray-900 break-words ${isDone ? 'line-through text-gray-400' : ''}">${waEsc(t.description || '')}</h4>
                                     ${notesHTML}
                                     <div class="flex flex-wrap justify-between items-center gap-2 mt-3 pt-2 border-t border-gray-100">
-                                        <span class="text-xs text-gray-400">Created: ${formatTaskTimestamp(t.createdAt)}</span>
+                                        <span class="text-xs text-gray-400">Created${(t.createdByName || t.ownerName) ? ' by ' + waEsc(t.createdByName || t.ownerName) : ''}: ${formatTaskTimestamp(t.createdAt)}${(isDone && t.completedByName) ? ' · ✅ Finished by ' + waEsc(t.completedByName) : ''}</span>
                                         <div class="flex items-center gap-2">
                                             <button class="wa-remind-button text-xs px-2.5 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-semibold transition-colors flex items-center gap-1" data-task-type="personal_tasks" data-task-id="${t.id}" title="Send this task via WhatsApp to team, groups, or custom phone">
                                                 <span>💬</span><span>Send to WhatsApp</span>
@@ -2527,19 +2527,11 @@
                     const notes = (document.getElementById('personal-task-notes')?.value || '').trim();
 
                     try {
-                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).add({
-                            description: desc,
-                            category: category,
-                            priority: priority,
-                            dueDate: dueDate,
-                            repeat: { type: repeat },
-                            notes: notes,
-                            status: 'To Do',
-                            isPersonal: true,
-                            ownerUid: currentUser.uid,
-                            ownerEmail: currentUser.email,
-                            createdBy: currentUser.email,
-                            createdAt: new Date()
+                        // Personal tasks also go through the server: no staff sign-in = no save,
+                        // and the stamp (who created it) comes from the verified session.
+                        await window.alignApi('/personal', {
+                            method: 'POST',
+                            body: { description: desc, category, priority, dueDate, notes, repeat: repeat }
                         });
                         addPersonalTaskForm.reset();
                         document.getElementById('personal-task-priority').value = 'normal';
@@ -2595,15 +2587,9 @@
                     const notes = (document.getElementById('edit-personal-task-notes')?.value || '').trim();
 
                     try {
-                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId).update({
-                            description: desc,
-                            category: category,
-                            priority: priority,
-                            dueDate: dueDate,
-                            repeat: { type: repeat },
-                            notes: notes,
-                            lastUpdatedAt: new Date(),
-                            lastUpdatedBy: currentUser.email
+                        await window.alignApi('/personal/' + encodeURIComponent(taskId), {
+                            method: 'PATCH',
+                            body: { description: desc, category, priority, dueDate, notes, repeat: repeat }
                         });
                         document.getElementById('edit-personal-task-modal').classList.add('hidden');
                     } catch (err) {
@@ -2634,7 +2620,7 @@
                 if (delBtn) {
                     const id = delBtn.getAttribute('data-id');
                     if (id && confirm('Delete this personal task?')) {
-                        db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(id).delete()
+                        window.alignApi('/personal/' + encodeURIComponent(id), { method: 'DELETE' })
                             .catch(err => alert('❌ ' + (err.message || err)));
                     }
                     return;
@@ -4027,7 +4013,29 @@
 
                 let docRef, collectionRef;
                 if (taskType === 'personal_tasks') {
-                    collectionRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`);
+                    // Private tasks are server-gated too: no team sign-in means no change,
+                    // and the stamp comes from the verified session.
+                    try {
+                        const t = (typeof personalTasksCache !== 'undefined' ? personalTasksCache : []).find(x => x.id === taskId) || {};
+                        await window.alignApi('/personal/' + encodeURIComponent(taskId), {
+                            method: 'PATCH',
+                            body: { status: isChecked ? 'Done' : 'Pending' }
+                        });
+                        const repType = t.repeat ? (t.repeat.type || t.repeat) : 'none';
+                        if (isChecked && repType && repType !== 'none') {
+                            const nextDue = calculateNextDueDate(t.dueDate, repType);
+                            if (nextDue) {
+                                await window.alignApi('/personal', {
+                                    method: 'POST',
+                                    body: { description: t.description, category: t.category, priority: t.priority, dueDate: nextDue, notes: t.notes, repeat: repType }
+                                });
+                            }
+                        }
+                    } catch (err) {
+                        checkbox.checked = !isChecked;
+                        alert('Could not update the personal task: ' + err.message);
+                    }
+                    return;
                 } else if (taskType === 'project') {
                     collectionRef = db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`);
                 } else {

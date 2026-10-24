@@ -459,7 +459,12 @@ export function registerAlignRoutes(app) {
         category: sstr(b.category, 60) || 'General',
         priority: ['urgent', 'high', 'normal', 'low'].includes(b.priority) ? b.priority : 'normal',
         dueDate: sstr(b.dueDate, 40),
+        notes: sstr(b.notes, 1000),
+        repeat: { type: sstr(b.repeat, 20) || 'none' },
         status: 'Pending',
+        isPersonal: true,
+        ownerUid: req.staff.uid,
+        ownerName: req.staff.name,
         createdByUid: req.staff.uid,
         createdByName: req.staff.name,
         createdAt: Date.now(),
@@ -481,6 +486,8 @@ export function registerAlignRoutes(app) {
       if (b.category !== undefined) patch.category = sstr(b.category, 60);
       if (b.priority !== undefined) patch.priority = sstr(b.priority, 20);
       if (b.dueDate !== undefined) patch.dueDate = sstr(b.dueDate, 40);
+      if (b.notes !== undefined) patch.notes = sstr(b.notes, 1000);
+      if (b.repeat !== undefined) patch.repeat = { type: sstr(b.repeat, 20) || 'none' };
       if (b.status !== undefined) {
         patch.status = b.status === 'Done' ? 'Done' : 'Pending';
         if (patch.status === 'Done') {

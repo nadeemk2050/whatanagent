@@ -73,9 +73,12 @@ service cloud.firestore {
           (resource.data.get('teamIds', []).size() > 0 && resource.data.teamIds[0] in myTeams(appId))
         );
 
-        // strictly private per-user data
+        // strictly private per-user data. Personal tasks are READ-only for the client:
+        // every write goes through /api/align/personal, which requires the team sign-in
+        // and stamps the creator from the verified session.
         match /personal_tasks/{taskId} {
-          allow read, write: if signedIn() && request.auth.uid == uid;
+          allow read: if signedIn() && request.auth.uid == uid;
+          allow write: if false;
         }
         match /notifications/{noteId} {
           allow read, write: if signedIn() && request.auth.uid == uid;
