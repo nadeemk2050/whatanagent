@@ -4286,7 +4286,7 @@
                 // In read-only (admin browse) mode keep the person where they are instead of
                 // throwing the login gate back at them on every click.
                 if (document.getElementById('alignReadOnly')) {
-                    throw new Error('Read-only mode — sign in with your name and password to change tasks.');
+                    throw new Error('Read-only — team sign in to create or edit tasks.');
                 }
                 setSession('');
                 showGate('login');
@@ -4382,13 +4382,15 @@
         // staff session + team password, so nothing can be created or edited without it.
         function enterReadOnly() {
             hideGate(false);
+            // Only after the first sign-in — a visitor on the main login screen gets no banner.
+            if (!firebaseUser() && !getSession()) return;
             let b = document.getElementById('alignReadOnly');
             if (b) return;
             b = document.createElement('div');
             b.id = 'alignReadOnly';
             b.style.cssText = 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:9998;background:#0f172a;color:#fff;padding:9px 12px;border-radius:12px;font-size:12px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.32);font-family:system-ui,-apple-system,sans-serif;max-width:92vw;';
-            b.innerHTML = '<span>👁 Read-only — sign in to create or edit tasks</span>' +
-                '<button id="alignReadOnlySignIn" type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Sign in</button>';
+            b.innerHTML = '<span>👁 Read-only — team sign in to create or edit tasks</span>' +
+                '<button id="alignReadOnlySignIn" type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Team Sign in</button>';
             document.body.appendChild(b);
             document.getElementById('alignReadOnlySignIn').onclick = () => {
                 b.remove();
@@ -4420,7 +4422,7 @@
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#2563eb';
                 $('gateSkip').style.display = 'block';
-                $('gateSkip').textContent = 'Continue as admin (read-only — no task create or edit)';
+                $('gateSkip').textContent = 'Continue read-only (no task create or edit)';
                 $('gateHint').textContent = 'Your name and password are needed to create or edit tasks. Your personal tasks stay private to you.';
             } else if (mode === 'confirm') {
                 const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
@@ -4448,7 +4450,7 @@
                 $('gateSubmit').textContent = 'Unlock team';
                 $('gateSubmit').style.background = '#7c3aed';
                 $('gateSkip').style.display = 'block';           // read-only browsing is allowed
-                $('gateSkip').textContent = 'Continue as admin (read-only — no task create or edit)';
+                $('gateSkip').textContent = 'Continue read-only (no task create or edit)';
                 $('gateHint').textContent = 'Click ✖ to close and browse without creating or editing tasks.';
             }
             setTimeout(() => { try { (mode === 'login' ? $('gateName') : $('gatePassword')).focus(); } catch (e) {} }, 120);
@@ -4586,7 +4588,7 @@
             if (teamId && unlockFor(teamId)) return true;
             // Admin / read-only mode: explain instead of throwing the gate back at them.
             if (document.getElementById('alignReadOnly')) {
-                alert('Read-only mode — sign in with your name, your password and the team password to create or edit tasks.');
+                alert('Read-only — team sign in to create or edit tasks.');
                 return false;
             }
             pendingTeams = await loadTeams();
