@@ -16,6 +16,7 @@
 //   • Nobody — including the owner — can read another person's private task.
 // ============================================================================
 import { makeAdminGuard } from './adminGuard.mjs';
+import { listAgents } from './agentsStore.mjs';
 import {
   ALIGN_BASE, board, alignDb, alignAuth, alignAdminStatus
 } from './alignAdmin.mjs';
@@ -706,6 +707,109 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // ============================================================ 🤖 AI follow-up on a task
+  // A task can carry an AI brain: a chosen agent talks to a WhatsApp person/group, chases the
+  // job on a routine, confirms it (keywords / AI read / proof), then reports and stops.
+  // The chasing engine is the existing conditional-task state machine, so this is only the
+  // configuration + a deterministic document per task.
+  app.get(api + '/ai/agents', requireStaff, async (req, res) => {
+    try {
+      const rows = await listAgents({ fresh: false }).catch(() => []);
+      const agents = (Array.isArray(rows) ? rows : []).map(a => ({
+        id: a.id,
+        name: a.name || a.id,
+        role: a.role || a.jobTitle || '',
+        status: a.status || 'newly_hired',
+        confidence: a.confidence || 0,
+        ready: a.status === 'ready'
+      }));
+      res.json({ ok: true, agents: agents.slice(0, 80) });
+    } catch (e) { res.json({ ok: true, agents: [] }); }
+  });
+
+  // Keep the chasing document in step with the task (one doc per task: task_<id>).
+  async function syncTaskAiFollowUp(taskId, kind, cfg, staff) {
+    try {
+      if (!taskId) return;
+      const docId = 'task_' + taskId;
+      const cref = alignDb().collection('conditionalTasks').doc(docId);
+      if (!cfg || !cfg.enabled) { await cref.delete().catch(() => {}); return; }
+      const cur = await cref.get();
+      const prev = cur.exists ? (cur.data() || {}) : {};
+      const started = (prev.taskId === taskId && prev.status === 'active') ? prev.stage : 'pending_send';
+      await cref.set({
+        taskId: taskId,
+        taskKind: kind === 'assigned' ? 'assigned' : 'shared',
+        source: 'aligntasks',
+        title: cfg.title || prev.title || '',
+        target: cfg.targetName || cfg.targetJid,
+        targetJid: cfg.targetJid,
+        targetType: cfg.targetType,
+        message: cfg.firstMessage,
+        waitMinutes: cfg.waitMinutes,
+        retryAfterMinutes: cfg.retryAfterMinutes,
+        maxRetries: cfg.maxRetries,
+        activeFrom: cfg.activeFrom,
+        activeTo: cfg.activeTo,
+        notifyBoss: cfg.notifyBoss,
+        onReplyMode: 'ai',
+        agentId: cfg.agentId || '',
+        agentName: cfg.agentName || '',
+        confirmMode: cfg.confirmMode,
+        confirmKeywords: cfg.confirmKeywords,
+        requireProof: cfg.requireProof,
+        onConfirm: cfg.onConfirm,
+        announceJid: cfg.announceJid || '',
+        announceName: cfg.announceName || '',
+        honorPromise: cfg.honorPromise,
+        language: cfg.language,
+        status: 'active',
+        stage: started || 'pending_send',
+        nextActionAt: (prev.taskId === taskId && prev.nextActionAt) ? prev.nextActionAt : Date.now() + 15000,
+        attempts: prev.taskId === taskId ? (prev.attempts || 0) : 0,
+        updatedAt: Date.now(),
+        createdBy: (staff && staff.name) || prev.createdBy || ''
+      }, { merge: true });
+      authAudit({ action: 'ai_followup_saved', handle: (staff && staff.handle) || '', note: taskId + ' → ' + (cfg.targetName || cfg.targetJid) });
+    } catch (e) {
+      console.warn('[ALIGN] ai follow-up sync skipped: ' + sstr(e.message, 120));
+    }
+  }
+
+  function sanitizeAiFollowUp(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.enabled !== true) return { enabled: false };
+    const targetRaw = sstr(raw.targetJid, 220).trim();
+    const isGroup = raw.targetType === 'group' || /@g\.us$/i.test(targetRaw);
+    let jid = '';
+    if (isGroup) jid = /@g\.us$/i.test(targetRaw) ? targetRaw : '';
+    else jid = waDigits(targetRaw) ? waDigits(targetRaw) + '@s.whatsapp.net' : (/@/.test(targetRaw) ? targetRaw : '');
+    if (!jid) return { enabled: false, error: 'Choose the WhatsApp person or group to talk to.' };
+    return {
+      enabled: true,
+      agentId: sstr(raw.agentId, 80).trim(),
+      agentName: sstr(raw.agentName, 80).trim(),
+      targetType: isGroup ? 'group' : 'contact',
+      targetJid: jid,
+      targetName: sstr(raw.targetName, 140).trim(),
+      firstMessage: sstr(raw.firstMessage, 900).trim(),
+      waitMinutes: Math.min(Math.max(Number(raw.waitMinutes) || 120, 5), 1440),
+      retryAfterMinutes: Math.min(Math.max(Number(raw.retryAfterMinutes) || 240, 10), 2880),
+      maxRetries: Math.min(Math.max(Number(raw.maxRetries) || 3, 1), 10),
+      activeFrom: Math.min(Math.max(Number(raw.activeFrom == null ? 8 : raw.activeFrom), 0), 23),
+      activeTo: Math.min(Math.max(Number(raw.activeTo == null ? 21 : raw.activeTo), 1), 24),
+      confirmMode: ['keywords', 'ai', 'proof'].includes(raw.confirmMode) ? raw.confirmMode : 'keywords',
+      confirmKeywords: sstr(raw.confirmKeywords, 300).trim() || 'done, paid, received, sent, completed, ho gaya, de diya',
+      requireProof: !!raw.requireProof,
+      onConfirm: ['stop', 'mark_done', 'announce'].includes(raw.onConfirm) ? raw.onConfirm : 'stop',
+      announceJid: sstr(raw.announceJid, 220).trim(),
+      announceName: sstr(raw.announceName, 140).trim(),
+      honorPromise: raw.honorPromise !== false,
+      notifyBoss: raw.notifyBoss !== false,
+      language: ['auto', 'en', 'ur'].includes(raw.language) ? raw.language : 'auto'
+    };
+  }
+
   // ============================================================ push notifications
   // Web Push: the phone/laptop gets a real notification even when the app is closed.
   let pushModCache = null;
@@ -943,6 +1047,14 @@ export function registerAlignRoutes(app) {
       }
 
       const ref = await board(collectionFor(kind)).add(doc);
+      const aiCfg = sanitizeAiFollowUp(b.aiFollowUp);
+      if (aiCfg && aiCfg.enabled) {
+        doc.aiFollowUp = aiCfg;
+        await ref.set({ aiFollowUp: aiCfg }, { merge: true });
+        await syncTaskAiFollowUp(ref.id, kind, Object.assign({ title: desc }, aiCfg), req.staff);
+      } else if (aiCfg) {
+        await ref.set({ aiFollowUp: { enabled: false } }, { merge: true });
+      }
       await auditTaskEvent(ref.id, 'created', stamp, { teamId, kind, description: desc });
       res.json({ ok: true, task: { id: ref.id, kind, ...doc } });
     } catch (e) {
@@ -1002,6 +1114,17 @@ export function registerAlignRoutes(app) {
       }
 
       await ref.set(patch, { merge: true });
+      // 🤖 AI follow-up config travels with the task (creating / updating / removing the chaser).
+      if (b.aiFollowUp !== undefined) {
+        const aiCfg = sanitizeAiFollowUp(b.aiFollowUp);
+        if (aiCfg && aiCfg.enabled) {
+          await ref.set({ aiFollowUp: aiCfg }, { merge: true });
+          await syncTaskAiFollowUp(id, kind, Object.assign({ title: patch.description || existing.description || '' }, aiCfg), req.staff);
+        } else {
+          await ref.set({ aiFollowUp: { enabled: false } }, { merge: true });
+          await syncTaskAiFollowUp(id, kind, { enabled: false }, req.staff);
+        }
+      }
       // Only a real change to the task counts as an edit — a comment must never make a task
       // look "edited". The changed fields are kept so the board can say WHAT was modified.
       const changes = [];
@@ -1096,6 +1219,7 @@ export function registerAlignRoutes(app) {
       }
 
       await ref.delete();
+      await alignDb().collection('conditionalTasks').doc('task_' + id).delete().catch(() => {});   // stop the AI chaser too
       await auditTaskEvent(id, 'deleted', stampOf(req.staff), { teamId, kind });
       res.json({ ok: true });
     } catch (e) {

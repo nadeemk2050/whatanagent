@@ -622,8 +622,7 @@
                 </div>
                 <div class="flex items-center gap-4">
                      <div class="flex items-center gap-2">
-                        <input type="checkbox" id="edit-task-alarm" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                        <label for="edit-task-alarm" class="text-sm font-medium text-gray-700">Set Alarm</label>
+                        <input type="checkbox" id="edit-task-alarm" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">                        <label for="edit-task-alarm" class="text-sm font-medium text-gray-700">Set Alarm</label>
                     </div>
                     <div class="flex-grow">
                         <label class="text-sm font-medium text-gray-700">Alarm Sound</label>
@@ -634,6 +633,7 @@
                         </select>
                     </div>
                 </div>
+                <div id="ai-slot-edit"></div>
                 <div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div>
             </form>
         </div>
@@ -2658,6 +2658,17 @@
                 document.getElementById('edit-task-type').value = taskType;
                 document.getElementById('edit-task-project-id').value = projectId || '';
                 document.getElementById('edit-task-description').value = task.description;
+                // 🤖 AI follow-up section: team tasks only (the chaser runs on the server)
+                const aiSlot = document.getElementById('ai-slot-edit');
+                if (aiSlot) {
+                    if (taskType === 'tasks' || taskType === 'tasks_for_all') {
+                        aiSlot.innerHTML = aiFollowUpHTML('edit');
+                        initAiFollowUp('edit');
+                        fillAiFollowUp('edit', task.aiFollowUp);
+                    } else {
+                        aiSlot.innerHTML = '';
+                    }
+                }
                 document.getElementById('edit-task-duedate').value = task.dueDate || '';
                 document.getElementById('edit-task-alarm').checked = task.setAlarm || false;
                 document.getElementById('edit-task-alarm-sound').value = task.alarmSound || 'alarm_classic.mp3';
@@ -3480,6 +3491,193 @@
             if (_indAssignee2) _indAssignee2.innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : `<option disabled>Add staff first</option>`;
                  document.getElementById('edit-task-assignee').innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : '';
             }
+
+            // ===== 🤖 AI follow-up on a task (optional) =====
+            // A task can carry an AI brain: pick the agent, the WhatsApp person/group it talks to,
+            // the chasing routine, and how a "done" gets confirmed + what happens then.
+            let aiTargetsCache = null;
+            let aiAgentsCache = null;
+            async function loadAiPickerData() {
+                if (aiAgentsCache && aiTargetsCache) return { agents: aiAgentsCache, targets: aiTargetsCache };
+                try { const r = await window.alignApi('/ai/agents'); aiAgentsCache = (r && r.agents) || []; } catch (e) { aiAgentsCache = []; }
+                const targets = { groups: [], contacts: [], members: [] };
+                try { const g = await window.alignApi('/wa/groups'); targets.groups = (g && g.groups) || []; } catch (e) { /* ignore */ }
+                try { const c = await window.alignApi('/wa/contacts'); targets.contacts = (c && c.contacts) || []; } catch (e) { /* ignore */ }
+                try {
+                    const snap = await boardScope('staff').limit(100).get();
+                    snap.forEach(d => { const v = d.data() || {}; if (v.whatsappNumber) targets.members.push({ name: v.name || v.email, phone: String(v.whatsappNumber).replace(/[^0-9]/g, '') }); });
+                } catch (e) { /* ignore */ }
+                aiTargetsCache = targets;
+                return { agents: aiAgentsCache, targets: aiTargetsCache };
+            }
+            function aiFollowUpHTML(p) {
+                const inp = 'width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:9px;font-size:13px;box-sizing:border-box;background:#fff;';
+                const lbl = 'display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px;';
+                return `<div style="border:1px solid #ddd6fe;background:#f5f3ff;border-radius:12px;padding:10px 12px;margin-top:4px;">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#5b21b6;cursor:pointer;">
+                        <input type="checkbox" id="ai-enabled-${p}" style="width:16px;height:16px;" />
+                        🤖 Let an AI staff member follow this up on WhatsApp
+                    </label>
+                    <div id="ai-panel-${p}" style="display:none;margin-top:10px;flex-direction:column;gap:8px;">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:150px;"><label style="${lbl}">AI staff agent</label><select id="ai-agent-${p}" style="${inp}"><option value="">Default AI</option></select></div>
+                            <div style="flex:1;min-width:130px;"><label style="${lbl}">Talk to</label>
+                                <select id="ai-target-type-${p}" style="${inp}">
+                                    <option value="group">WhatsApp group</option>
+                                    <option value="contact">WhatsApp contact</option>
+                                    <option value="member">Team member</option>
+                                    <option value="number">Any number</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:2;min-width:180px;"><label style="${lbl}">Person / group</label><select id="ai-target-${p}" style="${inp}"><option value="">— pick —</option></select></div>
+                            <div style="flex:1;min-width:140px;"><label style="${lbl}">…or a number</label><input id="ai-number-${p}" type="tel" placeholder="+97150…" style="${inp}" /></div>
+                        </div>
+                        <div><label style="${lbl}">First message (AI writes the rest)</label><textarea id="ai-message-${p}" rows="2" style="${inp}" placeholder="Salam, reminder about: {task} — expected by {due}. Kindly confirm when done."></textarea></div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:92px;"><label style="${lbl}">Wait (min)</label><input id="ai-wait-${p}" type="number" min="5" value="120" style="${inp}" /></div>
+                            <div style="flex:1;min-width:92px;"><label style="${lbl}">Retry after (min)</label><input id="ai-retry-${p}" type="number" min="10" value="240" style="${inp}" /></div>
+                            <div style="flex:1;min-width:92px;"><label style="${lbl}">Max tries</label><input id="ai-max-${p}" type="number" min="1" max="10" value="3" style="${inp}" /></div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:130px;"><label style="${lbl}">Counts as done when</label>
+                                <select id="ai-confirm-mode-${p}" style="${inp}">
+                                    <option value="keywords">They say the right words</option>
+                                    <option value="ai">AI reads the reply</option>
+                                    <option value="proof">They send a photo/document</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;min-width:140px;"><label style="${lbl}">Confirm words</label><input id="ai-keywords-${p}" style="${inp}" value="done, paid, received, sent, completed" /></div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:140px;"><label style="${lbl}">Then do</label>
+                                <select id="ai-onconfirm-${p}" style="${inp}">
+                                    <option value="stop">Just stop and tell me</option>
+                                    <option value="mark_done">Stop + mark the task done</option>
+                                    <option value="announce">Stop + mark done + announce in a group</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;min-width:150px;"><label style="${lbl}">Announce group</label><select id="ai-announce-${p}" style="${inp}"><option value="">— none —</option></select></div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+                            <div style="flex:1;min-width:80px;"><label style="${lbl}">Quiet from (h)</label><input id="ai-from-${p}" type="number" min="0" max="23" value="8" style="${inp}" /></div>
+                            <div style="flex:1;min-width:80px;"><label style="${lbl}">to (h)</label><input id="ai-to-${p}" type="number" min="1" max="24" value="21" style="${inp}" /></div>
+                            <div style="flex:2;min-width:170px;display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:#334155;">
+                                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="ai-proof-${p}" /> Need proof (photo/doc) before closing</label>
+                                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="ai-promise-${p}" checked /> If they promise a time, come back exactly then</label>
+                                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="ai-boss-${p}" checked /> Report every reply to me</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            function aiFillTargets(p, data) {
+                const typeEl = document.getElementById('ai-target-type-' + p);
+                const sel = document.getElementById('ai-target-' + p);
+                const ann = document.getElementById('ai-announce-' + p);
+                const agent = document.getElementById('ai-agent-' + p);
+                if (!typeEl || !sel) return;
+                if (agent && !agent.dataset.filled) {
+                    agent.innerHTML = '<option value="">Default AI</option>' + data.agents.map(a => '<option value="' + waEsc(a.id) + '">' + waEsc((a.name || a.id) + ' · ' + (a.status || '')) + '</option>').join('');
+                    agent.dataset.filled = '1';
+                }
+                if (ann && !ann.dataset.filled) {
+                    ann.innerHTML = '<option value="">— none —</option>' + data.targets.groups.map(g => '<option value="' + waEsc(g.jid) + '">' + waEsc(g.name || g.jid) + '</option>').join('');
+                    ann.dataset.filled = '1';
+                }
+                const t = typeEl.value;
+                let rows = [];
+                if (t === 'group') rows = data.targets.groups.map(g => ({ v: g.jid, label: '📢 ' + (g.name || g.jid) }));
+                else if (t === 'contact') rows = data.targets.contacts.slice(0, 400).map(c => ({ v: c.phone || c.jid, label: '👤 ' + (c.name || c.jid) + (c.phone ? ' +' + c.phone : '') }));
+                else if (t === 'member') rows = data.targets.members.map(m => ({ v: m.phone, label: '👥 ' + m.name + ' +' + m.phone }));
+                else rows = [];
+                sel.innerHTML = (rows.length ? rows.map(r => '<option value="' + waEsc(r.v) + '">' + waEsc(r.label) + '</option>').join('') : '<option value="">— pick —</option>');
+            }
+            async function initAiFollowUp(p) {
+                const box = document.getElementById('ai-enabled-' + p);
+                if (!box) return;
+                const panel = document.getElementById('ai-panel-' + p);
+                const show = () => { panel.style.display = box.checked ? 'flex' : 'none'; };
+                box.addEventListener('change', async () => {
+                    show();
+                    if (box.checked) {
+                        const data = await loadAiPickerData();
+                        aiFillTargets(p, data);
+                    }
+                });
+                const typeEl = document.getElementById('ai-target-type-' + p);
+                if (typeEl) typeEl.addEventListener('change', async () => { const data = await loadAiPickerData(); aiFillTargets(p, data); });
+            }
+            function readAiFollowUp(p) {
+                const box = document.getElementById('ai-enabled-' + p);
+                if (!box || !box.checked) return { enabled: false };
+                const val = id => { const el = document.getElementById(id + p); return el ? el.value : ''; };
+                const chk = id => { const el = document.getElementById(id + p); return !!(el && el.checked); };
+                const num = (id, d) => Number(val(id)) || d;
+                const type = val('ai-target-type-');
+                let targetJid = val('ai-target-');
+                let targetName = '';
+                const sel = document.getElementById('ai-target-' + p);
+                if (sel && sel.selectedOptions && sel.selectedOptions[0]) targetName = sel.selectedOptions[0].textContent.trim();
+                const custom = String(val('ai-number-') || '').replace(/[^0-9]/g, '');
+                if (type === 'number' || custom) { if (custom) { targetJid = custom; targetName = '+' + custom; } }
+                const agentSel = document.getElementById('ai-agent-' + p);
+                const agentName = agentSel && agentSel.selectedOptions[0] ? agentSel.selectedOptions[0].textContent.trim() : '';
+                const annSel = document.getElementById('ai-announce-' + p);
+                const announceName = annSel && annSel.selectedOptions[0] ? annSel.selectedOptions[0].textContent.trim() : '';
+                return {
+                    enabled: true,
+                    agentId: val('ai-agent-'),
+                    agentName: agentName,
+                    targetType: type === 'group' ? 'group' : 'contact',
+                    targetJid: String(targetJid || '').trim(),
+                    targetName: targetName,
+                    firstMessage: val('ai-message-') || 'Salam, reminder about: {task} — expected by {due}. Kindly confirm when done.',
+                    waitMinutes: num('ai-wait-', 120),
+                    retryAfterMinutes: num('ai-retry-', 240),
+                    maxRetries: num('ai-max-', 3),
+                    confirmMode: val('ai-confirm-mode-') || 'keywords',
+                    confirmKeywords: val('ai-keywords-') || '',
+                    requireProof: chk('ai-proof-'),
+                    onConfirm: val('ai-onconfirm-') || 'stop',
+                    announceJid: val('ai-announce-'),
+                    announceName: announceName === '— none —' ? '' : announceName,
+                    activeFrom: num('ai-from-', 8),
+                    activeTo: num('ai-to-', 21),
+                    honorPromise: chk('ai-promise-'),
+                    notifyBoss: chk('ai-boss-')
+                };
+            }
+            async function fillAiFollowUp(p, cfg) {
+                const box = document.getElementById('ai-enabled-' + p);
+                if (!box) return;
+                const on = !!(cfg && cfg.enabled);
+                box.checked = on;
+                document.getElementById('ai-panel-' + p).style.display = on ? 'flex' : 'none';
+                if (!on) return;
+                const data = await loadAiPickerData();
+                document.getElementById('ai-target-type-' + p).value = (cfg.targetType === 'group') ? 'group' : 'contact';
+                aiFillTargets(p, data);
+                const set = (id, v) => { const el = document.getElementById(id + p); if (el && v != null) el.value = v; };
+                set('ai-agent-', cfg.agentId || '');
+                set('ai-target-', cfg.targetJid || '');
+                set('ai-message-', cfg.firstMessage || '');
+                set('ai-wait-', cfg.waitMinutes || 120);
+                set('ai-retry-', cfg.retryAfterMinutes || 240);
+                set('ai-max-', cfg.maxRetries || 3);
+                set('ai-confirm-mode-', cfg.confirmMode || 'keywords');
+                set('ai-keywords-', cfg.confirmKeywords || '');
+                set('ai-onconfirm-', cfg.onConfirm || 'stop');
+                set('ai-announce-', cfg.announceJid || '');
+                set('ai-from-', cfg.activeFrom == null ? 8 : cfg.activeFrom);
+                set('ai-to-', cfg.activeTo == null ? 21 : cfg.activeTo);
+                const chk = (id, v) => { const el = document.getElementById(id + p); if (el) el.checked = !!v; };
+                chk('ai-proof-', cfg.requireProof);
+                chk('ai-promise-', cfg.honorPromise !== false);
+                chk('ai-boss-', cfg.notifyBoss !== false);
+            }
+            window.initAiFollowUp = initAiFollowUp;
 
             // --- Modal Functions (Comment & Edit Staff) ---
             function paintCommentList(listEl, comments) {
@@ -4320,6 +4518,12 @@
                 const modal = document.getElementById('general-task-modal');
                 if (modal) modal.style.display = show ? 'block' : 'none';
                 if (show) {
+                    const slot = document.getElementById('ai-slot-new');
+                    if (slot && !slot.dataset.ready) {
+                        slot.innerHTML = aiFollowUpHTML('new');
+                        slot.dataset.ready = '1';
+                        initAiFollowUp('new');
+                    }
                     const input = document.getElementById('new-task-for-all-description');
                     if (input) input.focus();
                 }
@@ -4680,11 +4884,13 @@
                     await window.alignApi('/task/create', {
                         method: 'POST',
                         teamId: teamCtx.teamId,
-                        body: { teamId: teamCtx.teamId, kind: 'shared', description, assigneeHandle, dueDate, repeat }
+                        body: { teamId: teamCtx.teamId, kind: 'shared', description, assigneeHandle, dueDate, repeat, aiFollowUp: readAiFollowUp('new') }
                     });
                     e.target.reset();
                     const rp = document.getElementById('new-task-for-all-repeat');
                     if (rp) rp.value = 'none';
+                    const slot = document.getElementById('ai-slot-new');
+                    if (slot) { slot.dataset.ready = ''; slot.innerHTML = ''; }
                     showGeneralTaskForm(false);
                 } catch (err) {
                     alert('Could not add the task: ' + err.message);
@@ -4886,7 +5092,8 @@
                             description: updateData.description,
                             dueDate: updateData.dueDate || '',
                             // the row menu already asked for it; harmless for the owner
-                            adminPassword: TASK_ACTION_PASSWORD
+                            adminPassword: TASK_ACTION_PASSWORD,
+                            aiFollowUp: (taskType === 'tasks' || taskType === 'tasks_for_all') ? readAiFollowUp('edit') : undefined
                         };
                         if (currentUserProfile.role === 'admin' && taskType !== 'tasks_for_all') {
                             body.assigneeHandle = document.getElementById('edit-task-assignee').value;
@@ -5352,6 +5559,9 @@
                             <option value="annually">Annually</option>
                         </select>
                     </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;">
+                    <div id="ai-slot-new" style="width:100%;"></div>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:2px;">
                     <button type="submit" style="flex:1;padding:11px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>

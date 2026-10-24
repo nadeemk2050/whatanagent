@@ -1964,12 +1964,15 @@ function condDubaiHour(ms) {
 
 function conditionalTaskAwaitingFor(jid) {
   if (!jid) return null;
-  const clean = String(jid).split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+  const rawJid = String(jid);
+  const clean = rawJid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
   for (const entry of condTasksCache.values()) {
     const t = entry.data || {};
     if (t.status !== 'active') continue;
     if (t.stage !== 'awaiting_reply' && t.stage !== 'scheduled_followup') continue;
-    const tClean = String(t.targetJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    const tJid = String(t.targetJid || '');
+    if (tJid && tJid === rawJid) return entry;         // groups and exact JIDs
+    const tClean = tJid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
     if (tClean && tClean === clean) return entry;
   }
   return null;
@@ -2019,12 +2022,20 @@ async function conditionalEngineTick() {
           console.log('[COND TASK] 🌙 Outside active hours - queued for ' + new Date(allowedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai)');
           continue;
         }
-        let phone = '';
-        try {
-          const resolved = await bossResolveTarget(t.target);
-          if (resolved && resolved.phone) phone = String(resolved.phone).split('@')[0].replace(/[^0-9]/g, '');
-        } catch (e) { /* ignore */ }
-        if (!phone) {
+        let toJid = '';
+        if (t.targetType === 'group' || /@g\.us$/i.test(String(t.targetJid || ''))) {
+          toJid = String(t.targetJid || '').trim();
+        } else if (/@(s\.whatsapp\.net|lid)$/i.test(String(t.targetJid || ''))) {
+          toJid = String(t.targetJid).trim();
+        } else {
+          let phone = '';
+          try {
+            const resolved = await bossResolveTarget(t.target);
+            if (resolved && resolved.phone) phone = String(resolved.phone).split('@')[0].replace(/[^0-9]/g, '');
+          } catch (e) { /* ignore */ }
+          if (phone) toJid = phone + '@s.whatsapp.net';
+        }
+        if (!toJid) {
           await condSaveTask(entry, {
             status: 'done', stage: 'done',
             history: (t.history || []).concat([{ at: now, event: 'target-not-found', detail: 'Could not resolve "' + t.target + '"' }]).slice(-40)
@@ -2037,16 +2048,21 @@ async function conditionalEngineTick() {
         let msg = isRetry ? ('⏰ Reminder: ' + t.message) : t.message;
         msg = await ensureNoDevanagari(msg);
         try {
-          await sendWaWebMessage(phone + '@s.whatsapp.net', msg);
+          await sendWaWebMessage(toJid, msg);
           await condSaveTask(entry, {
             stage: 'awaiting_reply',
             nextActionAt: now + (t.waitMinutes || 10) * 60000,
-            targetJid: phone + '@s.whatsapp.net',
+            targetJid: toJid,
             attempts: attempt,
             lastSentAt: now,
-            history: (t.history || []).concat([{ at: now, event: isRetry ? 'resent' : 'sent', detail: 'to +' + phone + ' (try #' + attempt + ')' }]).slice(-40)
+            history: (t.history || []).concat([{ at: now, event: isRetry ? 'resent' : 'sent', detail: 'to ' + toJid + ' (try #' + attempt + ')' }]).slice(-40)
           });
-          console.log('[COND TASK] 📤 ' + (isRetry ? 'Resent' : 'Sent') + ' to +' + phone + ' — "' + String(t.title || '').substring(0, 50) + '" (try #' + attempt + ')');
+          if (t.taskId) {
+            alignTaskWrite(t.taskId, t.taskKind === 'assigned' ? 'assigned' : 'shared', {
+              aiState: { stage: 'awaiting', attempts: attempt, lastSentAt: now, lastReplyAt: (t.lastReplyAt || 0) }
+            }).catch(() => {});
+          }
+          console.log('[COND TASK] 📤 ' + (isRetry ? 'Resent' : 'Sent') + ' to ' + toJid + ' — "' + String(t.title || '').substring(0, 50) + '" (try #' + attempt + ')');
         } catch (e) {
           console.warn('[COND TASK] send failed:', e.message);
           await condSaveTask(entry, { nextActionAt: now + 120000 });
@@ -2074,7 +2090,80 @@ async function conditionalEngineTick() {
   } catch (e) { /* ignore */ }
 }
 
-async function handleConditionalTaskReply(jid, text) {
+// Does this reply CONFIRM the job? keywords → AI read → proof (photo/document).
+async function condConfirmCheck(t, replyText, mediaType) {
+  const mode = t.confirmMode || 'keywords';
+  const low = String(replyText || '').toLowerCase();
+  const hasMedia = mediaType === 'image' || mediaType === 'document' || mediaType === 'video';
+  if (mode === 'proof') {
+    return hasMedia ? { confirmed: true, why: 'proof received' } : { confirmed: false, needProof: true };
+  }
+  if (mode === 'keywords') {
+    const kws = String(t.confirmKeywords || '').split(/[,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    const hit = kws.find(k => k && low.includes(k));
+    if (!hit) return { confirmed: false };
+    if (t.requireProof && !hasMedia) return { confirmed: false, needProof: true };
+    return { confirmed: true, why: 'said "' + hit + '"' };
+  }
+  // mode === 'ai' → the chosen agent decides
+  try {
+    const prompt = 'You are checking whether a WhatsApp reply CONFIRMS that a job is finished.\n' +
+      'The job: "' + String(t.title || t.message || '').slice(0, 200) + '"\n' +
+      'Their reply: "' + String(replyText || '').slice(0, 400) + '"\n' +
+      (t.requireProof ? 'Only a photo/document is proof; words alone are not enough.\n' : '') +
+      'Answer with ONE word only: CONFIRMED, REFUSED, PROMISED, NEED_PROOF or OTHER.';
+    await recordConditionalTurn(t, replyText, mediaType);
+    const ans = await generateWaWebAutoBotReply(t.targetJid || t.target || '', replyText || '', prompt, mediaType ? { mediaType: mediaType } : null);
+    const word = String(ans || '').toUpperCase();
+    if (/NEED_PROOF/.test(word)) return { confirmed: false, needProof: true };
+    if (/\bCONFIRMED\b/.test(word)) {
+      if (t.requireProof && !hasMedia) return { confirmed: false, needProof: true };
+      return { confirmed: true, why: 'AI read it as done' };
+    }
+    if (/\bPROMISED\b/.test(word)) return { confirmed: false, promised: true };
+  } catch (e) { /* fall through */ }
+  return { confirmed: false };
+}
+async function recordConditionalTurn(t, replyText, mediaType) {
+  try {
+    if (!t || !t.taskId) return;
+    await alignTaskWrite(t.taskId, t.taskKind === 'assigned' ? 'assigned' : 'shared', {
+      aiState: {
+        stage: 'replied',
+        attempts: t.attempts || 0,
+        lastReply: String(replyText || '[media]').slice(0, 200),
+        lastReplyAt: Date.now(),
+        agent: t.agentName || 'AI'
+      }
+    });
+  } catch (e) { /* ignore */ }
+}
+async function condRunConfirmActions(entry, t, why) {
+  const now = Date.now();
+  if (t.taskId && (t.onConfirm === 'mark_done' || t.onConfirm === 'announce')) {
+    await alignTaskWrite(t.taskId, t.taskKind === 'assigned' ? 'assigned' : 'shared', {
+      status: 'Done', completedAt: new Date(), completedByName: (t.agentName || 'AI follow-up'),
+      completedVia: 'ai_followup', aiFollowUpDoneAt: now,
+      aiState: { stage: 'confirmed', confirmedAt: now, reason: why }
+    }).catch(() => {});
+  }
+  if (t.onConfirm === 'announce' && t.announceJid) {
+    try {
+      await sendWaWebMessage(t.announceJid, '✅ *Job confirmed*\n👤 ' + (t.targetName || t.target || 'contact') +
+        '\n📋 ' + String(t.title || '').slice(0, 200) + '\n🤖 confirmed by ' + (t.agentName || 'AI') + ' (' + why + ')');
+    } catch (e) { /* ignore */ }
+  }
+  if (t.notifyBoss !== false) {
+    await condNotifyBoss('✅ "' + (t.targetName || t.target) + '" confirmed: "' + String(t.title || '').slice(0, 120) + '" (' + why + ')' + (t.onConfirm === 'announce' && t.announceName ? '\n📢 announced in ' + t.announceName : ''));
+  }
+  await condSaveTask(entry, {
+    status: 'done', stage: 'confirmed', confirmedAt: now,
+    history: (t.history || []).concat([{ at: now, event: 'confirmed', detail: why }]).slice(-40)
+  });
+  console.log('[COND TASK] ✅ Confirmed "' + String(t.title || '').substring(0, 50) + '" — ' + why);
+}
+
+async function handleConditionalTaskReply(jid, text, mediaType) {
   const entry = conditionalTaskAwaitingFor(jid);
   if (!entry) return false;
   const t = entry.data || {};
@@ -2084,8 +2173,27 @@ async function handleConditionalTaskReply(jid, text) {
   const history = (t.history || []).concat([{ at: now, event: 'reply', detail: replyTextRaw.substring(0, 200) }]).slice(-40);
   const brain = Object.assign({}, t.brain || {}, { lastReply: replyTextRaw.substring(0, 300), intent: 'other' });
 
+  // 🔎 1) Does this reply finish the job (keywords / AI / proof)?
+  const verdict = await condConfirmCheck(t, replyTextRaw, mediaType);
+  if (verdict.needProof) {
+    try { await sendWaWebMessage(jid, '🙏 Thank you. To close this one I need the proof — please send the photo or the document.'); } catch (e) { /* ignore */ }
+    await condSaveTask(entry, {
+      stage: 'awaiting_reply', nextActionAt: Date.now() + 30 * 60000,
+      lastReply: replyTextRaw.substring(0, 300), lastReplyAt: now,
+      history: history.concat([{ at: now, event: 'proof-requested' }]).slice(-40)
+    });
+    if (t.taskId) alignTaskWrite(t.taskId, t.taskKind === 'assigned' ? 'assigned' : 'shared', { aiState: { stage: 'awaiting_proof', lastReplyAt: now, attempts: t.attempts || 0 } }).catch(() => {});
+    return true;
+  }
+  if (verdict.confirmed) {
+    try { await sendWaWebMessage(jid, '✅ Perfect — noted as completed. Thank you.'); } catch (e) { /* ignore */ }
+    await condRunConfirmActions(entry, t, verdict.why || 'confirmed');
+    return true;
+  }
+  await recordConditionalTurn(t, replyTextRaw, mediaType);
+
   let followAt = 0;
-  if (t.followTimeGiven !== false) {
+  if (t.followTimeGiven !== false && t.honorPromise !== false) {
     try {
       const when = parseBossWhen(replyTextRaw);
       if (when && when > now + 60000) followAt = when;
@@ -4624,9 +4732,9 @@ export async function initWaWeb(db = null) {
               // Conditional Align Task replies: if this sender belongs to an active conditional
               // task, the smart follow-up engine handles this message (AI understands + responds)
               // and the normal auto-bot must NOT reply on top of it.
-              if (!isBossNumber && !isGroup) {
+              if (!isBossNumber) {
                 try {
-                  const handledByCond = await handleConditionalTaskReply(remoteJid, effectiveText || ('[' + (mediaType || 'media') + ']'));
+                  const handledByCond = await handleConditionalTaskReply(remoteJid, effectiveText || ('[' + (mediaType || 'media') + ']'), mediaType);
                   if (handledByCond) return;
                 } catch (e) { console.warn('[COND TASK] reply handling error:', e.message); }
               }
