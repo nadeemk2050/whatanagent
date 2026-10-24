@@ -55,7 +55,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+            echo "$KEYSTORE_B64" | base64 -d > app/keystore.jks
             printf 'storeFile=keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
               "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
             echo "SIGNED=1" >> $GITHUB_ENV
