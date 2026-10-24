@@ -414,27 +414,33 @@
             </div>
         </div>
     </div>
-    <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div class="p-6 border-b flex justify-between items-center"><h3 id="wa-remind-title" class="text-xl font-bold text-gray-800">💬 Send WhatsApp Reminder</h3><button id="wa-remind-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <div class="p-6 space-y-3 max-h-[75vh] overflow-y-auto">
-                <p id="wa-remind-task-text" class="text-sm text-gray-600"></p>
+    <div id="wa-remind-modal" class="hidden fixed inset-0 bg-white flex flex-col" style="z-index:88">
+        <div class="px-4 py-2.5 border-b flex items-center gap-3 bg-white shrink-0">
+            <button id="wa-remind-modal-close" class="text-gray-500 hover:text-gray-900 text-2xl leading-none px-1" title="Back to tasks">←</button>
+            <div class="min-w-0 flex-1">
+                <h3 id="wa-remind-title" class="text-base font-bold text-gray-800 leading-tight">💬 Send WhatsApp Reminder</h3>
+                <p id="wa-remind-task-text" class="text-xs text-gray-500 leading-snug whitespace-pre-line"></p>
+            </div>
+        </div>
+        <div class="flex-grow overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50">
                 <div id="wa-remind-bridge" class="hidden text-xs rounded-lg px-3 py-2 border"></div>
-                <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
-                <div id="wa-remind-members" class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
+                    <div id="wa-remind-members" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1 max-h-[34vh] overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white mt-1"></div>
+                </div>
                 <div>
                     <div class="flex justify-between items-center mb-1">
                         <label class="text-sm font-medium text-gray-700">📢 WhatsApp groups <span class="text-xs text-gray-400">(favorites — one or more)</span></label>
                         <button id="wa-remind-manage-groups" type="button" class="text-xs text-blue-600 font-semibold">⭐ Manage favorites</button>
                     </div>
-                    <div id="wa-remind-groups" class="space-y-1 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
+                    <div id="wa-remind-groups" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1 max-h-[26vh] overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white"></div>
                     <div id="wa-remind-groups-manager" class="hidden mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3">
                         <div class="flex items-center gap-2">
-                            <input id="wa-remind-group-search" type="text" placeholder="🔍 Search all WhatsApp groups..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm" oninput="renderWaGroupManager()">
+                            <input id="wa-remind-group-search" type="text" placeholder="🔍 Search all WhatsApp groups..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm">
                             <button id="wa-remind-groups-refresh" type="button" class="shrink-0 px-2 py-2 rounded-lg border border-blue-300 bg-white text-blue-700 text-sm font-semibold hover:bg-blue-100" title="Refresh the group list from WhatsApp">↻</button>
                         </div>
                         <p id="wa-remind-groups-status" class="text-[10px] text-gray-500 mt-1"></p>
-                        <div id="wa-remind-groups-list" class="max-h-44 overflow-y-auto mt-2"></div>
+                        <div id="wa-remind-groups-list" class="max-h-[38vh] overflow-y-auto mt-2"></div>
                         <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The list is pulled live from the connected WhatsApp and refreshes by itself.</p>
                     </div>
                 </div>
@@ -457,11 +463,11 @@
                     </div>
                     <p class="text-xs text-gray-500">Pick team members, groups, and/or specify any individual phone number anywhere in the world.</p>
                 </div>
-                <div class="border border-gray-200 rounded-lg p-3 space-y-1">
+                <div class="border border-gray-200 rounded-lg p-3 space-y-1 bg-white">
                     <label class="text-sm font-medium text-gray-700">✍️ Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
-                    <textarea id="wa-remind-message" rows="4" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                    <textarea id="wa-remind-message" rows="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
                 </div>
-                <div class="border border-gray-200 rounded-lg p-3 space-y-2">
+                <div class="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
                     <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
                         <input type="checkbox" id="wa-remind-schedule-toggle" class="h-4 w-4" />
                         🕓 Schedule for later (pick date, time &amp; repeat)
@@ -502,11 +508,10 @@
                         <p class="text-xs text-gray-400">Times use this device's clock. The server sends automatically — WhatsApp app does not need to stay open. Track, edit or remove it in Menu → 📅 Scheduled Reminders.</p>
                     </div>
                 </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button id="wa-remind-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
-                    <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">💬 Send on WhatsApp</button>
-                </div>
-            </div>
+        </div>
+        <div class="p-3 border-t bg-white flex justify-end gap-2 shrink-0">
+            <button id="wa-remind-cancel" class="bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">💬 Send on WhatsApp</button>
         </div>
     </div>
     <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1834,6 +1839,10 @@
                 if (e.target.closest('#wa-remind-groups-refresh')) { refreshWaGroups(true); return; }
                 if (e.target.closest('#wa-remind-manage-groups')) { openWaGroupsManager(); }
             });
+            // The search box filters as you type (inline oninput cannot see these functions).
+            const waGroupSearchEl = document.getElementById('wa-remind-group-search');
+            if (waGroupSearchEl) waGroupSearchEl.addEventListener('input', () => renderWaGroupManager());
+            window.renderWaGroupManager = renderWaGroupManager;
 
             async function submitWaRemind() {
                 if (!waRemindCtx) return;
