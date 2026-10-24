@@ -2995,6 +2995,25 @@
                 const signBtn = document.getElementById('edit-staff-signin');
                 if (signBtn) signBtn.style.display = localStorage.getItem('align_staff_session') ? 'none' : 'inline-block';
                 editStaffModal.classList.remove('hidden');
+                prefillStaffPassword(staff.name);
+            }
+
+            // Show the member's saved team-login password straight away, so it is always
+            // visible in its field (masked — 👁 Show reveals it).
+            let pwPrefillFor = '';
+            async function prefillStaffPassword(handle) {
+                const pwEl = document.getElementById('edit-staff-password');
+                const btn = document.getElementById('edit-staff-showpw');
+                pwEl.type = 'password';
+                if (btn) btn.textContent = '👁 Show';
+                if (!handle || !localStorage.getItem('align_staff_session') || !window.alignApi) return;
+                pwPrefillFor = handle;
+                try {
+                    const d = await window.alignApi('/team/staff/reveal', { method: 'POST', body: { handle }, noRedirect: true });
+                    if (pwPrefillFor !== handle) return;          // another member was opened meanwhile
+                    if (d.password) { pwEl.value = d.password; pwEl.placeholder = 'saved password'; }
+                    else if (d.note) { pwEl.placeholder = d.note; }
+                } catch (e) { /* not signed in / not allowed: leave it empty */ }
             }
 
             const editStaffSignin = document.getElementById('edit-staff-signin');
