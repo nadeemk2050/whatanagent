@@ -129,8 +129,9 @@ const app = express();
 // Gzip every response (the 600KB dashboard HTML shrinks ~5x) - cuts bandwidth + transfer time,
 // keeping the Render free-tier bandwidth pool and CPU pressure low.
 app.use(compression());
-// CORS: allow the Firebase-hosted dashboard (web.app / firebaseapp.com) to call this API cross-origin.
-const CORS_ALLOWED = /^https:\/\/whatanagent-a1e59\.(web\.app|firebaseapp\.com)$/;
+// CORS: allow the Firebase-hosted dashboard (web.app / firebaseapp.com) to call this API
+// cross-origin, plus a local dev server (localhost / 127.0.0.1 on any port).
+const CORS_ALLOWED = /^(https:\/\/whatanagent-a1e59\.(web\.app|firebaseapp\.com)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && CORS_ALLOWED.test(origin)) {

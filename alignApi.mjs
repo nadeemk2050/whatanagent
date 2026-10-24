@@ -24,7 +24,7 @@ import {
   upsertStaff, listStaff, getStaffByHandle, getStaffByUid, deleteStaff,
   setTeamPassword, teamHasPassword, unlockTeam, authAudit, recentAuthEvents,
   normalizeHandle, SESSION_HOURS, UNLOCK_HOURS,
-  getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff
+  getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff, revealStaffPassword
 } from './alignAuth.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
@@ -436,6 +436,17 @@ export function registerAlignRoutes(app) {
       deleteStaff(req.params.handle);
       authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + (req.manager ? req.manager.handle : 'firebase-owner') });
       res.json({ ok: true });
+    } catch (e) { bad(res, e.message); }
+  });
+
+  // ---- owner: reveal a member's team-login password (forgotten-password recovery) ----
+  app.post(api + '/team/staff/reveal', requireManager, (req, res) => {
+    try {
+      const handle = sstr((req.body || {}).handle, 60).trim();
+      if (!handle) return bad(res, 'Which member?');
+      const out = revealStaffPassword(handle);
+      authAudit({ action: 'owner_password_reveal', handle: out.handle, note: 'by ' + (req.manager ? req.manager.handle : 'manager') });
+      res.json({ ok: true, ...out });
     } catch (e) { bad(res, e.message); }
   });
 

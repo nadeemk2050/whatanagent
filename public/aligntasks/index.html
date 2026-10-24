@@ -535,7 +535,13 @@
                 <div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
                 <div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
                 <div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div>
-                <div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label>
+                    <div style="position:relative;">
+                        <input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 pr-24 border border-gray-300 rounded-lg" />
+                        <button type="button" id="edit-staff-showpw" title="Show the current password"
+                                style="position:absolute;right:6px;top:50%;transform:translateY(-50%);margin-top:4px;background:#eef2ff;color:#3730a3;border:none;border-radius:7px;padding:5px 9px;font-size:11px;font-weight:800;cursor:pointer;">👁 Show</button>
+                    </div>
+                </div>
                 <div><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
             </form>
             <div class="px-5 py-3 border-t bg-gray-50 shrink-0">
@@ -2995,6 +3001,29 @@
             if (editStaffSignin) editStaffSignin.addEventListener('click', () => {
                 if (window.alignShowGate) window.alignShowGate(localStorage.getItem('align_staff_session') ? 'confirm' : 'login');
                 else alert('Please reload the page and sign in from the Team Login window.');
+            });
+
+            // 👁 Show / hide the team-login password. When the box is empty it fetches the
+            // stored password from the server (owner-only, audited) so a forgotten one can be read.
+            const showPwBtn = document.getElementById('edit-staff-showpw');
+            if (showPwBtn) showPwBtn.addEventListener('click', async () => {
+                const pwEl = document.getElementById('edit-staff-password');
+                const msg = document.getElementById('edit-staff-msg');
+                const say = (text, ok) => { msg.textContent = text; msg.className = 'text-xs mb-2 ' + (ok ? 'text-green-600' : 'text-red-600'); };
+                if (pwEl.type === 'text') { pwEl.type = 'password'; showPwBtn.textContent = '👁 Show'; return; }
+                if (!pwEl.value) {
+                    const handle = document.getElementById('edit-staff-name').value.trim();
+                    if (!handle) return;
+                    showPwBtn.disabled = true; showPwBtn.textContent = '…';
+                    try {
+                        const d = await window.alignApi('/team/staff/reveal', { method: 'POST', body: { handle } });
+                        if (d.password) { pwEl.value = d.password; pwEl.type = 'text'; showPwBtn.textContent = '🙈 Hide'; say('', true); }
+                        else { say(d.note || 'No password stored for this member yet.', false); showPwBtn.textContent = '👁 Show'; }
+                    } catch (err) { say('❌ ' + err.message, false); showPwBtn.textContent = '👁 Show'; }
+                    finally { showPwBtn.disabled = false; }
+                    return;
+                }
+                pwEl.type = 'text'; showPwBtn.textContent = '🙈 Hide';
             });
             document.getElementById('edit-staff-modal-close').addEventListener('click', () => editStaffModal.classList.add('hidden'));
             const editStaffCancel = document.getElementById('edit-staff-cancel');

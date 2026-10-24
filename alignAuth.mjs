@@ -103,10 +103,36 @@ export const normalizeHandle = (s) => String(s || '')
   .replace(/\s+/g, ' ')
   .slice(0, 40);
 
+// --------------------------------------------------------------------------- password reveal
+// The owner sometimes needs to see a team member's password again. The hash cannot be
+// reversed, so an AES-256-GCM copy is kept (key derived from the server secret). Only the
+// owner/admin can read it through an audited endpoint; it is never sent in staff lists.
+function pwKey() {
+  return crypto.createHash('sha256').update(Buffer.concat([Buffer.from(getSecret()), Buffer.from('align-pw-v1')])).digest();
+}
+function encryptPassword(text) {
+  if (!text) return '';
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', pwKey(), iv);
+  const enc = Buffer.concat([c.update(String(text), 'utf8'), c.final()]);
+  return 'enc:v1:' + Buffer.concat([iv, c.getAuthTag(), enc]).toString('base64');
+}
+function decryptPassword(payload) {
+  const raw = String(payload || '');
+  if (!raw.startsWith('enc:v1:')) return '';
+  try {
+    const buf = Buffer.from(raw.slice(7), 'base64');
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const body = buf.subarray(28);
+    const d = crypto.createDecipheriv('aes-256-gcm', pwKey(), iv);
+    d.setAuthTag(tag);
+    return Buffer.concat([d.update(body), d.final()]).toString('utf8');
+  } catch (e) { return ''; }
+}
+
 // --------------------------------------------------------------------------- tokens
-function sign(payloadObj) {
-  const body = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');
-  const mac = crypto.createHmac('sha256', getSecret()).update(body).digest('base64url');
+function sign(payloadObj) {  const body = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');  const mac = crypto.createHmac('sha256', getSecret()).update(body).digest('base64url');
   return body + '.' + mac;
 }
 
@@ -256,6 +282,20 @@ export function getOwnProfile(uid) {
   return rec ? publicStaff(rec) : null;
 }
 
+// Owner-only: reveal the stored password so a forgotten one can be read back.
+export function revealStaffPassword(handle) {
+  const rec = getStaffByHandle(handle);
+  if (!rec) throw new Error('Staff member not found.');
+  if (!rec.hash) return { handle: rec.handle, name: rec.name, password: '', note: 'No password set yet.' };
+  const pw = decryptPassword(rec.passwordEnc);
+  return {
+    handle: rec.handle,
+    name: rec.name,
+    password: pw,
+    note: pw ? '' : 'This password was set before viewing was added — set a new one to store it viewable.'
+  };
+}
+
 // Fields an owner may set when creating/updating a staff record.
 const FIELD_MAX = { bio: 500, remarks: 500, address: 200 };
 export function setStaffProfileFields(handle, patch = {}) {
@@ -387,6 +427,7 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
   if (password) {
     const h2 = hashPassword(password);
     rec.salt = h2.salt; rec.hash = h2.hash; rec.algo = h2.algo;
+    rec.passwordEnc = encryptPassword(String(password));
     rec.failedAttempts = 0; rec.lockedUntil = 0;
     rec.passwordChangedAt = Date.now();
   }
