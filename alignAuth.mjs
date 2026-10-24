@@ -207,11 +207,12 @@ const publicStaff = (r) => ({
   jobTitle: r.jobTitle || '', department: r.department || '',
   phone: r.phone || '', whatsapp: r.whatsapp || '',
   timezone: r.timezone || '', avatarEmoji: r.avatarEmoji || '',
-  bio: r.bio || '', language: r.language || ''
+  bio: r.bio || '', language: r.language || '',
+  address: r.address || '', remarks: r.remarks || ''
 });
 
-// Fields a staff member may change about themselves.
-const PROFILE_FIELDS = ['jobTitle', 'department', 'phone', 'whatsapp', 'timezone', 'avatarEmoji', 'bio', 'language', 'name'];
+// Fields a staff member may change about themselves. (`remarks` is owner-only.)
+const PROFILE_FIELDS = ['jobTitle', 'department', 'phone', 'whatsapp', 'timezone', 'avatarEmoji', 'bio', 'language', 'name', 'address'];
 
 // Self-service profile update. Cannot touch role, teams, handle or password.
 export function updateOwnProfile(uid, patch = {}) {
@@ -247,6 +248,7 @@ export function getOwnProfile(uid) {
 }
 
 // Fields an owner may set when creating/updating a staff record.
+const FIELD_MAX = { bio: 500, remarks: 500, address: 200 };
 export function setStaffProfileFields(handle, patch = {}) {
   const h = normalizeHandle(handle);
   const staff = loadStaff();
@@ -254,12 +256,37 @@ export function setStaffProfileFields(handle, patch = {}) {
   const rec = staff[h];
   for (const f of PROFILE_FIELDS) {
     if (patch[f] === undefined) continue;
-    rec[f] = String(patch[f] == null ? '' : patch[f]).slice(0, f === 'bio' ? 500 : 80).trim();
+    rec[f] = String(patch[f] == null ? '' : patch[f]).slice(0, FIELD_MAX[f] || 80).trim();
   }
+  if (patch.remarks !== undefined) rec.remarks = String(patch.remarks == null ? '' : patch.remarks).slice(0, 500).trim();
   rec.updatedAt = Date.now();
   staff[rec.handle] = rec;
   saveStaff(staff);
   return publicStaff(rec);
+}
+
+// Owner-only edit of a sub user: name, email (kept as an alias), WhatsApp, address,
+// remarks and the team-login password. Returns null when the person has no login yet,
+// so the caller can still update the board record.
+export function adminUpdateStaff({ handle, name, email, whatsapp, address, remarks, password }) {
+  const target = getStaffByHandle(handle) || (email ? getStaffByHandle(email) : null);
+  if (!target) return null;
+  const saved = upsertStaff({
+    handle: target.handle,
+    name: name || target.name,
+    role: target.role,
+    teamIds: target.teamIds,
+    active: target.active,
+    password: password || undefined,
+    aliases: email ? [String(email).toLowerCase()] : undefined
+  });
+  const fields = { name: saved.name };
+  if (whatsapp !== undefined) fields.whatsapp = whatsapp;
+  if (address !== undefined) fields.address = address;
+  if (remarks !== undefined) fields.remarks = remarks;
+  const out = setStaffProfileFields(target.handle, fields);
+  authAudit({ action: 'owner_subuser_edit', handle: target.handle, note: 'email=' + (email || '') + ' pw=' + (password ? 'changed' : 'kept') });
+  return out;
 }
 
 export function listStaff() {

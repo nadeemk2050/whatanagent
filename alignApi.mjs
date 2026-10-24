@@ -24,7 +24,7 @@ import {
   upsertStaff, listStaff, getStaffByHandle, getStaffByUid, deleteStaff,
   setTeamPassword, teamHasPassword, unlockTeam, authAudit, recentAuthEvents,
   normalizeHandle, SESSION_HOURS, UNLOCK_HOURS,
-  getOwnProfile, updateOwnProfile, setStaffProfileFields
+  getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff
 } from './alignAuth.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
@@ -365,6 +365,54 @@ export function registerAlignRoutes(app) {
       authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
+  });
+
+  // ---- edit a sub user (Settings -> Sub User Management -> Edit) ----
+  // Saves name / email / WhatsApp / address / remarks and can reset the team-login
+  // password. Guarded by the owner session AND an admin password (default "abcd").
+  app.post(api + '/team/staff/edit', requireStaff, requireOwner, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const expected = String(process.env.ALIGN_STAFF_EDIT_PASSWORD || 'abcd');
+      if (String(b.adminPassword || '') !== expected) {
+        authAudit({ action: 'owner_subuser_edit_denied', handle: sstr(b.handle, 60), note: 'wrong admin password' });
+        return bad(res, 'Wrong admin password. Nothing was saved.', 403);
+      }
+      const handle = sstr(b.handle, 60).trim();
+      const name = sstr(b.name, 60).trim();
+      if (!name) return bad(res, 'A name is required.');
+      const email = sstr(b.email, 120).trim();
+      const password = sstr(b.password, 200);
+      if (password && password.length < 6) return bad(res, 'Password must be at least 6 characters.');
+
+      let saved = null;
+      if (handle || email) {
+        saved = adminUpdateStaff({
+          handle: handle || name,
+          name,
+          email,
+          whatsapp: b.whatsapp,
+          address: b.address,
+          remarks: b.remarks,
+          password: password || undefined
+        });
+      }
+
+      // Keep the Firebase identity in step when a password was given.
+      if (saved && password) {
+        try {
+          if (saved.uid && /^[A-Za-z0-9]{20,}$/.test(saved.uid)) {
+            await alignAuth().updateUser(saved.uid, { password, displayName: name, disabled: saved.active === false });
+          }
+        } catch (e) { console.warn('[ALIGN] Firebase password sync skipped: ' + sstr(e.message, 120)); }
+        try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
+      }
+
+      res.json({ ok: true, staffLogin: !!saved, staff: saved });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, e.message);
+    }
   });
 
   app.get(api + '/auth/audit', guard, (req, res) => {

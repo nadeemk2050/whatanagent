@@ -524,7 +524,7 @@
     <div id="edit-staff-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Staff Member</h3><button id="edit-staff-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
+            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div><div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="pt-2 border-t"><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /><div id="edit-staff-msg" class="text-xs mt-1 hidden"></div></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
         </div>
     </div>
     <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2967,6 +2967,12 @@
                 const editWaField = document.getElementById('edit-staff-wa');
                 if (editWaField) editWaField.value = staff.whatsappNumber || '';
                 document.getElementById('edit-staff-email').value = staff.email;
+                document.getElementById('edit-staff-address').value = staff.address || '';
+                document.getElementById('edit-staff-remarks').value = staff.remarks || '';
+                document.getElementById('edit-staff-password').value = '';
+                document.getElementById('edit-staff-adminpw').value = '';
+                const msg = document.getElementById('edit-staff-msg');
+                msg.className = 'text-xs mt-1 hidden'; msg.textContent = '';
                 editStaffModal.classList.remove('hidden');
             }
             document.getElementById('edit-staff-modal-close').addEventListener('click', () => editStaffModal.classList.add('hidden'));
@@ -3650,16 +3656,46 @@
                 }
             });
 
-            document.getElementById('edit-staff-form').addEventListener('submit', e => {
+            document.getElementById('edit-staff-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const id = document.getElementById('edit-staff-id').value;
                 const name = document.getElementById('edit-staff-name').value.trim();
                 const email = document.getElementById('edit-staff-email').value.trim();
-                if (id && name && email) {
-                    const waNumber = (document.getElementById('edit-staff-wa') || {}).value || '';
-                    db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({ name, email: email.toLowerCase(), whatsappNumber: normalizeWaNumberClient(waNumber), teamId: teamCtx.teamId })
-                        .then(() => persistStaffWhatsApp(email, waNumber, name))
-                        .then(() => editStaffModal.classList.add('hidden'));
+                const waNumber = (document.getElementById('edit-staff-wa') || {}).value || '';
+                const address = (document.getElementById('edit-staff-address') || {}).value || '';
+                const remarks = (document.getElementById('edit-staff-remarks') || {}).value || '';
+                const password = (document.getElementById('edit-staff-password') || {}).value || '';
+                const adminPassword = (document.getElementById('edit-staff-adminpw') || {}).value || '';
+                const msg = document.getElementById('edit-staff-msg');
+                const show = (text, ok) => { msg.textContent = text; msg.className = 'text-xs mt-1 ' + (ok ? 'text-green-600' : 'text-red-600'); };
+
+                if (!id || !name || !email) return;
+                if (password && password.length < 6) { show('Login password must be at least 6 characters.', false); return; }
+                if (!adminPassword) { show('Enter the admin password to save.', false); return; }
+
+                try {
+                    // The server checks the admin password and writes the login record
+                    // (name, email alias, WhatsApp, address, remarks, password).
+                    const r = await window.alignApi('/team/staff/edit', {
+                        method: 'POST',
+                        body: { handle: name, name, email, whatsapp: waNumber, address, remarks, password, adminPassword }
+                    });
+                    // …then the board record the Sub User list renders from.
+                    await db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({
+                        name,
+                        email: email.toLowerCase(),
+                        whatsappNumber: normalizeWaNumberClient(waNumber),
+                        address,
+                        remarks,
+                        teamId: teamCtx.teamId
+                    });
+                    persistStaffWhatsApp(email, waNumber, name);
+                    show(r.staffLogin
+                        ? (password ? '✅ Saved. The new password works immediately.' : '✅ Saved.')
+                        : '✅ Saved. (No team login yet for this name — set one in Settings → Team logins.)', true);
+                    setTimeout(() => { editStaffModal.classList.add('hidden'); }, 1200);
+                } catch (err) {
+                    show('❌ ' + err.message, false);
                 }
             });
 
