@@ -606,10 +606,13 @@ export function registerAlignRoutes(app) {
       if (b.dueDate) doc.dueDate = sstr(b.dueDate, 40);
       if (b.priority) doc.priority = sstr(b.priority, 20);
       if (Array.isArray(b.comments)) doc.comments = b.comments.slice(0, 50);
+      const repeatType = sstr(b.repeat, 20);
+      if (repeatType && repeatType !== 'none') doc.repeat = { type: repeatType };
 
-      if (kind === 'assigned') {
-        const who = sstr(b.assigneeHandle || b.assigneeEmail, 80).trim();
-        if (!who) return bad(res, 'Choose who this task is for.');
+      // A general task can be given to one person (responsible) or left to anyone.
+      const who = sstr(b.assigneeHandle || b.assigneeEmail, 80).trim();
+      if (kind === 'assigned' && !who) return bad(res, 'Choose who this task is for.');
+      if (who) {
         const target = getStaffByHandle(who);
         if (!target) return bad(res, 'No staff member named "' + who + '".');
         doc.assigneeUid = target.uid;
@@ -617,7 +620,11 @@ export function registerAlignRoutes(app) {
         doc.assigneeName = target.name;
         doc.assignedByUid = stamp.uid;
         doc.assignedByName = stamp.name;
-        doc.assignedAt = now;
+        doc.assignedAt = new Date();
+      } else if (kind === 'shared') {
+        // Unassigned: any team member may take it.
+        doc.assigneeEmail = '';
+        doc.assigneeName = '';
       }
 
       const ref = await board(collectionFor(kind)).add(doc);

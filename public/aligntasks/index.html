@@ -14,6 +14,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     <style>
+        html, body { margin: 0; padding: 0; }
+        body { min-height: 100vh; }
         .hidden { display: none; }
         .task-list-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 0.75rem 0.5rem; border-bottom: 1px solid #e5e7eb; }
         .task-checkbox { -webkit-appearance: none; appearance: none; background-color: #fff; margin: 0; font: inherit; color: currentColor; width: 1.15em; height: 1.15em; border: 0.15em solid currentColor; border-radius: 50%; transform: translateY(-0.075em); display: grid; place-content: center; cursor: pointer; margin-top: 0.25rem; flex-shrink: 0; }
@@ -87,24 +89,28 @@
 
     <!-- Main Application -->
     <div id="app-screen" class="hidden">
-        <div class="container mx-auto p-4 md:p-8">
-            <header class="mb-6">
-                <div class="flex justify-between items-center mb-4">
-                    <div>
-                        <h1 class="text-3xl font-bold text-gray-800">AlignTasks</h1>
-                        <p id="app-version-label" class="text-xs text-gray-500 mt-1">Version 2.0</p>
-                        <div id="user-info-badge" class="mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded"></div>
-                        <div class="mt-2 flex items-center gap-2">
-                            <label class="text-xs text-gray-500" for="team-switcher">Team</label>
-                            <select id="team-switcher" class="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white max-w-[220px]"></select>
-                            <button id="new-team-button" class="text-xs text-blue-600 hover:underline whitespace-nowrap">＋ New Team</button>
+        <header class="sticky top-0 z-40 w-full bg-white border-b border-gray-200 shadow-sm">
+            <div class="w-full px-3 sm:px-6 py-2">
+                <div class="flex justify-between items-center gap-3">
+                    <div class="min-w-0">
+                        <h1 class="text-xl sm:text-3xl font-bold text-gray-800 leading-none truncate">AlignTasks <span id="app-version-label" class="hidden sm:inline text-[10px] text-gray-400 font-medium align-middle ml-1">V2.0</span></h1>
+                        <!-- kept for compatibility with existing code, no longer shown -->
+                        <div id="user-info-badge" class="hidden"></div>
+                        <div class="hidden">
+                            <label for="team-switcher">Team</label>
+                            <select id="team-switcher"></select>
+                            <button id="new-team-button">＋ New Team</button>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <!-- 👤 Signed-in staff profile chip (name + role) -->
-                        <button id="profile-chip" class="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors" title="View or edit your profile" style="display:none;">
+                    <div class="flex items-center gap-2 sm:gap-3">
+                        <!-- ✅ Completed Tasks (moved up here to save vertical space) -->
+                        <button id="completed-tasks-button" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm whitespace-nowrap" title="Completed tasks">
+                            ✅ <span class="hidden sm:inline">Completed</span> <span id="completed-tasks-count" class="bg-white text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
+                        </button>
+                        <!-- 👤 Signed-in staff profile (details live in the profile dialog, not the bar) -->
+                        <button id="profile-chip" class="flex items-center gap-2 p-1 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors" title="View or edit your profile" style="display:none;">
                             <span id="profile-chip-avatar" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:#e0e7ff;font-size:16px;">👤</span>
-                            <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;">
+                            <span style="display:none;flex-direction:column;align-items:flex-start;line-height:1.15;">
                                 <span id="profile-chip-name" style="font-size:12.5px;font-weight:800;color:#0f172a;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
                                 <span id="profile-chip-role" style="font-size:10px;color:#64748b;text-transform:capitalize;">—</span>
                             </span>
@@ -135,27 +141,23 @@
                         </div>
                     </div>
                 </div>
-                <div class="bg-gray-200 p-1 rounded-lg flex gap-1">
+                <div class="bg-gray-200 p-1 rounded-lg flex gap-1 mt-2">
                     <button id="nav-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">Tasks for All</button>
                     <button id="nav-personal-tasks-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm flex items-center justify-center gap-1">
                         <span>🔒</span><span>My Personal Tasks</span>
                     </button>
                     <button id="nav-projects-button" class="nav-button flex-1 p-2 rounded-md font-semibold text-xs sm:text-sm">Project Management</button>
                 </div>
-            </header>
-            
+            </div>
+        </header>
+
+        <div class="w-full px-3 sm:px-6 py-4">
             <div id="app-error" class="bg-red-100 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 hidden"></div>
 
             <!-- Main Content Sections -->
             <main>
                 <!-- Tasks Section -->
-                <section id="tasks-page" class="main-section space-y-8">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button id="completed-tasks-button" class="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm">
-                            ✅ Completed Tasks <span id="completed-tasks-count" class="bg-white text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">0</span>
-                        </button>
-                    </div>
-
+                <section id="tasks-page" class="main-section space-y-6">
                     <!-- 2.0: search · saved views · bulk actions -->
                     <div id="task-filter-bar" class="bg-white p-4 rounded-xl shadow-sm space-y-3">
                         <div class="flex flex-wrap gap-2 items-center">
@@ -181,9 +183,22 @@
                     <div>
                         <h2 class="text-2xl font-bold mb-4">General Tasks (For All)</h2>
                         <div class="bg-white rounded-xl shadow-sm p-4">
-                            <form id="task-for-all-form" class="flex gap-2 items-center flex-wrap pb-4 mb-4 border-b">
-                                <input type="text" id="new-task-for-all-description" placeholder="New general task..." class="flex-grow p-2 border rounded-lg w-full sm:w-auto" required/>
-                                <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600">Add General Task</button>
+                            <form id="task-for-all-form" class="pb-4 mb-4 border-b space-y-2">
+                                <input type="text" id="new-task-for-all-description" placeholder="New general task…" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm" required/>
+                                <div class="flex flex-wrap gap-2">
+                                    <select id="new-task-for-all-assignee" class="p-2 border border-gray-300 rounded-lg text-sm bg-white flex-1 min-w-[150px]" title="Who is responsible?">
+                                        <option value="">👥 Anyone (unassigned)</option>
+                                    </select>
+                                    <input type="datetime-local" id="new-task-for-all-due" class="p-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-[190px]" title="Due date &amp; time"/>
+                                    <select id="new-task-for-all-repeat" class="p-2 border border-gray-300 rounded-lg text-sm bg-white flex-1 min-w-[140px]" title="Repeat">
+                                        <option value="none">🔁 Does not repeat</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="annually">Annually</option>
+                                    </select>
+                                    <button type="submit" class="bg-purple-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-purple-600 whitespace-nowrap">＋ Add General Task</button>
+                                </div>
                             </form>
                             <div id="tasks-for-all-todo-list"></div>
                             <button id="tasks-for-all-toggle-completed" class="text-sm text-blue-500 mt-2 hidden">Show 0 Completed</button>
@@ -191,57 +206,7 @@
                         </div>
                     </div>
 
-                    <div id="admin-assign-task-container" class="hidden">
-                        <h2 id="assign-task-header" class="section-header text-2xl font-bold mb-4">Assign Individual Task</h2>
-                        <div id="assign-task-form-container" class="bg-white p-6 rounded-xl shadow-sm hidden">
-                            <form id="assign-individual-task-form" class="space-y-4">
-                                <input type="text" id="individual-task-description" placeholder="Task description..." class="p-2 border rounded-lg w-full" required />
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-sm font-medium text-gray-700">Assign to</label>
-                                        <select id="individual-task-assignee" class="mt-1 p-2 border rounded-lg bg-white w-full"></select>
-                                    </div>
-                                    <div class="flex items-end gap-2">
-                                        <div class="flex-grow">
-                                            <label class="text-sm font-medium text-gray-700">Repeat</label>
-                                            <select class="new-task-repeat mt-1 p-2 border rounded-lg bg-white w-full">
-                                                <option value="none">Does not repeat</option>
-                                                <option value="daily">Daily</option>
-                                                <option value="weekly">Weekly</option>
-                                                <option value="monthly">Monthly</option>
-                                                <option value="annually">Annually</option>
-                                            </select>
-                                        </div>
-                                        <div class="new-task-repeat-count-container hidden">
-                                            <input type="number" class="new-task-repeat-count p-2 border rounded-lg w-24" placeholder="Times" min="1">
-                                        </div>
-                                    </div>
-                                </div>
-                                <input type="datetime-local" id="individual-task-duedate" class="p-2 border rounded-lg w-full" />
-                                <div class="flex items-center gap-4">
-                                    <div class="flex items-center gap-2">
-                                        <input type="checkbox" id="individual-task-alarm" class="new-task-alarm h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        <label for="individual-task-alarm" class="text-sm font-medium text-gray-700">Set Alarm</label>
-                                    </div>
-                                    <div class="flex-grow">
-                                        <label class="text-sm font-medium text-gray-700">Alarm Sound</label>
-                                        <select class="new-task-alarm-sound mt-1 p-2 border rounded-lg bg-white w-full">
-                                            <option value="alarm_classic.mp3">Classic Alarm</option>
-                                            <option value="hurry_up.mp3">Hurry Up</option>
-                                            <option value="gentle_chime.mp3">Gentle Chime</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <button type="submit" class="w-full bg-orange-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-600">Assign Task</button>
-                            </form>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h2 id="individual-tasks-title" class="text-2xl font-bold mb-4"></h2>
-                        <div id="individual-tasks-container" class="space-y-4"></div>
-                    </div>
-                </section>
+                                    </section>
 
                 <!-- Projects Section -->
                 <section id="projects-page" class="main-section hidden space-y-8">
@@ -1326,6 +1291,11 @@
                         if (t.exists) teamsCache[id] = Object.assign({ id: id }, t.data() || {});
                     } catch (e) { /* ignore */ }
                 }
+                // The profile dialog lives in its own script scope; share id → name for display.
+                try {
+                    window.alignTeamNames = {};
+                    Object.keys(teamsCache).forEach(id => { window.alignTeamNames[id] = teamsCache[id].name || id; });
+                } catch (e) { /* ignore */ }
                 return teamCtx.teamIds;
             }
 
@@ -1377,8 +1347,9 @@
                 const owner = isOwner();
                 const badge = document.getElementById('user-info-badge');
                 if (badge && currentUser) {
-                    badge.innerHTML = `<span>${(currentUserProfile && currentUserProfile.name) || currentUser.email} — ${teamCtx.role} · ${teamCtx.teamName}</span>`;
-                    badge.className = `mt-1 text-xs text-white inline-flex items-center gap-2 px-2 py-1 rounded ${owner ? 'bg-green-600' : 'bg-blue-600'}`;
+                    // the badge is no longer shown in the header (space saving); keep it empty
+                    badge.innerHTML = '';
+                    badge.className = 'hidden';
                 }
                 const sub = document.getElementById('menu-add-subusers');
                 if (sub) sub.classList.toggle('hidden', !owner);
@@ -1389,7 +1360,7 @@
                 const indTitle = document.getElementById('individual-tasks-title');
                 if (indTitle) indTitle.textContent = owner ? 'Individual Tasks Overview (All Staff)' : 'My Individual Tasks';
                 const forAllForm = document.getElementById('task-for-all-form');
-                if (forAllForm) forAllForm.style.display = 'flex';   // every member may add a general task
+                if (forAllForm) forAllForm.style.display = 'block';   // every member may add a general task
                 const createProj = document.getElementById('admin-create-project-container');
                 if (createProj) createProj.classList.toggle('hidden', !owner);
                 const assign = document.getElementById('admin-assign-task-container');
@@ -1448,6 +1419,17 @@
                 const cur = sel.value;
                 sel.innerHTML = '<option value="">All members</option>' +
                     staffListCache.map(s => `<option value="${String(s.email || '').toLowerCase()}">${s.name || s.email}</option>`).join('');
+                sel.value = cur || '';
+                fillGeneralAssigneeOptions();
+            }
+
+            // Assignee choices for a new general task: anyone, or one named member.
+            function fillGeneralAssigneeOptions() {
+                const sel = document.getElementById('new-task-for-all-assignee');
+                if (!sel) return;
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">👥 Anyone (unassigned)</option>' +
+                    staffListCache.map(s => `<option value="${waEsc(String(s.handle || s.name || s.email || ''))}">👤 ${waEsc(s.name || s.email || '')}</option>`).join('');
                 sel.value = cur || '';
             }
 
@@ -2174,12 +2156,23 @@
                 }
                 
                 let metaHTML = taskStampsHTML(task);
-                
+
+                // Who is responsible, when it is due, and whether it repeats — small print.
+                const repType = task.repeat ? (task.repeat.type || task.repeat) : 'none';
+                const extra = [];
+                extra.push(task.assigneeName
+                    ? '👤 Assigned to ' + waEsc(task.assigneeName)
+                    : '👥 Anyone can do it');
+                if (task.dueDate) extra.push('🗓 ' + formatTaskTimestamp(task.dueDate));
+                if (repType && repType !== 'none') extra.push('🔁 ' + waEsc(repType));
+                const extraHTML = '<div class="task-meta">' + extra.join(' · ') + '</div>';
+
                 return `
                      <div class="task-list-item">
                         <input type="checkbox" class="task-checkbox" data-task-type="tasks_for_all" data-task-id="${task.id}" ${isCompleted ? 'checked' : ''}>
                         <div class="flex-grow ml-3 min-w-0">
                             <p class="text-sm break-words ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}</p>
+                            ${extraHTML}
                             <div class="task-meta">${metaHTML}</div>
                             <div class="flex justify-end items-center mt-2">
                                 <div class="flex items-center gap-2">
@@ -2277,7 +2270,8 @@
                 const assigneeContainer = document.getElementById('edit-task-assignee-container');
                 if (currentUserProfile.role === 'admin' && taskType !== 'tasks_for_all') {
                     const assigneeSelect = document.getElementById('edit-task-assignee');
-                    assigneeSelect.innerHTML = document.getElementById('individual-task-assignee').innerHTML;
+                    const _indAssignee = document.getElementById('individual-task-assignee');
+                if (assigneeSelect && _indAssignee) assigneeSelect.innerHTML = _indAssignee.innerHTML;
                     assigneeSelect.value = task.assigneeEmail;
                     assigneeContainer.classList.remove('hidden');
                 } else {
@@ -2327,6 +2321,7 @@
             }
             
             function renderAdminIndividualTasks(tasks, staffList) {
+                if (!individualTasksContainer) return;
                 individualTasksContainer.innerHTML = '';
                  staffList.forEach(staff => {
                     const staffTasks = tasks.filter(task => task.assigneeEmail === staff.email);
@@ -2350,6 +2345,7 @@
             }
 
             function renderUserIndividualTasks(tasks) {
+                if (!individualTasksContainer) return;
                 individualTasksContainer.innerHTML = '';
                 const userSection = document.createElement('div');
                 userSection.className = 'bg-white p-4 rounded-xl shadow-sm';
@@ -2957,7 +2953,8 @@
                 projectStaffSelection.innerHTML = staff.length > 0 ? staff.map(s => `
                     <label class="flex items-center space-x-2 p-1"><input type="checkbox" class="project-staff-member" value="${s.email}" data-name="${s.name}"><span>${s.name}</span></label>`).join('') : `<p class="text-gray-500 text-xs">Add staff first.</p>`;
 
-                document.getElementById('individual-task-assignee').innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : `<option disabled>Add staff first</option>`;
+                const _indAssignee2 = document.getElementById('individual-task-assignee');
+            if (_indAssignee2) _indAssignee2.innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : `<option disabled>Add staff first</option>`;
                  document.getElementById('edit-task-assignee').innerHTML = staff.length > 0 ? staff.map(s => `<option value="${s.email}">${s.name}</option>`).join('') : '';
             }
 
@@ -3167,18 +3164,19 @@
                 );
                 currentUnsubscribes.push(unsub);
                 
-                if (isOwner()) {
-                    unsub = boardScope('staff').onSnapshot(
-                        snap => {
-                            staffListCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-                            renderStaffList(staffListCache);
-                            renderAssigneeFilter();
-                            applyTaskFilters();
-                        },
-                        error => showAppError('Error fetching team members.', error)
-                    );
-                    currentUnsubscribes.push(unsub);
+                // Staff directory: needed by everyone (assignee pickers), management list only for the owner.
+                unsub = boardScope('staff').onSnapshot(
+                    snap => {
+                        staffListCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+                        if (isOwner()) renderStaffList(staffListCache);
+                        renderAssigneeFilter();
+                        applyTaskFilters();
+                    },
+                    error => console.warn('[staff] listener:', (error && error.code) || error)
+                );
+                currentUnsubscribes.push(unsub);
 
+                if (isOwner()) {
                     unsub = boardScope('tasks').onSnapshot(tasksSnap => {
                         const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()})).sort(sortByCreatedDesc);
                         tasks.forEach(t => { boardTasksCache[t.id] = t; });
@@ -3258,7 +3256,7 @@
                     teamIds = await loadTeamsFor(user);
                 }
                 const versionLabel = document.getElementById('app-version-label');
-                if (versionLabel) versionLabel.textContent = `Version ${WEB_APP_VERSION}`;
+                if (versionLabel) versionLabel.textContent = `V${WEB_APP_VERSION}`;
                 if (!currentUser || currentUser.uid !== user.uid) return;   // signed out / switched while loading
                 await applyTeam(teamCtx.defaultTeamId || teamIds[0], { skipListeners: true });
                 setupFirestoreListeners();
@@ -3486,7 +3484,7 @@
                             if (currentUserProfile) {
                                 const versionLabel = document.getElementById('app-version-label');
                                 if (versionLabel) {
-                                    versionLabel.textContent = `Version ${WEB_APP_VERSION}`;
+                                    versionLabel.textContent = `V${WEB_APP_VERSION}`;
                                 }
                                 if (currentUserProfile.active === false) {
                                     authError.textContent = 'This account has been disabled by the admin.';
@@ -3596,7 +3594,7 @@
 
             // Collapsible Form Headers
             let assignTaskTimeout, createProjectTimeout;
-            assignTaskHeader.addEventListener('click', () => assignTaskFormContainer.classList.toggle('hidden'));
+            if (assignTaskHeader && assignTaskFormContainer) assignTaskHeader.addEventListener('click', () => assignTaskFormContainer.classList.toggle('hidden'));
             createProjectHeader.addEventListener('click', () => createProjectFormContainer.classList.toggle('hidden'));
 
             document.getElementById('add-staff-form').addEventListener('submit', e => {
@@ -3649,7 +3647,8 @@
                 }
             });
             
-            document.getElementById('assign-individual-task-form').addEventListener('submit', async e => {
+            const assignIndividualTaskForm = document.getElementById('assign-individual-task-form');
+            if (assignIndividualTaskForm) assignIndividualTaskForm.addEventListener('submit', async e => {
                  e.preventDefault();
                  const form = e.target;
                  const description = form.querySelector('#individual-task-description').value.trim();
@@ -3691,6 +3690,9 @@
                 e.preventDefault();
                 const description = document.getElementById('new-task-for-all-description').value.trim();
                 if(!description) return;
+                const assigneeHandle = (document.getElementById('new-task-for-all-assignee') || {}).value || '';
+                const dueDate = (document.getElementById('new-task-for-all-due') || {}).value || '';
+                const repeat = (document.getElementById('new-task-for-all-repeat') || {}).value || 'none';
                 // 🎯 Server-gated write: needs the team sign-in, and the server writes the
                 // "created by / at" stamps so they cannot be forged.
                 if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
@@ -3698,9 +3700,11 @@
                     await window.alignApi('/task/create', {
                         method: 'POST',
                         teamId: teamCtx.teamId,
-                        body: { teamId: teamCtx.teamId, kind: 'shared', description }
+                        body: { teamId: teamCtx.teamId, kind: 'shared', description, assigneeHandle, dueDate, repeat }
                     });
                     e.target.reset();
+                    const rp = document.getElementById('new-task-for-all-repeat');
+                    if (rp) rp.value = 'none';
                 } catch (err) {
                     alert('Could not add the task: ' + err.message);
                 }
@@ -4032,7 +4036,7 @@
             });
 
             // Handle staff header clicks for expanding/collapsing individual tasks
-            individualTasksContainer.addEventListener('click', e => {
+            if (individualTasksContainer) individualTasksContainer.addEventListener('click', e => {
                 const header = e.target.closest('.staff-header');
                 if (header) {
                     const staffId = header.dataset.staffId;
@@ -4689,9 +4693,12 @@
             $('pfAvatarEmoji').value = p.avatarEmoji || '';
             $('pfBio').value = p.bio || '';
             const teams = (p.teamIds || []);
+            const names = window.alignTeamNames || {};
+            const teamLabel = (id) => names[id] || id;
+            const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
             $('pfTeams').innerHTML = teams.length
                 ? '<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Teams</div>' +
-                  teams.map(t => '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;">' + t + '</span>').join('')
+                  teams.map(t => '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;">' + esc(teamLabel(t)) + '</span>').join('')
                 : '<div style="font-size:11px;color:#94a3b8;">No teams assigned yet — ask the owner.</div>';
             pfMsg('', true);
             if (p.role === 'owner' || p.role === 'admin') {
