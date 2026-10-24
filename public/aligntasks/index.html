@@ -4082,6 +4082,7 @@
                 // 🎯 Team tasks: server-gated + server-stamped.
                 //    Personal tasks and project sub-tasks keep their existing path.
                 if (taskType === 'tasks' || taskType === 'tasks_for_all') {
+                    if (!teamCtx.teamId) { checkbox.checked = !isChecked; alert('No team selected — reload the page and try again.'); return; }
                     if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) {
                         checkbox.checked = !isChecked;
                         return;

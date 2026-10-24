@@ -581,6 +581,9 @@ export function registerAlignRoutes(app) {
     try {
       const b = req.body || {};
       const teamId = sstr(b.teamId, 80);
+      // A task without a team id is invisible to everyone and breaks the board's
+      // team-scoped read rule, so never accept one.
+      if (!teamId) return bad(res, 'No team selected. Reload the page and try again.');
 
       const desc = sstr(b.description, 1000).trim();
       if (!desc) return bad(res, 'Describe the task.');
@@ -639,13 +642,14 @@ export function registerAlignRoutes(app) {
       const cur = await ref.get();
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
-      if (existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
+      if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
       if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
         return bad(res, 'This task belongs to someone else.', 403);
       }
 
       const stamp = stampOf(req.staff);
       const patch = { updatedAt: Date.now(), updatedByUid: stamp.uid, updatedByName: stamp.name };
+      if (!existing.teamId) patch.teamId = teamId;
       if (b.description !== undefined) patch.description = sstr(b.description, 1000);
       if (b.dueDate !== undefined) patch.dueDate = sstr(b.dueDate, 40);
       if (b.priority !== undefined) patch.priority = sstr(b.priority, 20);
@@ -700,7 +704,7 @@ export function registerAlignRoutes(app) {
       const cur = await ref.get();
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
-      if (existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
+      if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
       if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
         return bad(res, 'This task belongs to someone else.', 403);
       }
@@ -735,7 +739,7 @@ export function registerAlignRoutes(app) {
       const cur = await ref.get();
       if (!cur.exists) return bad(res, 'Task not found.', 404);
       const existing = cur.data() || {};
-      if (existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
+      if (existing.teamId && existing.teamId !== teamId) return bad(res, 'That task belongs to another team.', 403);
       if (kind === 'assigned' && existing.assigneeUid && existing.assigneeUid !== req.staff.uid && req.staff.role !== 'owner') {
         return bad(res, 'This task belongs to someone else.', 403);
       }
