@@ -2739,26 +2739,29 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
 }
 
 // Everything about a task in one place — same content as the ⓘ tooltip on the web board.
+private fun stampText(v: Any?, sdf: SimpleDateFormat): String = when (v) {
+    null -> ""
+    is com.google.firebase.Timestamp -> sdf.format(v.toDate())
+    is Date -> sdf.format(v)
+    is Long -> sdf.format(Date(v))
+    is String -> v
+    else -> ""
+}
+
+@Composable
+private fun SheetRow(label: String, value: String) {
+    if (value.isBlank()) return
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(0.55f),
+            modifier = Modifier.width(96.dp))
+        Text(value, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
 @Composable
 fun TaskDetailsSheet(task: Task, isDone: Boolean) {
     val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
-    fun stampText(v: Any?): String = when (v) {
-        null -> ""
-        is com.google.firebase.Timestamp -> sdf.format(v.toDate())
-        is Date -> sdf.format(v)
-        is Long -> sdf.format(Date(v))
-        is String -> v
-        else -> ""
-    }
-    fun row(label: String, value: String) {
-        if (value.isBlank()) return
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(0.55f),
-                modifier = Modifier.width(96.dp))
-            Text(value, style = MaterialTheme.typography.bodySmall)
-        }
-    }
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Text(
             text = task.description.ifBlank { "Task" },
@@ -2766,19 +2769,19 @@ fun TaskDetailsSheet(task: Task, isDone: Boolean) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )
         Spacer(Modifier.height(4.dp))
-        row("👥 Assigned", task.assigneeName.ifBlank { task.assigneeEmail.substringBefore('@') }.ifBlank { "Anyone can do it" })
-        row("🗓 Due", task.dueDate?.let { formatDueDate(it) } ?: "")
-        row("🖊 Created", listOf(task.createdBy.substringBefore('@'), stampText(task.createdAt)).filter { it.isNotBlank() }.joinToString(" · "))
+        SheetRow("👥 Assigned", task.assigneeName.ifBlank { task.assigneeEmail.substringBefore('@') }.ifBlank { "Anyone can do it" })
+        SheetRow("🗓 Due", task.dueDate?.let { formatDueDate(it) } ?: "")
+        SheetRow("🖊 Created", listOf(task.createdBy.substringBefore('@'), stampText(task.createdAt, sdf)).filter { it.isNotBlank() }.joinToString(" · "))
         val editedBy = task.editedByName.ifBlank { task.updatedByName }
         if (editedBy.isNotBlank()) {
             val what = if (task.editedFields.isNotEmpty()) " (" + task.editedFields.joinToString(", ") + ")" else ""
-            row("✏️ Edited", listOf(editedBy.substringBefore('@'), stampText(task.editedAt ?: task.lastUpdatedAt)).filter { it.isNotBlank() }.joinToString(" · ") + what)
+            SheetRow("✏️ Edited", listOf(editedBy.substringBefore('@'), stampText(task.editedAt ?: task.lastUpdatedAt, sdf)).filter { it.isNotBlank() }.joinToString(" · ") + what)
         }
         if (isDone) {
-            row("✅ Finished", listOf(task.completedBy?.substringBefore('@') ?: "", stampText(task.completedAt)).filter { it.isNotBlank() }.joinToString(" · "))
+            SheetRow("✅ Finished", listOf(task.completedBy?.substringBefore('@') ?: "", stampText(task.completedAt, sdf)).filter { it.isNotBlank() }.joinToString(" · "))
         }
-        row("💬 Comments", if (task.comments.isEmpty()) "" else task.comments.size.toString())
-        row("🔁 Repeats", task.repeatType.takeIf { it != "none" } ?: "")
+        SheetRow("💬 Comments", if (task.comments.isEmpty()) "" else task.comments.size.toString())
+        SheetRow("🔁 Repeats", task.repeatType.takeIf { it != "none" } ?: "")
         Spacer(Modifier.height(8.dp))
     }
 }
