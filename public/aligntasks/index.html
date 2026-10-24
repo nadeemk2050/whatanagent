@@ -4187,12 +4187,15 @@
     (function () {
         const API = 'https://whatanagent.duckdns.org/api/align';
         const SKEY = 'align_staff_session';
+        const SNAME = 'align_staff_name';
         const UKEY = 'align_team_unlock';   // { teamId: { token, expiresAt } }
 
         const $ = (id) => document.getElementById(id);
 
         function getSession() { try { return localStorage.getItem(SKEY) || ''; } catch (e) { return ''; } }
         function setSession(t) { try { t ? localStorage.setItem(SKEY, t) : localStorage.removeItem(SKEY); } catch (e) {} }
+        function getSessionName() { try { return localStorage.getItem(SNAME) || ''; } catch (e) { return ''; } }
+        function setSessionName(n) { try { n ? localStorage.setItem(SNAME, n) : localStorage.removeItem(SNAME); } catch (e) {} }
 
         // The app keeps its Firebase user in a script-scoped variable, so read it from
         // the auth SDK instead of window.currentUser (which is never set).
@@ -4353,6 +4356,7 @@
             const d = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(d.error || 'Login failed');
             setSession(d.session);
+            setSessionName((d.staff && (d.staff.name || d.staff.handle)) || name);
 
             // Give the browser a real Firebase identity as well (best effort).
             if (d.customToken) {
@@ -4425,6 +4429,7 @@
             if (gateMode === 'confirm') {
                 // Hand the device to another team member.
                 setSession('');
+                setSessionName('');
                 confirmStaff = null;
                 try { localStorage.removeItem(UKEY); } catch (e) {}
                 try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
@@ -4473,15 +4478,18 @@
             confirmStaff = null;
             if (getSession()) {
                 try {
-                    const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': getSession() } });
+                    const r = await fetch(API + '/staff/me?_t=' + Date.now(), { headers: { 'x-align-session': getSession() }, cache: 'no-store' });
                     if (r.ok) { const d = await r.json(); confirmStaff = d.staff || null; }
-                } catch (e) { /* offline: fall through to the full login */ }
+                    else if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); }
+                } catch (e) {
+                    // Network hiccup must never throw the person out — fall back to the stored name.
+                    if (getSessionName()) confirmStaff = { name: getSessionName() };
+                }
             }
             if (confirmStaff) {
                 loadProfile();
                 showGate('confirm');
             } else {
-                setSession('');
                 showGate('login');
             }
         }, 300);
