@@ -4550,6 +4550,7 @@
 
         // -------- owner: team logins (name + password accounts) --------
         let staffAdminList = [];
+        let staffEditing = '';
         async function loadStaffAdmin() {
             const d = await api('/team/staff');
             const list = d.staff || [];
@@ -4561,32 +4562,51 @@
                     ? '<span style="color:#15803d;font-weight:700;">password set</span>'
                     : '<span style="color:#b45309;font-weight:700;">no password</span>';
                 const off = s.active === false ? ' <span style="color:#b91c1c;font-weight:700;">· disabled</span>' : '';
-                return '<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px;">' +
-                    '<div style="flex:1;min-width:0;">' +
+                const head = '<div style="flex:1;min-width:0;">' +
                         '<div style="font-size:12.5px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (s.name || s.handle) + (s.role === 'owner' ? ' 👑' : '') + off + '</div>' +
                         '<div style="font-size:10.5px;color:#64748b;">@' + s.handle + ' · ' + s.role + ' · ' + badge + '</div>' +
-                    '</div>' +
-                    '<button data-staff-pass="' + s.handle + '" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔑</button>' +
-                    '<button data-staff-toggle="' + s.handle + '" data-staff-active="' + (s.active !== false) + '" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">' + (s.active === false ? '✅' : '⛔') + '</button>' +
-                    (s.role === 'owner' ? '' : '<button data-staff-del="' + s.handle + '" style="padding:5px 8px;background:#fff;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;color:#b91c1c;cursor:pointer;">🗑</button>') +
+                    '</div>';
+                if (staffEditing === s.handle) {
+                    return '<div style="display:flex;align-items:center;gap:6px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px;padding:7px 9px;">' +
+                        '<div style="flex:1;min-width:0;font-size:12px;font-weight:700;color:#1e293b;">' + (s.name || s.handle) + '</div>' +
+                        '<input id="pfInlinePw" type="password" placeholder="new password" style="width:118px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;box-sizing:border-box;">' +
+                        '<button data-staff-save="' + s.handle + '" style="padding:6px 9px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;">Save</button>' +
+                        '<button data-staff-cancel="1" style="padding:6px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">✖</button>' +
+                    '</div>';
+                }
+                return '<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px;">' +
+                    head +
+                    '<button data-staff-pass="' + s.handle + '" title="Set password" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔑</button>' +
+                    '<button data-staff-toggle="' + s.handle + '" data-staff-active="' + (s.active !== false) + '" title="Enable / disable" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">' + (s.active === false ? '✅' : '⛔') + '</button>' +
+                    (s.role === 'owner' ? '' : '<button data-staff-del="' + s.handle + '" title="Remove login" style="padding:5px 8px;background:#fff;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;color:#b91c1c;cursor:pointer;">🗑</button>') +
                 '</div>';
             }).join('');
+            if (staffEditing) { const el = $('pfInlinePw'); if (el) el.focus(); }
         }
 
         $('pfStaffList').addEventListener('click', async (e) => {
             const passBtn = e.target.closest('[data-staff-pass]');
+            const saveBtn = e.target.closest('[data-staff-save]');
+            const cancelBtn = e.target.closest('[data-staff-cancel]');
             const togBtn = e.target.closest('[data-staff-toggle]');
             const delBtn = e.target.closest('[data-staff-del]');
             const findStaff = (h) => staffAdminList.find(x => x.handle === h) || { handle: h, name: h };
             try {
                 if (passBtn) {
-                    const h = passBtn.dataset.staffPass;
-                    const pw = prompt('New password for ' + h + ' (min 6 characters):');
-                    if (!pw) return;
+                    staffEditing = passBtn.dataset.staffPass;
+                    pfMsg('', true);
+                    await loadStaffAdmin();
+                } else if (cancelBtn) {
+                    staffEditing = '';
+                    await loadStaffAdmin();
+                } else if (saveBtn) {
+                    const h = saveBtn.dataset.staffSave;
+                    const pw = ($('pfInlinePw') || {}).value || '';
                     if (pw.length < 6) { pfMsg('Password must be at least 6 characters.', false); return; }
                     const s = findStaff(h);
                     await api('/team/staff', { method: 'POST', body: { handle: h, name: s.name || h, password: pw, role: s.role, active: s.active !== false } });
-                    pfMsg('✅ Password updated for ' + (s.name || h) + '.', true);
+                    staffEditing = '';
+                    pfMsg('✅ ' + (s.name || h) + ' can now sign in with that name and password.', true);
                     await loadStaffAdmin();
                 } else if (togBtn) {
                     const h = togBtn.dataset.staffToggle;
