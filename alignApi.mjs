@@ -54,6 +54,46 @@ function requireOwner(req, res, next) {
   next();
 }
 
+// Management (masters / user details / team password) is allowed either from a staff
+// session with owner·admin role, OR from a verified Firebase login that the board already
+// marks as owner·admin — so the owner does not have to pass the team gate to manage users.
+async function resolveManager(req) {
+  const s = sessionOf(req);
+  if (s) {
+    if (s.role !== 'owner' && s.role !== 'admin') return null;
+    return { kind: 'staff', uid: s.uid, handle: s.handle, name: s.name, role: s.role };
+  }
+  const raw = String(req.headers['x-firebase-token'] || '').trim();
+  if (!raw) return null;
+  let decoded;
+  try { decoded = await alignAuth().verifyIdToken(raw); } catch (e) { return null; }
+  const uid = decoded.uid;
+  const rec = getStaffByUid(uid);
+  if (rec && (rec.role === 'owner' || rec.role === 'admin')) {
+    return { kind: 'firebase', uid, handle: rec.handle, name: rec.name, role: rec.role };
+  }
+  try {
+    const snap = await alignDb().doc(`${ALIGN_BASE}/users/${uid}`).get();
+    if (snap.exists) {
+      const u = snap.data() || {};
+      const role = String(u.role || '');
+      if (role === 'owner' || role === 'admin') {
+        return { kind: 'firebase', uid, handle: String(u.name || decoded.email || uid), name: String(u.name || ''), role };
+      }
+    }
+  } catch (e) { /* storage not configured */ }
+  return null;
+}
+
+function requireManager(req, res, next) {
+  resolveManager(req).then(m => {
+    if (!m) return res.status(401).json({ ok: false, error: 'Sign in as the owner to manage team members.' });
+    req.staff = req.staff || { uid: m.uid, handle: m.handle, name: m.name, role: m.role };
+    req.manager = m;
+    next();
+  }).catch(() => res.status(401).json({ ok: false, error: 'Sign in as the owner to manage team members.' }));
+}
+
 // The team gate. Every task write calls this.
 function requireUnlock(req, res, teamId) {
   if (!teamId) { bad(res, 'A team is required.'); return null; }
@@ -274,7 +314,7 @@ export function registerAlignRoutes(app) {
     }
   });
 
-  app.post(api + '/team/password', requireStaff, requireOwner, (req, res) => {
+  app.post(api + '/team/password', requireManager, (req, res) => {
     try {
       const b = req.body || {};
       const out = setTeamPassword(sstr(b.teamId, 80), sstr(b.password, 200), { name: sstr(b.name, 60) });
@@ -340,11 +380,11 @@ export function registerAlignRoutes(app) {
   // ---- team staff management (owner session, no dashboard token needed) ----
   // This is the panel inside AlignTasks: the owner is already signed in with a
   // staff name + password, so requiring ADMIN_TOKEN here would be a second login.
-  app.get(api + '/team/staff', requireStaff, requireOwner, (req, res) => {
+  app.get(api + '/team/staff', requireManager, (req, res) => {
     res.json({ ok: true, staff: listStaff() });
   });
 
-  app.post(api + '/team/staff', requireStaff, requireOwner, async (req, res) => {
+  app.post(api + '/team/staff', requireManager, async (req, res) => {
     try {
       const b = req.body || {};
       const handle = normalizeHandle(b.handle || b.name);
@@ -382,7 +422,7 @@ export function registerAlignRoutes(app) {
         active: b.active,
         aliases: Array.isArray(b.aliases) ? b.aliases : undefined
       });
-      authAudit({ action: 'owner_staff_save', handle: saved.handle, note: 'by ' + req.staff.handle });
+      authAudit({ action: 'owner_staff_save', handle: saved.handle, note: 'by ' + (req.manager ? req.manager.handle : 'firebase-owner') });
       try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
       res.json({ ok: true, staff: saved });
     } catch (e) {
@@ -391,10 +431,10 @@ export function registerAlignRoutes(app) {
     }
   });
 
-  app.delete(api + '/team/staff/:handle', requireStaff, requireOwner, (req, res) => {
+  app.delete(api + '/team/staff/:handle', requireManager, (req, res) => {
     try {
       deleteStaff(req.params.handle);
-      authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + req.staff.handle });
+      authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + (req.manager ? req.manager.handle : 'firebase-owner') });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
   });
@@ -402,7 +442,7 @@ export function registerAlignRoutes(app) {
   // ---- edit a sub user (Settings -> Sub User Management -> Edit) ----
   // Saves name / email / WhatsApp / address / remarks and can reset the team-login
   // password. Guarded by the owner session AND an admin password (default "abcd").
-  app.post(api + '/team/staff/edit', requireStaff, requireOwner, async (req, res) => {
+  app.post(api + '/team/staff/edit', requireManager, async (req, res) => {
     try {
       const b = req.body || {};
       const expected = String(process.env.ALIGN_STAFF_EDIT_PASSWORD || 'abcd');

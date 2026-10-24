@@ -4328,6 +4328,14 @@
             );
             const s = getSession();
             if (s) headers['x-align-session'] = s;
+            // Management (masters / user details) is also allowed from the main email login:
+            // send the Firebase ID token so the server can verify the owner/admin identity.
+            if (/^\/(team\/staff|team\/password|auth\/audit)/.test(path)) {
+                try {
+                    const fu = (window.firebase && firebase.auth) ? firebase.auth().currentUser : null;
+                    if (fu) headers['x-firebase-token'] = await fu.getIdToken();
+                } catch (e) { /* ignore: the session may still authorise it */ }
+            }
             const teamId = opts.teamId || (window.teamCtx && window.teamCtx.teamId);
             if (teamId) {
                 const u = unlockFor(teamId);
@@ -4355,7 +4363,7 @@
                     const isTaskWrite = /^\/(task|personal)/.test(path);
                     throw new Error(isTaskWrite
                         ? 'Read-only — team sign in to create or edit tasks.'
-                        : 'Please sign in as the owner to manage team members.');
+                            : (data.error || 'Please sign in as the owner to manage team members.'));
                 }
                 setSession('');
                 showGate('login');

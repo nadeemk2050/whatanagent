@@ -36,6 +36,9 @@ function offlineResponse() {
 // undefined throws "Failed to convert value to 'Response'" in the page console.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;   // never intercept writes/POSTs
+  // Only http(s) can be cached; browser extensions inject chrome-extension:// requests
+  // into the page and caching those throws "Request scheme 'chrome-extension' is unsupported".
+  if (!/^https?:$/i.test(new URL(event.request.url).protocol)) return;
 
   const url = new URL(event.request.url);
   const isHtml = event.request.mode === 'navigate'
@@ -79,7 +82,10 @@ self.addEventListener('fetch', event => {
 
             caches.open(CACHE_NAME)
               .then(cache => {
-                cache.put(event.request, responseToCache);
+                // Only same-origin / http(s) requests can be cached; browser extensions
+                // (chrome-extension://…) and other schemes throw here.
+                if (!/^https?:$/i.test(new URL(event.request.url).protocol)) return;
+                cache.put(event.request, responseToCache).catch(() => {});
               })
               .catch(() => {});
 
