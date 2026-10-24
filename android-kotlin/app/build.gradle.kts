@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.3 - WhatsApp contacts: send a task reminder to any individual contact (favourites first, searchable list, star to save). The server now publishes a contacts index too."
+val releaseNotes = "2.4 - mandatory team login after the main sign-in (name + password), a full logout that clears both sessions, and the phone can now call the team APIs (WhatsApp + AI agents)."
 
 android {
     namespace = "com.assigntask.app"
@@ -35,8 +35,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.3"
+        versionCode = 12
+        versionName = "2.4"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

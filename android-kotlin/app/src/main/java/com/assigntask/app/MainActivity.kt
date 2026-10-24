@@ -133,6 +133,12 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(initialPage: String = "tasksForAll", vm: AppViewModel = viewModel()) {
     val authState by vm.authState.collectAsState()
     val error by vm.errorMessage.collectAsState()
+    val ctx = LocalContext.current
+
+    // Signing out anywhere = fully signed out (team session included).
+    LaunchedEffect(authState) {
+        if (authState is AuthState.LoggedOut) TeamSession.clear(ctx)
+    }
 
     Box(Modifier.fillMaxSize()) {
         when (val state = authState) {
@@ -140,10 +146,90 @@ fun AppRoot(initialPage: String = "tasksForAll", vm: AppViewModel = viewModel())
                 CircularProgressIndicator()
             }
             is AuthState.LoggedOut -> AuthScreen(vm)
-            is AuthState.LoggedIn -> MainAppScreen(vm, state.user, state.profile, initialPage)
+            is AuthState.LoggedIn -> {
+                // Strict rule (same as the web board): main login, then the team login — or log out.
+                var teamSignedIn by remember(state.user.uid) { mutableStateOf(TeamSession.isSignedIn(ctx)) }
+                if (!teamSignedIn) {
+                    TeamLoginGate(onSignedIn = { teamSignedIn = true }, onLogout = { vm.signOut() })
+                } else {
+                    MainAppScreen(vm, state.user, state.profile, initialPage)
+                }
+            }
         }
         // 2.0: check for a newer APK and offer a one-tap update (notification + dialog)
         AppUpdateGate()
+    }
+}
+
+@Composable
+fun TeamLoginGate(onSignedIn: () -> Unit, onLogout: () -> Unit) {
+    val ctx = LocalContext.current
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        if (busy || name.isBlank() || password.isBlank()) return
+        busy = true
+        error = null
+        kotlin.concurrent.thread {
+            try {
+                TeamSession.login(ctx, name.trim(), password)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    busy = false
+                    onSignedIn()
+                }
+            } catch (e: Exception) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    busy = false
+                    error = e.message ?: "Sign in failed"
+                }
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("🔐", fontSize = 44.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Team Login", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Enter your name and password — no email needed. Team sign-in is required to use the board.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = name, onValueChange = { name = it; error = null },
+                label = { Text("Your name") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = password, onValueChange = { password = it; error = null },
+                label = { Text("Password") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (error != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(onClick = { submit() }, enabled = !busy && name.isNotBlank() && password.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()) {
+                Text(if (busy) "Signing in…" else "Continue")
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = { TeamSession.clear(ctx); onLogout() }) { Text("Log out") }
+        }
     }
 }
 
