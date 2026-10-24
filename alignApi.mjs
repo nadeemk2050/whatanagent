@@ -155,7 +155,9 @@ async function ensureBoardUser(rec) {
     const data = {
       name: rec.name || rec.handle,
       email: String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase(),
-      role: rec.role === 'owner' ? 'owner' : (rec.role === 'admin' ? 'admin' : 'user'),
+      // The board UI enables its management screens for role 'admin', so an AlignTasks
+      // owner/admin must land there too (a member maps to 'user').
+      role: (rec.role === 'owner' || rec.role === 'admin') ? 'admin' : 'user',
       teamIds: rec.teamIds || [],
       active: rec.active !== false
     };
