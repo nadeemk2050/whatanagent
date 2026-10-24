@@ -94,6 +94,27 @@ function requireManager(req, res, next) {
   }).catch(() => res.status(401).json({ ok: false, error: 'Sign in as the owner to manage team members.' }));
 }
 
+// Team-member management (list, add, edit details, set/reveal passwords) is open to every
+// signed-in team member — not only the owner. `req.staff` comes from requireStaff, which
+// runs first. One guard stays: only an owner may change/remove an owner's record, so a
+// member can never lock the owner out.
+function requireStaffMember(req, res, next) {
+  if (!req.staff || !req.staff.handle) {
+    return res.status(401).json({ ok: false, error: 'Team sign in first — then you can manage team members.' });
+  }
+  next();
+}
+
+function isOwnerRecord(handle) {
+  const rec = getStaffByHandle(handle);
+  return !!(rec && (rec.role === 'owner' || rec.role === 'admin'));
+}
+
+function canTouchMember(req, handle) {
+  if (!isOwnerRecord(handle)) return true;
+  return !!(req.staff && (req.staff.role === 'owner' || req.staff.role === 'admin'));
+}
+
 const stampOf = (staff) => ({
   uid: staff.uid,
   handle: staff.handle,
@@ -346,15 +367,18 @@ export function registerAlignRoutes(app) {
   // ---- team staff management (owner session, no dashboard token needed) ----
   // This is the panel inside AlignTasks: the owner is already signed in with a
   // staff name + password, so requiring ADMIN_TOKEN here would be a second login.
-  app.get(api + '/team/staff', requireManager, (req, res) => {
+  app.get(api + '/team/staff', requireStaff, requireStaffMember, (req, res) => {
     res.json({ ok: true, staff: listStaff() });
   });
 
-  app.post(api + '/team/staff', requireManager, async (req, res) => {
+  app.post(api + '/team/staff', requireStaff, requireStaffMember, async (req, res) => {
     try {
       const b = req.body || {};
       const handle = normalizeHandle(b.handle || b.name);
       const name = sstr(b.name, 60).trim();
+      if (isOwnerRecord(handle) && !canTouchMember(req, handle)) {
+        return bad(res, 'Only an owner can change another owner’s login.', 403);
+      }
       const password = sstr(b.password, 200);
       if (!handle || !name) return bad(res, 'A name is required.');
       if (handle.length < 2) return bad(res, 'Name must be at least 2 characters.');
@@ -397,39 +421,47 @@ export function registerAlignRoutes(app) {
     }
   });
 
-  app.delete(api + '/team/staff/:handle', requireManager, (req, res) => {
+  app.delete(api + '/team/staff/:handle', requireStaff, requireStaffMember, (req, res) => {
     try {
+      if (isOwnerRecord(req.params.handle) && !canTouchMember(req, req.params.handle)) {
+        return bad(res, 'Only an owner can remove another owner’s login.', 403);
+      }
       deleteStaff(req.params.handle);
-      authAudit({ action: 'owner_staff_delete', handle: req.params.handle, note: 'by ' + (req.manager ? req.manager.handle : 'firebase-owner') });
+      authAudit({ action: 'staff_delete', handle: req.params.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
   });
 
-  // ---- owner: reveal a member's team-login password (forgotten-password recovery) ----
-  app.post(api + '/team/staff/reveal', requireManager, (req, res) => {
+  // ---- reveal a member's team-login password (forgotten-password recovery) ----
+  app.post(api + '/team/staff/reveal', requireStaff, requireStaffMember, (req, res) => {
     try {
       const handle = sstr((req.body || {}).handle, 60).trim();
       if (!handle) return bad(res, 'Which member?');
       const out = revealStaffPassword(handle);
-      authAudit({ action: 'owner_password_reveal', handle: out.handle, note: 'by ' + (req.manager ? req.manager.handle : 'manager') });
+      authAudit({ action: 'password_reveal', handle: out.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true, ...out });
     } catch (e) { bad(res, e.message); }
   });
 
-  // ---- edit a sub user (Settings -> Sub User Management -> Edit) ----
+  // ---- edit a sub user (Settings -> Team Members -> Edit, and the profile dialog) ----
   // Saves name / email / WhatsApp / address / remarks and can reset the team-login
-  // password. Guarded by the owner session AND an admin password (default "abcd").
-  app.post(api + '/team/staff/edit', requireManager, async (req, res) => {
+  // password. Any signed-in team member may do this; the admin password is still accepted
+  // when the deployment sets ALIGN_STAFF_EDIT_PASSWORD, but the verified team session is
+  // the real credential.
+  app.post(api + '/team/staff/edit', requireStaff, requireStaffMember, async (req, res) => {
     try {
       const b = req.body || {};
-      const expected = String(process.env.ALIGN_STAFF_EDIT_PASSWORD || 'abcd');
-      if (String(b.adminPassword || '') !== expected) {
-        authAudit({ action: 'owner_subuser_edit_denied', handle: sstr(b.handle, 60), note: 'wrong admin password' });
+      const expected = process.env.ALIGN_STAFF_EDIT_PASSWORD ? String(process.env.ALIGN_STAFF_EDIT_PASSWORD) : '';
+      if (expected && b.adminPassword && String(b.adminPassword) !== expected) {
+        authAudit({ action: 'subuser_edit_denied', handle: sstr(b.handle, 60), note: 'wrong admin password' });
         return bad(res, 'Wrong admin password. Nothing was saved.', 403);
       }
       const handle = sstr(b.handle, 60).trim();
       const name = sstr(b.name, 60).trim();
       if (!name) return bad(res, 'A name is required.');
+      if ((handle || name) && !canTouchMember(req, handle || name)) {
+        return bad(res, 'Only an owner can change another owner’s details.', 403);
+      }
       const email = sstr(b.email, 120).trim();
       const password = sstr(b.password, 200);
       if (password && password.length < 6) return bad(res, 'Password must be at least 6 characters.');

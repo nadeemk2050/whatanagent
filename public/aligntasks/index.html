@@ -380,7 +380,7 @@
                                 style="position:absolute;right:6px;top:50%;transform:translateY(-50%);margin-top:4px;background:#eef2ff;color:#3730a3;border:none;border-radius:7px;padding:5px 9px;font-size:11px;font-weight:800;cursor:pointer;">👁 Show</button>
                     </div>
                 </div>
-                <div><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
+                <div><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(optional — only needed if the owner set one)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" placeholder="Leave empty" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div>
             </form>
             <div class="px-5 py-3 border-t bg-gray-50 shrink-0">
                 <div id="edit-staff-msg" class="text-xs mb-2 hidden"></div>
@@ -1248,10 +1248,12 @@
                     badge.innerHTML = '';
                     badge.className = 'hidden';
                 }
+                // Team members may be viewed and edited by everyone (the server allows any
+                // signed-in member), so this entry is no longer owner-only.
                 const sub = document.getElementById('menu-add-subusers');
-                if (sub) sub.classList.toggle('hidden', !owner);
+                if (sub) sub.classList.remove('hidden');
                 const staffSection = document.getElementById('staff-management-section');
-                if (staffSection) staffSection.classList.toggle('hidden', !owner);
+                if (staffSection) staffSection.classList.remove('hidden');
                 const projTitle = document.getElementById('projects-section-title');
                 if (projTitle) projTitle.textContent = owner ? 'All Projects' : 'My Assigned Projects';
                 const indTitle = document.getElementById('individual-tasks-title');
@@ -3253,7 +3255,7 @@
                 unsub = boardScope('staff').onSnapshot(
                     snap => {
                         staffListCache = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-                        if (isOwner()) renderStaffList(staffListCache);
+                        renderStaffList(staffListCache);
                         renderAssigneeFilter();
                         applyTaskFilters();
                     },
@@ -3647,6 +3649,9 @@
             menuAddSubusers.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 showMainSection('settings-page');
+                // anyone may now view/edit team members: make sure the panel is visible
+                const staffSection = document.getElementById('staff-management-section');
+                if (staffSection) staffSection.classList.remove('hidden');
             });
             document.getElementById('menu-scheduled-reminders').addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
@@ -5365,11 +5370,10 @@
                   teams.map(t => '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700;margin:0 4px 4px 0;">' + esc(teamLabel(t)) + '</span>').join('')
                 : '<div style="font-size:11px;color:#94a3b8;">No teams assigned yet — ask the owner.</div>';
             pfMsg('', true);
-            if (p.role === 'owner' || p.role === 'admin') {
+            // Team members can be managed by any signed-in member now.
+            if ($('pfStaffAdmin')) {
                 $('pfStaffAdmin').style.display = 'block';
                 loadStaffAdmin().catch(() => {});
-            } else {
-                $('pfStaffAdmin').style.display = 'none';
             }
         }
 
