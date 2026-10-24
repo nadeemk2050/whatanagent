@@ -706,6 +706,83 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // ============================================================ push notifications
+  // Web Push: the phone/laptop gets a real notification even when the app is closed.
+  let pushModCache = null;
+  const pushMod = async () => (pushModCache || (pushModCache = await import('./alignPush.mjs')));
+
+  // Which identities does this staff member answer to? Task reminders address people by board
+  // email (or handle), so a device is registered under every alias it can be reached on.
+  async function pushIdentities(req) {
+    const staff = (req && req.staff) || {};
+    const emails = new Set();
+    const add = (v) => { const e = String(v || '').trim().toLowerCase(); if (e) emails.add(e); };
+    add(staff.handle);
+    add(staff.handle ? staff.handle + '@staff.align.internal' : '');
+    (Array.isArray(staff.aliases) ? staff.aliases : []).forEach(add);
+    try {
+      const snap = await board('staff').where('teamId', '==', (req.teamId || '')).limit(100).get();
+      snap.forEach(d => {
+        const v = d.data() || {};
+        const h = String(v.handle || '').toLowerCase();
+        const nm = String(v.name || '').toLowerCase();
+        if (h === String(staff.handle || '').toLowerCase() || nm === String(staff.name || '').toLowerCase()) {
+          add(v.email);
+          add(h);
+        }
+      });
+    } catch (e) { /* team directory is optional */ }
+    if (staff.uid) {
+      try {
+        const u = await alignDb().doc(`${ALIGN_BASE}/users/${staff.uid}`).get();
+        if (u.exists) add((u.data() || {}).email);
+      } catch (e) { /* ignore */ }
+    }
+    return { uid: staff.uid || '', name: staff.name || staff.handle || '', emails: Array.from(emails) };
+  }
+
+  app.get(api + '/push/key', requireStaff, async (req, res) => {
+    try {
+      const p = await pushMod();
+      res.json({ ok: true, key: p.pushPublicKey() });
+    } catch (e) { bad(res, sstr(e.message, 160)); }
+  });
+
+  app.post(api + '/push/subscribe', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const p = await pushMod();
+      const who = await pushIdentities(req);
+      const id = await p.savePushSubscription(b.subscription || b, Object.assign({ ua: b.ua || '' }, who));
+      authAudit({ action: 'push_subscribe', handle: req.staff.handle, note: who.emails.join(', ').slice(0, 120) });
+      res.json({ ok: true, id, emails: who.emails });
+    } catch (e) { bad(res, sstr(e.message, 160)); }
+  });
+
+  app.post(api + '/push/unsubscribe', requireStaff, async (req, res) => {
+    try {
+      const p = await pushMod();
+      const endpoint = sstr((req.body || {}).endpoint, 500);
+      if (!endpoint) return bad(res, 'Which device?');
+      await p.removePushSubscription(endpoint);
+      res.json({ ok: true });
+    } catch (e) { bad(res, sstr(e.message, 160)); }
+  });
+
+  app.post(api + '/push/test', requireStaff, async (req, res) => {
+    try {
+      const p = await pushMod();
+      const who = await pushIdentities(req);
+      const r = await p.sendPush({
+        title: '🔔 AlignTasks notifications work',
+        body: 'This is a test. Task reminders will arrive here even when the app is closed.',
+        url: '/aligntasks/',
+        tag: 'align-test'
+      }, { email: who.emails[0] });
+      res.json({ ok: true, ...r, emails: who.emails });
+    } catch (e) { bad(res, sstr(e.message, 160)); }
+  });
+
   // ============================================================ personal tasks
   // Private to the signed-in staff member. No team gate; never shared.
   app.get(api + '/personal', requireStaff, async (req, res) => {

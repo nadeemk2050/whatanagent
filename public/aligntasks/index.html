@@ -152,6 +152,7 @@
                                 <button id="menu-team-settings" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">⚙️ Team Settings &amp; Invites</button>
                                 <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
                                 <button id="menu-group-updates" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📢 Group Updates</button>
+                                <button id="menu-push-notify" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">🔔 Push notifications</button>
                                 <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
                             </div>
                         </div>
@@ -2540,6 +2541,78 @@
                     }
                 } catch (err) { alert('Could not delete the task: ' + err.message); }
             });
+
+            // ===== 🔔 Web Push — phone/laptop alerts even when the app is closed =====
+            function pushSupported() {
+                return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+            }
+            function urlBase64ToUint8Array(base64String) {
+                const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+                const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+                const raw = atob(base64);
+                const out = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+                return out;
+            }
+            async function pushStatus() {
+                if (!pushSupported()) return { supported: false, on: false, permission: 'unsupported' };
+                let on = false;
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    on = !!(await reg.pushManager.getSubscription());
+                } catch (e) { /* ignore */ }
+                return { supported: true, on: on, permission: Notification.permission };
+            }
+            async function enablePush(silent, withTest) {
+                if (!pushSupported()) { if (!silent) alert('This browser cannot show push notifications.'); return false; }
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') { if (!silent) alert('Notifications are blocked for this site — allow them in the browser settings and try again.'); return false; }
+                const reg = await navigator.serviceWorker.ready;
+                const keyRes = await window.alignApi('/push/key');
+                if (!keyRes || !keyRes.key) { if (!silent) alert('The server has no push key yet — try again in a moment.'); return false; }
+                let sub = await reg.pushManager.getSubscription();
+                if (!sub) {
+                    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(keyRes.key) });
+                }
+                await window.alignApi('/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON ? sub.toJSON() : sub, ua: navigator.userAgent } });
+                if (withTest) { try { await window.alignApi('/push/test', { method: 'POST' }); } catch (e) { /* ignore */ } }
+                return true;
+            }
+            async function disablePush() {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    const sub = await reg.pushManager.getSubscription();
+                    if (sub) {
+                        try { await window.alignApi('/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }); } catch (e) { /* ignore */ }
+                        await sub.unsubscribe();
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            async function togglePushNotifications() {
+                const st = await pushStatus();
+                if (!st.supported) { alert('This browser cannot show push notifications.'); return; }
+                if (st.on) {
+                    await disablePush();
+                    alert('🔕 Push notifications are off for this device.');
+                    return;
+                }
+                try {
+                    const ok = await enablePush(false, true);
+                    if (ok) alert('🔔 Notifications are on for this device.\nYou will now get task reminders even when the app is closed (a test notification was sent).');
+                } catch (e) {
+                    alert('❌ Could not enable notifications: ' + (e.message || e));
+                }
+            }
+            // Only auto-register when the person already allowed notifications — never nag.
+            async function autoPushRegister() {
+                if (!pushSupported() || Notification.permission !== 'granted') return;
+                const st = await pushStatus();
+                if (st.on) return;
+                try { await enablePush(true, false); } catch (e) { /* ignore */ }
+            }
+            window.alignAutoPush = autoPushRegister;
+            const menuPush = document.getElementById('menu-push-notify');
+            if (menuPush) menuPush.addEventListener('click', () => { togglePushNotifications(); });
 
             // --- Password Confirmation Modal Logic ---
             let passwordResolve = null;
@@ -5723,12 +5796,14 @@
                     hideGate();
                     loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
+                    setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
                 } else {
                     // Confirm: the identity stays, straight in.
                     gateBootDone = true;
                     hideGate();
                     loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
+                    setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
                 }
             } catch (err) {
                 er.textContent = err.message;

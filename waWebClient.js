@@ -18,6 +18,7 @@ import { evaluateReplyPolicy, recordUsage } from './officeControls.mjs';
 import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, enforceScript as romaniseScript } from './ruleBook.mjs';
+import { sendPush } from './alignPush.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
 import { alignDb, ALIGN_BASE } from './alignAdmin.mjs';
 import { listStaff as alignStaffList, getStaffByHandle as alignStaffByHandle } from './alignAuth.mjs';
@@ -1622,7 +1623,23 @@ async function alignNotifyTick() {
     const now = Date.now();
     for (const entry of Array.from(alignTasksCache.values())) {
       const v = entry.data || {};
-      if (!v || v.status === 'Done' || v.reminderSentAt) continue;
+      if (!v || v.status === 'Done' || v.reminderSentAt) {
+        // 2a) quiet pre-alert: push 60 min before the due time (nothing else)
+        if (v && v.status !== 'Done' && !v.preAlertSentAt) {
+          const duePre = alignTaskDueMs(v);
+          const aePre = String(v.assigneeEmail || '').toLowerCase();
+          if (duePre && duePre > now && (duePre - now) <= 60 * 60 * 1000 && aePre) {
+            sendPush({
+              title: '⏳ Due in ' + Math.round((duePre - now) / 60000) + ' min',
+              body: String(v.description || 'Task').slice(0, 90),
+              url: '/aligntasks/', tag: 'pre-' + entry.ref.id
+            }, { email: aePre }).catch(() => {});
+            await alignSetDoc(entry.ref, { preAlertSentAt: now }).catch(() => {});
+            v.preAlertSentAt = now;
+          }
+        }
+        continue;
+      }
       const dueMs = alignTaskDueMs(v);
       if (!dueMs || dueMs > now) continue;
       if (dueMs < now - 24 * 3600 * 1000) continue;   // older than a day - skip silently
@@ -1644,15 +1661,52 @@ async function alignNotifyTick() {
       const dueStr = new Date(dueMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
       const msg = '⏰ *AlignTasks — Due Reminder*\n\n📋 "' + String(v.description || '').substring(0, 140) + '"\n🗓️ Due: ' + dueStr + ' (Dubai)' +
         (ae ? '' : '\n👥 General task (for everyone)') +
-        '\n👉 Please update the board when done.';
+        '\n\nReply *DONE* when finished · *ON IT* · *SNOOZE 1h*';
       try {
-        await sendWaWebMessage(target + '@s.whatsapp.net', msg);
-        await alignSetDoc(entry.ref, { reminderSentAt: now });
+        const sent = await sendWaWebMessage(target + '@s.whatsapp.net', msg);
+        await alignSetDoc(entry.ref, { reminderSentAt: now, ackState: 'awaiting' });
+        if (sent && sent.messageId) reminderWaIndex.set(sent.messageId, { taskId: entry.ref.id, kind: entry.src, email: ae });
+        if (ae) {
+          sendPush({
+            title: '⏰ Task due now',
+            body: String(v.description || 'Task').slice(0, 90) + ' · reply DONE on WhatsApp',
+            url: '/aligntasks/', tag: 'due-' + entry.ref.id, priority: 'high'
+          }, { email: ae }).catch(() => {});
+        }
         console.log('[ALIGN WA] ⏰ Due reminder sent to +' + target + ' (' + targetName + ') for "' + String(v.description || '').substring(0, 50) + '"');
       } catch (e) {
         console.warn('[ALIGN WA] due reminder send failed:', (e && e.message) || e);
       }
     }
+    // 2c) gentle nudge: reminded, not acknowledged, not snoozed — 30 min later, max 2, never at night
+    if (!alignQuietNow()) {
+      for (const entry of Array.from(alignTasksCache.values())) {
+        const v = entry.data || {};
+        if (!v || v.status === 'Done' || !v.reminderSentAt) continue;
+        if (v.ackState === 'ack' || v.ackState === 'snoozed' || v.ackState === 'done') continue;
+        if (v.snoozedUntil && v.snoozedUntil > now) continue;
+        if ((v.nudgeCount || 0) >= 2) continue;
+        if (now - v.reminderSentAt < 30 * 60 * 1000) continue;
+        if (v.lastNudgeAt && now - v.lastNudgeAt < 90 * 60 * 1000) continue;
+        const ae = String(v.assigneeEmail || '').toLowerCase();
+        const who = alignStaffWaMap.get(ae);
+        if (!ae || !who || !who.wa) continue;
+        if (!alignAlertBudget(ae)) continue;
+        const nudge = '⏰ Gentle reminder — still pending:\n📋 "' + String(v.description || '').substring(0, 120) + '"' +
+          (alignTaskDueMs(v) ? '\n🗓️ Due: ' + new Date(alignTaskDueMs(v)).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '') +
+          '\n\nReply *DONE* when finished · *ON IT* · *SNOOZE 1h* · *PENDING* for the list';
+        try {
+          await sendWaWebMessage(String(who.wa) + '@s.whatsapp.net', nudge);
+          await alignSetDoc(entry.ref, { nudgeCount: (v.nudgeCount || 0) + 1, lastNudgeAt: now }).catch(() => {});
+          v.nudgeCount = (v.nudgeCount || 0) + 1;
+          v.lastNudgeAt = now;
+          sendPush({ title: '⏰ Still pending', body: String(v.description || 'Task').slice(0, 90), url: '/aligntasks/', tag: 'nudge-' + entry.ref.id }, { email: ae }).catch(() => {});
+          console.log('[ALIGN ALERT] gentle nudge → ' + (who.name || ae));
+        } catch (e) { /* keep quiet */ }
+      }
+    }
+    // 2d) morning plan / evening wrap-up digests
+    await maybeSendDailyDigest();
     // 3) scheduled reminders (alignWaSchedules) - fire every due occurrence (once / N times / until a date)
     if (!alignSchedBusy) {
       alignSchedBusy = true;
@@ -1694,6 +1748,204 @@ function initAlignNotifySystem(db) {
     console.log('[ALIGN WA] 🔔 AlignTasks→WhatsApp notification system ACTIVE (due-date reminders + instant reminder queue + group reminders + scheduled reminders + completion announcements + weekly summaries)');
   } catch (e) {
     console.warn('[ALIGN WA] init failed:', e.message);
+  }
+}
+
+// ================= 🔔 GENTLE ALERT LADDER (push → WhatsApp → one nudge) =================
+// Boss-chosen design: no group mentions, no phone calls. Order for any pending task:
+//   1. 60 min before due  → quiet Web Push (phone/lock screen)
+//   2. at due time        → WhatsApp to the assignee (+ push)
+//   3. +30 min no "ON IT" → ONE gentle WhatsApp nudge + push (max 2, never at night)
+// Replies from the member are parsed here: DONE 2 / ON IT / SNOOZE 1h / PENDING.
+const ALIGN_QUIET_FROM = 21;   // 21:00 → 08:00 Dubai: no nudges, no digests
+const ALIGN_QUIET_TO = 8;
+const ALIGN_MAX_ALERTS_PER_DAY = 5;
+let alignDigestTimer = null;
+const alignAlertCounts = new Map();          // "email|YYYY-MM-DD" -> count
+const alignHandledMsgIds = new Set();        // replies we already answered (AI must stay quiet)
+const reminderWaIndex = new Map();           // wa message id -> { taskId, kind, email }
+
+function alignDubaiHour(ms = Date.now()) {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', hour12: false }).format(new Date(ms)));
+}
+function alignDubaiDay(ms = Date.now()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+}
+function alignQuietNow() { const h = alignDubaiHour(); return h >= ALIGN_QUIET_FROM || h < ALIGN_QUIET_TO; }
+function alignAlertBudget(email) {
+  const key = String(email || '') + '|' + alignDubaiDay();
+  const n = alignAlertCounts.get(key) || 0;
+  if (n >= ALIGN_MAX_ALERTS_PER_DAY) return false;
+  alignAlertCounts.set(key, n + 1);
+  return true;
+}
+function alignEmailByPhone(phone) {
+  const p = String(phone || '').replace(/[^0-9]/g, '');
+  if (!p) return '';
+  for (const [email, v] of alignStaffWaMap.entries()) {
+    const wa = String((v && v.wa) || '');
+    if (wa && (wa === p || wa.endsWith(p) || p.endsWith(wa))) return email;
+  }
+  return '';
+}
+function alignPendingFor(email) {
+  const e = String(email || '').toLowerCase();
+  const rows = [];
+  for (const [id, entry] of alignTasksCache.entries()) {
+    const v = (entry && entry.data) || {};
+    if (String(v.assigneeEmail || '').toLowerCase() !== e) continue;
+    if (v.status === 'Done') continue;
+    rows.push({
+      taskId: id,
+      kind: entry.src === 'tasks' ? 'assigned' : 'shared',
+      desc: String(v.description || '').slice(0, 90),
+      dueMs: alignTaskDueMs(v) || 0
+    });
+  }
+  rows.sort((a, b) => (a.dueMs || 9e15) - (b.dueMs || 9e15));
+  return rows;
+}
+async function alignDigestRef(email) {
+  const id = String(email).toLowerCase().replace(/[^a-z0-9@._-]/g, '_').slice(0, 120) + '_' + alignDubaiDay();
+  const ref = alignDb().collection('alignDigestDaily').doc(id);
+  const snap = await ref.get();
+  return { ref: ref, data: snap.exists ? (snap.data() || {}) : null };
+}
+async function alignTaskWrite(taskId, kind, patch) {
+  const col = kind === 'assigned' ? 'tasks' : 'tasks_for_all';
+  await alignDb().doc(ALIGNTASKS_BASE + '/' + col + '/' + taskId).set(patch, { merge: true });
+  const entry = alignTasksCache.get(taskId);
+  if (entry) entry.data = Object.assign({}, entry.data, patch);
+}
+function alignListLines(items) {
+  return items.slice(0, 10).map((it, i) => {
+    const due = it.dueMs ? new Date(it.dueMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    return (i + 1) + ') ' + String(it.desc || 'task').slice(0, 80) + (due ? ' — ' + due : '');
+  }).join('\n');
+}
+
+// Morning plan + evening wrap-up, once each per person per day.
+async function maybeSendDailyDigest() {
+  try {
+    if (!globalDb || waWebState.status !== 'connected') return;
+    if (alignQuietNow()) return;
+    const cfg = alignAnnounceConfig || {};
+    const nowHm = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+    const morningAt = String(cfg.morningTime || '08:30');
+    const eveningAt = String(cfg.eveningTime || '18:30');
+    const mins = (hm) => { const p = String(hm).split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0); };
+    const nowMin = mins(nowHm);
+    const stages = [];
+    // A digest only goes out inside its one-hour window, so a server restart at 20:00 never
+    // blasts a "morning plan" to the whole team.
+    if (cfg.morningEnabled !== false && nowMin >= mins(morningAt) && nowMin < mins(morningAt) + 60) stages.push('morning');
+    if (cfg.eveningEnabled !== false && nowMin >= mins(eveningAt) && nowMin < mins(eveningAt) + 60) stages.push('evening');
+    if (!stages.length) return;
+    for (const [email, who] of alignStaffWaMap.entries()) {
+      if (!who || !who.wa) continue;
+      const items = alignPendingFor(email);
+      if (!items.length) continue;
+      const dg = await alignDigestRef(email).catch(() => null);
+      if (!dg) continue;
+      for (const stage of stages) {
+        if (dg.data && dg.data[stage + 'SentAt']) continue;
+        if (!alignAlertBudget(email)) break;
+        const head = stage === 'morning'
+          ? '🌅 *Good morning ' + String(who.name || '').split(' ')[0] + ' — your AlignTasks plan*'
+          : '🌙 *AlignTasks — still pending today*';
+        const msg = head + '\n\n' + alignListLines(items) +
+          '\n\nReply: *DONE 1* · *ON IT* · *SNOOZE 1h*' +
+          (stage === 'evening' ? '\n(Anything finished? just reply DONE with its number.)' : '');
+        try { await sendWaWebMessage(String(who.wa) + '@s.whatsapp.net', msg); } catch (e) { continue; }
+        await sendPush({
+          title: stage === 'morning' ? '🌅 Your tasks for today' : '🌙 Still pending',
+          body: items.length + ' pending task' + (items.length === 1 ? '' : 's') + (items[0] ? ' · ' + String(items[0].desc).slice(0, 60) : ''),
+          url: '/aligntasks/',
+          tag: 'digest-' + stage
+        }, { email });
+        await dg.ref.set({
+          email, date: alignDubaiDay(), name: who.name || '',
+          items: items.map(i => ({ taskId: i.taskId, kind: i.kind, desc: i.desc, dueMs: i.dueMs })),
+          [stage + 'SentAt']: Date.now(), updatedAt: Date.now()
+        }, { merge: true }).catch(() => {});
+        console.log('[ALIGN ALERT] ' + stage + ' digest → ' + (who.name || email) + ' (' + items.length + ' pending)');
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// DONE / ON IT / SNOOZE / PENDING replies from team members (before the AI ever sees them).
+const ALIGN_ACK_RE = /^\s*(done|finished|complete[d]?|on\s*it|onit|ack|ok|okay|got\s*it|working|snooze|mute|pending|status)\b/i;
+async function handleAlignStaffReply(msg) {
+  try {
+    if (!msg || !msg.key || msg.key.fromMe) return false;
+    const jid = msg.key.remoteJid || '';
+    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return false;
+    const parsed = parseMessageContent(msg);
+    const t = String((parsed && parsed.text) || '').trim();
+    if (!t || t.length > 140 || !ALIGN_ACK_RE.test(t)) return false;
+    const phone = (resolveRealPhoneNumber(jid) || jid.split('@')[0]).replace(/[^0-9]/g, '');
+    const email = alignEmailByPhone(phone);
+    if (!email) return false;
+    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
+    const who = (alignStaffWaMap.get(email) || {}).name || email.split('@')[0];
+    const low = t.toLowerCase();
+
+    const dg = await alignDigestRef(email).catch(() => null);
+    let items = (dg && dg.data && Array.isArray(dg.data.items)) ? dg.data.items.slice() : [];
+    if (!items.length) items = alignPendingFor(email);
+    if (!items.length) {
+      await sendWaWebMessage(jid, '✅ Nothing pending on your board right now — all clear.');
+      return true;
+    }
+    const nums = (t.match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= items.length);
+    const picked = nums.length ? nums.map(n => items[n - 1]).filter(Boolean) : (items.length === 1 ? [items[0]] : []);
+
+    if (/^snooze|^mute/.test(low)) {
+      const m = low.match(/(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)/);
+      let ms = 60 * 60 * 1000;
+      if (m) {
+        const n = parseInt(m[1], 10);
+        const u = m[2][0];
+        ms = n * (u === 'd' ? 86400000 : (u === 'h' ? 3600000 : 60000));
+      }
+      const targets = picked.length ? picked : items;
+      for (const it of targets) {
+        await alignTaskWrite(it.taskId, it.kind, { ackState: 'snoozed', snoozedUntil: Date.now() + ms, ackByName: who, ackAt: Date.now() }).catch(() => {});
+      }
+      await sendWaWebMessage(jid, '⏰ Muted ' + targets.length + ' task' + (targets.length === 1 ? '' : 's') + ' for ' + Math.round(ms / 60000) + ' min. I will not remind you before then.');
+      return true;
+    }
+
+    if (/^done|^finished|^complete/.test(low)) {
+      if (!picked.length) {
+        await sendWaWebMessage(jid, '📋 Which one is done?\n\n' + alignListLines(items) + '\n\nReply *DONE 1* (or DONE 1,3).');
+        return true;
+      }
+      for (const it of picked) {
+        await alignTaskWrite(it.taskId, it.kind, {
+          status: 'Done', completedAt: new Date(), completedByName: who, completedVia: 'whatsapp-reply', ackState: 'done'
+        }).catch(() => {});
+      }
+      await sendWaWebMessage(jid, '✅ Marked done: ' + picked.length + ' task' + (picked.length === 1 ? '' : 's') + '.\n' + picked.map(p => '• ' + String(p.desc).slice(0, 60)).join('\n') +
+        (items.length > picked.length ? '\n\nStill pending: ' + (items.length - picked.length) + '.' : '\n\nAll clear 🎉'));
+      return true;
+    }
+
+    if (/^pending|^status/.test(low)) {
+      await sendWaWebMessage(jid, '📋 *Your pending tasks*\n\n' + alignListLines(items) + '\n\nReply *DONE 1* · *ON IT* · *SNOOZE 1h*.');
+      return true;
+    }
+
+    // ON IT / OK / ACK → acknowledged: stop the nudges for these tasks.
+    const targets = picked.length ? picked : items;
+    for (const it of targets) {
+      await alignTaskWrite(it.taskId, it.kind, { ackState: 'ack', ackAt: Date.now(), ackByName: who }).catch(() => {});
+    }
+    await sendWaWebMessage(jid, '👍 Noted — I will not nudge you about ' + targets.length + ' task' + (targets.length === 1 ? '' : 's') + ' again today. Reply *DONE 1* when finished.');
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -4218,12 +4470,18 @@ export async function initWaWeb(db = null) {
           autoTranscribeMessageAudio(msg);
         });
 
+        // Team replies to AlignTasks reminders (DONE 2 / ON IT / SNOOZE 1h / PENDING) are handled
+        // here, before the AI sees them — so a staff reply is never answered as a customer chat.
+        m.messages.forEach(msg => { handleAlignStaffReply(msg).catch(() => {}); });
+
                 // Auto-Pilot AI Bot check for incoming customer messages
         if (waWebKnowledgeBase && waWebKnowledgeBase.autoReplyEnabled) {
           m.messages.forEach(async (msg) => {
             try {
               const remoteJid = msg.key ? msg.key.remoteJid : null;
               if (!remoteJid || remoteJid === 'status@broadcast') return;
+              // already answered as an AlignTasks staff reply (DONE / ON IT / SNOOZE)
+              if (msg.key && msg.key.id && alignHandledMsgIds.has(msg.key.id)) return;
 
               const cleanRemotePhone = (remoteJid || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
               const ownPhone = sock?.user?.id ? sock.user.id.split('@')[0].split(':')[0].replace(/[^0-9]/g, '') : '971529244592';

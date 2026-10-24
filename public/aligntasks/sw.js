@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'task-board-cache-v45'; // Change this version number (v2, v3, etc.) every time you deploy
+﻿const CACHE_NAME = 'task-board-cache-v46'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -119,4 +119,39 @@ self.addEventListener('activate', event => {
     })
   );
 });
+
+// ---------------------------------------------------------------- 🔔 Web Push
+// A task reminder arrives here even when the app is closed (Android + desktop Chrome/Edge,
+// and iPhone once the site is added to the Home Screen).
+self.addEventListener('push', event => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data ? event.data.text() : '' }; }
+  const title = data.title || '⏰ AlignTasks reminder';
+  const options = {
+    body: data.body || 'You have a pending task.',
+    icon: 'icon-192.png',
+    badge: 'icon-192.png',
+    tag: data.tag || 'align-task',
+    renotify: true,
+    requireInteraction: data.priority === 'high',
+    vibrate: data.priority === 'high' ? [200, 100, 200, 100, 200] : [120],
+    data: { url: data.url || './index.html', taskId: data.taskId || '' },
+    actions: data.actions || []
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './index.html';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if (c.url.indexOf('aligntasks') !== -1) { try { c.focus(); } catch (e) {} return; }
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});
+
 
