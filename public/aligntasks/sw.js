@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v29'; // Change this version number (v2, v3, etc.) every time you deploy
+const CACHE_NAME = 'task-board-cache-v30'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -36,11 +36,16 @@ function offlineResponse() {
 // undefined throws "Failed to convert value to 'Response'" in the page console.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;   // never intercept writes/POSTs
+  let url;
+  try { url = new URL(event.request.url); } catch (e) { return; }
   // Only http(s) can be cached; browser extensions inject chrome-extension:// requests
   // into the page and caching those throws "Request scheme 'chrome-extension' is unsupported".
-  if (!/^https?:$/i.test(new URL(event.request.url).protocol)) return;
+  if (!/^https?:$/i.test(url.protocol)) return;
+  // NEVER touch API or data traffic. A cached — or synthetic "503 Offline" — response for
+  // /api/align/* or Firestore breaks sign-in, task saves and live listeners.
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.indexOf('/api/') === 0) return;
 
-  const url = new URL(event.request.url);
   const isHtml = event.request.mode === 'navigate'
     || event.request.destination === 'document'
     || /\/$|\.html?$/.test(url.pathname);

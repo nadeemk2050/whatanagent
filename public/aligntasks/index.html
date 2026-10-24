@@ -5024,13 +5024,23 @@
                     if (fu) headers['x-firebase-token'] = await fu.getIdToken();
                 } catch (e) { /* ignore: the session may still authorise it */ }
             }
-            const res = await fetch(API + path + (opts.method && opts.method !== 'GET' ? '' : (path.includes('?') ? '&' : '?') + '_t=' + Date.now()), {
-                method: opts.method || 'GET',
-                headers,
-                cache: 'no-store',
-                body: opts.body ? JSON.stringify(opts.body) : undefined
-            });
+            const res = await (async () => {
+                try {
+                    return await fetch(API + path + (opts.method && opts.method !== 'GET' ? '' : (path.includes('?') ? '&' : '?') + '_t=' + Date.now()), {
+                        method: opts.method || 'GET',
+                        headers,
+                        cache: 'no-store',
+                        body: opts.body ? JSON.stringify(opts.body) : undefined
+                    });
+                } catch (e) {
+                    // The server restarts for every deploy — say so instead of "Failed to fetch".
+                    throw new Error('Cannot reach the server right now (it may be restarting). Try again in a few seconds.');
+                }
+            })();
             const data = await res.json().catch(() => ({}));
+            if (res.status === 503 || res.status === 502) {
+                throw new Error('The server is restarting. Try again in a few seconds.');
+            }
             if (res.status === 401 && !opts.noRedirect) {
                 // In read-only (admin browse) mode keep the person where they are instead of
                 // throwing the login gate back at them on every click.
