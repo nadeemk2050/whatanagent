@@ -494,14 +494,14 @@ export function registerAlignRoutes(app) {
         dueDate: sstr(b.dueDate, 40),
         notes: sstr(b.notes, 1000),
         repeat: { type: sstr(b.repeat, 20) || 'none' },
-        status: 'Pending',
+        status: 'To Do',
         isPersonal: true,
         ownerUid: req.staff.uid,
         ownerName: req.staff.name,
         createdByUid: req.staff.uid,
         createdByName: req.staff.name,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
       const ref = await alignDb().collection(`${ALIGN_BASE}/users/${req.staff.uid}/personal_tasks`).add(doc);
       res.json({ ok: true, task: { id: ref.id, ...doc } });
@@ -514,7 +514,7 @@ export function registerAlignRoutes(app) {
   app.patch(api + '/personal/:id', requireStaff, async (req, res) => {
     try {
       const b = req.body || {};
-      const patch = { updatedAt: Date.now(), updatedByUid: req.staff.uid, updatedByName: req.staff.name };
+      const patch = { updatedAt: new Date(), updatedByUid: req.staff.uid, updatedByName: req.staff.name };
       if (b.description !== undefined) patch.description = sstr(b.description, 500);
       if (b.category !== undefined) patch.category = sstr(b.category, 60);
       if (b.priority !== undefined) patch.priority = sstr(b.priority, 20);
@@ -522,9 +522,9 @@ export function registerAlignRoutes(app) {
       if (b.notes !== undefined) patch.notes = sstr(b.notes, 1000);
       if (b.repeat !== undefined) patch.repeat = { type: sstr(b.repeat, 20) || 'none' };
       if (b.status !== undefined) {
-        patch.status = b.status === 'Done' ? 'Done' : 'Pending';
+        patch.status = b.status === 'Done' ? 'Done' : 'To Do';
         if (patch.status === 'Done') {
-          patch.completedAt = Date.now();
+          patch.completedAt = new Date();
           patch.completedByUid = req.staff.uid;
           patch.completedByName = req.staff.name;
         }
@@ -593,13 +593,13 @@ export function registerAlignRoutes(app) {
       const stamp = stampOf(req.staff);
       const doc = {
         description: desc,
-        status: 'Pending',
+        status: 'To Do',
         teamId,
-        createdAt: now,
+        createdAt: new Date(),
         createdBy: req.staff.handle,
         createdByUid: stamp.uid,
         createdByName: stamp.name,
-        updatedAt: now,
+        updatedAt: new Date(),
         updatedByUid: stamp.uid,
         updatedByName: stamp.name
       };
@@ -648,15 +648,15 @@ export function registerAlignRoutes(app) {
       }
 
       const stamp = stampOf(req.staff);
-      const patch = { updatedAt: Date.now(), updatedByUid: stamp.uid, updatedByName: stamp.name };
+      const patch = { updatedAt: new Date(), updatedByUid: stamp.uid, updatedByName: stamp.name };
       if (!existing.teamId) patch.teamId = teamId;
       if (b.description !== undefined) patch.description = sstr(b.description, 1000);
       if (b.dueDate !== undefined) patch.dueDate = sstr(b.dueDate, 40);
       if (b.priority !== undefined) patch.priority = sstr(b.priority, 20);
       if (b.status !== undefined) {
-        patch.status = sstr(b.status, 20) === 'Done' ? 'Done' : 'Pending';
+        patch.status = sstr(b.status, 20) === 'Done' ? 'Done' : 'To Do';
         if (patch.status === 'Done') {
-          patch.completedAt = Date.now();
+          patch.completedAt = new Date();
           patch.completedByUid = stamp.uid;
           patch.completedByName = stamp.name;
         } else {
@@ -718,7 +718,7 @@ export function registerAlignRoutes(app) {
         authorName: stamp.name,
         createdAt: Date.now()
       });
-      await ref.set({ comments, updatedAt: Date.now(), updatedByUid: stamp.uid, updatedByName: stamp.name }, { merge: true });
+      await ref.set({ comments, updatedAt: new Date(), updatedByUid: stamp.uid, updatedByName: stamp.name }, { merge: true });
       await auditTaskEvent(id, 'commented', stamp, { teamId, kind, description: text.slice(0, 120) });
       res.json({ ok: true, comments });
     } catch (e) {
