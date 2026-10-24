@@ -3947,16 +3947,17 @@
             async function handleTaskStatusChange(e) {
                 const checkbox = e.target;
                 const isChecked = checkbox.checked;
+                const { taskType, taskId, projectId } = checkbox.dataset;
 
-                if (isChecked) {
+                // Team tasks are stamped by the server, so only the local task types still
+                // need the person to type their name.
+                if (isChecked && taskType !== 'tasks' && taskType !== 'tasks_for_all') {
                     const confirmed = await confirmAction('Finish Task');
                     if (!confirmed) {
                         checkbox.checked = false;
                         return;
                     }
                 }
-
-                const { taskType, taskId, projectId } = checkbox.dataset;
 
                 // 🎯 Team tasks: server-gated + server-stamped.
                 //    Personal tasks and project sub-tasks keep their existing path.
@@ -4547,6 +4548,11 @@
         window.alignRequireUnlock = async function () {
             const teamId = (window.teamCtx && window.teamCtx.teamId) || '';
             if (teamId && unlockFor(teamId)) return true;
+            // Admin / read-only mode: explain instead of throwing the gate back at them.
+            if (document.getElementById('alignReadOnly')) {
+                alert('Read-only mode — sign in with your name, your password and the team password to create or edit tasks.');
+                return false;
+            }
             pendingTeams = await loadTeams();
             showGate('unlock');
             return false;
