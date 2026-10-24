@@ -13,6 +13,9 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Release notes published into downloads/version.json by CI (release build only).
+val releaseNotes = "Release pipeline baseline: signed builds are now published automatically. Feature parity work (board, comments, reminders, AI brain, alerts) lands phase by phase."
+
 android {
     namespace = "com.assigntask.app"
     compileSdk = 34
@@ -32,10 +35,11 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.0"
+        versionCode = 8
+        versionName = "2.0.8"
     }
 
+    // Shown in the in-app updater (published into downloads/version.json by CI).
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -47,6 +51,7 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug { }
     }
 
     compileOptions {

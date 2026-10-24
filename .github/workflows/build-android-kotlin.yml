@@ -8,9 +8,12 @@ on:
       - ".github/workflows/build-android-kotlin.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    timeout-minutes: 25
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -44,11 +47,66 @@ jobs:
         if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
         run: printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug
+      - name: Prepare release signing
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > keystore.jks
+            printf 'storeFile=keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+              "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+            echo "SIGNED=1" >> $GITHUB_ENV
+            echo "release signing configured"
+          else
+            echo "SIGNED=0" >> $GITHUB_ENV
+            echo "no keystore secret - building a debug APK"
+          fi
+
+      - name: Build APK
+        run: |
+          if [ "$SIGNED" = "1" ]; then
+            gradle :app:assembleRelease
+          else
+            gradle :app:assembleDebug
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: assign-task-debug-apk
-          path: android-kotlin/app/build/outputs/apk/debug/app-debug.apk
+          name: assign-task-apk
+          path: |
+            android-kotlin/app/build/outputs/apk/release/app-release.apk
+            android-kotlin/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+
+      - name: Publish APK to the site
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        run: |
+          set -e
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          CODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          NOTES=$(grep -oP 'releaseNotes\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1 || true)
+          SRC="app/build/outputs/apk/release/app-release.apk"
+          [ -f "$SRC" ] || SRC="app/build/outputs/apk/debug/app-debug.apk"
+          [ -f "$SRC" ] || { echo "no APK produced"; exit 1; }
+          cp "$SRC" "../public/downloads/aligntasks-$VERSION.apk"
+          cat > ../public/downloads/version.json <<EOF
+          {
+            "versionCode": $CODE,
+            "versionName": "$VERSION",
+            "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-$VERSION.apk",
+            "notes": "${NOTES:-AlignTasks for Android $VERSION}",
+            "mandatory": false,
+            "publishedAt": "$(date -u +%F)"
+          }
+          EOF
+          ls -lh "../public/downloads/"
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/downloads
+          git diff --staged --quiet || git commit -m "chore(android): publish APK $VERSION ($CODE)"
+          git push
