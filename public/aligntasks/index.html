@@ -3066,6 +3066,24 @@
                 prefillStaffPassword(staff.name);
             }
 
+            // Bridge for the profile dialog (separate script scope): open the member editor
+            // for one of the team logins shown there.
+            window.alignEditTeamMember = function (handle, name) {
+                const key = String(handle || '').toLowerCase();
+                const nm = String(name || '').toLowerCase();
+                const match = (staffListCache || []).find(s =>
+                    String(s.handle || '').toLowerCase() === key ||
+                    String(s.name || '').toLowerCase() === key ||
+                    String(s.email || '').toLowerCase() === key ||
+                    (nm && String(s.name || '').toLowerCase() === nm)
+                );
+                if (!match) {
+                    alert('No saved details for "' + (name || handle) + '" in this team yet — save a password first, then edit the details.');
+                    return;
+                }
+                openEditStaffModal(match);
+            };
+
             // Show the member's saved team-login password straight away, so it is always
             // visible in its field (masked — 👁 Show reveals it).
             let pwPrefillFor = '';
@@ -5380,6 +5398,7 @@
                 }
                 return '<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:7px 9px;">' +
                     head +
+                    '<button data-staff-edit="' + s.handle + '" data-staff-edit-name="' + String(s.name || '').replace(/"/g, '&quot;') + '" title="Edit member details" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">✏️</button>' +
                     '<button data-staff-pass="' + s.handle + '" title="Set password" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">🔑</button>' +
                     '<button data-staff-toggle="' + s.handle + '" data-staff-active="' + (s.active !== false) + '" title="Enable / disable" style="padding:5px 8px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">' + (s.active === false ? '✅' : '⛔') + '</button>' +
                     (s.role === 'owner' ? '' : '<button data-staff-del="' + s.handle + '" title="Remove login" style="padding:5px 8px;background:#fff;border:1px solid #fecaca;border-radius:7px;font-size:11px;font-weight:700;color:#b91c1c;cursor:pointer;">🗑</button>') +
@@ -5390,13 +5409,18 @@
 
         $('pfStaffList').addEventListener('click', async (e) => {
             const passBtn = e.target.closest('[data-staff-pass]');
+            const editBtn = e.target.closest('[data-staff-edit]');
             const saveBtn = e.target.closest('[data-staff-save]');
             const cancelBtn = e.target.closest('[data-staff-cancel]');
             const togBtn = e.target.closest('[data-staff-toggle]');
             const delBtn = e.target.closest('[data-staff-del]');
             const findStaff = (h) => staffAdminList.find(x => x.handle === h) || { handle: h, name: h };
             try {
-                if (passBtn) {
+                if (editBtn) {
+                    if (typeof window.alignEditTeamMember !== 'function') { pfMsg('Editor not available — reload the page.', false); return; }
+                    $('alignProfile').style.display = 'none';
+                    window.alignEditTeamMember(editBtn.dataset.staffEdit, editBtn.dataset.staffEditName || '');
+                } else if (passBtn) {
                     staffEditing = passBtn.dataset.staffPass;
                     pfMsg('', true);
                     await loadStaffAdmin();
