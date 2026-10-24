@@ -29,6 +29,12 @@ still resolve to the right person.
   identity is created on the spot (`users/<uid>` is synced by the server).
 - The stored team unlock is cleared at boot, so the team password is always asked
   again on a fresh open.
+- The gate can be dismissed at any point with the **✖** button (or
+  "Continue as admin (read-only)"). The person then browses everything they are
+  allowed to read, but every task write is still refused — create/edit needs the
+  staff session and the team password — and a "Read-only" banner offers sign-in.
+- The team picker is a dropdown drawn inside the card (a native `<select>` popup
+  can paint behind the modal) and it loads the teams itself.
 
 ## 2. What the owner can do without the team password
 
