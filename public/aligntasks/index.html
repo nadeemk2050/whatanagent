@@ -4303,6 +4303,7 @@
         let pendingTeams = [];
         let confirmStaff = null;
         let gateTeamId = '';
+        let gateBootDone = false;
 
         // Freeze the page behind the gate so the flow really is controlled:
         // no scrolling, no tabbing to hidden controls, no accidental clicks.
@@ -4521,12 +4522,14 @@
                     const pw = $('gatePassword').value;
                     if (!name || !pw) throw new Error('Enter your name and password.');
                     const d = await completeLogin(name, pw);
+                    gateBootDone = true;      // the boot check must not re-show the gate after this
                     $('gatePassword').value = '';
                     pendingTeams = await loadTeams();
                     if (pendingTeams.length) { showGate('unlock'); return; }
                     hideGate();
                 } else if (gateMode === 'confirm') {
                     // Identity stays, but the team password is re-asked on every app open.
+                    gateBootDone = true;
                     pendingTeams = await loadTeams();
                     if (pendingTeams.length) { showGate('unlock'); return; }
                     hideGate();
@@ -4606,6 +4609,7 @@
         let earlyGate = false;
         const timer = setInterval(async () => {
             ticks++;
+            if (gateBootDone) { clearInterval(timer); return; }   // already signed in through the gate
             if (ticks > 200) { clearInterval(timer); return; }
             if (!firebaseUser()) {
                 // No Firebase session yet (e.g. a team member on a new device): after a short
