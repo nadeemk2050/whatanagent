@@ -7,7 +7,7 @@ import java.net.URL
 import org.json.JSONObject
 
 /**
- * Team session for the server APIs (`/api/align/*`).
+ * Team session for the server APIs under /api/align.
  *
  * The board itself is read/written through Firestore, but the newer features (WhatsApp picker,
  * AI agents, AI follow-up) are server routes that need the team sign-in token in
