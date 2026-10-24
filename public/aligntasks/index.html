@@ -4695,8 +4695,9 @@
             const s = getSession();
             if (!s) { showGate('login'); return; }
             try {
-                const r = await fetch(API + '/staff/me', { headers: { 'x-align-session': s } });
-                if (!r.ok) { setSession(''); showGate('login'); return; }
+                const r = await fetch(API + '/staff/me?_t=' + Date.now(), { headers: { 'x-align-session': s }, cache: 'no-store' });
+                if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); showGate('login'); return; }
+                if (!r.ok) return;   // server hiccup: keep the person signed in
                 const cur = (window.teamCtx && window.teamCtx.teamId) || '';
                 if (cur && !unlockFor(cur) && $('alignGate').style.display !== 'block') {
                     pendingTeams = await loadTeams();
