@@ -27,3 +27,6 @@ android-kotlin/keystore/
 
 # AlignTasks staff credentials + session secret (server-only, never commit)
 data/
+
+# Scratch scripts
+tmp-*
