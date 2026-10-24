@@ -4111,7 +4111,12 @@
             setAuthMode('login');
 
             accountMenuButton.addEventListener('click', () => accountMenu.classList.toggle('hidden'));
-            menuLogout.addEventListener('click', () => auth.signOut());
+            // Logging out always leaves the whole app: team session + Firebase identity, back to
+            // the main email login screen (the board is never left half signed-in).
+            menuLogout.addEventListener('click', () => {
+                if (typeof window.alignFullLogout === 'function') return window.alignFullLogout();
+                auth.signOut();
+            });
             menuAddSubusers.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 showMainSection('settings-page');
@@ -5126,8 +5131,6 @@
          ================================================================ -->
     <div id="alignGate" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.92);z-index:99999;overflow:auto;padding:20px;">
         <div style="max-width:420px;margin:6vh auto;background:#fff;border-radius:18px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.35);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;position:relative;">
-            <button id="gateClose" type="button" title="Close and browse read-only (no task create or edit)"
-                    style="position:absolute;top:12px;right:12px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;color:#475569;border:none;border-radius:9999px;font-size:15px;font-weight:800;cursor:pointer;line-height:1;">✖</button>
             <div style="font-size:40px;text-align:center;line-height:1;">🔐</div>
             <h2 id="gateTitle" style="text-align:center;font-size:19px;font-weight:800;color:#0f172a;margin:10px 0 4px;">Team Login</h2>
             <p id="gateSub" style="text-align:center;font-size:12.5px;color:#64748b;margin:0 0 18px;line-height:1.5;">Enter your name and password — no email needed.</p>
@@ -5153,6 +5156,11 @@
                     Browse read-only
                 </button>
             </form>
+
+            <button id="gateLogout" type="button"
+                    style="width:100%;margin-top:10px;padding:10px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;">
+                Log out
+            </button>
 
             <div id="gateHint" style="font-size:11px;color:#94a3b8;text-align:center;margin-top:12px;line-height:1.5;"></div>
         </div>
@@ -5624,9 +5632,8 @@
                 $('gateNameWrap').style.display = 'block';
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#2563eb';
-                $('gateSkip').style.display = 'block';
-                $('gateSkip').textContent = 'Continue read-only (no task create or edit)';
-                $('gateHint').textContent = 'Your name and password are needed to create or edit tasks. Your personal tasks stay private to you.';
+                $('gateSkip').style.display = 'none';   // no read-only escape: sign in or log out
+                $('gateHint').textContent = 'Your name and password are needed to use the board. Your personal tasks stay private to you.';
             } else {
                 const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
                 $('gateTitle').textContent = 'Confirm it is you';
@@ -5659,7 +5666,7 @@
         $('alignGate').addEventListener('click', (e) => {
             if (e.target === $('alignGate') && gateMode === 'login') {
                 e.stopPropagation();
-                $('gateError').textContent = 'Sign in to create or edit tasks, or press ✖ to browse read-only.';
+                $('gateError').textContent = 'Team sign in is required. Sign in with your name and password, or press Log out.';
                 $('gateError').style.display = 'block';
             }
         });
@@ -5732,24 +5739,38 @@
             }
         });
 
-        $('gateSkip').addEventListener('click', async () => {
-            if (gateMode === 'confirm') {
-                // Hand the device to another team member.
-                setSession('');
-                setSessionName('');
-                confirmStaff = null;
-                try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
-                $('gateName').value = '';
-                $('gatePassword').value = '';
-                showGate('login');
-                return;
-            }
-            enterReadOnly();                       // browse only: no task create or edit
+        // Full sign-out: clears the team session AND the Firebase identity, then reloads to the
+        // main email login screen. Used by the gate, the menu and the profile dialog — there is
+        // no "browse without signing in" path any more.
+        async function fullLogout() {
+            try { setSession(''); setSessionName(''); } catch (e) {}
+            try { localStorage.removeItem('alignTaskView'); } catch (e) {}
+            try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
+            try {
+                document.getElementById('alignGate').style.display = 'none';
+                document.getElementById('alignProfile').style.display = 'none';
+                const app = document.getElementById('app-screen'); if (app) app.classList.add('hidden');
+                const auth = document.getElementById('auth-screen'); if (auth) auth.classList.remove('hidden');
+            } catch (e) {}
+            location.replace(location.pathname + '?out=' + Date.now());
+        }
+        window.alignFullLogout = fullLogout;
+
+        $('gateLogout').addEventListener('click', (e) => {
+            e.stopPropagation();
+            fullLogout();
         });
 
-        $('gateClose').addEventListener('click', (e) => {
-            e.stopPropagation();
-            enterReadOnly();
+        $('gateSkip').addEventListener('click', async () => {
+            if (gateMode !== 'confirm') return;      // no skipping the team sign-in
+            // Hand the device to another team member.
+            setSession('');
+            setSessionName('');
+            confirmStaff = null;
+            try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
+            $('gateName').value = '';
+            $('gatePassword').value = '';
+            showGate('login');
         });
 
         // Team members sign in with their name + password only — no email account needed.
@@ -6007,9 +6028,10 @@
         });
 
         $('pfLogout').addEventListener('click', async () => {
+            if (typeof window.alignFullLogout === 'function') return window.alignFullLogout();
             try { setSession(''); } catch (e) {}
             try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
-            location.reload();
+            location.replace(location.pathname + '?out=' + Date.now());
         });
 
         // ---------------------------------------------------------- heartbeat
