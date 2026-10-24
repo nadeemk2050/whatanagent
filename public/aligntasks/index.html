@@ -541,6 +541,7 @@
             <div class="px-5 py-3 border-t bg-gray-50 shrink-0">
                 <div id="edit-staff-msg" class="text-xs mb-2 hidden"></div>
                 <div class="flex justify-end gap-2">
+                    <button type="button" id="edit-staff-signin" class="bg-white text-blue-700 border border-blue-300 font-semibold px-4 py-2 rounded-lg hover:bg-blue-50" style="display:none;">Team Sign in</button>
                     <button type="button" id="edit-staff-cancel" class="bg-gray-200 text-gray-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-300">Close</button>
                     <button type="submit" form="edit-staff-form" id="edit-staff-save" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Update &amp; Save</button>
                 </div>
@@ -2983,9 +2984,18 @@
                 document.getElementById('edit-staff-password').value = '';
                 document.getElementById('edit-staff-adminpw').value = '';
                 const msg = document.getElementById('edit-staff-msg');
-                msg.className = 'text-xs mt-1 hidden'; msg.textContent = '';
+                msg.className = 'text-xs mb-2 hidden'; msg.textContent = '';
+                // No team sign-in on this device yet: offer one without losing what was typed.
+                const signBtn = document.getElementById('edit-staff-signin');
+                if (signBtn) signBtn.style.display = localStorage.getItem('align_staff_session') ? 'none' : 'inline-block';
                 editStaffModal.classList.remove('hidden');
             }
+
+            const editStaffSignin = document.getElementById('edit-staff-signin');
+            if (editStaffSignin) editStaffSignin.addEventListener('click', () => {
+                if (window.alignShowGate) window.alignShowGate(localStorage.getItem('align_staff_session') ? 'confirm' : 'login');
+                else alert('Please reload the page and sign in from the Team Login window.');
+            });
             document.getElementById('edit-staff-modal-close').addEventListener('click', () => editStaffModal.classList.add('hidden'));
             const editStaffCancel = document.getElementById('edit-staff-cancel');
             if (editStaffCancel) editStaffCancel.addEventListener('click', () => {
@@ -3716,6 +3726,10 @@
                     setTimeout(() => { editStaffModal.classList.add('hidden'); }, 1200);
                 } catch (err) {
                     show('❌ ' + err.message, false);
+                    if (/sign in/i.test(err.message || '')) {
+                        const sb = document.getElementById('edit-staff-signin');
+                        if (sb) sb.style.display = 'inline-block';
+                    }
                 } finally {
                     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Update & Save'; }
                 }
@@ -4338,7 +4352,10 @@
                 // In read-only (admin browse) mode keep the person where they are instead of
                 // throwing the login gate back at them on every click.
                 if (document.getElementById('alignReadOnly')) {
-                    throw new Error('Read-only — team sign in to create or edit tasks.');
+                    const isTaskWrite = /^\/(task|personal)/.test(path);
+                    throw new Error(isTaskWrite
+                        ? 'Read-only — team sign in to create or edit tasks.'
+                        : 'Please sign in as the owner to manage team members.');
                 }
                 setSession('');
                 showGate('login');
@@ -4663,6 +4680,7 @@
         window.alignApi = api;
         window.alignSession = getSession;
         window.alignUnlockFor = unlockFor;
+        window.alignShowGate = showGate;
         window.alignRequireUnlock = async function () {
             const teamId = (window.teamCtx && window.teamCtx.teamId) || '';
             if (teamId && unlockFor(teamId)) return true;
