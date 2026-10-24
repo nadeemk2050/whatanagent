@@ -430,8 +430,8 @@
                 </div>
                 <div>
                     <div class="flex justify-between items-center mb-1">
-                        <label class="text-sm font-medium text-gray-700">📢 WhatsApp groups <span class="text-xs text-gray-400">(favorites — one or more)</span></label>
-                        <button id="wa-remind-manage-groups" type="button" class="text-xs text-blue-600 font-semibold">⭐ Manage favorites</button>
+                        <label class="text-sm font-medium text-gray-700">📢 Favorites <span class="text-xs text-gray-400">(groups &amp; contacts — pick one or more)</span></label>
+                        <button id="wa-remind-manage-groups" type="button" class="text-xs text-blue-600 font-semibold">⭐ Manage groups</button>
                     </div>
                     <div id="wa-remind-groups" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1 max-h-[26vh] overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white"></div>
                     <div id="wa-remind-groups-manager" class="hidden mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3">
@@ -441,7 +441,22 @@
                         </div>
                         <p id="wa-remind-groups-status" class="text-[10px] text-gray-500 mt-1"></p>
                         <div id="wa-remind-groups-list" class="max-h-[38vh] overflow-y-auto mt-2"></div>
-                        <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The list is pulled live from the connected WhatsApp and refreshes by itself.</p>
+                        <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder) · ✕ removes it from favorites. The list is pulled live from the connected WhatsApp and refreshes by itself.</p>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-sm font-medium text-gray-700">📇 WhatsApp contacts <span class="text-xs text-gray-400">(individual chats — star your regulars)</span></label>
+                        <button id="wa-remind-manage-contacts" type="button" class="text-xs text-emerald-600 font-semibold">⭐ Manage contacts</button>
+                    </div>
+                    <div id="wa-remind-contacts-manager" class="hidden border border-emerald-200 bg-emerald-50 rounded-lg p-3">
+                        <div class="flex items-center gap-2">
+                            <input id="wa-remind-contact-search" type="text" placeholder="🔍 Search WhatsApp contacts..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm">
+                            <button id="wa-remind-contacts-refresh" type="button" class="shrink-0 px-2 py-2 rounded-lg border border-emerald-300 bg-white text-emerald-700 text-sm font-semibold hover:bg-emerald-100" title="Refresh contacts from WhatsApp">↻</button>
+                        </div>
+                        <p id="wa-remind-contacts-status" class="text-[10px] text-gray-500 mt-1"></p>
+                        <div id="wa-remind-contacts-list" class="max-h-[38vh] overflow-y-auto mt-2"></div>
+                        <p class="text-xs text-gray-500 mt-2">⭐ saves a contact to Favorites so it is one tap next time. Every individual chat of the connected WhatsApp is listed here.</p>
                     </div>
                 </div>
                 <div class="border border-green-200 bg-green-50/70 rounded-xl p-3 space-y-2">
@@ -1707,20 +1722,30 @@
 
             async function loadWaRemindFavorites() {
                 const box = document.getElementById('wa-remind-groups');
-                box.innerHTML = '<p class="text-xs text-gray-400 p-1">Loading favorite groups…</p>';
+                box.innerHTML = '<p class="text-xs text-gray-400 p-1">Loading favorites…</p>';
                 try {
                     let snap;
-                    try { snap = await db.collection('alignWaGroupFavorites').orderBy('savedAt', 'desc').limit(60).get(); }
-                    catch (e1) { snap = await db.collection('alignWaGroupFavorites').limit(60).get(); }
+                    try { snap = await db.collection('alignWaGroupFavorites').orderBy('savedAt', 'desc').limit(80).get(); }
+                    catch (e1) { snap = await db.collection('alignWaGroupFavorites').limit(80).get(); }
                     waGroupFavoritesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 } catch (e) { waGroupFavoritesCache = []; }
                 if (waRemindCtx) waRemindCtx.favorites = waGroupFavoritesCache;
-                box.innerHTML = waGroupFavoritesCache.length ? waGroupFavoritesCache.map(g =>
-                    '<label class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">' +
-                    '<input type="checkbox" class="wa-remind-group-cb h-4 w-4" value="' + String(g.jid || '').replace(/"/g, '&quot;') + '" data-name="' + String(g.name || '').replace(/"/g, '&quot;') + '" />' +
-                    '<span class="flex-grow text-sm text-gray-800">' + (g.name || g.jid) + '</span>' +
-                    '<span class="text-xs text-gray-400">group</span></label>'
-                ).join('') : '<p class="text-xs text-gray-400 p-1">No favorite groups yet — press ⭐ Manage favorites and star the groups you use.</p>';
+                if (!waGroupFavoritesCache.length) {
+                    box.innerHTML = '<p class="text-xs text-gray-400 p-1">No favorites yet — press ⭐ Manage groups / ⭐ Manage contacts and star what you use every day.</p>';
+                    return;
+                }
+                box.innerHTML = waGroupFavoritesCache.map(g => {
+                    const isContact = String(g.type || 'group') === 'contact';
+                    const val = String(isContact ? (g.phone || g.jid || '') : (g.jid || '')).replace(/"/g, '&quot;');
+                    const nm = String(g.name || g.jid || '').replace(/"/g, '&quot;');
+                    const sub = isContact ? ('+' + String(g.phone || '').replace(/[^0-9]/g, '')) : 'group';
+                    return '<div class="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-50">' +
+                        '<input type="checkbox" class="' + (isContact ? 'wa-remind-contact-cb' : 'wa-remind-group-cb') + ' h-4 w-4 shrink-0" value="' + val + '" data-name="' + nm + '" data-jid="' + String(g.jid || '').replace(/"/g, '&quot;') + '" />' +
+                        '<span class="text-sm text-gray-800 truncate flex-grow">' + (isContact ? '👤 ' : '📢 ') + (g.name || g.jid) + '</span>' +
+                        '<span class="text-[10px] text-gray-400 shrink-0">' + sub + '</span>' +
+                        '<button type="button" class="wa-fav-remove shrink-0 text-gray-300 hover:text-red-600 text-sm px-1" data-id="' + String(g.id).replace(/"/g, '&quot;') + '" title="Remove from favorites">✕</button>' +
+                        '</div>';
+                }).join('');
             }
 
             let waGroupsTimer = null;
@@ -1823,6 +1848,96 @@
                 }).join('') + (groups.length > shown.length ? '<p class="text-xs text-gray-400 p-1">Showing ' + shown.length + ' of ' + groups.length + ' — type to search the rest.</p>' : '');
             }
 
+            // ===== Individual WhatsApp contacts (non-group chats) =====
+            let waContactsTimer = null;
+            let waContactsCache = [];
+            let waContactsLastAt = 0;
+            async function loadWaContactsLive(force) {
+                try {
+                    const live = await window.alignApi('/wa/contacts' + (force ? '?refresh=1' : ''));
+                    if (live && live.ok && Array.isArray(live.contacts)) {
+                        waContactsCache = live.contacts;
+                        waContactsLastAt = live.at || Date.now();
+                        return true;
+                    }
+                } catch (e) { /* ignore */ }
+                return false;
+            }
+            function paintWaContactsStatus(extra) {
+                const el = document.getElementById('wa-remind-contacts-status');
+                if (!el) return;
+                const when = waContactsLastAt ? new Date(waContactsLastAt).toLocaleTimeString() : '';
+                el.textContent = waContactsCache.length + ' contacts' + (when ? ' · updated ' + when : '') + ' · auto-refreshes' + (extra ? ' · ' + extra : '');
+            }
+            function renderWaContactManager() {
+                const list = document.getElementById('wa-remind-contacts-list');
+                if (!list) return;
+                const q = (document.getElementById('wa-remind-contact-search').value || '').toLowerCase();
+                const savedKeys = new Set(waGroupFavoritesCache.filter(f => String(f.type || '') === 'contact').map(f => String(f.phone || f.jid || '')));
+                let rows = waContactsCache;
+                if (q) rows = rows.filter(c => (String(c.name || '') + ' ' + String(c.phone || '')).toLowerCase().includes(q));
+                if (!rows.length) {
+                    list.innerHTML = '<p class="text-xs text-gray-500 p-1">' + (waContactsCache.length ? 'No contact matches your search.' : 'Press ↻ to pull the contacts of the connected WhatsApp.') + '</p>';
+                    return;
+                }
+                const shown = rows.slice(0, 500);
+                const esc = s => String(s == null ? '' : s).replace(/"/g, '&quot;');
+                list.innerHTML = shown.map(c => {
+                    const key = String(c.phone || c.jid || '');
+                    const saved = savedKeys.has(key);
+                    return '<div class="flex items-center gap-2 py-1 border-b border-white/60">' +
+                        '<button type="button" class="wa-contact-star text-lg shrink-0" data-phone="' + esc(c.phone) + '" data-jid="' + esc(c.jid) + '" data-name="' + esc(c.name) + '" data-saved="' + (saved ? '1' : '0') + '" title="' + (saved ? 'Remove from favorites' : 'Save to favorites') + '" style="background:none;border:none;cursor:pointer;">' + (saved ? '⭐' : '☆') + '</button>' +
+                        '<span class="text-sm text-gray-700 flex-grow truncate">' + (c.name || c.jid) + '</span>' +
+                        '<span class="text-[10px] text-gray-400 shrink-0">' + (c.phone ? '+' + c.phone : '') + '</span></div>';
+                }).join('') + (rows.length > shown.length ? '<p class="text-xs text-gray-400 p-1">Showing ' + shown.length + ' of ' + rows.length + ' — type to search the rest.</p>' : '');
+            }
+            async function refreshWaContacts(force) {
+                const btn = document.getElementById('wa-remind-contacts-refresh');
+                if (btn) { btn.disabled = true; btn.textContent = '…'; }
+                const list = document.getElementById('wa-remind-contacts-list');
+                if (list && !waContactsCache.length) list.innerHTML = '<p class="text-xs text-gray-500 p-1">Loading contacts from the connected WhatsApp…</p>';
+                const ok = await loadWaContactsLive(force);
+                renderWaContactManager();
+                paintWaContactsStatus(ok ? '' : 'contacts unavailable');
+                if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+            }
+            async function openWaContactsManager() {
+                const panel = document.getElementById('wa-remind-contacts-manager');
+                panel.classList.toggle('hidden');
+                if (panel.classList.contains('hidden')) {
+                    if (waContactsTimer) { clearInterval(waContactsTimer); waContactsTimer = null; }
+                    return;
+                }
+                await refreshWaContacts(false);
+                if (waContactsTimer) clearInterval(waContactsTimer);
+                waContactsTimer = setInterval(() => {
+                    const p = document.getElementById('wa-remind-contacts-manager');
+                    const modal = document.getElementById('wa-remind-modal');
+                    if (!p || p.classList.contains('hidden') || !modal || modal.classList.contains('hidden')) {
+                        clearInterval(waContactsTimer); waContactsTimer = null; return;
+                    }
+                    refreshWaContacts(false);
+                }, 30000);
+            }
+            async function toggleWaContactFavorite(phone, jid, name, saved) {
+                const key = String(phone || jid || '');
+                if (!key) return;
+                const ref = db.collection('alignWaGroupFavorites').doc(key.replace(/[\\/]/g, '_'));
+                try {
+                    if (saved) await ref.delete();
+                    else await ref.set({ type: 'contact', jid: jid || '', phone: phone || '', name: name || key, savedAt: Date.now(), savedBy: (currentUser && currentUser.email) || '' });
+                } catch (e) { alert('❌ ' + e.message); return; }
+                await loadWaRemindFavorites();
+                renderWaContactManager();
+            }
+            async function removeFavoriteById(id) {
+                if (!id) return;
+                try { await db.collection('alignWaGroupFavorites').doc(id).delete(); }
+                catch (e) { alert('❌ ' + e.message); return; }
+                await loadWaRemindFavorites();
+                renderWaContactManager();
+                if (waGroupsIndexCache.length) renderWaGroupManager();
+            }
             async function toggleWaGroupFavorite(jid, name, saved) {
                 try {
                     const ref = db.collection('alignWaGroupFavorites').doc(String(jid).replace(/[\\/]/g, '_'));
@@ -1836,24 +1951,34 @@
             document.body.addEventListener('click', e => {
                 const star = e.target.closest('.wa-fav-star');
                 if (star) { toggleWaGroupFavorite(star.getAttribute('data-jid'), star.getAttribute('data-name'), star.getAttribute('data-saved') === '1'); return; }
+                const cstar = e.target.closest('.wa-contact-star');
+                if (cstar) { toggleWaContactFavorite(cstar.getAttribute('data-phone'), cstar.getAttribute('data-jid'), cstar.getAttribute('data-name'), cstar.getAttribute('data-saved') === '1'); return; }
+                const rm = e.target.closest('.wa-fav-remove');
+                if (rm) { e.preventDefault(); removeFavoriteById(rm.getAttribute('data-id')); return; }
                 if (e.target.closest('#wa-remind-groups-refresh')) { refreshWaGroups(true); return; }
+                if (e.target.closest('#wa-remind-contacts-refresh')) { refreshWaContacts(true); return; }
+                if (e.target.closest('#wa-remind-manage-contacts')) { openWaContactsManager(); return; }
                 if (e.target.closest('#wa-remind-manage-groups')) { openWaGroupsManager(); }
             });
-            // The search box filters as you type (inline oninput cannot see these functions).
+            // The search boxes filter as you type (inline oninput cannot see these functions).
             const waGroupSearchEl = document.getElementById('wa-remind-group-search');
             if (waGroupSearchEl) waGroupSearchEl.addEventListener('input', () => renderWaGroupManager());
+            const waContactSearchEl = document.getElementById('wa-remind-contact-search');
+            if (waContactSearchEl) waContactSearchEl.addEventListener('input', () => renderWaContactManager());
             window.renderWaGroupManager = renderWaGroupManager;
+            window.renderWaContactManager = renderWaContactManager;
 
             async function submitWaRemind() {
                 if (!waRemindCtx) return;
                 const memberBoxes = Array.from(document.querySelectorAll('#wa-remind-members .wa-remind-member-cb:checked'));
                 const groupBoxes = Array.from(document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb:checked'));
+                const contactBoxes = Array.from(document.querySelectorAll('#wa-remind-groups .wa-remind-contact-cb:checked'));
                 const customPhoneRaw = (document.getElementById('wa-remind-custom-phone') || {}).value || '';
                 const customPhone = normalizeWaNumberClient(customPhoneRaw);
                 const customName = ((document.getElementById('wa-remind-custom-name') || {}).value || '').trim() || ('+' + customPhone);
 
-                if (!memberBoxes.length && !groupBoxes.length && !customPhone) {
-                    alert('Select at least one team member, group, or enter a direct WhatsApp phone number.');
+                if (!memberBoxes.length && !groupBoxes.length && !contactBoxes.length && !customPhone) {
+                    alert('Select at least one team member, favorite, contact, or enter a direct WhatsApp phone number.');
                     return;
                 }
                 const t = waRemindCtx.task || {};
@@ -1870,6 +1995,7 @@
                         if (member) items.push({ name: member.name, phone: member.wa || '' });
                     }
                     for (const cb of groupBoxes) items.push({ name: (cb.getAttribute('data-name') || 'group') + ' (group → choose in WhatsApp)', phone: '' });
+                    for (const cb of contactBoxes) items.push({ name: (cb.getAttribute('data-name') || 'contact'), phone: normalizeWaNumberClient(cb.value) });
                     if (customPhone) items.push({ name: customName, phone: customPhone });
                     document.getElementById('wa-remind-modal').classList.add('hidden');
                     waHandoffShow('Send now from your own WhatsApp', items, baseMessage);
@@ -1888,6 +2014,13 @@
                         const gname = cb.getAttribute('data-name') || jid;
                         if (!jid) continue;
                         targets.push({ type: 'group', id: jid, name: gname });
+                    }
+                    // Favourite individual contacts: send to the phone number (or the JID when the
+                    // chat has no phone, e.g. a LID-only WhatsApp contact).
+                    for (const cb of contactBoxes) {
+                        const id = String(cb.value || '').trim();
+                        if (!id) continue;
+                        targets.push({ type: 'contact', id: id, name: cb.getAttribute('data-name') || id });
                     }
                     if (customPhone) {
                         targets.push({ type: 'direct', id: customPhone, name: customName });

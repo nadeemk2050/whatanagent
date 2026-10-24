@@ -636,6 +636,29 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // Individual (non-group) chats from the linked WhatsApp, so a reminder can go to any contact.
+  app.get(api + '/wa/contacts', requireStaff, async (req, res) => {
+    try {
+      const wa = await waMod();
+      const chats = wa.getWaWebChats() || [];
+      const map = new Map();
+      for (const c of chats) {
+        if (!c || c.isGroup) continue;
+        const id = String(c.id || '');
+        if (!id || /@(g\.us|broadcast|newsletter)$/i.test(id) || id === 'status@broadcast') continue;
+        const phone = String(c.realPhone || c.phone || '').replace(/[^0-9]/g, '');
+        const key = phone || id;
+        if (map.has(key)) continue;
+        const name = String(c.name || '').trim() || (phone ? '+' + phone : 'WhatsApp contact');
+        map.set(key, { jid: id, name, phone });
+      }
+      const list = Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      res.json({ ok: true, total: list.length, contacts: list.slice(0, 3000), at: Date.now() });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: sstr(e.message, 160) });
+    }
+  });
+
   // Send a reminder now (or a plain message) to members / groups / any phone number.
   app.post(api + '/wa/send', requireStaff, async (req, res) => {
     try {
@@ -651,8 +674,10 @@ export function registerAlignRoutes(app) {
       }
       const results = [];
       for (const t of targets) {
-        const isGroup = t.type === 'group' || /@g\.us$/i.test(String(t.id || ''));
-        const jid = isGroup ? String(t.id || '').trim() : (waDigits(t.id) ? waDigits(t.id) + '@s.whatsapp.net' : '');
+        const raw = String(t.id || '').trim();
+        const isGroup = t.type === 'group' || /@g\.us$/i.test(raw);
+        // groups and LID contacts keep their JID; a plain number becomes a phone JID
+        const jid = isGroup ? raw : (waDigits(raw) ? waDigits(raw) + '@s.whatsapp.net' : (/@/.test(raw) ? raw : ''));
         const label = sstr(t.name, 80).trim() || jid;
         if (!jid) { results.push({ name: label, ok: false, error: 'no-whatsapp-number' }); continue; }
         try {
