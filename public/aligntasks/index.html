@@ -5093,13 +5093,10 @@
             gateBootDone = true;      // the boot check must not re-open the gate after this
             hideGate(false);
             const hasIdentity = await ensureFirebaseIdentity();
-            // Nothing signed in at all: keep the gate (there is no app to show behind it).
-            if (!hasIdentity && !getSession()) {
-                showGate('login');
-                $('gateError').textContent = 'Sign in with your name and password to continue.';
-                $('gateError').style.display = 'block';
-                return;
-            }
+            // No Firebase identity yet: the app's own e-mail sign-in screen is showing, and
+            // re-opening the gate would sit on top of it and block it (that is how people got
+            // stuck). Leave them on the normal sign-in screen instead.
+            if (!hasIdentity) return;
             let b = document.getElementById('alignReadOnly');
             if (b) return;
             b = document.createElement('div');
@@ -5276,12 +5273,8 @@
             if (gateBootDone) { clearInterval(timer); return; }   // already signed in through the gate
             if (ticks > 200) { clearInterval(timer); return; }
             if (!firebaseUser()) {
-                // No Firebase session yet (e.g. a team member on a new device): after a short
-                // grace period let them sign in with name + password instead of waiting forever.
-                if (!earlyGate && ticks > 26 && $('alignGate').style.display !== 'block') {
-                    earlyGate = true;
-                    showGate('login');
-                }
+                // Never raise the team gate before the app's own e-mail sign-in: it would sit
+                // on top of that form and block it. It appears right after the e-mail login.
                 return;
             }
             clearInterval(timer);
