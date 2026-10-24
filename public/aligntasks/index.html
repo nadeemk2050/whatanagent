@@ -524,7 +524,7 @@
     <div id="edit-staff-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Staff Member</h3><button id="edit-staff-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
-            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name</label><input id="edit-staff-name" type="text" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div><div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="pt-2 border-t"><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /><div id="edit-staff-msg" class="text-xs mt-1 hidden"></div></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
+            <form id="edit-staff-form" class="p-6 space-y-4"><input type="hidden" id="edit-staff-id"><div><label class="text-sm font-medium text-gray-700">Name <span class="text-xs text-gray-400">(cannot be changed)</span></label><input id="edit-staff-name" type="text" readonly class="w-full mt-1 p-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed" /></div><div><label class="text-sm font-medium text-gray-700">Email</label><input id="edit-staff-email" type="email" required class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">WhatsApp Number</label><input id="edit-staff-wa" type="tel" placeholder="e.g. +971501234567" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Address</label><input id="edit-staff-address" type="text" placeholder="e.g. Al Wasl Road, Dubai" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div><label class="text-sm font-medium text-gray-700">Remarks <span class="text-xs text-gray-400">(private notes about this person)</span></label><textarea id="edit-staff-remarks" rows="2" placeholder="e.g. Handles Sharjah customers, available after 4pm" class="w-full mt-1 p-2 border border-gray-300 rounded-lg"></textarea></div><div><label class="text-sm font-medium text-gray-700">Team login password <span class="text-xs text-gray-400">(leave empty to keep current)</span></label><input id="edit-staff-password" type="password" autocomplete="new-password" placeholder="min 6 characters" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /></div><div class="pt-2 border-t"><label class="text-sm font-medium text-gray-700">Admin password <span class="text-xs text-gray-400">(required to save)</span></label><input id="edit-staff-adminpw" type="password" autocomplete="off" required placeholder="Admin password" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" /><div id="edit-staff-msg" class="text-xs mt-1 hidden"></div></div><div class="flex justify-end pt-2"><button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button></div></form>
         </div>
     </div>
     <div id="wa-remind-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2850,18 +2850,23 @@
             document.getElementById('completed-tasks-modal-close').addEventListener('click', () => document.getElementById('completed-tasks-modal').classList.add('hidden'));
             
             // ===== 2.0: team member management + export =====
-            async function memberEditPrompt(email, currentName, currentWa) {
-                const name = window.prompt('Member name:', currentName || '');
-                if (name === null) return;
-                const wa = window.prompt('WhatsApp number (country code, leave empty to clear):', currentWa || '');
-                if (wa === null) return;
+            // "Edit" on a team member opens the same full editor used in Sub User Management
+            // (WhatsApp, email, address, remarks, team-login password). The name is fixed.
+            async function memberEditPrompt(email) {
                 const e = String(email || '').toLowerCase();
                 try {
                     const st = await boardScope('staff').where('email', '==', e).limit(1).get();
-                    if (!st.empty) await boardCol('staff').doc(st.docs[0].id).update({ name: name.trim() || currentName, whatsappNumber: toE164(wa) });
+                    if (!st.empty) {
+                        openEditStaffModal(Object.assign({ id: st.docs[0].id }, st.docs[0].data() || {}));
+                        return;
+                    }
                     const us = await boardCol('users').where('email', '==', e).limit(1).get();
-                    if (!us.empty) await boardCol('users').doc(us.docs[0].id).update({ name: name.trim() || currentName, phoneE164: toE164(wa) });
-                    alert('✅ Member updated.');
+                    if (!us.empty) {
+                        const u = us.docs[0].data() || {};
+                        openEditStaffModal({ id: '', name: u.name || e.split('@')[0], email: u.email || e, whatsappNumber: u.phoneE164 || '' });
+                        return;
+                    }
+                    alert('This member has no team profile yet. Add them in Settings → Team logins first.');
                 } catch (err) { alert('❌ ' + err.message); }
             }
 
@@ -3040,7 +3045,7 @@
                 if (revokeBtn) { revokeInvite(revokeBtn.getAttribute('data-code')); return; }
                 const memberEditBtn = e.target.closest('.member-edit-btn');
                 if (memberEditBtn) {
-                    memberEditPrompt(memberEditBtn.getAttribute('data-email'), memberEditBtn.getAttribute('data-name'), memberEditBtn.getAttribute('data-wa'));
+                    memberEditPrompt(memberEditBtn.getAttribute('data-email'));
                     return;
                 }
                 const memberRemoveBtn = e.target.closest('.member-remove-btn');
@@ -3669,7 +3674,7 @@
                 const msg = document.getElementById('edit-staff-msg');
                 const show = (text, ok) => { msg.textContent = text; msg.className = 'text-xs mt-1 ' + (ok ? 'text-green-600' : 'text-red-600'); };
 
-                if (!id || !name || !email) return;
+                if (!name || !email) { show('Name and email are required.', false); return; }
                 if (password && password.length < 6) { show('Login password must be at least 6 characters.', false); return; }
                 if (!adminPassword) { show('Enter the admin password to save.', false); return; }
 
@@ -3681,7 +3686,7 @@
                         body: { handle: name, name, email, whatsapp: waNumber, address, remarks, password, adminPassword }
                     });
                     // …then the board record the Sub User list renders from.
-                    await db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({
+                    if (id) await db.collection(`/artifacts/${appId}/public/data/staff`).doc(id).update({
                         name,
                         email: email.toLowerCase(),
                         whatsappNumber: normalizeWaNumberClient(waNumber),
@@ -4381,10 +4386,35 @@
 
         // Read-only mode: the gate can be dismissed, but every task write still needs the
         // staff session + team password, so nothing can be created or edited without it.
-        function enterReadOnly() {
+        // The app needs a Firebase identity to render. If the browser has a staff session but
+        // no Firebase user (fresh origin/tab, or after a sign-out) mint one from the session,
+        // so closing the gate never dumps the person on the email login screen.
+        async function ensureFirebaseIdentity() {
+            if (firebaseUser()) return true;
+            const s = getSession();
+            if (!s) return false;
+            try {
+                const r = await fetch(API + '/staff/token?_t=' + Date.now(), { headers: { 'x-align-session': s }, cache: 'no-store' });
+                if (!r.ok) return false;
+                const d = await r.json();
+                if (d.customToken && window.firebase && firebase.auth) {
+                    await firebase.auth().signInWithCustomToken(d.customToken);
+                    return true;
+                }
+            } catch (e) { /* leave them on the app's own sign-in */ }
+            return false;
+        }
+
+        async function enterReadOnly() {
             hideGate(false);
-            // Only after the first sign-in — a visitor on the main login screen gets no banner.
-            if (!firebaseUser() && !getSession()) return;
+            const hasIdentity = await ensureFirebaseIdentity();
+            // Nothing signed in at all: keep the gate (there is no app to show behind it).
+            if (!hasIdentity && !getSession()) {
+                showGate('login');
+                $('gateError').textContent = 'Sign in with your name and password to continue.';
+                $('gateError').style.display = 'block';
+                return;
+            }
             let b = document.getElementById('alignReadOnly');
             if (b) return;
             b = document.createElement('div');
@@ -4395,7 +4425,6 @@
             document.body.appendChild(b);
             document.getElementById('alignReadOnlySignIn').onclick = () => {
                 b.remove();
-                if (window.firebase && firebase.auth) firebase.auth().signOut().catch(() => {});
                 showGate(getSession() ? 'confirm' : 'login');
             };
         }

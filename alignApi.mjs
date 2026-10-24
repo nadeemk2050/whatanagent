@@ -169,6 +169,22 @@ export function registerAlignRoutes(app) {
     });
   });
 
+  // A fresh Firebase custom token for the signed-in staff member. Used when the browser
+  // has a valid staff session but no Firebase identity (new origin/tab or after a sign-out),
+  // so dismissing the gate never drops the person back to the email login screen.
+  app.get(api + '/staff/token', requireStaff, async (req, res) => {
+    try {
+      const rec = getStaffByUid(req.staff.uid);
+      if (!rec || !rec.uid) return res.status(404).json({ ok: false, error: 'Staff record not found.' });
+      await ensureBoardUser(rec);
+      const customToken = await alignAuth().createCustomToken(rec.uid);
+      res.json({ ok: true, customToken, uid: rec.uid, name: rec.name });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
   // ============================================================ team unlock
   app.get(api + '/profile', requireStaff, (req, res) => {
     const rec = getOwnProfile(req.staff.uid);
