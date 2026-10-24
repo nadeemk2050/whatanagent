@@ -4193,6 +4193,12 @@
 
         function getSession() { try { return localStorage.getItem(SKEY) || ''; } catch (e) { return ''; } }
         function setSession(t) { try { t ? localStorage.setItem(SKEY, t) : localStorage.removeItem(SKEY); } catch (e) {} }
+
+        // The app keeps its Firebase user in a script-scoped variable, so read it from
+        // the auth SDK instead of window.currentUser (which is never set).
+        function firebaseUser() {
+            try { return (window.firebase && firebase.auth) ? firebase.auth().currentUser : null; } catch (e) { return null; }
+        }
         function getUnlocks() { try { return JSON.parse(localStorage.getItem(UKEY) || '{}'); } catch (e) { return {}; } }
         function saveUnlock(teamId, token, expiresAt) {
             const all = getUnlocks();
@@ -4302,7 +4308,12 @@
                 sel.innerHTML = pendingTeams.map(t =>
                     '<option value="' + t.id + '">' + (t.name || t.id) + (t.hasPassword ? '' : ' (no password set)') + '</option>'
                 ).join('');
-                if (window.teamCtx && window.teamCtx.teamId) sel.value = window.teamCtx.teamId;
+                // Preselect the team the app is showing, else the first one that actually has
+                // a password (a passwordless team would just bounce the user).
+                const curTeam = (window.teamCtx && window.teamCtx.teamId) || '';
+                const withPw = pendingTeams.find(t => t.hasPassword);
+                if (curTeam && pendingTeams.some(t => t.id === curTeam)) sel.value = curTeam;
+                else if (withPw) sel.value = withPw.id;
                 $('gateSubmit').textContent = 'Unlock team';
                 $('gateSubmit').style.background = '#7c3aed';
                 $('gateSkip').style.display = 'block';           // read-only browsing is allowed
@@ -4448,7 +4459,7 @@
         const timer = setInterval(async () => {
             ticks++;
             if (ticks > 200) { clearInterval(timer); return; }
-            if (!window.currentUser) {
+            if (!firebaseUser()) {
                 // No Firebase session yet (e.g. a team member on a new device): after a short
                 // grace period let them sign in with name + password instead of waiting forever.
                 if (!earlyGate && ticks > 26 && $('alignGate').style.display !== 'block') {
@@ -4651,7 +4662,7 @@
         // revoked, the identity gate comes straight back — the session cannot be
         // outlived. Also drops an expired team unlock back to the team gate.
         setInterval(async () => {
-            if (!window.currentUser) return;
+            if (!firebaseUser()) return;
             const s = getSession();
             if (!s) { showGate('login'); return; }
             try {

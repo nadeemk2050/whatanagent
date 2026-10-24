@@ -20,8 +20,10 @@ const DRY = process.argv.includes('--dry');
 
 // The owner already has a hand-made account; these legacy addresses belong to him.
 const OWNER_ALIASES = ['nadeemalsaham@gmail.com', 'nadeemalsaham', 'nh@nh.com'];
+// Obvious throwaway sign-ups from testing — importing them would only add noise.
+const SKIP_EMAILS = /@nd\.com$|@asd\.com$/;
 
-const snap = await db.collection('users').limit(500).get();
+const snap = await db.collection(`${BASE}/users`).limit(500).get();
 console.log('users documents:', snap.size);
 
 let imported = 0, skipped = 0;
@@ -42,7 +44,13 @@ for (const doc of snap.docs) {
     continue;
   }
 
-  const role = u.role === 'owner' ? 'owner' : (u.role === 'admin' ? 'admin' : 'member');
+  if (SKIP_EMAILS.test(email)) {
+    console.log(`  SKIP   ${name} <${email}> (test account)`);
+    skipped++;
+    continue;
+  }
+
+  const role = u.role === 'admin' ? 'admin' : 'member';   // exactly one owner: "nadeem"
   if (DRY) {
     console.log(`  IMPORT ${name} <${email}> role=${role} teams=${teamIds.length} uid=${doc.id}`);
   } else {
