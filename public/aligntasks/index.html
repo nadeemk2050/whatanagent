@@ -4246,6 +4246,11 @@
             });
             const data = await res.json().catch(() => ({}));
             if (res.status === 401 && !opts.noRedirect) {
+                // In read-only (admin browse) mode keep the person where they are instead of
+                // throwing the login gate back at them on every click.
+                if (document.getElementById('alignReadOnly')) {
+                    throw new Error('Read-only mode — sign in with your name and password to change tasks.');
+                }
                 setSession('');
                 showGate('login');
             }
