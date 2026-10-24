@@ -4225,9 +4225,10 @@
                 const u = unlockFor(teamId);
                 if (u) headers['x-align-unlock'] = u;
             }
-            const res = await fetch(API + path, {
+            const res = await fetch(API + path + (opts.method && opts.method !== 'GET' ? '' : (path.includes('?') ? '&' : '?') + '_t=' + Date.now()), {
                 method: opts.method || 'GET',
                 headers,
+                cache: 'no-store',
                 body: opts.body ? JSON.stringify(opts.body) : undefined
             });
             const data = await res.json().catch(() => ({}));
