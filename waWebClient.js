@@ -1254,6 +1254,49 @@ export async function refreshWaGroupsIndex(force = false) {
   } catch (e) { console.warn('[ALIGN WA] groups index failed: ' + e.message); return 0; }
 }
 
+// 📢 Live group list for the dashboards and AlignTasks: every group the linked WhatsApp is a
+// member of — `groupFetchAllParticipating` also returns a group that was just created/joined and
+// has no chat or messages yet, which the chat cache alone would miss. Cached for 30s, and the
+// shared Firestore index is refreshed whenever the set of groups (or a name) actually changes,
+// so every screen updates on its own without waiting for the 6h job.
+let waGroupsLiveCache = { at: 0, groups: [] };
+let waGroupsFingerprint = '';
+export async function fetchWaGroupsLive(force = false) {
+  const now = Date.now();
+  if (!force && waGroupsLiveCache.groups.length && (now - waGroupsLiveCache.at) < 30000) return waGroupsLiveCache.groups;
+  const map = new Map();
+  try {
+    if (sock && waWebState.status === 'connected') {
+      const all = await sock.groupFetchAllParticipating();
+      for (const [jid, meta] of Object.entries(all || {})) {
+        if (!jid || !jid.endsWith('@g.us')) continue;
+        const subject = String((meta && meta.subject) || '').trim();
+        map.set(jid, { jid: jid, name: subject || 'Unnamed group' });
+        if (subject) applyGroupSubject(jid, subject);   // keep the chat list in step
+      }
+    }
+  } catch (e) {
+    console.warn('[WA-WEB GROUPS] live fetch failed: ' + e.message);
+  }
+  for (const chat of waWebState.chats.values()) {
+    if (!chat || !chat.isGroup) continue;
+    const name = String(chat.subject || chat.name || '').trim();
+    if (!map.has(chat.id)) map.set(chat.id, { jid: chat.id, name: name || 'Unnamed group' });
+  }
+  const groups = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  waGroupsLiveCache = { at: now, groups };
+  const fp = groups.length + '|' + groups.reduce((h, g) => h + g.name.length, 0);
+  if (groups.length && fp !== waGroupsFingerprint && globalDb) {
+    waGroupsFingerprint = fp;
+    try {
+      await setDoc(doc(globalDb, 'appData', 'alignWaGroupsIndex'), { groups, count: groups.length, updatedAt: Date.now() }, { merge: true });
+      lastGroupsIndexAt = Date.now();
+      console.log('[ALIGN WA] 📢 Groups index refreshed automatically: ' + groups.length + ' groups');
+    } catch (e) { /* the index is only a cache for other screens */ }
+  }
+  return groups;
+}
+
 async function processAlignQueueItem(ref, d) {
   try {
     const rawTarget = String(d.target || '').trim();

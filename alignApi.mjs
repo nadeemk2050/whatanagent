@@ -617,11 +617,20 @@ export function registerAlignRoutes(app) {
   app.get(api + '/wa/groups', requireStaff, async (req, res) => {
     try {
       const wa = await waMod();
-      const list = (wa.getWaWebChats() || [])
-        .filter(c => c && c.isGroup)
-        .map(c => ({ jid: c.id, name: String(c.name || 'Group').trim() }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-      res.json({ ok: true, total: list.length, groups: list.slice(0, 1000) });
+      const force = String(req.query.refresh || '') === '1';
+      let list = [];
+      // Live source of truth: every group the linked WhatsApp is a member of (a group that was
+      // created a minute ago is included even before it has any messages).
+      if (typeof wa.fetchWaGroupsLive === 'function') {
+        list = await wa.fetchWaGroupsLive(force);
+      }
+      if (!Array.isArray(list) || !list.length) {
+        list = (wa.getWaWebChats() || [])
+          .filter(c => c && c.isGroup)
+          .map(c => ({ jid: c.id, name: String(c.name || 'Group').trim() }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      }
+      res.json({ ok: true, total: list.length, groups: list.slice(0, 2000), at: Date.now() });
     } catch (e) {
       res.status(500).json({ ok: false, error: sstr(e.message, 160) });
     }

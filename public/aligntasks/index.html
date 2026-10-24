@@ -429,9 +429,13 @@
                     </div>
                     <div id="wa-remind-groups" class="space-y-1 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2"></div>
                     <div id="wa-remind-groups-manager" class="hidden mt-2 border border-blue-200 bg-blue-50 rounded-lg p-3">
-                        <input id="wa-remind-group-search" type="text" placeholder="🔍 Search all WhatsApp groups..." class="w-full p-2 border border-gray-300 rounded-lg text-sm" oninput="renderWaGroupManager()">
+                        <div class="flex items-center gap-2">
+                            <input id="wa-remind-group-search" type="text" placeholder="🔍 Search all WhatsApp groups..." class="flex-grow p-2 border border-gray-300 rounded-lg text-sm" oninput="renderWaGroupManager()">
+                            <button id="wa-remind-groups-refresh" type="button" class="shrink-0 px-2 py-2 rounded-lg border border-blue-300 bg-white text-blue-700 text-sm font-semibold hover:bg-blue-100" title="Refresh the group list from WhatsApp">↻</button>
+                        </div>
+                        <p id="wa-remind-groups-status" class="text-[10px] text-gray-500 mt-1"></p>
                         <div id="wa-remind-groups-list" class="max-h-44 overflow-y-auto mt-2"></div>
-                        <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The groups list comes from the WhatsApp session and auto-updates.</p>
+                        <p class="text-xs text-gray-500 mt-2">⭐ = saved to favorites (appears in every reminder). The list is pulled live from the connected WhatsApp and refreshes by itself.</p>
                     </div>
                 </div>
                 <div class="border border-green-200 bg-green-50/70 rounded-xl p-3 space-y-2">
@@ -1690,6 +1694,7 @@
                 resetWaScheduleFields();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
                 paintWaBridges();
+                loadWaGroupsLive(false);   // warm the group list, so ⭐ Manage favorites opens instantly
             }
             // ===== WhatsApp group favorites for task reminders (webapp side) =====
             let waGroupFavoritesCache = [];
@@ -1713,30 +1718,84 @@
                 ).join('') : '<p class="text-xs text-gray-400 p-1">No favorite groups yet — press ⭐ Manage favorites and star the groups you use.</p>';
             }
 
+            let waGroupsTimer = null;
+            let waGroupsLastAt = 0;
+            // The group list comes live from the connected WhatsApp (a group created a minute ago is
+            // already there), and the shared index document is only the fallback.
+            async function loadWaGroupsLive(force) {
+                try {
+                    const live = await window.alignApi('/wa/groups' + (force ? '?refresh=1' : ''));
+                    if (live && live.ok && Array.isArray(live.groups) && live.groups.length) {
+                        waGroupsIndexCache = live.groups;
+                        waGroupsLastAt = live.at || Date.now();
+                        const s = document.getElementById('wa-remind-group-search');
+                        if (s) s.placeholder = '🔍 Search ' + live.groups.length + ' groups';
+                        return true;
+                    }
+                } catch (e) { /* fall back to the shared index below */ }
+                try {
+                    const snap = await db.doc('appData/alignWaGroupsIndex').get();
+                    const data = snap.exists ? (snap.data() || {}) : {};
+                    if (Array.isArray(data.groups) && data.groups.length) {
+                        waGroupsIndexCache = data.groups;
+                        waGroupsLastAt = data.updatedAt || 0;
+                        const s = document.getElementById('wa-remind-group-search');
+                        if (s) s.placeholder = '🔍 Search ' + data.groups.length + ' groups';
+                        return true;
+                    }
+                } catch (e) { /* ignore */ }
+                return false;
+            }
+            function paintWaGroupsStatus(extra) {
+                const el = document.getElementById('wa-remind-groups-status');
+                if (!el) return;
+                const when = waGroupsLastAt ? new Date(waGroupsLastAt).toLocaleTimeString() : '';
+                el.textContent = waGroupsIndexCache.length + ' groups' + (when ? ' · updated ' + when : '') + ' · auto-refreshes' + (extra ? ' · ' + extra : '');
+            }
+            // A group renamed in WhatsApp should be renamed in the saved favourites too.
+            async function syncFavoriteGroupNames() {
+                if (!waGroupFavoritesCache.length || !waGroupsIndexCache.length) return;
+                const byJid = new Map(waGroupsIndexCache.map(g => [String(g.jid), String(g.name || '')]));
+                let renamed = 0;
+                for (const f of waGroupFavoritesCache) {
+                    const live = byJid.get(String(f.jid));
+                    if (!live || live === f.name) continue;
+                    try {
+                        await db.collection('alignWaGroupFavorites').doc(String(f.jid).replace(/[\\/]/g, '_')).set({ name: live, nameSyncedAt: Date.now() }, { merge: true });
+                        renamed++;
+                    } catch (e) { /* ignore */ }
+                }
+                if (renamed) await loadWaRemindFavorites();
+            }
+            async function refreshWaGroups(force) {
+                const btn = document.getElementById('wa-remind-groups-refresh');
+                if (btn) { btn.disabled = true; btn.textContent = '…'; }
+                const list = document.getElementById('wa-remind-groups-list');
+                if (list && !waGroupsIndexCache.length) list.innerHTML = '<p class="text-xs text-gray-500 p-1">Loading groups from the connected WhatsApp…</p>';
+                const ok = await loadWaGroupsLive(force);
+                if (force) await syncFavoriteGroupNames();
+                renderWaGroupManager();
+                paintWaGroupsStatus(ok ? '' : 'live list unavailable — sign in with your team name');
+                if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+            }
             async function openWaGroupsManager() {
                 const panel = document.getElementById('wa-remind-groups-manager');
                 panel.classList.toggle('hidden');
-                if (panel.classList.contains('hidden')) return;
-                const list = document.getElementById('wa-remind-groups-list');
-                list.innerHTML = '<p class="text-xs text-gray-500 p-1">Loading groups from the WhatsApp session…</p>';
-                try {
-                    // Live list straight from the connected session (always current).
-                    let live = null;
-                    try { live = await window.alignApi('/wa/groups'); } catch (e) { live = null; }
-                    if (live && live.ok && Array.isArray(live.groups) && live.groups.length) {
-                        waGroupsIndexCache = live.groups;
-                        document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + live.groups.length + ' groups (live from WhatsApp)';
-                    } else {
-                        const snap = await db.doc('appData/alignWaGroupsIndex').get();
-                        const data = snap.exists ? (snap.data() || {}) : {};
-                        waGroupsIndexCache = Array.isArray(data.groups) ? data.groups : [];
-                        if (data.updatedAt) {
-                            const when = new Date(data.updatedAt).toLocaleString();
-                            document.getElementById('wa-remind-group-search').placeholder = '🔍 Search ' + waGroupsIndexCache.length + ' groups (updated ' + when + ')';
-                        }
+                if (panel.classList.contains('hidden')) {
+                    if (waGroupsTimer) { clearInterval(waGroupsTimer); waGroupsTimer = null; }
+                    return;
+                }
+                await refreshWaGroups(false);
+                // Stay in step with WhatsApp while the panel is open (new groups appear on their own).
+                if (waGroupsTimer) clearInterval(waGroupsTimer);
+                waGroupsTimer = setInterval(() => {
+                    const p = document.getElementById('wa-remind-groups-manager');
+                    const modal = document.getElementById('wa-remind-modal');
+                    if (!p || p.classList.contains('hidden') || !modal || modal.classList.contains('hidden')) {
+                        clearInterval(waGroupsTimer); waGroupsTimer = null; return;
                     }
-                } catch (e) { waGroupsIndexCache = []; }
-                renderWaGroupManager();
+                    refreshWaGroups(false);
+                }, 20000);
             }
 
             function renderWaGroupManager() {
@@ -1746,15 +1805,17 @@
                 let groups = waGroupsIndexCache;
                 if (q) groups = groups.filter(g => String(g.name || '').toLowerCase().includes(q));
                 if (!groups.length) {
-                    list.innerHTML = '<p class="text-xs text-gray-500 p-1">' + (waGroupsIndexCache.length ? 'No group matches your search.' : 'Groups list not ready yet — it updates automatically from the WhatsApp session (open WhatsApp Web once if it stays empty).') + '</p>';
+                    list.innerHTML = '<p class="text-xs text-gray-500 p-1">' + (waGroupsIndexCache.length ? 'No group matches your search.' : 'Groups list not ready yet — press ↻ to pull it again from WhatsApp.') + '</p>';
                     return;
                 }
-                list.innerHTML = groups.slice(0, 300).map(g => {
+                // New (or renamed) groups sort last alphabetically — show the whole list, not a slice.
+                const shown = groups.slice(0, 1000);
+                list.innerHTML = shown.map(g => {
                     const saved = favIds.has(String(g.jid));
                     return '<div class="flex items-center gap-2 py-1">' +
                         '<button type="button" class="wa-fav-star text-lg" data-jid="' + String(g.jid).replace(/"/g, '&quot;') + '" data-name="' + String(g.name || '').replace(/"/g, '&quot;') + '" data-saved="' + (saved ? '1' : '0') + '" title="' + (saved ? 'Remove from favorites' : 'Save to favorites') + '" style="background:none;border:none;cursor:pointer;">' + (saved ? '⭐' : '☆') + '</button>' +
                         '<span class="text-sm text-gray-700 flex-grow">' + (g.name || g.jid) + '</span></div>';
-                }).join('');
+                }).join('') + (groups.length > shown.length ? '<p class="text-xs text-gray-400 p-1">Showing ' + shown.length + ' of ' + groups.length + ' — type to search the rest.</p>' : '');
             }
 
             async function toggleWaGroupFavorite(jid, name, saved) {
@@ -1770,6 +1831,7 @@
             document.body.addEventListener('click', e => {
                 const star = e.target.closest('.wa-fav-star');
                 if (star) { toggleWaGroupFavorite(star.getAttribute('data-jid'), star.getAttribute('data-name'), star.getAttribute('data-saved') === '1'); return; }
+                if (e.target.closest('#wa-remind-groups-refresh')) { refreshWaGroups(true); return; }
                 if (e.target.closest('#wa-remind-manage-groups')) { openWaGroupsManager(); }
             });
 
