@@ -3619,7 +3619,7 @@
                 let targetJid = val('ai-target-');
                 let targetName = '';
                 const sel = document.getElementById('ai-target-' + p);
-                if (sel && sel.selectedOptions && sel.selectedOptions[0]) targetName = sel.selectedOptions[0].textContent.trim();
+                if (sel && sel.selectedOptions && sel.selectedOptions[0]) targetName = sel.selectedOptions[0].textContent.trim().replace(/^[📢👤👥]\s*/, '');
                 const custom = String(val('ai-number-') || '').replace(/[^0-9]/g, '');
                 if (type === 'number' || custom) { if (custom) { targetJid = custom; targetName = '+' + custom; } }
                 const agentSel = document.getElementById('ai-agent-' + p);

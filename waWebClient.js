@@ -2238,6 +2238,34 @@ async function handleConditionalTaskReply(jid, text, mediaType) {
       history: history
     });
     console.log('[COND TASK] 🕐 "' + String(t.title || '').substring(0, 50) + '" — time promised; follow-up scheduled ' + new Date(followAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai)');
+  } else if (t.taskId) {
+    // An AI follow-up task is not finished until it is CONFIRMED: not confirmed and no time
+    // given → ask for a time and keep chasing (instead of silently closing the chase).
+    const tries = t.attempts || 0;
+    if (tries < (t.maxRetries || 3)) {
+      const askTime = !t.askedTimeAt || (now - t.askedTimeAt > 6 * 3600 * 1000);
+      if (askTime) {
+        try { await sendWaWebMessage(jid, '👍 Noted. When exactly can we expect it? A day and time is enough.'); } catch (e) { /* ignore */ }
+      }
+      await condSaveTask(entry, {
+        stage: 'pending_send',
+        status: 'active',
+        nextActionAt: now + (t.retryAfterMinutes || 60) * 60000,
+        askedTimeAt: askTime ? now : (t.askedTimeAt || 0),
+        brain: brain,
+        lastReply: replyTextRaw.substring(0, 300),
+        lastReplyAt: now,
+        history: history.concat([{ at: now, event: 'not-confirmed', detail: 'still chasing (try ' + tries + '/' + (t.maxRetries || 3) + ')' }]).slice(-40)
+      });
+      console.log('[COND TASK] ↩️ Not confirmed yet — will chase "' + String(t.title || '').substring(0, 40) + '" again');
+      if (t.notifyBoss !== false) await condNotifyBoss('↩️ ' + (t.target || 'Contact') + ' has not confirmed "' + String(t.title || '').substring(0, 60) + '":\n"' + replyTextRaw.substring(0, 180) + '"\nI will ask again later.');
+      return true;
+    }
+    await condSaveTask(entry, {
+      status: 'done', stage: 'escalated', brain: brain,
+      lastReply: replyTextRaw.substring(0, 300), lastReplyAt: now, history: history
+    });
+    if (t.notifyBoss !== false) await condNotifyBoss('⚠️ Gave up on "' + String(t.title || '').substring(0, 60) + '" — ' + (t.target || 'contact') + ' never confirmed after ' + tries + ' tries.');
   } else {
     await condSaveTask(entry, {
       stage: 'done', status: 'done', brain: brain,
