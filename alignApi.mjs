@@ -114,6 +114,9 @@ async function ensureBoardUser(rec) {
 export function registerAlignRoutes(app) {
   const api = '/api/align';
   const guard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'align' });
+  // These responses are per-user and change constantly; a cached 200 would show stale
+  // staff lists / task boards (browsers cache JSON GETs heuristically).
+  app.use(api, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   console.log('[ALIGN] 🎯 AlignTasks API registered');
 
   // ============================================================ status
