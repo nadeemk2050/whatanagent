@@ -3095,6 +3095,7 @@
                     taskView = chip.getAttribute('data-view') || 'all';
                     try { localStorage.setItem('alignTaskView', taskView); } catch (e) {}
                     applyTaskFilters();
+                }, error => { console.warn('[projects] sub-task listener:', (error && error.code) || error); }
                 });
             });
             const bulkCompleteBtn = document.getElementById('bulk-complete');
@@ -3200,7 +3201,7 @@
                     currentUnsubscribes.push(unsub);
 
                 } else { // User View
-                    unsub = boardScope('tasks').where("assigneeEmail", "==", currentUser.email).onSnapshot(
+                    unsub = boardScope('tasks').where("teamId", "==", teamCtx.teamId).where("assigneeEmail", "==", currentUser.email).onSnapshot(
                         tasksSnap => {
                              const tasks = tasksSnap.docs.map(d => ({id: d.id, ...d.data()})).sort(sortByCreatedDesc);
                              tasks.forEach(t => { boardTasksCache[t.id] = t; });
@@ -3215,9 +3216,11 @@
                     );
                     currentUnsubscribes.push(unsub);
 
-                    unsub = boardScope('projects').where("members", "array-contains", currentUser.email).onSnapshot(
+                    unsub = boardScope('projects').onSnapshot(
                         projectsSnap => {
-                            const projects = projectsSnap.docs.map(d => ({id: d.id, ...d.data()}));
+                            const projects = projectsSnap.docs
+                                .map(d => ({id: d.id, ...d.data()}))
+                                .filter(p => (p.members || []).includes(currentUser.email));
                             renderProjects(projects, staffListCache);
                         },
                         error => showAppError('Error fetching your projects.', error)
