@@ -56,6 +56,14 @@ object TeamSession {
     fun post(ctx: Context, path: String, body: String): JSONObject =
         request(ctx, path, "POST", body, withSession = true)
 
+    /** PATCH helper with a JSON body (profile updates). */
+    fun patch(ctx: Context, path: String, body: String): JSONObject =
+        request(ctx, path, "PATCH", body, withSession = true)
+
+    /** DELETE helper. */
+    fun delete(ctx: Context, path: String): JSONObject =
+        request(ctx, path, "DELETE", null, withSession = true)
+
     private fun request(ctx: Context, path: String, method: String, body: String?, withSession: Boolean): JSONObject {
         val url = URL(API + path)
         val conn = (url.openConnection() as HttpURLConnection).apply {

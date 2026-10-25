@@ -363,7 +363,11 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
             NavigationDrawerContent(
                 currentPage = currentPage,
                 onPageSelect = { page ->
-                    currentPage = page
+                    if (page.startsWith("web:")) {
+                        openWebApp(context, page.removePrefix("web:"))
+                    } else {
+                        currentPage = page
+                    }
                     scope.launch { drawerState.close() }
                 },
                 profile = profile,
@@ -479,7 +483,10 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         }
                     )
                     "settings" -> SettingsPage(vm)
-                    "profile" -> UserProfilePage(profile, vm, onBack = { currentPage = "tasksForAll" })
+                    "profile" -> ProfileScreen(
+                        onClose = { currentPage = "tasksForAll" },
+                        onLogout = { vm.signOut() }
+                    )
                 }
             }
         }
@@ -496,101 +503,78 @@ fun NavigationDrawerContent(
     onLogout: () -> Unit
 ) {
     ModalDrawerSheet {
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = "ALIGNTASK v" + BuildConfig.VERSION_NAME,
-            style = MaterialTheme.typography.titleLarge.copy(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(Color(0xFF0D47A1), Color(0xFF111111))
+        // Header: who you are + which team, like the web app's profile chip.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(42.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(50)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Person, null, tint = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    profile.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            ),
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(16.dp)
-        )
+                Text(
+                    if (profile.isAdmin) "owner" else "member",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
+                )
+            }
+        }
         HorizontalDivider()
-        
-        NavigationDrawerItem(
-            label = { Text("Tasks For All") },
-            icon = { Icon(Icons.Default.ListAlt, null) },
-            selected = currentPage == "tasksForAll",
-            onClick = { onPageSelect("tasksForAll") }
-        )
-        
-        NavigationDrawerItem(
-            label = { Text("Individual Tasks") },
-            icon = { Icon(Icons.Default.Assignment, null) },
-            selected = currentPage == "individualTasks",
-            onClick = { onPageSelect("individualTasks") }
-        )
 
-        NavigationDrawerItem(
-            label = { Text("Completed Tasks") },
-            icon = { Icon(Icons.Default.CheckCircle, null) },
-            selected = currentPage == "completedTasks",
-            onClick = { onPageSelect("completedTasks") }
-        )
+        DrawerLink("🔒  My Personal Tasks", currentPage == "individualTasks") { onPageSelect("individualTasks") }
+        DrawerLink("Edit Profile", currentPage == "profile") { onPageSelect("profile") }
+        DrawerLink("👥  Team Members", currentPage == "teamMembers") { onPageSelect("teamMembers") }
+        DrawerLink("⚙️  Team Settings & Invites", false) { onPageSelect("web:settings") }
+        DrawerLink("📅  Scheduled Reminders", false) { onPageSelect("web:reminders") }
+        DrawerLink("📢  Group Updates", false) { onPageSelect("web:groups") }
+        DrawerLink("🔔  Push notifications", currentPage == "settings") { onPageSelect("settings") }
 
-        NavigationDrawerItem(
-            label = { Text("Calls History") },
-            icon = { Icon(Icons.Default.History, null) },
-            selected = currentPage == "reminderHistory",
-            onClick = { onPageSelect("reminderHistory") }
-        )
-        
-        NavigationDrawerItem(
-            label = { Text("Projects") },
-            icon = { Icon(Icons.Default.Folder, null) },
-            selected = currentPage == "projects",
-            onClick = { onPageSelect("projects") }
-        )
-
-        NavigationDrawerItem(
-            label = { Text("Add Sub User") },
-            icon = { Icon(Icons.Default.PersonAdd, null) },
-            selected = currentPage == "addSubUser",
-            onClick = { onPageSelect("addSubUser") }
-        )
-
-        NavigationDrawerItem(
-            label = { Text("Team Members") },
-            icon = { Icon(Icons.Default.Groups, null) },
-            selected = currentPage == "teamMembers",
-            onClick = { onPageSelect("teamMembers") }
-        )
-
-        NavigationDrawerItem(
-            label = { Text("Timetable Planner") },
-            icon = { Icon(Icons.Default.CalendarMonth, null) },
-            selected = currentPage == "planner",
-            onClick = { onPageSelect("planner") }
-        )
-
-        NavigationDrawerItem(
-            label = { Text("Settings") },
-            icon = { Icon(Icons.Default.Settings, null) },
-            selected = currentPage == "settings",
-            onClick = { onPageSelect("settings") }
-        )
-        
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        
-        NavigationDrawerItem(
-            label = { Text("User Profile") },
-            icon = { Icon(Icons.Default.Person, null) },
-            selected = currentPage == "profile",
-            onClick = { onPageSelect("profile") }
-        )
-        
         Spacer(Modifier.weight(1f))
         HorizontalDivider()
-        
-        NavigationDrawerItem(
-            label = { Text("Sign Out") },
-            icon = { Icon(Icons.AutoMirrored.Filled.Logout, null) },
-            selected = false,
-            onClick = onLogout
+        DrawerLink("Logout", false, danger = true, onClick = onLogout)
+        Text(
+            "ALIGNTASK v" + BuildConfig.VERSION_NAME,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+            modifier = Modifier.padding(start = 16.dp, bottom = 14.dp, top = 4.dp)
         )
-        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun DrawerLink(label: String, selected: Boolean, danger: Boolean = false, onClick: () -> Unit) {
+    NavigationDrawerItem(
+        label = {
+            Text(
+                label,
+                color = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+            )
+        },
+        selected = selected,
+        onClick = onClick
+    )
+}
+
+/** Opens the matching page of the web app for the few features that only exist server-side. */
+private fun openWebApp(context: Context, section: String) {
+    val url = "https://whatanagent.duckdns.org/aligntasks/index.html"
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        Toast.makeText(context, "Opening the web app…", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not open the web app", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -620,7 +604,7 @@ val APP_SECTIONS: List<Pair<String, String>> = listOf(
     "planner" to "Timetable Planner",
     "reminderHistory" to "Calls History",
     "settings" to "Settings",
-    "profile" to "User Profile"
+    "profile" to "Edit Profile"
 )
 
 @Composable
