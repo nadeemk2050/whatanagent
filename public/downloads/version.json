@@ -1,8 +1,8 @@
 {
-  "versionCode": 18,
-  "versionName": "2.9.1",
-  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-2.9.1.apk",
-  "notes": "2.9.1 - manual installs only: the in-app update check, dialog and background download are switched off. New builds are installed by hand from the download link.",
+  "versionCode": 19,
+  "versionName": "3.0",
+  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-3.0.apk",
+  "notes": "3.0 - new navigation and team screen: one blue dropdown pill for sections and task views (with add and search beside it), a refresh button in the top bar and profile, the menu now shows the real app version, and Team Members now matches the web app (WhatsApp numbers, add, edit and remove).",
   "mandatory": false,
   "publishedAt": "2026-10-25"
 }
