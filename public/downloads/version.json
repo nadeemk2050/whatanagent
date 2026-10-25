@@ -1,8 +1,8 @@
 {
-  "versionCode": 17,
-  "versionName": "2.9",
-  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-2.9.apk",
-  "notes": "2.9 - zero-touch updates: enrolled (device-owner) phones now install new versions completely silently in the background, with no dialog and no tap. Non-enrolled phones keep the one-tap Wi-Fi prefetch flow from 2.8.",
+  "versionCode": 18,
+  "versionName": "2.9.1",
+  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-2.9.1.apk",
+  "notes": "2.9.1 - manual installs only: the in-app update check, dialog and background download are switched off. New builds are installed by hand from the download link.",
   "mandatory": false,
   "publishedAt": "2026-10-25"
 }
