@@ -209,12 +209,13 @@ object AppUpdate {
         }
     }
 
+    /** Where the prefetched APK lands (also used by the silent device-owner install). */
+    fun apkPath(context: Context, versionName: String): File =
+        File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "aligntasks-" + versionName + ".apk")
+
     /** Package name + version check, so a truncated or foreign APK never reaches the installer. */
     fun verifyDownloaded(context: Context, versionName: String): Boolean {
-        val apk = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-            "aligntasks-" + versionName + ".apk"
-        )
+        val apk = apkPath(context, versionName)
         if (!apk.exists() || apk.length() < 100_000L) return false
         return try {
             val pi = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return false
@@ -223,6 +224,10 @@ object AppUpdate {
             false
         }
     }
+
+    /** Device-owner only: installs the downloaded APK with no dialog and no tap. */
+    fun installSilently(context: Context, versionName: String): Boolean =
+        DeviceOwner.installSilently(context, apkPath(context, versionName), versionName)
 
     @Suppress("DEPRECATION")
     private fun versionCodeOf(pi: android.content.pm.PackageInfo): Int =
@@ -247,6 +252,13 @@ object AppUpdate {
     } catch (_: Exception) {
         Toast.makeText(context, "Open Downloads and tap the AlignTasks APK.", Toast.LENGTH_LONG).show()
         false
+    }
+
+    /** Install whatever download is currently pending (used as the fallback after a blocked silent install). */
+    fun installPending(context: Context, versionName: String) {
+        val id = pendingId(context)
+        if (id <= 0 || !verifyDownloaded(context, versionName)) return
+        install(context, id)
     }
 }
 
@@ -278,6 +290,7 @@ fun AppUpdateGate(force: Boolean = false) {
     var downloadId by remember { mutableStateOf(-1L) }
     var state by remember { mutableStateOf<DownloadState?>(null) }
     var ready by remember { mutableStateOf(false) }
+    var silent by remember { mutableStateOf(false) }
     var dismissed by remember { mutableStateOf(false) }
     var resumes by remember { mutableStateOf(0) }
 
@@ -333,19 +346,23 @@ fun AppUpdateGate(force: Boolean = false) {
         val landed = AppUpdate.describe(context, downloadId)
         state = landed
         if (landed != null && landed.finished) {
-            ready = AppUpdate.verifyDownloaded(context, info?.versionName ?: "")
+            val versionName = info?.versionName ?: ""
+            ready = AppUpdate.verifyDownloaded(context, versionName)
+            // Enrolled device-owner phones update themselves with no dialog and no tap at all.
+            if (ready && DeviceOwner.isDeviceOwner(context)) {
+                if (AppUpdate.installSilently(context, versionName)) silent = true
+            }
         }
         if (landed != null && landed.failed) AppUpdate.clearPending(context)
     }
 
     val current = info
-    if (current == null || (dismissed && !current.mandatory)) return
+    if (current == null || silent || (dismissed && !current.mandatory)) return
 
     val st = state
     AlertDialog(
         onDismissRequest = { if (!current.mandatory) dismissed = true },
-        title = { Text((if (ready) "Ready to install — " else "Update available — ") + current.versionName) },
-        text = {
+        title = { Text((if (ready) "Ready to install — " else "Update available — ") + current.versionName) },        text = {
             Column {
                 Text(
                     if (current.notes.isNotBlank()) current.notes

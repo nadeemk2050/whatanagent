@@ -14,8 +14,8 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.8 - one-tap updates: the app now pre-downloads new versions quietly on Wi-Fi, verifies the file, and asks only for the final Install tap. It also re-checks whenever you reopen the app (plus every 4 hours) so every phone stays current without Play Store."
-val releaseMandatory = true   // forces every device onto this build (CI writes it into version.json)
+val releaseNotes = "2.9 - zero-touch updates: enrolled (device-owner) phones now install new versions completely silently in the background, with no dialog and no tap. Non-enrolled phones keep the one-tap Wi-Fi prefetch flow from 2.8."
+val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
     namespace = "com.assigntask.app"
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "2.8"
+        versionCode = 17
+        versionName = "2.9"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

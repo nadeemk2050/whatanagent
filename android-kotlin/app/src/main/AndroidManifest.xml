@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 2.0 in-app updater: needed so the app can hand the downloaded APK to the system installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 2.9: lets a device-owner phone install its own updates without any prompt -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application
         android:name=".AssignTaskApplication"
@@ -58,6 +60,27 @@
         <receiver android:name=".ReminderActionReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="com.assigntask.app.STOP_INCOMING_REMINDER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 2.9 device-owner provisioning: silent self-updates without Play Store or an MDM server -->
+        <receiver
+            android:name=".AlignDeviceAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.assigntask.app.INSTALL_RESULT" />
             </intent-filter>
         </receiver>
 
