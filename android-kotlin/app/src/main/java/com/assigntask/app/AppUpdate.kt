@@ -83,6 +83,15 @@ object AppUpdate {
     /** Foreground re-checks are throttled to this; the loop inside the app still runs every 4 hours. */
     const val FOREGROUND_CHECK_MINUTES = 15L
 
+    /**
+     * Master switch for the in-app updater.
+     *
+     * Turned OFF on request (2026-10-25): builds are installed manually from the download link, so
+     * the app must never show an update dialog or download anything by itself. Set it back to true
+     * to re-enable checking, prefetch and the dialog.
+     */
+    const val ENABLED = false
+
     /** Reads the published version manifest. Returns null when offline / manifest missing. */
     suspend fun fetch(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
@@ -284,6 +293,8 @@ private suspend fun checkAndPrefetch(context: Context, bypassThrottle: Boolean):
  */
 @Composable
 fun AppUpdateGate(force: Boolean = false) {
+    if (!AppUpdate.ENABLED) return
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var info by remember { mutableStateOf<UpdateInfo?>(null) }

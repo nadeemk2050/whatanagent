@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.9 - zero-touch updates: enrolled (device-owner) phones now install new versions completely silently in the background, with no dialog and no tap. Non-enrolled phones keep the one-tap Wi-Fi prefetch flow from 2.8."
+val releaseNotes = "2.9.1 - manual installs only: the in-app update check, dialog and background download are switched off. New builds are installed by hand from the download link."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 17
-        versionName = "2.9"
+        versionCode = 18
+        versionName = "2.9.1"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).
