@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.7 - self-updating builds: the app now re-checks for updates every 4 hours (not only at launch) and this release is marked MANDATORY, so every device is pushed onto it. Includes everything from 2.1-2.6: task details sheet, comments chat, WhatsApp contacts, team login, AI brain and task alerts."
+val releaseNotes = "2.8 - one-tap updates: the app now pre-downloads new versions quietly on Wi-Fi, verifies the file, and asks only for the final Install tap. It also re-checks whenever you reopen the app (plus every 4 hours) so every phone stays current without Play Store."
 val releaseMandatory = true   // forces every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 15
-        versionName = "2.7"
+        versionCode = 16
+        versionName = "2.8"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).
