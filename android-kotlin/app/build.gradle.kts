@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "3.0 - new navigation and team screen: one blue dropdown pill for sections and task views (with add and search beside it), a refresh button in the top bar and profile, the menu now shows the real app version, and Team Members now matches the web app (WhatsApp numbers, add, edit and remove)."
+val releaseNotes = "3.1 - every list screen now has the same header: title, ＋ add and 🔍 search. Individual Tasks, Completed Tasks and Projects all filter instantly by text or assignee, and the 3.0 text encoding glitch is fixed."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "3.0"
+        versionCode = 20
+        versionName = "3.1"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).
