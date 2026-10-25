@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "3.2 - menu and profile rebuilt to match the web app: the drawer now lists My Personal Tasks, Edit Profile, Team Members, Team Settings & Invites, Scheduled Reminders, Group Updates, Push notifications and Logout with your name and version at the bottom, and the profile screen has every web field (job title, department, WhatsApp, phone, timezone, avatar, about me, teams) plus collapsible Team logins you can add, rename, re-password, disable or delete."
+val releaseNotes = "3.3 - permission fix: the board only ever queries your own team, so accounts without a team can no longer trigger PERMISSION_DENIED — they get a clear banner instead. Includes the 3.2 web-matching menu and profile."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "3.2"
+        versionCode = 22
+        versionName = "3.3"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

@@ -488,6 +488,19 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         onLogout = { vm.signOut() }
                     )
                 }
+                if (!vm.hasTeam) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                        color = Color(0xFFFFF7ED),
+                        contentColor = Color(0xFF9A3412)
+                    ) {
+                        Text(
+                            "Your account is not in a team yet, so the board cannot load. Ask the owner to add you to their team, then tap refresh.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
             }
         }
     }

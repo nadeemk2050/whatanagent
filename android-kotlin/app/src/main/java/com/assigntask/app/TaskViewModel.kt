@@ -34,6 +34,13 @@ private const val WEB_APP_ID = "1:410197132578:web:97cfc3ae33f39ed3df917b"
 private const val BASE = "/artifacts/$WEB_APP_ID/public/data"
 const val ADMIN_ACTION_PASSWORD = "abcd"
 
+/**
+ * Firestore rules only allow board reads that carry the caller's teamId. Accounts with no team
+ * would otherwise send an unfiltered query and get PERMISSION_DENIED, so we filter on a value that
+ * can never match — the list simply comes back empty and the UI explains why.
+ */
+private const val NO_TEAM_PLACEHOLDER = "__no_team__"
+
 sealed class AuthState {
     object Loading : AuthState()
     object LoggedOut : AuthState()
@@ -82,9 +89,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var lastProfile: UserProfile? = null
 
     private fun boardQuery(path: String): Query =
-        activeTeamId?.takeIf { it.isNotBlank() }
-            ?.let { db.collection(path).whereEqualTo("teamId", it) }
-            ?: db.collection(path)
+        db.collection(path).whereEqualTo("teamId", activeTeamId?.takeIf { it.isNotBlank() } ?: NO_TEAM_PLACEHOLDER)
+
+    /** True when this account belongs to a team; without one the board cannot be read at all. */
+    val hasTeam: Boolean get() = activeTeamId?.isNotBlank() == true
 
     fun setActiveTeam(teamId: String?) {
         if (teamId == activeTeamId) return
