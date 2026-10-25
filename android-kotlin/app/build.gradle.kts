@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.5 - AI brain on a task: pick the AI agent, the WhatsApp person/group, the chasing routine, how done gets confirmed (words / AI / proof) and what happens then (stop, mark done, announce)."
+val releaseNotes = "2.6 - on-device task alerts: due-soon and overdue notifications, morning plan and evening wrap-up, quiet hours 21:00-08:00 and max 5 alerts a day (same rules as the server ladder)."
 
 android {
     namespace = "com.assigntask.app"
@@ -35,8 +35,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 13
-        versionName = "2.5"
+        versionCode = 14
+        versionName = "2.6"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

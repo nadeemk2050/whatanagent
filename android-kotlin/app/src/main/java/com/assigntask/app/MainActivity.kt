@@ -235,6 +235,15 @@ fun TeamLoginGate(onSignedIn: () -> Unit, onLogout: () -> Unit) {
 
 @Composable
 fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, initialPage: String = "tasksForAll") {
+    // 🔔 Phase 5a: on-device task alerts (due-soon, overdue, morning/evening digest) every 5 min
+    // while the app is running — quiet hours and the daily cap are handled inside TaskAlerts.
+    val alertCtx = LocalContext.current
+    LaunchedEffect(user.uid) {
+        while (true) {
+            runCatching { TaskAlerts.check(alertCtx, user.email ?: "") }
+            kotlinx.coroutines.delay(5 * 60 * 1000L)
+        }
+    }
     var currentPage by remember { mutableStateOf(initialPage) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
