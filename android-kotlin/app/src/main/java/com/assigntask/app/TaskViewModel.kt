@@ -412,7 +412,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         editedFields = (data["editedFields"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
         assigneeName = data["assigneeName"] as? String ?: "",
         repeat = data["repeat"] as? Map<String, Any>,
-        @Suppress("UNCHECKED_CAST")
         aiFollowUp = data["aiFollowUp"] as? Map<String, Any>,
         allDay = data["allDay"] as? Boolean ?: false,
         alarmEnabled = data["alarmEnabled"] as? Boolean ?: false,
