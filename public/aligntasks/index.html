@@ -153,6 +153,7 @@
                                 <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
                                 <button id="menu-group-updates" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📢 Group Updates</button>
                                 <button id="menu-push-notify" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">🔔 Push notifications</button>
+<button id="menu-install-app" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📲 Install app on this phone</button>
                                 <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
                             </div>
                         </div>
@@ -2613,6 +2614,29 @@
             window.alignAutoPush = autoPushRegister;
             const menuPush = document.getElementById('menu-push-notify');
             if (menuPush) menuPush.addEventListener('click', () => { togglePushNotifications(); });
+
+            // --- Install as an app (PWA): updates itself with zero taps, no Play Store involved ---
+            const menuInstall = document.getElementById('menu-install-app');
+            if (menuInstall) menuInstall.addEventListener('click', async () => {
+                const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+                if (installed) {
+                    alert('✅ AlignTasks is already installed on this phone.\n\nIt updates itself the moment we publish a change — just reopen it.');
+                    return;
+                }
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    deferredPrompt = null;
+                    if (outcome === 'accepted' && installButton) installButton.classList.add('hidden');
+                    return;
+                }
+                const ua = navigator.userAgent || '';
+                if (/iPad|iPhone|iPod/.test(ua)) {
+                    alert('📲 Install AlignTasks on this iPhone:\n\n1. Tap the Share button (square with an arrow).\n2. Choose "Add to Home Screen".\n3. Tap Add.\n\nAfter that it updates itself automatically — no App Store needed.');
+                } else {
+                    alert('📲 Install AlignTasks on this phone:\n\n1. Open the browser menu (⋮).\n2. Choose "Install app" or "Add to Home screen".\n3. Confirm.\n\nAfter that it updates itself instantly whenever we publish a change.');
+                }
+            });
 
             // --- Password Confirmation Modal Logic ---
             let passwordResolve = null;
