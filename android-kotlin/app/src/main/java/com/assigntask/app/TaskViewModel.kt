@@ -96,6 +96,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         setupFirestoreListeners(u, p)
     }
 
+    /** Manual refresh: re-attaches every listener so all screens re-read from the server. */
+    fun forceRefresh() {
+        val u = lastUser ?: return
+        val p = lastProfile ?: return
+        clearDataListeners()
+        setupFirestoreListeners(u, p)
+        refreshTaskWidgets()
+    }
+
     private fun persistActiveTeam(teamId: String?) {
         try {
             getApplication<Application>()

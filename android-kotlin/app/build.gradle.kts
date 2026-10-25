@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "2.9.1 - manual installs only: the in-app update check, dialog and background download are switched off. New builds are installed by hand from the download link."
+val releaseNotes = "3.0 - new navigation and team screen: one blue dropdown pill for sections and task views (with add and search beside it), a refresh button in the top bar and profile, the menu now shows the real app version, and Team Members now matches the web app (WhatsApp numbers, add, edit and remove)."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 18
-        versionName = "2.9.1"
+        versionCode = 19
+        versionName = "3.0"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

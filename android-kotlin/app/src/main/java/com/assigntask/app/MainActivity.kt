@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -90,7 +91,7 @@ private const val EXTRA_REMINDER_NOTIFICATION_ID = "extra_reminder_notification_
 private const val EXTRA_REMINDER_CALL_ID = "extra_reminder_call_id"
 
 /**
- * AlignTasks 2.0 — device-side WhatsApp hand-off.
+ * AlignTasks 2.0 â€” device-side WhatsApp hand-off.
  * Opens the user's OWN WhatsApp with the message ready to send. Nothing leaves the device and no
  * server/WhatsApp-Web session is involved. With no phone number WhatsApp asks which chat to use.
  */
@@ -147,7 +148,7 @@ fun AppRoot(initialPage: String = "tasksForAll", vm: AppViewModel = viewModel())
             }
             is AuthState.LoggedOut -> AuthScreen(vm)
             is AuthState.LoggedIn -> {
-                // Strict rule (same as the web board): main login, then the team login — or log out.
+                // Strict rule (same as the web board): main login, then the team login â€” or log out.
                 var teamSignedIn by remember(state.user.uid) { mutableStateOf(TeamSession.isSignedIn(ctx)) }
                 if (!teamSignedIn) {
                     TeamLoginGate(onSignedIn = { teamSignedIn = true }, onLogout = { vm.signOut() })
@@ -194,12 +195,12 @@ fun TeamLoginGate(onSignedIn: () -> Unit, onLogout: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("🔐", fontSize = 44.sp)
+            Text("ðŸ”", fontSize = 44.sp)
             Spacer(Modifier.height(8.dp))
             Text("Team Login", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Enter your name and password — no email needed. Team sign-in is required to use the board.",
+                "Enter your name and password â€” no email needed. Team sign-in is required to use the board.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -225,7 +226,7 @@ fun TeamLoginGate(onSignedIn: () -> Unit, onLogout: () -> Unit) {
             Spacer(Modifier.height(14.dp))
             Button(onClick = { submit() }, enabled = !busy && name.isNotBlank() && password.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()) {
-                Text(if (busy) "Signing in…" else "Continue")
+                Text(if (busy) "Signing inâ€¦" else "Continue")
             }
             Spacer(Modifier.height(6.dp))
             TextButton(onClick = { TeamSession.clear(ctx); onLogout() }) { Text("Log out") }
@@ -235,8 +236,8 @@ fun TeamLoginGate(onSignedIn: () -> Unit, onLogout: () -> Unit) {
 
 @Composable
 fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, initialPage: String = "tasksForAll") {
-    // 🔔 Phase 5a: on-device task alerts (due-soon, overdue, morning/evening digest) every 5 min
-    // while the app is running — quiet hours and the daily cap are handled inside TaskAlerts.
+    // ðŸ”” Phase 5a: on-device task alerts (due-soon, overdue, morning/evening digest) every 5 min
+    // while the app is running â€” quiet hours and the daily cap are handled inside TaskAlerts.
     val alertCtx = LocalContext.current
     LaunchedEffect(user.uid) {
         while (true) {
@@ -245,85 +246,17 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
         }
     }
     var currentPage by remember { mutableStateOf(initialPage) }
+    var showSectionMenu by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val tasksForAll by vm.tasksForAll.collectAsState()
-    var tasksForAllSection by remember { mutableStateOf(TasksForAllSection.TasksForAll) }
-    var scheduledFilterMode by remember { mutableStateOf(ScheduledTaskFilterMode.AllDatesTasks) }
-    var selectedScheduledDate by remember {
-        mutableStateOf(SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()))
-    }
-    var showTodayOptionsMenu by remember { mutableStateOf(false) }
-    var addTaskRequestToken by remember { mutableIntStateOf(0) }
+    var refreshing by remember { mutableStateOf(false) }
     val activeTeamReminderCalls = remember { mutableStateListOf<TeamReminderCallItem>() }
     var lastIncomingRingingCallId by remember { mutableStateOf<String?>(null) }
     val ownerAdminUid = remember(profile, user.uid) {
         if (profile.isAdmin) user.uid else profile.ownerAdminUid.ifBlank { user.uid }
     }
-    val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
-    val todayDateText = remember { dateFormat.format(Date()) }
 
-    val startOfToday = remember {
-        Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.time
-    }
-    val overdueCount = remember(tasksForAll, startOfToday) {
-        tasksForAll.count { task ->
-            if (task.isDone) return@count false
-            val due = parseDueDateToDate(task.dueDate) ?: return@count false
-            due.before(startOfToday)
-        }
-    }
-    val tasksForAllCount = remember(tasksForAll) {
-        tasksForAll.count { task -> !task.isDone && task.dueDate.isNullOrBlank() }
-    }
-    val scheduledPendingTasks = remember(tasksForAll) {
-        tasksForAll.filter { task -> !task.isDone && !task.dueDate.isNullOrBlank() }
-    }
-    val todaysTaskCount = remember(scheduledPendingTasks, todayDateText) {
-        scheduledPendingTasks.count { task ->
-            val due = parseDueDateToDate(task.dueDate) ?: return@count false
-            dateFormat.format(due) == todayDateText
-        }
-    }
-    val selectedDateTaskCount = remember(scheduledPendingTasks, selectedScheduledDate) {
-        scheduledPendingTasks.count { task ->
-            val due = parseDueDateToDate(task.dueDate) ?: return@count false
-            dateFormat.format(due) == selectedScheduledDate
-        }
-    }
-    val todaysSectionCount = when (scheduledFilterMode) {
-        ScheduledTaskFilterMode.TodayTasks -> todaysTaskCount
-        ScheduledTaskFilterMode.AllDatesTasks -> scheduledPendingTasks.size
-        ScheduledTaskFilterMode.OtherDateTasks -> selectedDateTaskCount
-    }
-    val selectedModeHeading = when (scheduledFilterMode) {
-        ScheduledTaskFilterMode.AllDatesTasks -> "All Dates"
-        ScheduledTaskFilterMode.TodayTasks -> "Today"
-        ScheduledTaskFilterMode.OtherDateTasks -> "Other Date ($selectedScheduledDate)"
-    }
-
-    fun selectScheduledMode(mode: ScheduledTaskFilterMode) {
-        scheduledFilterMode = mode
-        tasksForAllSection = TasksForAllSection.TodaysTask
-        if (mode == ScheduledTaskFilterMode.OtherDateTasks) {
-            val cal = parseDateToCalendar(selectedScheduledDate)
-            DatePickerDialog(
-                context,
-                { _, year, month, dayOfMonth ->
-                    selectedScheduledDate = String.format("%02d/%02d/%04d", dayOfMonth, month + 1, year)
-                },
-                cal.get(Calendar.YEAR),
-                cal.get(Calendar.MONTH),
-                cal.get(Calendar.DAY_OF_MONTH)
-            ).show()
-        }
-    }
 
     DisposableEffect(user.uid, ownerAdminUid, user.email) {
         val db = Firebase.firestore
@@ -446,32 +379,43 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
             topBar = {
                 TopAppBar(
                     title = {
-                        if (currentPage == "tasksForAll") {
-                            TasksForAllTopTabs(
-                                section = tasksForAllSection,
-                                tasksForAllCount = tasksForAllCount,
-                                todaysTaskCount = todaysSectionCount,
-                                selectedModeLabel = selectedModeHeading,
-                                overdueCount = overdueCount,
-                                onTasksForAllClick = {
-                                    tasksForAllSection = TasksForAllSection.TasksForAll
-                                },
-                                onTodaysTaskClick = {
-                                    showTodayOptionsMenu = true
-                                    tasksForAllSection = TasksForAllSection.TodaysTask
-                                },
-                                onOverdueClick = {
-                                    tasksForAllSection = TasksForAllSection.Overdue
-                                },
-                                showTodayOptionsMenu = showTodayOptionsMenu,
-                                onDismissTodayOptions = { showTodayOptionsMenu = false },
-                                onSelectScheduledMode = { mode ->
-                                    showTodayOptionsMenu = false
-                                    selectScheduledMode(mode)
+                        // Section pill with a dropdown â€” same idea as the web app's "Tasks for All âŒ„".
+                        Box {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier.clickable { showSectionMenu = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = pageTitle(currentPage),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Icon(Icons.Default.KeyboardArrowDown, "Change section")
                                 }
-                            )
-                        } else {
-                            Text(pageTitle(currentPage))
+                            }
+                            DropdownMenu(expanded = showSectionMenu, onDismissRequest = { showSectionMenu = false }) {
+                                APP_SECTIONS.forEach { (key, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                label,
+                                                fontWeight = if (key == currentPage) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            showSectionMenu = false
+                                            currentPage = key
+                                        }
+                                    )
+                                }
+                            }
                         }
                     },
                     navigationIcon = {
@@ -484,16 +428,22 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         }
                     },
                     actions = {
+                        IconButton(
+                            enabled = !refreshing,
+                            onClick = {
+                                refreshing = true
+                                vm.forceRefresh()
+                                Toast.makeText(context, "Refreshingâ€¦", Toast.LENGTH_SHORT).show()
+                                refreshing = false
+                            }
+                        ) {
+                            Icon(Icons.Default.Refresh, "Refresh")
+                        }
                         IconButton(onClick = { currentPage = "completedTasks" }) {
                             Icon(Icons.Default.CheckCircle, "Completed Tasks")
                         }
                         IconButton(onClick = { currentPage = "reminderHistory" }) {
                             Icon(Icons.Default.History, "Reminder Calls History")
-                        }
-                        if (currentPage == "tasksForAll") {
-                            IconButton(onClick = { addTaskRequestToken++ }) {
-                                Icon(Icons.Default.Add, "Add Task")
-                            }
                         }
                     }
                 )
@@ -505,11 +455,7 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                     "tasksForAll" -> TasksForAllPage(
                         vm = vm,
                         user = user,
-                        profile = profile,
-                        section = tasksForAllSection,
-                        scheduledFilterMode = scheduledFilterMode,
-                        selectedScheduledDate = selectedScheduledDate,
-                        addTaskRequestToken = addTaskRequestToken
+                        profile = profile
                     )
                     "individualTasks" -> IndividualTasksPage(vm, user, profile)
                     "completedTasks" -> CompletedTasksPage(vm, user, profile)
@@ -552,7 +498,7 @@ fun NavigationDrawerContent(
     ModalDrawerSheet {
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "ALIGNTASK v1.3",
+            text = "ALIGNTASK v" + BuildConfig.VERSION_NAME,
             style = MaterialTheme.typography.titleLarge.copy(
                 brush = Brush.horizontalGradient(
                     colors = listOf(Color(0xFF0D47A1), Color(0xFF111111))
@@ -662,6 +608,20 @@ fun pageTitle(page: String): String = when (page) {
     "profile" -> "User Profile"
     else -> "ALIGNTASK"
 }
+
+/** Every section, in the order shown by the app-bar dropdown and the drawer. */
+val APP_SECTIONS: List<Pair<String, String>> = listOf(
+    "tasksForAll" to "Tasks For All",
+    "individualTasks" to "Individual Tasks",
+    "completedTasks" to "Completed Tasks",
+    "projects" to "Projects",
+    "teamMembers" to "Team Members",
+    "addSubUser" to "Add Sub User",
+    "planner" to "Timetable Planner",
+    "reminderHistory" to "Calls History",
+    "settings" to "Settings",
+    "profile" to "User Profile"
+)
 
 @Composable
 fun ReminderCallsHistoryPage(user: FirebaseUser, profile: UserProfile) {
@@ -891,86 +851,12 @@ data class TeamReminderCallItem(
     val ownerAdminUid: String
 )
 
-@Composable
-fun TasksForAllTopTabs(
-    section: TasksForAllSection,
-    tasksForAllCount: Int,
-    todaysTaskCount: Int,
-    selectedModeLabel: String,
-    overdueCount: Int,
-    onTasksForAllClick: () -> Unit,
-    onTodaysTaskClick: () -> Unit,
-    onOverdueClick: () -> Unit,
-    showTodayOptionsMenu: Boolean,
-    onDismissTodayOptions: () -> Unit,
-    onSelectScheduledMode: (ScheduledTaskFilterMode) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        TextButton(onClick = onTasksForAllClick) {
-            Text(
-                text = "All Tasks ($tasksForAllCount)",
-                color = if (section == TasksForAllSection.TasksForAll) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                fontWeight = if (section == TasksForAllSection.TasksForAll) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-
-        Box {
-            TextButton(onClick = onTodaysTaskClick) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$selectedModeLabel ($todaysTaskCount)",
-                        color = if (section == TasksForAllSection.TodaysTask) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                        fontWeight = if (section == TasksForAllSection.TodaysTask) FontWeight.Bold else FontWeight.Normal
-                    )
-                    Icon(Icons.Default.ArrowDropDown, "Task Mode")
-                }
-            }
-
-            DropdownMenu(expanded = showTodayOptionsMenu, onDismissRequest = onDismissTodayOptions) {
-                ScheduledTaskFilterMode.values().forEach { mode ->
-                    DropdownMenuItem(
-                        text = { Text(mode.label) },
-                        onClick = { onSelectScheduledMode(mode) }
-                    )
-                }
-            }
-        }
-
-        TextButton(onClick = onOverdueClick) {
-            Text(
-                text = "Overdue ($overdueCount)",
-                color = if (section == TasksForAllSection.Overdue) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                fontWeight = if (section == TasksForAllSection.Overdue) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-    }
-}
 
 @Composable
 fun TasksForAllPage(
     vm: AppViewModel,
     user: FirebaseUser,
-    profile: UserProfile,
-    section: TasksForAllSection,
-    scheduledFilterMode: ScheduledTaskFilterMode,
-    selectedScheduledDate: String,
-    addTaskRequestToken: Int
+    profile: UserProfile
 ) {
     val tasksForAll by vm.tasksForAll.collectAsState()
     val staff by vm.staff.collectAsState()
@@ -978,10 +864,17 @@ fun TasksForAllPage(
     var showAddDialog by remember { mutableStateOf(false) }
     var showComments by remember { mutableStateOf<Task?>(null) }
     var showEditTask by remember { mutableStateOf<Pair<Task, String>?>(null) }
+    val context = LocalContext.current
 
-    LaunchedEffect(addTaskRequestToken) {
-        if (addTaskRequestToken > 0) showAddDialog = true
+    // Blue pill from the web app: one dropdown for the task views, with ï¼‹ and ðŸ” beside it.
+    var section by remember { mutableStateOf(TasksForAllSection.TasksForAll) }
+    var scheduledFilterMode by remember { mutableStateOf(ScheduledTaskFilterMode.AllDatesTasks) }
+    var selectedScheduledDate by remember {
+        mutableStateOf(SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()))
     }
+    var showViewMenu by remember { mutableStateOf(false) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val dateFormat = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()) }
     val todayDateText = remember { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date()) }
@@ -993,7 +886,6 @@ fun TasksForAllPage(
             set(Calendar.MILLISECOND, 0)
         }.time
     }
-
     val pendingTasks = remember(tasksForAll) { tasksForAll.filter { !it.isDone } }
     val tasksForAllWithoutDate = remember(pendingTasks) { pendingTasks.filter { it.dueDate.isNullOrBlank() } }
     val scheduledPendingTasks = remember(pendingTasks) { pendingTasks.filter { !it.dueDate.isNullOrBlank() } }
@@ -1025,7 +917,22 @@ fun TasksForAllPage(
             .sortedByDescending { parseDueDateToDate(it.dueDate)?.time ?: Long.MIN_VALUE }
     }
 
-    val visibleTasks = when (section) {
+    val tasksForAllCount = tasksForAllWithoutDate.size
+    val todaysTaskCount = todaysScheduledTasks.size
+    val allDatesCount = allDatesScheduledTasks.size
+    val selectedDateTaskCount = selectedDateScheduledTasks.size
+    val overdueCount = overduePendingTasks.size
+    val viewLabel = when (section) {
+        TasksForAllSection.TasksForAll -> "Tasks for All"
+        TasksForAllSection.TodaysTask -> when (scheduledFilterMode) {
+            ScheduledTaskFilterMode.TodayTasks -> "Today's Tasks"
+            ScheduledTaskFilterMode.AllDatesTasks -> "All Dates"
+            ScheduledTaskFilterMode.OtherDateTasks -> "Other Date"
+        }
+        TasksForAllSection.Overdue -> "Overdue"
+    }
+
+    val sectionTasks = when (section) {
         TasksForAllSection.TasksForAll -> tasksForAllWithoutDate
         TasksForAllSection.TodaysTask -> when (scheduledFilterMode) {
             ScheduledTaskFilterMode.TodayTasks -> todaysScheduledTasks
@@ -1033,6 +940,11 @@ fun TasksForAllPage(
             ScheduledTaskFilterMode.OtherDateTasks -> selectedDateScheduledTasks
         }
         TasksForAllSection.Overdue -> overduePendingTasks
+    }
+    val visibleTasks = if (searchQuery.isBlank()) sectionTasks else sectionTasks.filter { task ->
+        task.description.contains(searchQuery.trim(), true) ||
+            task.assigneeEmail.contains(searchQuery.trim(), true) ||
+            task.assigneeName.contains(searchQuery.trim(), true)
     }
 
     val emptyMessage = when (section) {
@@ -1046,6 +958,109 @@ fun TasksForAllPage(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.clickable { showViewMenu = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(viewLabel, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Default.KeyboardArrowDown, "Choose view")
+                    }
+                }
+                DropdownMenu(expanded = showViewMenu, onDismissRequest = { showViewMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Tasks for All ($tasksForAllCount)") },
+                        onClick = {
+                            showViewMenu = false
+                            section = TasksForAllSection.TasksForAll
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Today's Tasks ($todaysTaskCount)") },
+                        onClick = {
+                            showViewMenu = false
+                            section = TasksForAllSection.TodaysTask
+                            scheduledFilterMode = ScheduledTaskFilterMode.TodayTasks
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("All Dates ($allDatesCount)") },
+                        onClick = {
+                            showViewMenu = false
+                            section = TasksForAllSection.TodaysTask
+                            scheduledFilterMode = ScheduledTaskFilterMode.AllDatesTasks
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Other Dateâ€¦ ($selectedDateTaskCount)") },
+                        onClick = {
+                            showViewMenu = false
+                            section = TasksForAllSection.TodaysTask
+                            scheduledFilterMode = ScheduledTaskFilterMode.OtherDateTasks
+                            val cal = parseDateToCalendar(selectedScheduledDate)
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    selectedScheduledDate = String.format("%02d/%02d/%04d", dayOfMonth, month + 1, year)
+                                },
+                                cal.get(Calendar.YEAR),
+                                cal.get(Calendar.MONTH),
+                                cal.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Overdue ($overdueCount)") },
+                        onClick = {
+                            showViewMenu = false
+                            section = TasksForAllSection.Overdue
+                        }
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.clickable { showAddDialog = true }
+            ) {
+                Icon(Icons.Default.Add, "Add task", modifier = Modifier.padding(8.dp))
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (searchOpen) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.clickable {
+                    searchOpen = !searchOpen
+                    if (!searchOpen) searchQuery = ""
+                }
+            ) {
+                Icon(Icons.Default.Search, "Search tasks", modifier = Modifier.padding(8.dp))
+            }
+        }
+
+        if (searchOpen) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search tasks or assignee") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+
         if (visibleTasks.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(emptyMessage, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
@@ -1324,7 +1339,7 @@ fun IndividualTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfi
     }
 }
 
-// ✅ Every completed task lives here - General + Individual - with all the same features
+// âœ… Every completed task lives here - General + Individual - with all the same features
 // (WhatsApp remind, reminder calls, comments, edit, delete, and untick to restore).
 @Composable
 fun CompletedTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfile) {
@@ -1344,7 +1359,7 @@ fun CompletedTasksPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfil
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("✅ Completed Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("âœ… Completed Tasks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text("${doneForAll.size + doneIndividual.size} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
 
@@ -1696,7 +1711,7 @@ fun ProjectCard(
                 Spacer(Modifier.height(8.dp))
                 Text("Members:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 project.members.forEach { member ->
-                    Text("• $member", style = MaterialTheme.typography.labelSmall)
+                    Text("â€¢ $member", style = MaterialTheme.typography.labelSmall)
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -1931,12 +1946,44 @@ fun AddProjectTaskDialog(vm: AppViewModel, user: FirebaseUser, staff: List<Staff
 fun TeamMembersPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfile) {
     val staff by vm.staff.collectAsState()
     val adminEmail = if (profile.isAdmin) profile.email else profile.ownerAdminEmail.ifBlank { profile.email }
+    var showAdd by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Staff?>(null) }
+    var removing by remember { mutableStateOf<Staff?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Team Members (" + staff.size + ")",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                    modifier = Modifier.clickable { showAdd = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -1948,19 +1995,125 @@ fun TeamMembersPage(vm: AppViewModel, user: FirebaseUser, profile: UserProfile) 
 
         if (staff.isEmpty()) {
             item {
-                Text("No sub users added yet", color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                Text("No team members yet â€” tap Add.", color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
             }
         } else {
             items(staff, key = { it.id }) { member ->
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                        Text(member.name.ifBlank { member.email.substringBefore('@') }, fontWeight = FontWeight.SemiBold)
-                        Text(member.email, style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                member.name.ifBlank { member.email.substringBefore('@') },
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Row {
+                                Text(member.email, style = MaterialTheme.typography.bodySmall)
+                                if (member.whatsappNumber.isBlank()) {
+                                    Text(
+                                        " Â· no WhatsApp",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                } else {
+                                    Text(
+                                        " Â· +" + member.whatsappNumber,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+                        TextButton(onClick = { editing = member }) { Text("âœï¸ Edit") }
+                        TextButton(onClick = { removing = member }) {
+                            Text("âœ•", color = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
         }
     }
+
+    if (showAdd) AddSubUserDialog(vm, user) { showAdd = false }
+    editing?.let { member -> EditTeamMemberDialog(vm, member) { editing = null } }
+    removing?.let { member -> RemoveTeamMemberDialog(vm, member) { removing = null } }
+}
+
+@Composable
+private fun EditTeamMemberDialog(vm: AppViewModel, member: Staff, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(member.name) }
+    var wa by remember { mutableStateOf(member.whatsappNumber) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit team member") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = wa,
+                    onValueChange = { wa = it },
+                    label = { Text("WhatsApp Number") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(member.email, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.65f))
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    vm.editStaff(member.id, name.trim(), member.email, wa)
+                    onDismiss()
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun RemoveTeamMemberDialog(vm: AppViewModel, member: Staff, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove " + member.name.ifBlank { member.email } + "?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "This removes them from the team board. Enter the action password to confirm.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                vm.removeSubUser(member, password) { err -> if (err == null) onDismiss() else error = err }
+            }) { Text("Remove") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -2191,7 +2344,7 @@ fun TimetablePlannerPage(vm: AppViewModel, user: FirebaseUser, profile: UserProf
                                     Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
                                         Text(day, fontWeight = FontWeight.Bold)
                                         list.forEach { task ->
-                                            Text("• ${task.description} ${if (task.dueDate.isNullOrBlank()) "" else "(${formatDueDate(task.dueDate)})"}")
+                                            Text("â€¢ ${task.description} ${if (task.dueDate.isNullOrBlank()) "" else "(${formatDueDate(task.dueDate)})"}")
                                         }
                                     }
                                 }
@@ -2559,6 +2712,7 @@ object AppSettingsStore {
 
 @Composable
 fun UserProfilePage(profile: UserProfile, vm: AppViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2575,6 +2729,29 @@ fun UserProfilePage(profile: UserProfile, vm: AppViewModel, onBack: () -> Unit) 
                 ProfileInfoRow("Role", if (profile.isAdmin) "Admin" else "User")
                 HorizontalDivider()
                 ProfileInfoRow("Status", if (profile.active) "Active" else "Inactive")
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ProfileInfoRow("App version", "ALIGNTASK v" + BuildConfig.VERSION_NAME + "  (build " + BuildConfig.VERSION_CODE + ")")
+                HorizontalDivider()
+                Text(
+                    "Pull the latest tasks, projects and team members from the server.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.65f)
+                )
+                Button(
+                    onClick = {
+                        vm.forceRefresh()
+                        Toast.makeText(context, "Refreshed", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Refresh now")
+                }
             }
         }
 
@@ -2639,7 +2816,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 Spacer(Modifier.width(4.dp))
                 Text("Edit")
             }
-            if (true) {   // delete is open to every member — the password is the gate ("anything with abcd")
+            if (true) {   // delete is open to every member â€” the password is the gate ("anything with abcd")
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
@@ -2702,13 +2879,13 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                         color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
                 if (task.createdBy.isNotEmpty() || task.editedByName.isNotBlank() || (isDone && !task.completedBy.isNullOrEmpty())) {
-                    // One tiny line + ⓘ: all the stamps live in the sheet (same as the web board)
+                    // One tiny line + â“˜: all the stamps live in the sheet (same as the web board)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val metaBits = buildList {
-                            if (task.createdBy.isNotEmpty()) add("🖊 " + task.createdBy.substringBefore('@'))
+                            if (task.createdBy.isNotEmpty()) add("ðŸ–Š " + task.createdBy.substringBefore('@'))
                             val editedBy = task.editedByName.ifBlank { task.updatedByName }
-                            if (editedBy.isNotBlank()) add("✏️ " + editedBy.substringBefore('@'))
-                            if (isDone && !task.completedBy.isNullOrEmpty()) add("✅ " + task.completedBy!!.substringBefore('@'))
+                            if (editedBy.isNotBlank()) add("âœï¸ " + editedBy.substringBefore('@'))
+                            if (isDone && !task.completedBy.isNullOrEmpty()) add("âœ… " + task.completedBy!!.substringBefore('@'))
                         }
                         Text(
                             text = metaBits.joinToString("   "),
@@ -2740,18 +2917,18 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                     Icon(Icons.Default.Send, "WhatsApp Reminder", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF25D366))
                 }
 
-                // 📇 individual WhatsApp contacts (favourites + search), same as the web picker
+                // ðŸ“‡ individual WhatsApp contacts (favourites + search), same as the web picker
                 IconButton(onClick = { showWaContacts = true }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Contacts, "WhatsApp contacts", modifier = Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color(0xFF0E7490))
                 }
 
-                // 2.0: send from the member's own WhatsApp — no server session involved
+                // 2.0: send from the member's own WhatsApp â€” no server session involved
                 IconButton(onClick = {
                     val text = buildString {
-                        append("⏰ Task reminder\n")
+                        append("â° Task reminder\n")
                         append("\"" + task.description + "\"")
-                        if (!task.dueDate.isNullOrEmpty()) append("\n🗓️ Due: " + formatDueDate(task.dueDate))
-                        if (!task.assigneeEmail.isNullOrEmpty()) append("\n👤 " + task.assigneeEmail.substringBefore('@'))
+                        if (!task.dueDate.isNullOrEmpty()) append("\nðŸ—“ï¸ Due: " + formatDueDate(task.dueDate))
+                        if (!task.assigneeEmail.isNullOrEmpty()) append("\nðŸ‘¤ " + task.assigneeEmail.substringBefore('@'))
                     }
                     openWhatsAppHandoff(waReminderContext, null, text)
                 }, modifier = Modifier.size(32.dp)) {
@@ -2845,7 +3022,7 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
 
 }
 
-// Everything about a task in one place — same content as the ⓘ tooltip on the web board.
+// Everything about a task in one place â€” same content as the â“˜ tooltip on the web board.
 private fun stampText(v: Any?, sdf: SimpleDateFormat): String = when (v) {
     null -> ""
     is com.google.firebase.Timestamp -> sdf.format(v.toDate())
@@ -2876,19 +3053,19 @@ fun TaskDetailsSheet(task: Task, isDone: Boolean) {
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )
         Spacer(Modifier.height(4.dp))
-        SheetRow("👥 Assigned", task.assigneeName.ifBlank { task.assigneeEmail.substringBefore('@') }.ifBlank { "Anyone can do it" })
-        SheetRow("🗓 Due", task.dueDate?.let { formatDueDate(it) } ?: "")
-        SheetRow("🖊 Created", listOf(task.createdBy.substringBefore('@'), stampText(task.createdAt, sdf)).filter { it.isNotBlank() }.joinToString(" · "))
+        SheetRow("ðŸ‘¥ Assigned", task.assigneeName.ifBlank { task.assigneeEmail.substringBefore('@') }.ifBlank { "Anyone can do it" })
+        SheetRow("ðŸ—“ Due", task.dueDate?.let { formatDueDate(it) } ?: "")
+        SheetRow("ðŸ–Š Created", listOf(task.createdBy.substringBefore('@'), stampText(task.createdAt, sdf)).filter { it.isNotBlank() }.joinToString(" Â· "))
         val editedBy = task.editedByName.ifBlank { task.updatedByName }
         if (editedBy.isNotBlank()) {
             val what = if (task.editedFields.isNotEmpty()) " (" + task.editedFields.joinToString(", ") + ")" else ""
-            SheetRow("✏️ Edited", listOf(editedBy.substringBefore('@'), stampText(task.editedAt ?: task.lastUpdatedAt, sdf)).filter { it.isNotBlank() }.joinToString(" · ") + what)
+            SheetRow("âœï¸ Edited", listOf(editedBy.substringBefore('@'), stampText(task.editedAt ?: task.lastUpdatedAt, sdf)).filter { it.isNotBlank() }.joinToString(" Â· ") + what)
         }
         if (isDone) {
-            SheetRow("✅ Finished", listOf(task.completedBy?.substringBefore('@') ?: "", stampText(task.completedAt, sdf)).filter { it.isNotBlank() }.joinToString(" · "))
+            SheetRow("âœ… Finished", listOf(task.completedBy?.substringBefore('@') ?: "", stampText(task.completedAt, sdf)).filter { it.isNotBlank() }.joinToString(" Â· "))
         }
-        SheetRow("💬 Comments", if (task.comments.isEmpty()) "" else task.comments.size.toString())
-        SheetRow("🔁 Repeats", task.repeatType.takeIf { it != "none" } ?: "")
+        SheetRow("ðŸ’¬ Comments", if (task.comments.isEmpty()) "" else task.comments.size.toString())
+        SheetRow("ðŸ” Repeats", task.repeatType.takeIf { it != "none" } ?: "")
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -2932,9 +3109,9 @@ fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task, targ
             }
             val due = task.dueDate ?: ""
             numbers.forEach { (name, wa) ->
-                val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
-                    (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
-                    "\n👤 For: " + name +
+                val msg = "â° Reminder (from AlignTasks):\nðŸ“‹ \"" + task.description + "\"" +
+                    (if (due.isNotBlank()) "\nðŸ—“ï¸ Due: " + due else "") +
+                    "\nðŸ‘¤ For: " + name +
                     "\n\nPlease check and update the board when done."
                 db.collection("alignWaQueue").add(
                     mapOf(
@@ -2948,18 +3125,18 @@ fun sendAlignWhatsAppReminder(context: android.content.Context, task: Task, targ
                         "createdAt" to System.currentTimeMillis()
                     )
                 ).addOnSuccessListener {
-                    Toast.makeText(context, "✅ WhatsApp reminder queued for " + name, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "âœ… WhatsApp reminder queued for " + name, Toast.LENGTH_SHORT).show()
                 }.addOnFailureListener { e ->
-                    Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "âŒ " + e.message, Toast.LENGTH_LONG).show()
                 }
             }
         }
         .addOnFailureListener { e ->
-            Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "âŒ " + e.message, Toast.LENGTH_LONG).show()
         }
 }
 
-// 📇 Send a task reminder to any individual WhatsApp contact (favourites + searchable list).
+// ðŸ“‡ Send a task reminder to any individual WhatsApp contact (favourites + searchable list).
 // Reads the shared index the server keeps fresh, so no team session is needed on the phone.
 @Composable
 fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
@@ -3014,7 +3191,7 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📇 WhatsApp contacts", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text("ðŸ“‡ WhatsApp contacts", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 IconButton(onClick = { loadContacts(); loadFavorites() }) { Icon(Icons.Default.Refresh, "Refresh") }
             }
         },
@@ -3027,7 +3204,7 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
                 )
                 Spacer(Modifier.height(6.dp))
                 if (loading) {
-                    Text("Loading contacts…", style = MaterialTheme.typography.bodySmall)
+                    Text("Loading contactsâ€¦", style = MaterialTheme.typography.bodySmall)
                 } else if (shown.isEmpty()) {
                     Text("No contact matches.", style = MaterialTheme.typography.bodySmall)
                 } else {
@@ -3045,7 +3222,7 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
                                         mapOf("type" to "contact", "name" to c.first, "phone" to c.second, "jid" to c.third,
                                             "savedAt" to System.currentTimeMillis(), "savedBy" to (FirebaseAuth.getInstance().currentUser?.email ?: ""))
                                     ).addOnSuccessListener { loadFavorites() }
-                                }) { Text(if (starred) "⭐" else "☆", fontSize = 16.sp) }
+                                }) { Text(if (starred) "â­" else "â˜†", fontSize = 16.sp) }
                             }
                         }
                     }
@@ -3059,8 +3236,8 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
                 val db = FirebaseFirestore.getInstance()
                 picked.forEach { c ->
                     val target = c.second.ifBlank { c.third }
-                    val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
-                        (if (!task.dueDate.isNullOrBlank()) "\n🗓️ Due: " + task.dueDate else "") +
+                    val msg = "â° Reminder (from AlignTasks):\nðŸ“‹ \"" + task.description + "\"" +
+                        (if (!task.dueDate.isNullOrBlank()) "\nðŸ—“ï¸ Due: " + task.dueDate else "") +
                         "\n\nPlease check and update the board when done."
                     db.collection("alignWaQueue").add(mapOf(
                         "target" to target, "targetType" to "contact", "message" to msg,
@@ -3069,7 +3246,7 @@ fun WhatsAppContactsDialog(task: Task, onDismiss: () -> Unit) {
                         "source" to "aligntasks-android", "createdAt" to System.currentTimeMillis()
                     ))
                 }
-                Toast.makeText(context, "✅ Queued for ${picked.size} contact(s)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "âœ… Queued for ${picked.size} contact(s)", Toast.LENGTH_SHORT).show()
                 onDismiss()
             }) { Text("Send") }
         },
@@ -3152,7 +3329,7 @@ fun ReminderTargetsDialog(
                         val selectedEmails = uniqueTargets.filter { selected[it] == true }
                         if (selectedEmails.isNotEmpty()) onSendWhatsApp.invoke(selectedEmails)
                     }) {
-                        Text("📲 WhatsApp")
+                        Text("ðŸ“² WhatsApp")
                     }
                 }
                 Button(onClick = {
@@ -3174,14 +3351,14 @@ fun ReminderTargetsDialog(
 // Queue a WhatsApp reminder for a GROUP (targetType=group) - the Railway server sends it in seconds.
 fun sendAlignWhatsAppGroupReminder(context: android.content.Context, task: Task, groupName: String, groupJid: String) {
     if (!groupJid.endsWith("@g.us")) {
-        Toast.makeText(context, "❌ Invalid group target", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "âŒ Invalid group target", Toast.LENGTH_LONG).show()
         return
     }
     val db = FirebaseFirestore.getInstance()
     val due = task.dueDate ?: ""
-    val msg = "⏰ Reminder (from AlignTasks):\n📋 \"" + task.description + "\"" +
-        (if (due.isNotBlank()) "\n🗓️ Due: " + due else "") +
-        "\n👥 Group reminder" +
+    val msg = "â° Reminder (from AlignTasks):\nðŸ“‹ \"" + task.description + "\"" +
+        (if (due.isNotBlank()) "\nðŸ—“ï¸ Due: " + due else "") +
+        "\nðŸ‘¥ Group reminder" +
         "\n\nPlease check and update the board when done."
     db.collection("alignWaQueue").add(
         mapOf(
@@ -3196,9 +3373,9 @@ fun sendAlignWhatsAppGroupReminder(context: android.content.Context, task: Task,
             "createdAt" to System.currentTimeMillis()
         )
     ).addOnSuccessListener {
-        Toast.makeText(context, "✅ Group reminder queued for " + groupName.ifBlank { groupJid }, Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "âœ… Group reminder queued for " + groupName.ifBlank { groupJid }, Toast.LENGTH_SHORT).show()
     }.addOnFailureListener { e ->
-        Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "âŒ " + e.message, Toast.LENGTH_LONG).show()
     }
 }
 
@@ -3269,7 +3446,7 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                 loading = false
             }
             .addOnFailureListener { e ->
-                Toast.makeText(context, "❌ " + e.message, Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "âŒ " + e.message, Toast.LENGTH_LONG).show()
                 loading = false
             }
         loadFavorites()
@@ -3288,7 +3465,7 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                 Spacer(Modifier.height(6.dp))
                 Text("Team members (select one or more)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                 when {
-                    loading -> Text("Loading team members…", style = MaterialTheme.typography.bodySmall)
+                    loading -> Text("Loading team membersâ€¦", style = MaterialTheme.typography.bodySmall)
                     members.isEmpty() -> Text("No team members found. Add them in Add Sub User.", style = MaterialTheme.typography.bodySmall)
                     else -> members.forEach { (email, name, wa) ->
                         val hasWa = wa.isNotBlank()
@@ -3316,12 +3493,12 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("📢 WhatsApp groups (favorites)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { showGroupManager = !showGroupManager }) { Text(if (showGroupManager) "Done" else "⭐ Manage", style = MaterialTheme.typography.labelMedium) }
+                    Text("ðŸ“¢ WhatsApp groups (favorites)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showGroupManager = !showGroupManager }) { Text(if (showGroupManager) "Done" else "â­ Manage", style = MaterialTheme.typography.labelMedium) }
                 }
                 when {
-                    groupsLoading -> Text("Loading favorite groups…", style = MaterialTheme.typography.bodySmall)
-                    favoriteGroups.isEmpty() -> Text("No favorite groups yet — tap ⭐ Manage to star the groups you use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                    groupsLoading -> Text("Loading favorite groupsâ€¦", style = MaterialTheme.typography.bodySmall)
+                    favoriteGroups.isEmpty() -> Text("No favorite groups yet â€” tap â­ Manage to star the groups you use.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
                     else -> favoriteGroups.forEach { (name, jid) ->
                         Row(
                             modifier = Modifier.fillMaxWidth()
@@ -3344,14 +3521,14 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                         singleLine = true
                     )
                     if (allGroups.isEmpty()) {
-                        Text("Groups list not ready yet — it updates automatically from the WhatsApp session.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                        Text("Groups list not ready yet â€” it updates automatically from the WhatsApp session.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
                     } else {
                         Column(modifier = Modifier.heightIn(max = 180.dp).verticalScroll(rememberScrollState())) {
                             filteredAll.take(150).forEach { (name, jid) ->
                                 val saved = favIds.contains(jid)
                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { toggleFavorite(name, jid, saved) }, modifier = Modifier.size(32.dp)) {
-                                        Text(if (saved) "⭐" else "☆", style = MaterialTheme.typography.titleMedium)
+                                        Text(if (saved) "â­" else "â˜†", style = MaterialTheme.typography.titleMedium)
                                     }
                                     Text(name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                 }
@@ -3370,7 +3547,7 @@ fun WhatsAppTargetsDialog(task: Task, onDismiss: () -> Unit, onSend: (List<Strin
                     val groups = favoriteGroups.filter { selectedGroups[it.second] == true }
                     if (emails.isNotEmpty() || groups.isNotEmpty()) onSend(emails, groups)
                 }
-            ) { Text("💬 Send ($count)") }
+            ) { Text("ðŸ’¬ Send ($count)") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -3672,7 +3849,7 @@ fun CommentsDialog(task: Task, taskType: String, projectId: String?,
                 ) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.ArrowBack, "Back") }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("💬 Comments", style = MaterialTheme.typography.titleSmall)
+                        Text("ðŸ’¬ Comments", style = MaterialTheme.typography.titleSmall)
                         if (task.description.isNotBlank()) {
                             Text(
                                 task.description,
@@ -3701,7 +3878,7 @@ fun CommentsDialog(task: Task, taskType: String, projectId: String?,
                 ) {
                     if (sorted.isEmpty()) {
                         Text(
-                            "No comments yet — start the conversation below.",
+                            "No comments yet â€” start the conversation below.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
                             modifier = Modifier.padding(top = 24.dp)
@@ -3717,7 +3894,7 @@ fun CommentsDialog(task: Task, taskType: String, projectId: String?,
                     OutlinedTextField(
                         value = commentText,
                         onValueChange = { commentText = it },
-                        placeholder = { Text("Write a comment…") },
+                        placeholder = { Text("Write a commentâ€¦") },
                         modifier = Modifier.weight(1f),
                         maxLines = 3
                     )
@@ -3743,7 +3920,7 @@ private fun commentTimeMs(v: Any?): Long = when (v) {
     else -> 0L
 }
 
-// Tiny author name (10sp) + bubble — matches the web comments page.
+// Tiny author name (10sp) + bubble â€” matches the web comments page.
 @Composable
 private fun CommentBubble(c: Map<String, Any>, myEmail: String, sdf: SimpleDateFormat) {
     val email = (c["authorEmail"] as? String) ?: ""
@@ -3758,7 +3935,7 @@ private fun CommentBubble(c: Map<String, Any>, myEmail: String, sdf: SimpleDateF
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start
     ) {
         Text(
-            text = author + (if (whenText.isNotBlank()) " · $whenText" else ""),
+            text = author + (if (whenText.isNotBlank()) " Â· $whenText" else ""),
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
             modifier = Modifier.padding(horizontal = 4.dp)
@@ -3922,7 +4099,7 @@ fun TaskDeletePasswordDialog(task: Task, taskType: String, projectId: String?,
     )
 }
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @Composable
 fun AuthScreen(vm: AppViewModel) {
@@ -4010,7 +4187,7 @@ fun AuthScreen(vm: AppViewModel) {
     }
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Utility â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fun isOverdue(dueDate: String?): Boolean {
     if (dueDate.isNullOrEmpty()) return false
@@ -4027,7 +4204,7 @@ fun formatDueDate(dueDate: String?): String {
     return try {
         val date = parseDueDateToDate(dueDate) ?: return dueDate
         val display = if (hasDueTime(dueDate)) {
-            SimpleDateFormat("dd/MM/yyyy · hh:mm a", Locale.getDefault())
+            SimpleDateFormat("dd/MM/yyyy Â· hh:mm a", Locale.getDefault())
         } else {
             SimpleDateFormat("dd/MM/yyyy (Full day)", Locale.getDefault())
         }
