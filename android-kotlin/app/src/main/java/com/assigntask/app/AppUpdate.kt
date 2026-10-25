@@ -178,11 +178,17 @@ fun AppUpdateGate(force: Boolean = false) {
     var dismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (!AppUpdate.shouldCheck(context, force)) return@LaunchedEffect
-        val fetched = AppUpdate.fetch()
-        if (AppUpdate.isNewer(fetched)) {
-            info = fetched
-            fetched?.let { AppUpdate.notifyAvailable(context, it) }
+        while (true) {
+            // Check at launch, then every 4 hours while the app is open, so every device
+            // picks up a new build on its own (Android still asks for the final Install tap).
+            if (force || AppUpdate.shouldCheck(context, force)) {
+                val fetched = AppUpdate.fetch()
+                if (AppUpdate.isNewer(fetched)) {
+                    info = fetched
+                    fetched?.let { AppUpdate.notifyAvailable(context, it) }
+                }
+            }
+            kotlinx.coroutines.delay(4 * 60 * 60 * 1000L)
         }
     }
 
