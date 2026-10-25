@@ -2615,9 +2615,16 @@
             const menuPush = document.getElementById('menu-push-notify');
             if (menuPush) menuPush.addEventListener('click', () => { togglePushNotifications(); });
 
-            // --- Install as an app (PWA): updates itself with zero taps, no Play Store involved ---
-            const menuInstall = document.getElementById('menu-install-app');
-            if (menuInstall) menuInstall.addEventListener('click', async () => {
+            // --- Install as an app (PWA): the only zero-tap update path on phones we cannot reset ---
+            function showInstallInstructions() {
+                const ua = navigator.userAgent || '';
+                if (/iPad|iPhone|iPod/.test(ua)) {
+                    alert('📲 Install AlignTasks on this iPhone:\n\n1. Tap the Share button (square with an arrow).\n2. Choose "Add to Home Screen".\n3. Tap Add.\n\nAfter that it updates itself automatically — no App Store needed.');
+                } else {
+                    alert('📲 Install AlignTasks on this phone:\n\n1. Open the browser menu (⋮).\n2. Choose "Install app" or "Add to Home screen".\n3. Confirm.\n\nAfter that it updates itself instantly whenever we publish a change.');
+                }
+            }
+            async function promptInstallApp() {
                 const installed = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
                 if (installed) {
                     alert('✅ AlignTasks is already installed on this phone.\n\nIt updates itself the moment we publish a change — just reopen it.');
@@ -2630,13 +2637,33 @@
                     if (outcome === 'accepted' && installButton) installButton.classList.add('hidden');
                     return;
                 }
-                const ua = navigator.userAgent || '';
-                if (/iPad|iPhone|iPod/.test(ua)) {
-                    alert('📲 Install AlignTasks on this iPhone:\n\n1. Tap the Share button (square with an arrow).\n2. Choose "Add to Home Screen".\n3. Tap Add.\n\nAfter that it updates itself automatically — no App Store needed.');
-                } else {
-                    alert('📲 Install AlignTasks on this phone:\n\n1. Open the browser menu (⋮).\n2. Choose "Install app" or "Add to Home screen".\n3. Confirm.\n\nAfter that it updates itself instantly whenever we publish a change.');
-                }
-            });
+                showInstallInstructions();
+            }
+            const menuInstall = document.getElementById('menu-install-app');
+            if (menuInstall) menuInstall.addEventListener('click', () => { promptInstallApp(); });
+
+            // One-time banner nudging staff to install the web app (removes even the Install tap).
+            (function setupInstallBanner() {
+                const banner = document.getElementById('install-banner');
+                if (!banner) return;
+                const KEY = 'alignInstallBannerDismissed';
+                const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+                const isPhone = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+                if (standalone || !isPhone) return;
+                try { if (localStorage.getItem(KEY) === '1') return; } catch (e) { /* ignore */ }
+                const show = () => { if (currentUser) banner.classList.remove('hidden'); };
+                setTimeout(show, 8000);
+                window.addEventListener('beforeinstallprompt', () => setTimeout(show, 3000));
+                document.getElementById('install-banner-no').addEventListener('click', () => {
+                    banner.classList.add('hidden');
+                    try { localStorage.setItem(KEY, '1'); } catch (e) { /* ignore */ }
+                });
+                document.getElementById('install-banner-yes').addEventListener('click', () => {
+                    banner.classList.add('hidden');
+                    try { localStorage.setItem(KEY, '1'); } catch (e) { /* ignore */ }
+                    promptInstallApp();
+                });
+            })();
 
             // --- Password Confirmation Modal Logic ---
             let passwordResolve = null;
@@ -6358,6 +6385,18 @@
         }, 5 * 60 * 1000);
     })();
     </script>
+    <!-- Install-as-app banner: the zero-tap update path on phones that cannot be reset -->
+    <div id="install-banner" class="hidden fixed inset-x-0 bottom-0 z-[9998] p-3">
+        <div class="mx-auto max-w-md bg-white border border-blue-200 shadow-xl rounded-xl p-3 flex items-center gap-3">
+            <div class="text-2xl">📲</div>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-semibold text-gray-800">Install AlignTasks</div>
+                <div class="text-xs text-gray-500">Adds an icon to your home screen — after that it updates itself instantly, no download needed.</div>
+            </div>
+            <button id="install-banner-yes" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg font-semibold whitespace-nowrap">Install</button>
+            <button id="install-banner-no" class="px-2 py-1.5 text-gray-400 text-sm" title="Not now">✕</button>
+        </div>
+    </div>
 </body>
 </html>
 

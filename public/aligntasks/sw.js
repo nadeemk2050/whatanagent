@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'task-board-cache-v48'; // Change this version number (v2, v3, etc.) every time you deploy
+﻿const CACHE_NAME = 'task-board-cache-v49'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
