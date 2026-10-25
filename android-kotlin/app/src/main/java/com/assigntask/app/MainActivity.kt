@@ -3781,6 +3781,7 @@ fun EditTaskDialog(task: Task, taskType: String, projectId: String?, user: Fireb
     var alarmEnabled by remember(task.id) { mutableStateOf(task.alarmEnabled) }
     var notifyFiveMinutes by remember(task.id) { mutableStateOf(task.notifyFiveMinutesBefore) }
     var assigneeEmail by remember(task.id) { mutableStateOf(task.assigneeEmail) }
+    val aiCfgState = remember(task.id) { mutableStateOf(AiCfg.fromMap(task.aiFollowUp)) }
     var error by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val defaultRingtone = remember { AppSettingsStore.getDefaultAlarmRingtone(context) }
@@ -3790,6 +3791,10 @@ fun EditTaskDialog(task: Task, taskType: String, projectId: String?, user: Fireb
         title = { Text("Edit Task") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (taskType == "tasks" || taskType == "tasks_for_all") {
+                    AiFollowUpSection(aiCfgState) { msg -> if (msg != null) error = msg }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                }
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it; error = null },
@@ -3857,6 +3862,9 @@ fun EditTaskDialog(task: Task, taskType: String, projectId: String?, user: Fireb
                             currentUserEmail = user.email ?: "",
                             isAdmin = isAdmin
                         )
+                        if (taskType == "tasks" || taskType == "tasks_for_all") {
+                            AiFollowUp.save(context, task.id, if (taskType == "tasks") "assigned" else "shared", aiCfgState.value)
+                        }
                         onDismiss()
                     }
                 }

@@ -22,6 +22,7 @@ data class Task(
     val editedFields: List<String> = emptyList(),
     val assigneeName: String = "",
     val repeat: Map<String, Any>? = null,
+    val aiFollowUp: Map<String, Any>? = null,
     val allDay: Boolean = false,
     val alarmEnabled: Boolean = false,
     val notifyBeforeMinutes: Int? = null,

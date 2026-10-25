@@ -810,6 +810,33 @@ export function registerAlignRoutes(app) {
     };
   }
 
+  // Attach / remove the AI follow-up on an existing task. Used by the Android app, which writes
+  // tasks straight to Firestore and therefore has no team id to pass.
+  app.post(api + '/task/ai', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const id = sstr(b.id, 120);
+      const kind = b.kind === 'assigned' ? 'assigned' : 'shared';
+      if (!id) return bad(res, 'A task id is required.');
+      const ref = board(collectionFor(kind)).doc(id);
+      const cur = await ref.get();
+      if (!cur.exists) return bad(res, 'Task not found.', 404);
+      const existing = cur.data() || {};
+      const cfg = sanitizeAiFollowUp(b.aiFollowUp);
+      if (cfg && cfg.enabled) {
+        await ref.set({ aiFollowUp: cfg }, { merge: true });
+        await syncTaskAiFollowUp(id, kind, Object.assign({ title: sstr(existing.description, 200) }, cfg), req.staff);
+        return res.json({ ok: true, enabled: true, target: cfg.targetJid });
+      }
+      await ref.set({ aiFollowUp: { enabled: false } }, { merge: true });
+      await syncTaskAiFollowUp(id, kind, { enabled: false }, req.staff);
+      res.json({ ok: true, enabled: false });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, sstr(e.message, 200));
+    }
+  });
+
   // ============================================================ push notifications
   // Web Push: the phone/laptop gets a real notification even when the app is closed.
   let pushModCache = null;
