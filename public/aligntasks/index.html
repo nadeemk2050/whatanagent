@@ -124,6 +124,23 @@
             -webkit-text-fill-color: transparent;
             letter-spacing: .5px;
         }
+        /* ATS logo badge on the sign-in screen (replaces the old document icon) */
+        .ats-auth-logo {
+            width: 84px; height: 84px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 22px;
+            border: 1px solid var(--ats-gold-soft);
+            background: linear-gradient(160deg, #fffdf8 0%, #f5eddd 55%, #eee1c6 100%);
+            box-shadow: 0 8px 22px rgba(176,141,63,.20), inset 0 1px 0 #fff;
+        }
+        .ats-auth-logo span {
+            font-size: 27px; font-weight: 900; letter-spacing: 1.5px;
+            background: linear-gradient(135deg, #565a61 0%, #8b9099 32%, #a48b62 62%, #9c3a2c 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: #6b6f76;
+        }
 
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-thumb { background: #c9c4b7; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
@@ -257,7 +274,7 @@
         <div class="min-h-screen flex items-center justify-center p-4">
             <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
                  <div class="text-center mb-8">
-                    <svg class="mx-auto h-12 w-12" style="color:#b08d3f" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <div class="ats-auth-logo"><span>ATS</span></div>
                     <h1 id="auth-title" class="text-3xl font-bold mt-4 ats-auth-title">AlignTasks</h1>
                     <p id="auth-subtitle" class="text-gray-500">Sign in to manage your team</p>
                 </div>
