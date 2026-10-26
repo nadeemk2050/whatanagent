@@ -186,9 +186,16 @@
             #ats-nav-block { overflow-x: auto; scrollbar-width: none; }
             #ats-nav-block::-webkit-scrollbar { display: none; }
         }
+        /* dropdown highlight = titanium with cream text (was blue) */
+        .section-nav-item.active, .view-nav-item.active {
+            background: linear-gradient(180deg, #4c4f57 0%, var(--ats-charcoal) 100%) !important;
+            color: #f7ecd6 !important;
+        }
+        .task-info-wrap:hover .task-info-btn, .task-info-wrap:focus-within .task-info-btn { color: var(--ats-gold); }
+        .project-title.clickable:hover { color: var(--ats-gold); }
 
         .task-checkbox { -webkit-appearance: none; appearance: none; background-color: #fff; margin: 0; font: inherit; color: currentColor; width: 1.15em; height: 1.15em; border: 0.15em solid currentColor; border-radius: 50%; transform: translateY(-0.075em); display: grid; place-content: center; cursor: pointer; margin-top: 0.25rem; flex-shrink: 0; }
-        .task-checkbox::before { content: ""; width: 0.65em; height: 0.65em; border-radius: 50%; transform: scale(0); transition: 120ms transform ease-in-out; box-shadow: inset 1em 1em #3b82f6; }        .task-checkbox:checked::before { transform: scale(1); }
+        .task-checkbox::before { content: ""; width: 0.65em; height: 0.65em; border-radius: 50%; transform: scale(0); transition: 120ms transform ease-in-out; box-shadow: inset 1em 1em #34373d; }        .task-checkbox:checked::before { transform: scale(1); }
         /* Completed state marker (the old checkbox was removed from the row) */
         .task-status-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #cbd5e1; background: #fff; margin-top: 0.35rem; flex-shrink: 0; }
         .task-status-dot.done { background: #16a34a; border-color: #16a34a; }
@@ -197,15 +204,15 @@
         .staff-selection-list::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
         .section-nav-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 10px 12px; border: none; background: #fff; color: #374151; font-weight: 600; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
         .section-nav-item:hover { background: #f1f5f9; }
-        .section-nav-item.active { background: #3b82f6; color: #fff; }
+        .section-nav-item.active { background: #34373d; color: #fff; }
         .view-nav-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 12px; border: none; background: #fff; color: #374151; font-weight: 600; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
         .view-nav-item:hover { background: #f1f5f9; }
-        .view-nav-item.active { background: #3b82f6; color: #fff; }
+        .view-nav-item.active { background: #34373d; color: #fff; }
         .task-meta { font-size: 10px; color: #6b7280; margin-top: 4px; }
         /* Tiny ⓘ badge: all stamps/assignment live in a hover tooltip, so a task row stays one line */
         .task-info-wrap { position: relative; display: inline-flex; vertical-align: middle; margin-left: 5px; }
         .task-info-btn { font-size: 12px; line-height: 1; color: #9ca3af; cursor: help; user-select: none; }
-        .task-info-wrap:hover .task-info-btn, .task-info-wrap:focus-within .task-info-btn { color: #2563eb; }
+        .task-info-wrap:hover .task-info-btn, .task-info-wrap:focus-within .task-info-btn { color: #34373d; }
         .task-info-pop { display: none; position: absolute; left: 0; top: 100%; margin-top: 3px; z-index: 70; background: #111827; color: #f9fafb; font-size: 11px; line-height: 1.45; padding: 6px 9px; border-radius: 8px; width: max-content; max-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,.28); text-align: left; white-space: normal; font-weight: 400; }
         .task-info-wrap:hover .task-info-pop, .task-info-wrap:focus-within .task-info-pop { display: block; }
         .task-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
@@ -215,7 +222,7 @@
         .repeat-icon-button { background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; vertical-align: middle; }
         .repeat-icon, .alarm-icon { width: 12px; height: 12px; display: inline-block; margin-left: 6px; color: #9ca3af; }
         .project-title.clickable { cursor: pointer; }
-        .project-title.clickable:hover { color: #2563eb; }
+        .project-title.clickable:hover { color: #34373d; }
         .section-header, .staff-header { cursor: pointer; }
         .notification-bell { position: relative; }
         .notification-dot { position: absolute; top: 0; right: 0; width: 8px; height: 8px; background-color: #ef4444; border-radius: 50%; border: 1px solid white; }
@@ -313,7 +320,7 @@
                     </div>
                     <div id="ats-nav-block" class="flex-1 flex items-center justify-center gap-2 min-w-0" style="order:2;flex-wrap:nowrap;overflow:hidden;">
                         <div id="section-nav" style="position:relative;display:inline-flex;align-items:center;gap:2px;background:#e5e7eb;border-radius:11px;padding:3px;">
-                            <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#3b82f6;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;max-width:190px;">
+                            <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#34373d;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;max-width:190px;">
                                 <span id="section-nav-label">Tasks for All</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
@@ -334,7 +341,7 @@
                         <div id="view-nav" style="position:relative;display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:11px;padding:3px;">
                             <button id="view-nav-toggle" type="button" title="Filter tasks" style="display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;color:#334155;font-weight:800;font-size:12.5px;cursor:pointer;">
                                 <span id="view-nav-label">All</span>
-                                <span id="task-filter-count" style="font-size:10px;font-weight:800;color:#1d4ed8;background:#dbeafe;border-radius:9999px;padding:1px 6px;">0</span>
+                                <span id="task-filter-count" style="font-size:10px;font-weight:800;color:#6b5f45;background:#efe3c8;border-radius:9999px;padding:1px 6px;">0</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
                             <div id="view-nav-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);overflow:hidden;z-index:60;min-width:180px;">
@@ -3704,7 +3711,7 @@
                                     <div class="task-meta">👥 ${waEsc(members || '—')}${due ? ' · ' + due : ''}</div>
                                 </button>
                                 <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap" title="completed / total tasks">✅ <span data-proj-done="${p.id}">0</span>/<span data-proj-total="${p.id}">0</span></span>
-                                <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
+                                <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #d5cfc2;background:#f3ecdd;color:#6b5f45;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
                                 ${canManage ? `<button class="project-delete" data-project-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;cursor:pointer;">🗑</button>` : ''}
                                 <button class="project-toggle text-gray-400 text-xs px-1" data-project-id="${p.id}" title="Open / close">${open ? '▲' : '▼'}</button>
                             </div>
@@ -6025,7 +6032,7 @@
                        style="width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;margin-bottom:16px;box-sizing:border-box;">
 
                 <button id="gateSubmit" type="submit"
-                        style="width:100%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">
+                        style="width:100%;padding:12px;background:#34373d;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">
                     Continue
                 </button>
                 <button id="gateSkip" type="button" style="display:none;width:100%;padding:9px;background:transparent;color:#64748b;border:none;font-size:12px;cursor:pointer;margin-top:8px;">
@@ -6234,7 +6241,7 @@
     <!-- 📁 New team project — opened from the ＋ icon in the Project Management section -->
     <div id="project-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
         <div style="max-width:540px;width:100%;margin:6vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#4c4f57,#34373d);color:#fff;">
                 <div style="min-width:0;">
                     <div style="font-size:15px;font-weight:800;line-height:1.2;">📁 New team project</div>
                     <div style="font-size:11px;opacity:.92;margin-top:2px;">Several members can work on it together</div>
@@ -6255,7 +6262,7 @@
                     <div id="project-members-list" style="max-height:210px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:6px;"></div>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:2px;">
-                    <button type="submit" style="flex:1;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Create project</button>
+                    <button type="submit" style="flex:1;padding:11px;background:#34373d;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Create project</button>
                     <button type="button" id="cancel-project-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
                 </div>
             </form>
@@ -6265,7 +6272,7 @@
     <!-- 📝 New task inside a team project — opened from the ＋ on the project row -->
     <div id="project-task-modal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:99997;overflow:auto;padding:16px;">
         <div style="max-width:520px;width:100%;margin:7vh auto 0;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;background:linear-gradient(135deg,#4c4f57,#34373d);color:#fff;">
                 <div style="min-width:0;">
                     <div style="font-size:15px;font-weight:800;line-height:1.2;">📝 New task</div>
                     <div id="project-task-modal-sub" style="font-size:11px;opacity:.92;margin-top:2px;">—</div>
@@ -6289,7 +6296,7 @@
                     </div>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:2px;">
-                    <button type="submit" style="flex:1;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>
+                    <button type="submit" style="flex:1;padding:11px;background:#34373d;color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer;">＋ Add task</button>
                     <button type="button" id="cancel-project-task-modal-2" style="padding:11px 16px;background:#fff;color:#475569;border:1px solid #e2e8f0;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;">Cancel</button>
                 </div>
             </form>
@@ -6483,7 +6490,7 @@
             b.id = 'alignReadOnly';
             b.style.cssText = 'position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:45;background:#0f172a;color:#fff;padding:9px 12px;border-radius:12px;font-size:12px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.32);font-family:system-ui,-apple-system,sans-serif;max-width:92vw;';
             b.innerHTML = '<span>👁 Read-only — team sign in to create or edit tasks</span>' +
-                '<button id="alignReadOnlySignIn" type="button" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Team Sign in</button>';
+                '<button id="alignReadOnlySignIn" type="button" style="background:#34373d;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;">Team Sign in</button>';
             document.body.appendChild(b);
             document.getElementById('alignReadOnlySignIn').onclick = () => {
                 b.remove();
@@ -6510,7 +6517,7 @@
                 $('gatePassword').setAttribute('autocomplete', 'current-password');
                 $('gateNameWrap').style.display = 'block';
                 $('gateSubmit').textContent = 'Continue';
-                $('gateSubmit').style.background = '#2563eb';
+                $('gateSubmit').style.background = '#34373d';
                 $('gateSkip').style.display = 'none';   // no read-only escape: sign in or log out
                 $('gateHint').textContent = 'Your name and password are needed to use the board. Your personal tasks stay private to you.';
             } else {
