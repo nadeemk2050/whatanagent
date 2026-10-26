@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "3.4 - profile now reads and saves straight into the shared Firestore database (no server API), so Android and the web app edit the same document. Team logins and AI agents still use the server because they create Firebase Auth accounts."
+val releaseNotes = "3.5 - same gestures as the web board: short tap on a task opens a zoomed full-text view, long press opens Edit / Task completed / Delete (ask for the name when completing). Status dots replace the checkboxes. Short tap on a project name opens a full editor (name, due date, add or remove team members); long press gives Edit / Delete with the action password."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 23
-        versionName = "3.4"
+        versionCode = 24
+        versionName = "3.5"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

@@ -345,7 +345,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             id = doc.id,
                             name = doc.getString("name") ?: "",
                             ownerAdminUid = doc.getString("ownerAdminUid") ?: "",
-                            members = (doc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                            members = (doc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                            dueDate = doc.getString("dueDate")
                         )
                     } ?: emptyList()
                     publishAdminScopedData()
@@ -382,7 +383,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         id = doc.id,
                         name = doc.getString("name") ?: "",
                         ownerAdminUid = doc.getString("ownerAdminUid") ?: "",
-                        members = (doc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                        members = (doc.get("members") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                        dueDate = doc.getString("dueDate")
                     )
                 } ?: emptyList()).filter { project ->
                     project.ownerAdminUid.isBlank() || project.ownerAdminUid == teamOwnerUid
@@ -824,6 +826,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .addOnSuccessListener { refreshTaskWidgets() }
     }
 
+    /** Complete a task and record WHO did it (name typed by the user), same as the web board. */
+    fun completeTaskWithName(task: Task, taskType: String, projectId: String?,
+                             whoName: String, currentUserEmail: String, onResult: (String?) -> Unit) {
+        val collPath = if (taskType == "project" && projectId != null)
+            "$BASE/projects/$projectId/tasks" else "$BASE/$taskType"
+        val update = mutableMapOf<String, Any>(
+            "status" to "Done",
+            "completedBy" to whoName,
+            "completedByName" to whoName,
+            "completedByEmail" to currentUserEmail,
+            "completedAt" to FieldValue.serverTimestamp(),
+            "lastUpdatedBy" to currentUserEmail,
+            "lastUpdatedAt" to FieldValue.serverTimestamp()
+        )
+        db.collection(collPath).document(task.id).update(update)
+            .addOnSuccessListener { refreshTaskWidgets(); onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Failed to complete the task") }
+    }
+
+    /** Move a completed task back to pending (clears the completion stamps). */
+    fun reopenTask(task: Task, taskType: String, projectId: String?,
+                   currentUserEmail: String, onResult: (String?) -> Unit) {
+        val collPath = if (taskType == "project" && projectId != null)
+            "$BASE/projects/$projectId/tasks" else "$BASE/$taskType"
+        val update = mutableMapOf<String, Any>(
+            "status" to "To Do",
+            "completedBy" to FieldValue.delete(),
+            "completedByName" to FieldValue.delete(),
+            "completedByEmail" to FieldValue.delete(),
+            "completedAt" to FieldValue.delete(),
+            "lastUpdatedBy" to currentUserEmail,
+            "lastUpdatedAt" to FieldValue.serverTimestamp()
+        )
+        db.collection(collPath).document(task.id).update(update)
+            .addOnSuccessListener { refreshTaskWidgets(); onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Failed to reopen the task") }
+    }
+
     fun deleteTask(taskId: String, taskType: String, projectId: String?, password: String, onResult: (String?) -> Unit) {
         if (password != ADMIN_ACTION_PASSWORD) {
             onResult("Wrong password")
@@ -1008,6 +1048,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun editProject(id: String, name: String) {
         db.collection("$BASE/projects").document(id).update("name", name)
+    }
+
+    /** Full project edit: name, members (emails + uids) and optional due date. */
+    fun updateProject(id: String, name: String, members: List<String>, memberUids: List<String>,
+                      dueDate: String?, currentUserEmail: String, onResult: (String?) -> Unit) {
+        val patch = mutableMapOf<String, Any>(
+            "name" to name,
+            "members" to members,
+            "memberUids" to memberUids,
+            "lastUpdatedBy" to currentUserEmail,
+            "lastUpdatedAt" to FieldValue.serverTimestamp()
+        )
+        if (!dueDate.isNullOrBlank()) patch["dueDate"] = dueDate else patch["dueDate"] = FieldValue.delete()
+        db.collection("$BASE/projects").document(id).update(patch)
+            .addOnSuccessListener { onResult(null) }
+            .addOnFailureListener { onResult(it.message ?: "Failed to update the project") }
     }
 
     fun deleteProject(id: String, password: String, onResult: (String?) -> Unit) {

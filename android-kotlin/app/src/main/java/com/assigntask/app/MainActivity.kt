@@ -23,6 +23,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -1783,15 +1785,39 @@ fun ProjectCard(
     var showAddTaskDialog by remember(project.id) { mutableStateOf(false) }
     var showComments by remember(project.id) { mutableStateOf<Task?>(null) }
     var showEditTask by remember(project.id) { mutableStateOf<Pair<Task, String>?>(null) }
+    var showEditProject by remember(project.id) { mutableStateOf(false) }
+    var showProjectMenu by remember(project.id) { mutableStateOf(false) }
+    var showDeleteProject by remember(project.id) { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth().clickable { onExpandChange(project.id) }.padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(project.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-                IconButton(onClick = { vm.deleteProject(project.id, "abcd") { } }) {
-                    Icon(Icons.Default.Delete, "Delete", modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error)
+                // Short press on the name edits the project, long press opens Edit / Delete.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .combinedClickable(
+                            onClick = { showEditProject = true },
+                            onLongClick = { showProjectMenu = true }
+                        )
+                ) {
+                    Text(project.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                    val memberLine = if (project.members.isEmpty()) "No members"
+                        else project.members.joinToString(", ") { it.substringBefore('@') }
+                    Text(
+                        memberLine,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = { onExpandChange(project.id) }) {
+                    Icon(
+                        if (expandedProjectId == project.id) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        "Open / close"
+                    )
                 }
             }
             if (expandedProjectId == project.id) {
@@ -1864,6 +1890,191 @@ fun ProjectCard(
     showEditTask?.let { (task, taskType) ->
         EditTaskDialog(task, taskType, project.id, user, isAdmin, vm, staff) { showEditTask = null }
     }
+
+    // Long press on the project name → Edit / Delete
+    if (showProjectMenu) {
+        AlertDialog(
+            onDismissRequest = { showProjectMenu = false },
+            title = { Text("Project options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        project.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
+                    )
+                    TextButton(
+                        onClick = { showProjectMenu = false; showEditProject = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("✏️ Edit project", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = { showProjectMenu = false; showDeleteProject = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("🗑 Delete project", modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showProjectMenu = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showEditProject) {
+        EditProjectDialog(project, staff, user, vm) { showEditProject = false }
+    }
+
+    if (showDeleteProject) {
+        ProjectDeletePasswordDialog(project, vm) { showDeleteProject = false }
+    }
+}
+
+@Composable
+fun EditProjectDialog(
+    project: Project,
+    staff: List<Staff>,
+    user: FirebaseUser,
+    vm: AppViewModel,
+    onDismiss: () -> Unit
+) {
+    var name by remember(project.id) { mutableStateOf(project.name) }
+    var due by remember(project.id) { mutableStateOf(project.dueDate.orEmpty()) }
+    var selected by remember(project.id) {
+        mutableStateOf(project.members.map { it.lowercase() }.toSet())
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val allUsers = remember(staff, user.email) {
+        val self = Staff(name = user.email?.substringBefore('@') ?: "Me", email = user.email ?: "")
+        if (staff.any { it.email.equals(self.email, true) }) staff else staff + self
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Project") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; error = null },
+                    label = { Text("Project name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = due,
+                    onValueChange = { due = it },
+                    label = { Text("Due date (YYYY-MM-DD, optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.clickable {
+                        val cal = Calendar.getInstance()
+                        DatePickerDialog(
+                            context,
+                            { _, y, m, d -> due = String.format("%04d-%02d-%02d", y, m + 1, d) },
+                            cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
+                        ).show()
+                    }
+                ) { Text("📅 Pick a date", modifier = Modifier.padding(6.dp), style = MaterialTheme.typography.labelMedium) }
+
+                Text(
+                    "Team members — tick to add, untick to remove",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                allUsers.forEach { s ->
+                    val email = s.email.lowercase()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            selected = if (selected.contains(email)) selected - email else selected + email
+                        }.padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = selected.contains(email),
+                            onCheckedChange = { on ->
+                                selected = if (on) selected + email else selected - email
+                            }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(s.name.ifBlank { s.email }, fontWeight = FontWeight.Medium)
+                            Text(
+                                s.email,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
+                            )
+                        }
+                    }
+                }
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    if (selected.isEmpty()) { error = "Pick at least one team member." }
+                    else {
+                        val emails = selected.toList()
+                        val uids = allUsers.filter { selected.contains(it.email.lowercase()) }
+                            .mapNotNull { it.uid.takeIf { u -> u.isNotBlank() } }
+                        vm.updateProject(
+                            project.id, name.trim(), emails, uids,
+                            due.trim().ifBlank { null }, user.email ?: ""
+                        ) { err -> if (err == null) onDismiss() else error = err }
+                    }
+                }
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun ProjectDeletePasswordDialog(project: Project, vm: AppViewModel, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete " + project.name + "?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("The project and all its tasks will be deleted. Enter the action password.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    vm.deleteProject(project.id, password) { err ->
+                        if (err == null) onDismiss() else error = err
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) { Text("Delete") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -2878,6 +3089,8 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
     var showWaContacts by remember(task.id) { mutableStateOf(false) }
     var swipeOffsetPx by remember(task.id) { mutableFloatStateOf(0f) }
     var showInfoSheet by remember(task.id) { mutableStateOf(false) }
+    var showOptionsMenu by remember(task.id) { mutableStateOf(false) }
+    var showCompletePrompt by remember(task.id) { mutableStateOf(false) }
     val maxSwipePx = with(density) { 156.dp.toPx() }
 
     fun startSenderRinging(callId: String?, selectedRecipients: List<String>) {
@@ -2938,7 +3151,11 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 )
                 .combinedClickable(
                     onClick = {
-                        if (swipeOffsetPx > 0f) swipeOffsetPx = 0f
+                        if (swipeOffsetPx > 0f) swipeOffsetPx = 0f else showInfoSheet = true
+                    },
+                    onLongClick = {
+                        swipeOffsetPx = 0f
+                        showOptionsMenu = true
                     },
                     onDoubleClick = {
                         if (onRemindTask != null && reminderTargets.isNotEmpty()) {
@@ -2949,9 +3166,21 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Checkbox(checked = isDone, onCheckedChange = { checked ->
-                vm.toggleTaskDone(task, taskType, projectId, checked, user.email ?: "")
-            }, modifier = Modifier.padding(top = 0.dp))
+            // Status dot instead of a checkbox — completion goes through the long-press menu.
+            Box(
+                modifier = Modifier
+                    .padding(top = 7.dp, start = 2.dp)
+                    .size(12.dp)
+                    .background(
+                        if (isDone) Color(0xFF16A34A) else Color.White,
+                        CircleShape
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = if (isDone) Color(0xFF16A34A) else Color(0xFFCBD5E1),
+                        shape = CircleShape
+                    )
+            )
             Column(modifier = Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(
                     text = task.description,
@@ -3040,6 +3269,66 @@ fun TaskRow(task: Task, taskType: String, projectId: String?, user: FirebaseUser
         ModalBottomSheet(onDismissRequest = { showInfoSheet = false }) {
             TaskDetailsSheet(task = task, isDone = isDone)
         }
+    }
+
+    // Long press → Edit / Completed / Delete (same three options as the web board).
+    if (showOptionsMenu) {
+        AlertDialog(
+            onDismissRequest = { showOptionsMenu = false },
+            title = { Text("Task options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        task.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    TextButton(
+                        onClick = { showOptionsMenu = false; onEditTask(task, taskType) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("✏️ Edit task", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = { showOptionsMenu = false; showCompletePrompt = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (isDone) "↩️ Move back to pending" else "✅ Task completed",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (isDone) Color(0xFFB45309) else Color(0xFF15803D)
+                        )
+                    }
+                    TextButton(
+                        onClick = { showOptionsMenu = false; showDeleteDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("🗑 Delete task", modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOptionsMenu = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showCompletePrompt) {
+        CompleteTaskNameDialog(
+            task = task,
+            isDone = isDone,
+            defaultName = user.email?.substringBefore('@').orEmpty(),
+            onDismiss = { showCompletePrompt = false },
+            onConfirm = { who ->
+                showCompletePrompt = false
+                if (isDone) {
+                    vm.reopenTask(task, taskType, projectId, user.email ?: "") { }
+                } else {
+                    vm.completeTaskWithName(task, taskType, projectId, who, user.email ?: "") { }
+                }
+            }
+        )
     }
 
     if (showDeleteDialog) {
@@ -3136,9 +3425,17 @@ private fun SheetRow(label: String, value: String) {
 fun TaskDetailsSheet(task: Task, isDone: Boolean) {
     val sdf = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        // Zoomed description: the whole text, large and wrapping — this is the "short press" view.
         Text(
             text = task.description.ifBlank { "Task" },
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 19.sp,
+                lineHeight = 28.sp,
+                textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None
+            ),
+            fontWeight = FontWeight.SemiBold,
+            color = if (isDone) MaterialTheme.colorScheme.onSurface.copy(0.55f)
+            else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )
         Spacer(Modifier.height(4.dp))
@@ -4144,6 +4441,53 @@ fun EditTaskDialog(task: Task, taskType: String, projectId: String?, user: Fireb
                     }
                 }
             }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun CompleteTaskNameDialog(
+    task: Task,
+    isDone: Boolean,
+    defaultName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember(task.id) { mutableStateOf(defaultName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isDone) "Move back to pending?" else "Who completed this task?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    task.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!isDone) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Completed by") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text("The completion stamps will be cleared.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = isDone || name.isNotBlank(),
+                onClick = { onConfirm(if (isDone) "" else name.trim()) }
+            ) {
+                Text(if (isDone) "Reopen" else "Complete")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

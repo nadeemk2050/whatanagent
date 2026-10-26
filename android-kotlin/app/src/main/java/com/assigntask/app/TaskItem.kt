@@ -39,7 +39,8 @@ data class Project(
     val id: String = "",
     val name: String = "",
     val ownerAdminUid: String = "",
-    val members: List<String> = emptyList()
+    val members: List<String> = emptyList(),
+    val dueDate: String? = null
 )
 
 data class Staff(
