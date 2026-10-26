@@ -19,8 +19,10 @@
         .hidden { display: none; }
         .task-list-item { display: flex; align-items: flex-start; justify-content: space-between; padding: 0.75rem 0.5rem; border-bottom: 1px solid #e5e7eb; }
         .task-checkbox { -webkit-appearance: none; appearance: none; background-color: #fff; margin: 0; font: inherit; color: currentColor; width: 1.15em; height: 1.15em; border: 0.15em solid currentColor; border-radius: 50%; transform: translateY(-0.075em); display: grid; place-content: center; cursor: pointer; margin-top: 0.25rem; flex-shrink: 0; }
-        .task-checkbox::before { content: ""; width: 0.65em; height: 0.65em; border-radius: 50%; transform: scale(0); transition: 120ms transform ease-in-out; box-shadow: inset 1em 1em #3b82f6; }
-        .task-checkbox:checked::before { transform: scale(1); }
+        .task-checkbox::before { content: ""; width: 0.65em; height: 0.65em; border-radius: 50%; transform: scale(0); transition: 120ms transform ease-in-out; box-shadow: inset 1em 1em #3b82f6; }        .task-checkbox:checked::before { transform: scale(1); }
+        /* Completed state marker (the old checkbox was removed from the row) */
+        .task-status-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #cbd5e1; background: #fff; margin-top: 0.35rem; flex-shrink: 0; }
+        .task-status-dot.done { background: #16a34a; border-color: #16a34a; }
         .staff-selection-list::-webkit-scrollbar { width: 6px; }
         .staff-selection-list::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
         .staff-selection-list::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
@@ -119,34 +121,13 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2 sm:gap-3" style="order:3;">
-                        <!-- ✅ Completed Tasks (moved up here to save vertical space) -->
-                        <button id="completed-tasks-button" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm whitespace-nowrap" title="Completed tasks">
-                            ✅ <span class="hidden sm:inline">Completed</span> <span id="completed-tasks-count" class="bg-white text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>
-                        </button>
-                        <!-- 👤 Signed-in staff profile (details live in the profile dialog, not the bar) -->
-                        <button id="profile-chip" class="flex items-center gap-2 p-1 rounded-full border border-gray-300 bg-white hover:bg-gray-50 transition-colors" title="View or edit your profile" style="display:none;">
-                            <span id="profile-chip-avatar" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9999px;background:#e0e7ff;font-size:16px;">👤</span>
-                            <span style="display:none;flex-direction:column;align-items:flex-start;line-height:1.15;">
-                                <span id="profile-chip-name" style="font-size:12.5px;font-weight:800;color:#0f172a;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
-                                <span id="profile-chip-role" style="font-size:10px;color:#64748b;text-transform:capitalize;">—</span>
-                            </span>
-                        </button>
-                        <!-- Notification Bell -->
-                        <button id="notification-bell-button" class="notification-bell p-2 rounded-full hover:bg-gray-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                            <div id="notification-dot" class="notification-dot hidden"></div>
-                        </button>
-                        <!-- PWA Install Button -->
-                        <button id="install-button" class="hidden bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-600 transition-colors flex items-center gap-2 shadow-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            Install
-                        </button>
                         <div class="relative">
                             <button id="account-menu-button" class="p-2 rounded-full hover:bg-gray-200 text-gray-700" aria-label="Account menu">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
                             </button>
                             <div id="account-menu" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
                                 <button id="menu-personal-tasks" class="w-full text-left px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 flex items-center gap-2"><span>🔒</span><span>My Personal Tasks</span></button>
+                                <button id="menu-completed-tasks" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">✅ Completed Tasks</button>
                                 <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
                                 <button id="menu-add-subusers" class="hidden w-full text-left px-4 py-2 text-sm hover:bg-gray-100">👥 Team Members</button>
                                 <button id="menu-team-settings" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">⚙️ Team Settings &amp; Invites</button>
@@ -583,7 +564,7 @@
     </div>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div class="p-4 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">✅ Completed Tasks</h3><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
+            <div class="p-4 border-b flex justify-between items-center"><h3 id="completed-tasks-modal-title" class="text-xl font-bold text-gray-800">✅ Completed Tasks</h3><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
             <div id="completed-tasks-list" class="p-4 overflow-y-auto space-y-2"></div>
         </div>
     </div>
@@ -928,24 +909,31 @@
             const assignTaskHeader = document.getElementById('assign-task-header');
             const assignTaskFormContainer = document.getElementById('assign-task-form-container');
 
-            // --- PWA Install Logic ---
+            // --- Transient top notice (replaces the permanent bell / status chips) ---
+            let topNoticeTimer = null;
+            function showTopNotice(text, ms) {
+                const box = document.getElementById('top-notice');
+                const label = document.getElementById('top-notice-text');
+                if (!box || !label) return;
+                label.textContent = text;
+                box.classList.remove('hidden');
+                if (topNoticeTimer) clearTimeout(topNoticeTimer);
+                topNoticeTimer = setTimeout(() => box.classList.add('hidden'), ms || 9000);
+            }
+            window.showTopNotice = showTopNotice;
+            (function () {
+                const close = document.getElementById('top-notice-close');
+                if (close) close.addEventListener('click', () => {
+                    const box = document.getElementById('top-notice');
+                    if (box) box.classList.add('hidden');
+                });
+            })();
+
+            // --- PWA Install Logic (the button lives in the account menu, not the top bar) ---
             let deferredPrompt;
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
                 deferredPrompt = e;
-                if (!window.matchMedia('(display-mode: standalone)').matches) {
-                    installButton.classList.remove('hidden');
-                }
-            });
-
-            installButton.addEventListener('click', async () => {
-                if (deferredPrompt) {
-                    deferredPrompt.prompt();
-                    const { outcome } = await deferredPrompt.userChoice;
-                    console.log(`User response to the install prompt: ${outcome}`);
-                    deferredPrompt = null;
-                    installButton.classList.add('hidden');
-                }
             });
 
             // --- Alarm Feature Logic ---
@@ -1595,8 +1583,8 @@
                 const alarmIcon = task.setAlarm ? `<svg class="alarm-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/><path d="M6.38 18.7 4 21"/><path d="M17.64 18.67 20 21"/></svg>` : '';
 
                 return `
-                    <div class="task-list-item">
-                        <input type="checkbox" class="task-checkbox" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} ${isDone ? 'checked' : ''}>
+                    <div class="task-list-item" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>
+                        <span class="task-status-dot ${isDone ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
                              <p class="text-sm break-words flex-1 min-w-[10rem] ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${repeatIcon}${alarmIcon}${taskInfoHTML(task)}${dueDate && isOverdue ? '<span class="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">' + formatTaskTimestamp(dueDate) + '</span>' : ''}</p>
                              <div class="task-row-actions">
@@ -2433,8 +2421,8 @@
                 
                 // Who is responsible, when it is due, whether it repeats — all inside the ⓘ badge.
                 return `
-                     <div class="task-list-item">
-                        <input type="checkbox" class="task-checkbox" data-task-type="tasks_for_all" data-task-id="${task.id}" ${isCompleted ? 'checked' : ''}>
+                     <div class="task-list-item" data-task-type="tasks_for_all" data-task-id="${task.id}">
+                         <span class="task-status-dot ${isCompleted ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
                             <p class="text-sm break-words flex-1 min-w-[10rem] ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${taskInfoHTML(task)}</p>
                             <div class="task-row-actions">
@@ -2483,17 +2471,26 @@
                 taskMenuCtx = null;
             }
             function openTaskActionMenu(ev, row) {
-                const cb = row.querySelector('.task-checkbox');
                 const menu = document.getElementById('task-action-menu');
-                if (!cb || !menu) return;
-                const taskType = cb.getAttribute('data-task-type') || '';
-                const taskId = cb.getAttribute('data-task-id') || '';
+                if (!menu) return;
+                // The row itself carries the identifiers now that the checkbox is gone.
+                const taskType = row.getAttribute('data-task-type') || '';
+                const taskId = row.getAttribute('data-task-id') || '';
                 if (!taskId || !taskType) return;
-                taskMenuCtx = { taskId: taskId, taskType: taskType, projectId: cb.getAttribute('data-project-id') || '' };
+                const isDone = !!(row.querySelector('p') || {}).classList?.contains('line-through');
+                taskMenuCtx = {
+                    taskId: taskId,
+                    taskType: taskType,
+                    projectId: row.getAttribute('data-project-id') || '',
+                    isDone: isDone
+                };
                 const label = ((row.querySelector('p') || {}).innerText || 'this task').trim().replace(/\s+/g, ' ').slice(0, 60);
                 menu.innerHTML =
                     '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(label) + '</p>' +
                     '<button type="button" class="task-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">✏️ Edit task</button>' +
+                    (isDone
+                        ? '<button type="button" class="task-menu-complete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-amber-50 text-amber-700">↩️ Move back to pending</button>'
+                        : '<button type="button" class="task-menu-complete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-green-50 text-green-700">✅ Task completed</button>') +
                     '<button type="button" class="task-menu-delete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600">🗑 Delete task</button>' +
                     '<button type="button" class="task-menu-cancel w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 text-gray-500">Cancel</button>';
                 menu.classList.remove('hidden');
@@ -2518,8 +2515,60 @@
                 const ctx = taskMenuCtx;
                 const wantEdit = !!e.target.closest('.task-menu-edit');
                 const wantDelete = !!e.target.closest('.task-menu-delete');
-                if (!ctx || (!wantEdit && !wantDelete)) { closeTaskActionMenu(); return; }
+                const wantComplete = !!e.target.closest('.task-menu-complete');
+                if (!ctx || (!wantEdit && !wantDelete && !wantComplete)) { closeTaskActionMenu(); return; }
                 closeTaskActionMenu();
+
+                // ✅ Complete / reopen — ask for the name of the person who did it, then move it.
+                if (wantComplete) {
+                    const okComplete = await promptForAdminPassword(ctx.isDone ? 'Reopen this task — password' : 'Complete this task — password');
+                    if (!okComplete) return;
+                    let who = '';
+                    if (!ctx.isDone) {
+                        const suggested = (currentUserProfile && (currentUserProfile.name || currentUserProfile.handle)) || (currentUser && currentUser.email) || '';
+                        who = window.prompt('Who completed this task?', suggested);
+                        if (who === null) return;                       // cancelled
+                        who = String(who).trim() || suggested || 'Unknown';
+                    }
+                    try {
+                        const base = `/artifacts/${appId}/public/data/`;
+                        let docRef;
+                        if (ctx.taskType === 'project') {
+                            docRef = db.collection(base + `projects/${ctx.projectId}/tasks`).doc(ctx.taskId);
+                        } else if (ctx.taskType === 'personal_tasks') {
+                            docRef = db.collection(base + `users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId);
+                        } else {
+                            docRef = db.collection(base + ctx.taskType).doc(ctx.taskId);
+                        }
+                        if (ctx.isDone) {
+                            await docRef.update({
+                                status: 'To Do',
+                                completedBy: firebase.firestore.FieldValue.delete(),
+                                completedByName: firebase.firestore.FieldValue.delete(),
+                                completedByEmail: firebase.firestore.FieldValue.delete(),
+                                completedAt: firebase.firestore.FieldValue.delete(),
+                                lastUpdatedBy: currentUser.email,
+                                lastUpdatedAt: new Date()
+                            });
+                            showTopNotice('↩️ Moved back to pending tasks');
+                        } else {
+                            await docRef.update({
+                                status: 'Done',
+                                completedBy: who,
+                                completedByName: who,
+                                completedByEmail: currentUser.email || '',
+                                completedAt: new Date(),
+                                lastUpdatedBy: currentUser.email,
+                                lastUpdatedAt: new Date()
+                            });
+                            showTopNotice('✅ Completed by ' + who + ' — moved to Completed Tasks');
+                        }
+                    } catch (err) {
+                        alert('Could not update the task: ' + err.message);
+                    }
+                    return;
+                }
+
                 const ok = await promptForAdminPassword(wantEdit ? 'Edit this task — password' : 'Delete this task — password');
                 if (!ok) return;
                 if (wantEdit) {
@@ -3414,28 +3463,30 @@
                 try {
                     const base = `/artifacts/${appId}/public/data/`;
                     const tid = teamCtx.teamId;
+                    // "Tasks for All" completed list, newest first.
                     const forAllSnap = await db.collection(base + 'tasks_for_all').where('teamId', '==', tid).where('status', '==', 'Done').get();
-                    const forAllDone = forAllSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    let teamDone = [];
-                    if (currentUserProfile.role === 'admin') {
-                        const snap = await db.collection(base + 'tasks').where('teamId', '==', tid).where('status', '==', 'Done').get();
-                        teamDone = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    } else {
-                        const snap = await db.collection(base + 'tasks').where('teamId', '==', tid).where('assigneeEmail', '==', currentUser.email).get();
-                        teamDone = snap.docs.filter(d => d.data().status === 'Done').map(d => ({ id: d.id, ...d.data() }));
-                    }
+                    const forAllDone = forAllSnap.docs
+                        .map(d => ({ id: d.id, ...d.data() }))
+                        .sort(sortByCreatedDesc);
                     completedCounts.forAll = forAllDone.length;
-                    completedCounts.team = teamDone.length;
+                    completedCounts.team = 0;
                     updateCompletedBadge();
-                    let html = '';
-                    if (forAllDone.length) html += `<h3 class="text-sm font-bold text-gray-600 mt-1 mb-1">General Tasks</h3>` + forAllDone.map(createTaskForAllListItemHTML).join('');
-                    if (teamDone.length) html += `<h3 class="text-sm font-bold text-gray-600 mt-4 mb-1">Individual Tasks</h3>` + teamDone.map(t => createBaseTaskListItemHTML(t, 'tasks', {})).join('');
-                    listEl.innerHTML = html || '<p class="text-gray-500 text-sm text-center py-6">No completed tasks yet.</p>';
+                    const title = document.getElementById('completed-tasks-modal-title');
+                    if (title) title.textContent = '✅ Completed Tasks (' + forAllDone.length + ')';
+                    listEl.innerHTML = forAllDone.length
+                        ? forAllDone.map(createTaskForAllListItemHTML).join('')
+                        : '<p class="text-gray-500 text-sm text-center py-6">No completed tasks yet. Tap a task and choose “✅ Task completed”.</p>';
                 } catch (err) {
                     listEl.innerHTML = '<p class="text-red-500 text-sm text-center py-6">❌ ' + (err.message || 'Could not load completed tasks') + '</p>';
                 }
             }
-            document.getElementById('completed-tasks-button').addEventListener('click', openCompletedTasksModal);
+            (function () {
+                const fromMenu = document.getElementById('menu-completed-tasks');
+                if (fromMenu) fromMenu.addEventListener('click', () => {
+                    if (accountMenu) accountMenu.classList.add('hidden');
+                    openCompletedTasksModal();
+                });
+            })();
             document.getElementById('completed-tasks-modal-close').addEventListener('click', () => document.getElementById('completed-tasks-modal').classList.add('hidden'));
             
             // ===== 2.0: team member management + export =====
@@ -3993,12 +4044,23 @@
                 boardTasksRaw = [];
                 currentFiltered = { general: [], individual: [] };
                 
-                // Notifications Listener
+                // Notifications Listener — no bell in the top bar any more: a new notification
+                // simply appears as a banner at the top for a few seconds.
                 const notificationsRef = db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/notifications`).orderBy("createdAt", "desc");
+                let seenNotificationIds = null;
                 let unsub = notificationsRef.onSnapshot(snapshot => {
                     const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     const unread = notifications.filter(n => !n.read);
-                    document.getElementById('notification-dot').classList.toggle('hidden', unread.length === 0);
+                    const dot = document.getElementById('notification-dot');
+                    if (dot) dot.classList.toggle('hidden', unread.length === 0);
+                    if (seenNotificationIds === null) {
+                        seenNotificationIds = new Set(notifications.map(n => n.id));
+                    } else {
+                        const fresh = notifications.filter(n => !seenNotificationIds.has(n.id));
+                        notifications.forEach(n => seenNotificationIds.add(n.id));
+                        const newest = fresh.find(n => !n.read) || fresh[0];
+                        if (newest) showTopNotice('🔔 ' + (newest.text || 'New notification'));
+                    }
                     renderNotifications(notifications);
                 }, error => { console.warn('[notifications] listener:', (error && error.code) || error); });
                 currentUnsubscribes.push(unsub);
@@ -5245,7 +5307,7 @@
                 } else if (button.classList.contains('repeat-icon-button')) {
                     openRepeatDetailsModal(button.dataset.dueDate, button.dataset.repeatType, button.dataset.repeatRemaining);
                 } else if (button.id === 'notification-bell-button') {
-                    notificationModal.classList.remove('hidden');
+                    if (notificationModal) notificationModal.classList.remove('hidden');
                 } else if (button.id === 'notification-modal-close') {
                     notificationModal.classList.add('hidden');
                 } else if (button.classList.contains('notify-button')) {
@@ -6176,11 +6238,14 @@
             if (!p) return;
             myProfile = p;
             const chip = $('profile-chip');
-            chip.style.display = 'flex';
-            $('profile-chip-avatar').textContent = p.avatarEmoji || '👤';
-            $('profile-chip-name').textContent = p.name || p.handle;
+            if (chip) chip.style.display = 'flex';
+            const av = $('profile-chip-avatar');
+            if (av) av.textContent = p.avatarEmoji || '👤';
+            const nm = $('profile-chip-name');
+            if (nm) nm.textContent = p.name || p.handle;
             const role = (p.role || 'member');
-            $('profile-chip-role').textContent = p.jobTitle ? (p.jobTitle + ' · ' + role) : role;
+            const rl = $('profile-chip-role');
+            if (rl) rl.textContent = p.jobTitle ? (p.jobTitle + ' · ' + role) : role;
         }
 
         async function loadProfile() {
@@ -6332,7 +6397,8 @@
 
         function closeProfile() { $('alignProfile').style.display = 'none'; }
 
-        $('profile-chip').addEventListener('click', openProfile);
+        const chipClick = $('profile-chip');
+        if (chipClick) chipClick.addEventListener('click', openProfile);
         $('pfClose').addEventListener('click', closeProfile);
         $('alignProfile').addEventListener('click', (e) => { if (e.target === $('alignProfile')) closeProfile(); });
         if ($('menu-edit-profile')) $('menu-edit-profile').addEventListener('click', openProfile);
@@ -6395,6 +6461,13 @@
             </div>
             <button id="install-banner-yes" class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg font-semibold whitespace-nowrap">Install</button>
             <button id="install-banner-no" class="px-2 py-1.5 text-gray-400 text-sm" title="Not now">✕</button>
+        </div>
+    </div>
+    <!-- Transient top notice: only appears when something happens (new notification, task completed…) -->
+    <div id="top-notice" class="hidden fixed left-1/2 top-3 z-[9997]" style="transform:translateX(-50%);max-width:92vw;">
+        <div class="bg-gray-900 text-white text-sm rounded-xl shadow-2xl px-4 py-2.5 flex items-center gap-3">
+            <span id="top-notice-text"></span>
+            <button id="top-notice-close" class="text-gray-300 hover:text-white text-base leading-none" title="Dismiss">&times;</button>
         </div>
     </div>
 </body>
