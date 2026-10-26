@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "3.3 - permission fix: the board only ever queries your own team, so accounts without a team can no longer trigger PERMISSION_DENIED — they get a clear banner instead. Includes the 3.2 web-matching menu and profile."
+val releaseNotes = "3.4 - profile now reads and saves straight into the shared Firestore database (no server API), so Android and the web app edit the same document. Team logins and AI agents still use the server because they create Firebase Auth accounts."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 22
-        versionName = "3.3"
+        versionCode = 23
+        versionName = "3.4"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

@@ -52,8 +52,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -70,11 +75,49 @@ data class TeamLogin(
 
 /** Thin wrapper over the server routes the web app already uses for profile + team logins. */
 object AccountApi {
-    fun fetchProfile(ctx: Context): JSONObject =
-        TeamSession.get(ctx, "/profile").optJSONObject("profile") ?: JSONObject()
+    private const val WEB_APP_ID = "1:410197132578:web:97cfc3ae33f39ed3df917b"
+    private const val BASE = "/artifacts/$WEB_APP_ID/public/data"
 
-    fun saveProfile(ctx: Context, body: JSONObject) {
-        TeamSession.patch(ctx, "/profile", body.toString())
+    /** Reads the profile straight from the shared Firestore board — no server call involved. */
+    suspend fun fetchProfile(ctx: Context, uid: String): JSONObject {
+        if (uid.isBlank()) return JSONObject()
+        val doc = Firebase.firestore.collection("$BASE/users").document(uid).get().await()
+        if (!doc.exists()) return JSONObject()
+        val teamIds = (doc.get("teamIds") as? List<*>)?.filterIsInstance<String>().orEmpty()
+        val names = teamIds.mapNotNull { id ->
+            runCatching {
+                Firebase.firestore.collection("$BASE/teams").document(id).get().await()
+                    .getString("name")
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
+        return JSONObject().apply {
+            put("name", doc.getString("name").orEmpty())
+            put("handle", doc.getString("handle").orEmpty())
+            put("role", doc.getString("role").orEmpty())
+            put("jobTitle", doc.getString("jobTitle").orEmpty())
+            put("department", doc.getString("department").orEmpty())
+            put("whatsapp", doc.getString("whatsapp").orEmpty())
+            put("phone", doc.getString("phone").orEmpty())
+            put("timezone", doc.getString("timezone").orEmpty())
+            put("avatarEmoji", doc.getString("avatarEmoji").orEmpty())
+            put("bio", doc.getString("bio").orEmpty())
+            put("teams", JSONArray(names))
+        }
+    }
+
+    /** Writes the profile straight into the same Firestore document the web app reads. */
+    suspend fun saveProfile(ctx: Context, uid: String, body: JSONObject) {
+        if (uid.isBlank()) throw IllegalStateException("Not signed in")
+        val map = mutableMapOf<String, Any>()
+        val keys = listOf(
+            "name", "jobTitle", "department", "whatsapp",
+            "phone", "timezone", "avatarEmoji", "bio"
+        )
+        keys.forEach { k -> map[k] = body.optString(k, "") }
+        map["updatedAt"] = FieldValue.serverTimestamp()
+        Firebase.firestore.collection("$BASE/users").document(uid)
+            .set(map, SetOptions.merge())
+            .await()
     }
 
     fun fetchLogins(ctx: Context): List<TeamLogin> {
@@ -183,7 +226,7 @@ private fun LabeledField(
  * the web app uses, so both stay in sync.
  */
 @Composable
-fun ProfileScreen(onClose: () -> Unit, onLogout: () -> Unit) {
+fun ProfileScreen(uid: String, onClose: () -> Unit, onLogout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -224,7 +267,7 @@ fun ProfileScreen(onClose: () -> Unit, onLogout: () -> Unit) {
             loading = true
             error = null
             try {
-                val p = withContext(Dispatchers.IO) { AccountApi.fetchProfile(context) }
+                val p = withContext(Dispatchers.IO) { AccountApi.fetchProfile(context, uid) }
                 fullName = p.optString("name")
                 loginName = p.optString("handle").ifBlank { p.optString("loginName") }
                 role = p.optString("role", "member")
@@ -480,7 +523,7 @@ fun ProfileScreen(onClose: () -> Unit, onLogout: () -> Unit) {
                                 .put("timezone", timezone.trim())
                                 .put("avatarEmoji", avatarEmoji.trim())
                                 .put("bio", bio.trim())
-                            withContext(Dispatchers.IO) { AccountApi.saveProfile(context, body) }
+                            withContext(Dispatchers.IO) { AccountApi.saveProfile(context, uid, body) }
                             message = "💾 Profile saved."
                             reloadProfile()
                         } catch (e: Exception) {

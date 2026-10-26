@@ -484,6 +484,7 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                     )
                     "settings" -> SettingsPage(vm)
                     "profile" -> ProfileScreen(
+                        uid = user.uid,
                         onClose = { currentPage = "tasksForAll" },
                         onLogout = { vm.signOut() }
                     )
