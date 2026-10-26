@@ -1,8 +1,8 @@
 {
-  "versionCode": 22,
-  "versionName": "3.3",
-  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-3.3.apk",
-  "notes": "3.3 - permission fix: the board only ever queries your own team, so accounts without a team can no longer trigger PERMISSION_DENIED — they get a clear banner instead. Includes the 3.2 web-matching menu and profile.",
+  "versionCode": 23,
+  "versionName": "3.4",
+  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-3.4.apk",
+  "notes": "3.4 - profile now reads and saves straight into the shared Firestore database (no server API), so Android and the web app edit the same document. Team logins and AI agents still use the server because they create Firebase Auth accounts.",
   "mandatory": false,
-  "publishedAt": "2026-10-25"
+  "publishedAt": "2026-10-26"
 }
