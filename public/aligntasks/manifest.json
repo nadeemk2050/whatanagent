@@ -1,11 +1,11 @@
 {
-  "name": "AlignTasks",
-  "short_name": "AlignTasks",
-  "version": "1.5",
+  "name": "ATS — AlignTasks",
+  "short_name": "ATS",
+  "version": "2.1",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#3b82f6",
+  "background_color": "#f6efe0",
+  "theme_color": "#34373d",
   "description": "A collaborative tool for managing projects and tasks for teams.",
   "icons": [
     {
