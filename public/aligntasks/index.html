@@ -103,6 +103,14 @@
             will-change: transform;
         }
         .task-swipe.swiping .task-list-item { transition: none; }
+        .task-swipe .personal-task-card {
+            position: relative; background: var(--ats-card);
+            transition: transform .18s cubic-bezier(.2,.8,.2,1);
+            touch-action: pan-y; will-change: transform;
+        }
+        .task-swipe.swiping .personal-task-card { transition: none; }
+        #personal-tasks-list .task-swipe { border-bottom: none; margin-bottom: 10px; border-radius: 12px; }
+        #personal-tasks-list .task-swipe-actions { padding-left: 10px; }
         .swipe-hint { font-size: 10px; color: #a89a7c; margin-left: 4px; }
 
         .text-blue-600, .text-blue-700 { color: #8a6d2f !important; }
@@ -2602,14 +2610,15 @@
                 const taskType = row.getAttribute('data-task-type') || '';
                 const taskId = row.getAttribute('data-task-id') || '';
                 if (!taskId || !taskType) return;
-                const isDone = !!(row.querySelector('p') || {}).classList?.contains('line-through');
+                const titleEl = row.querySelector('p') || row.querySelector('h4');
+                const isDone = !!(titleEl || {}).classList?.contains('line-through');
                 taskMenuCtx = {
                     taskId: taskId,
                     taskType: taskType,
                     projectId: row.getAttribute('data-project-id') || '',
                     isDone: isDone
                 };
-                const label = ((row.querySelector('p') || {}).innerText || 'this task').trim().replace(/\s+/g, ' ').slice(0, 60);
+                const label = ((titleEl || {}).innerText || 'this task').trim().replace(/\s+/g, ' ').slice(0, 60);
                 menu.innerHTML =
                     '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(label) + '</p>' +
                     '<button type="button" class="task-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">✏️ Edit task</button>' +
@@ -2664,7 +2673,7 @@
                 if (!wrapper) return;
                 wrapper.classList.remove('swiping');
                 wrapper.setAttribute('data-open', open ? '1' : '0');
-                const row = wrapper.querySelector('.task-list-item');
+                const row = wrapper.querySelector('.task-list-item, .personal-task-card');
                 if (row) row.style.transform = open ? 'translateX(' + SWIPE_OPEN_PX + 'px)' : 'translateX(0)';
             }
 
@@ -2680,7 +2689,7 @@
                 const proj = el.closest('.project-open-editor');
                 if (proj) return { kind: 'project', el: proj };
                 if (el.closest('button, input, a, label, select, textarea, .task-info-wrap')) return null;
-                const row = el.closest('.task-list-item');
+                const row = el.closest('.task-list-item, .personal-task-card');
                 if (row && row.getAttribute('data-task-id')) return { kind: 'task', el: row };
                 return null;
             }
@@ -3415,10 +3424,16 @@
                     // Notes snippet
                     const notesHTML = t.notes ? `<div class="mt-2 text-xs text-gray-600 bg-amber-50/70 border border-amber-200/60 rounded-lg p-2.5 whitespace-pre-wrap break-words">📝 <b>Notes:</b> ${waEsc(t.notes)}</div>` : '';
 
+                    if (window.taskRowCacheRef) window.taskRowCacheRef[t.id] = t;
                     return `
-                        <div class="bg-white rounded-xl shadow-sm border ${isDone ? 'border-gray-200 opacity-75' : (isOverdue ? 'border-red-200' : 'border-gray-200')} p-4 transition-all hover:shadow-md">
+                        <div class="task-swipe">
+                            <div class="task-swipe-actions">
+                                <button class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="personal_tasks" data-task-id="${t.id}" title="Send this task through WhatsApp">💬 Reminder</button>
+                            </div>
+                        <div class="personal-task-card bg-white rounded-xl shadow-sm border ${isDone ? 'border-gray-200 opacity-75' : (isOverdue ? 'border-red-200' : 'border-gray-200')} p-4 transition-all hover:shadow-md"
+                             data-task-type="personal_tasks" data-task-id="${t.id}">
                             <div class="flex items-start gap-3">
-                                <input type="checkbox" class="task-checkbox mt-1 h-5 w-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer" data-task-type="personal_tasks" data-task-id="${t.id}" ${isDone ? 'checked' : ''} title="Mark done / to-do">
+                                <span class="task-status-dot ${isDone ? 'done' : ''}" style="margin-top:6px"></span>
                                 <div class="flex-grow min-w-0">
                                     <div class="flex flex-wrap items-center gap-1.5 mb-1.5">
                                         ${priorityBadge}
@@ -3429,22 +3444,12 @@
                                     </div>
                                     <h4 class="text-sm font-semibold text-gray-900 break-words ${isDone ? 'line-through text-gray-400' : ''}">${waEsc(t.description || '')}</h4>
                                     ${notesHTML}
-                                    <div class="flex flex-wrap justify-between items-center gap-2 mt-3 pt-2 border-t border-gray-100">
-                                        <span class="text-xs text-gray-400">Created${(t.createdByName || t.ownerName) ? ' by ' + waEsc(t.createdByName || t.ownerName) : ''}: ${formatTaskTimestamp(t.createdAt)}${(isDone && t.completedByName) ? ' · ✅ Finished by ' + waEsc(t.completedByName) : ''}</span>
-                                        <div class="flex items-center gap-2">
-                                            <button class="wa-remind-button text-xs px-2.5 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-semibold transition-colors flex items-center gap-1" data-task-type="personal_tasks" data-task-id="${t.id}" title="Send this task via WhatsApp to team, groups, or custom phone">
-                                                <span>💬</span><span>Send to WhatsApp</span>
-                                            </button>
-                                            <button class="edit-personal-task-btn text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-semibold transition-colors" data-id="${t.id}">
-                                                ✏️ Edit
-                                            </button>
-                                            <button class="delete-personal-task-btn text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-semibold transition-colors" data-id="${t.id}">
-                                                🗑️ Delete
-                                            </button>
-                                        </div>
+                                    <div class="mt-3 pt-2 border-t border-gray-100 text-xs text-gray-400">
+                                        Created${(t.createdByName || t.ownerName) ? ' by ' + waEsc(t.createdByName || t.ownerName) : ''}: ${formatTaskTimestamp(t.createdAt)}${(isDone && t.completedByName) ? ' · ✅ Finished by ' + waEsc(t.completedByName) : ''}
                                     </div>
                                 </div>
                             </div>
+                        </div>
                         </div>
                     `;
                 }).join('');
