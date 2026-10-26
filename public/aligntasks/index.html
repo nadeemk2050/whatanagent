@@ -130,6 +130,63 @@
         ::-webkit-scrollbar-thumb:hover { background: #b3ad9e; background-clip: content-box; }
         ::selection { background: #e8d7ab; color: #1f2126; }
 
+        /* ============ Mobile-first adaptive top bar (one single line) ============ */
+        .ats-header-row { flex-wrap: nowrap !important; gap: 8px; }
+        #ats-nav-block { flex-wrap: nowrap !important; }
+        #section-nav-label {
+            max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        #ats-nav-block > div { flex-shrink: 0; }
+
+        @media (max-width: 720px) {
+            header.sticky > div { padding-left: 8px !important; padding-right: 8px !important; }
+            .ats-header-row { gap: 6px; }
+            /* safety: if a section has extra chips, they scroll sideways instead of wrapping */
+            #ats-nav-block { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+            #ats-nav-block::-webkit-scrollbar { display: none; }
+            .ats-mark { font-size: 20px !important; letter-spacing: 1px !important; }
+            .ats-ver { font-size: 9px !important; padding: 0 4px !important; }
+            .ats-logo { gap: 5px; }
+            #ats-nav-block { gap: 5px; }
+            #section-nav { padding: 2px !important; border-radius: 10px !important; }
+            #section-nav-toggle {
+                min-width: 0 !important; max-width: none !important;
+                padding: 5px 8px !important; font-size: 11.5px !important; gap: 5px !important;
+            }
+            #section-nav-label { max-width: 104px; }
+            #task-search-toggle, #task-add-toggle { width: 25px !important; height: 25px !important; }
+            #view-nav { padding: 2px !important; border-radius: 10px !important; }
+            #view-nav-toggle { padding: 4px 6px !important; font-size: 11px !important; gap: 5px !important; }
+            #personal-nav { padding: 2px !important; }
+            #personal-nav .personal-filter-tab { padding: 3px 6px !important; font-size: 10.5px !important; }
+            #account-menu-button { padding: 5px !important; }
+            #account-menu-button svg { width: 20px; height: 20px; }
+        }
+        @media (max-width: 430px) {
+            .ats-ver { display: none; }
+            #section-nav-label { max-width: 84px; }
+            #view-nav-label { font-size: 10px; }
+            #view-nav-toggle { padding: 4px 5px !important; }
+            #task-filter-count { font-size: 9px !important; padding: 1px 5px !important; }
+            #task-search-toggle, #task-add-toggle { width: 23px !important; height: 23px !important; }
+            #ats-nav-block { gap: 4px; }
+            /* personal section: compact chips so the bar still fits one line */
+            #personal-nav { gap: 1px !important; }
+            #personal-nav .personal-filter-tab { padding: 2px 4px !important; font-size: 9.5px !important; line-height: 1.1 !important; }
+            body.ats-personal #personal-nav .personal-filter-tab span { display: none; }
+            body.ats-personal #section-nav-label { max-width: 96px; font-size: 10.5px; }
+            body.ats-personal #ats-nav-block { gap: 4px; }
+            /* the personal page has its own search + add form, so drop these tiles here */
+            body.ats-personal #task-search-toggle, body.ats-personal #task-add-toggle { display: none !important; }
+        }
+        @media (max-width: 350px) {
+            .ats-mark { font-size: 17px !important; }
+            #section-nav-label { max-width: 64px; }
+            #view-nav-label { display: none; }          /* only the count chip fits */
+            #ats-nav-block { overflow-x: auto; scrollbar-width: none; }
+            #ats-nav-block::-webkit-scrollbar { display: none; }
+        }
+
         .task-checkbox { -webkit-appearance: none; appearance: none; background-color: #fff; margin: 0; font: inherit; color: currentColor; width: 1.15em; height: 1.15em; border: 0.15em solid currentColor; border-radius: 50%; transform: translateY(-0.075em); display: grid; place-content: center; cursor: pointer; margin-top: 0.25rem; flex-shrink: 0; }
         .task-checkbox::before { content: ""; width: 0.65em; height: 0.65em; border-radius: 50%; transform: scale(0); transition: 120ms transform ease-in-out; box-shadow: inset 1em 1em #3b82f6; }        .task-checkbox:checked::before { transform: scale(1); }
         /* Completed state marker (the old checkbox was removed from the row) */
@@ -221,7 +278,7 @@
     <div id="app-screen" class="hidden">
         <header class="sticky top-0 z-40 w-full bg-white border-b border-gray-200 shadow-sm">
             <div class="w-full px-3 sm:px-6 py-2">
-                <div class="flex justify-between items-center gap-3">
+                <div class="flex justify-between items-center gap-3 ats-header-row">
                     <div class="min-w-0" style="order:1;">
                         <div class="ats-logo" title="ATS — AlignTasks">
                             <span class="ats-mark">ATS</span>
@@ -254,9 +311,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex-1 flex items-center justify-center gap-2 flex-wrap min-w-0" style="order:2;">
+                    <div id="ats-nav-block" class="flex-1 flex items-center justify-center gap-2 min-w-0" style="order:2;flex-wrap:nowrap;overflow:hidden;">
                         <div id="section-nav" style="position:relative;display:inline-flex;align-items:center;gap:2px;background:#e5e7eb;border-radius:11px;padding:3px;">
-                            <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#3b82f6;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;">
+                            <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#3b82f6;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;max-width:190px;">
                                 <span id="section-nav-label">Tasks for All</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
@@ -1615,6 +1672,7 @@
                 // Personal counters take the place of the task-view filter while in that section.
                 const personalNav = document.getElementById('personal-nav');
                 if (personalNav) personalNav.style.display = sectionId === 'personal-tasks-page' ? 'inline-flex' : 'none';
+                document.body.classList.toggle('ats-personal', sectionId === 'personal-tasks-page');
                 const viewNav = document.getElementById('view-nav');
                 if (viewNav) viewNav.style.display = sectionId === 'tasks-page' ? 'inline-flex' : 'none';
                 // Search only applies to the two task lists.
