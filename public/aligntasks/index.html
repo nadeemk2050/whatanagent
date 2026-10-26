@@ -130,7 +130,26 @@
         ::-webkit-scrollbar-thumb:hover { background: #b3ad9e; background-clip: content-box; }
         ::selection { background: #e8d7ab; color: #1f2126; }
 
-        /* ============ Mobile-first adaptive top bar (one single line) ============ */
+        /* ============ Light, modern account menu (no emojis, concise labels) ============ */
+        .ats-menu {
+            padding: 6px;
+            border: 1px solid var(--ats-line);
+            background: var(--ats-card);
+            box-shadow: 0 12px 34px rgba(31,33,38,.14), 0 2px 6px rgba(31,33,38,.06);
+        }
+        .ats-menu-item {
+            display: block; width: 100%; text-align: left;
+            padding: 8px 12px; border: none; border-radius: 8px;
+            background: transparent; color: var(--ats-ink);
+            font-size: 13px; font-weight: 500; letter-spacing: .15px;
+            cursor: pointer; transition: background .12s ease, color .12s ease;
+        }
+        .ats-menu-item:hover { background: #f3ecdd; }
+        .ats-menu-primary { color: #7b3f2e; font-weight: 600; }
+        .ats-menu-danger { color: #b3261e; font-weight: 600; }
+        .ats-menu-danger:hover { background: #fdf2f1; }
+        .ats-menu-sep { height: 1px; margin: 5px 8px; background: var(--ats-line); opacity: .7; }
+
         .ats-header-row { flex-wrap: nowrap !important; gap: 8px; }
         #ats-nav-block { flex-wrap: nowrap !important; }
         #section-nav-label {
@@ -304,17 +323,20 @@
                             <button id="account-menu-button" class="p-2 rounded-full hover:bg-gray-200 text-gray-700" aria-label="Account menu">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
                             </button>
-                            <div id="account-menu" class="hidden absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-30">
-                                <button id="menu-personal-tasks" class="w-full text-left px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-50 flex items-center gap-2"><span>🔒</span><span>My Personal Tasks</span></button>
-                                <button id="menu-completed-tasks" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">✅ Completed Tasks</button>
-                                <button id="menu-edit-profile" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Edit Profile</button>
-                                <button id="menu-add-subusers" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">👥 Team Members</button>
-                                <button id="menu-team-settings" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">⚙️ Team Settings &amp; Invites</button>
-                                <button id="menu-scheduled-reminders" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📅 Scheduled Reminders</button>
-                                <button id="menu-group-updates" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📢 Group Updates</button>
-                                <button id="menu-push-notify" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">🔔 Push notifications</button>
-<button id="menu-install-app" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">📲 Install app on this phone</button>
-                                <button id="menu-logout" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Logout</button>
+                            <div id="account-menu" class="hidden absolute right-0 mt-2 w-56 bg-white ats-menu rounded-xl z-30">
+                                <button id="menu-personal-tasks" class="ats-menu-item ats-menu-primary">My Personal Tasks</button>
+                                <button id="menu-completed-tasks" class="ats-menu-item">Completed Tasks</button>
+                                <div class="ats-menu-sep"></div>
+                                <button id="menu-edit-profile" class="ats-menu-item">Edit Profile</button>
+                                <button id="menu-add-subusers" class="ats-menu-item">Team Members</button>
+                                <button id="menu-team-settings" class="ats-menu-item">Team Settings</button>
+                                <div class="ats-menu-sep"></div>
+                                <button id="menu-scheduled-reminders" class="ats-menu-item">Reminders</button>
+                                <button id="menu-group-updates" class="ats-menu-item">Group Updates</button>
+                                <button id="menu-push-notify" class="ats-menu-item">Notifications</button>
+                                <button id="menu-install-app" class="ats-menu-item">Install</button>
+                                <div class="ats-menu-sep"></div>
+                                <button id="menu-logout" class="ats-menu-item ats-menu-danger">Logout</button>
                             </div>
                         </div>
                     </div>
