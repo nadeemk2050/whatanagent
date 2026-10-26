@@ -177,9 +177,6 @@
         @media (max-width: 720px) {
             header.sticky > div { padding-left: 8px !important; padding-right: 8px !important; }
             .ats-header-row { gap: 6px; }
-            /* safety: if a section has extra chips, they scroll sideways instead of wrapping */
-            #ats-nav-block { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-            #ats-nav-block::-webkit-scrollbar { display: none; }
             .ats-mark { font-size: 20px !important; letter-spacing: 1px !important; }
             .ats-ver { font-size: 9px !important; padding: 0 4px !important; }
             .ats-logo { gap: 5px; }
@@ -219,8 +216,6 @@
             .ats-mark { font-size: 17px !important; }
             #section-nav-label { max-width: 64px; }
             #view-nav-label { display: none; }          /* only the count chip fits */
-            #ats-nav-block { overflow-x: auto; scrollbar-width: none; }
-            #ats-nav-block::-webkit-scrollbar { display: none; }
         }
         /* dropdown highlight = titanium with cream text (was blue) */
         .section-nav-item.active, .view-nav-item.active {
@@ -357,7 +352,7 @@
                             </div>
                         </div>
                     </div>
-                    <div id="ats-nav-block" class="flex-1 flex items-center justify-center gap-2 min-w-0" style="order:2;flex-wrap:nowrap;overflow:hidden;">
+                    <div id="ats-nav-block" class="flex-1 flex items-center justify-center gap-2 min-w-0" style="order:2;flex-wrap:nowrap;">
                         <div id="section-nav" style="position:relative;display:inline-flex;align-items:center;gap:2px;background:#e5e7eb;border-radius:11px;padding:3px;">
                             <button id="section-nav-toggle" type="button" title="Switch section" style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:150px;padding:6px 10px;border-radius:9px;background:#34373d;color:#fff;border:none;font-weight:800;font-size:12.5px;cursor:pointer;max-width:190px;">
                                 <span id="section-nav-label">Tasks for All</span>
