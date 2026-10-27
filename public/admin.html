@@ -226,6 +226,211 @@
             80% { opacity: 1; transform: translateY(-140px) scale(1); }
             100% { transform: translateY(-200px) scale(0.8); opacity: 0; }
         }
+        /* ===================== ATS AI IDE WORKSPACE (VS Code style shell) ===================== */
+        .idev {
+            position: relative;
+            display: flex; flex-direction: column;
+            height: calc(100vh - 130px); min-height: 560px;
+            background: #1e1e1e; border: 1px solid #2d2d30; border-radius: 12px;
+            overflow: hidden; color: #cccccc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            box-shadow: 0 10px 34px rgba(0,0,0,.28);
+        }
+        .idev-title {
+            height: 40px; display: flex; align-items: center; gap: 12px;
+            padding: 0 10px; background: #323233; border-bottom: 1px solid #252526; flex-shrink: 0;
+        }
+        .idev-title-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .idev-logo {
+            font-weight: 900; font-size: 15px; letter-spacing: 1.2px;
+            background: linear-gradient(135deg, #9aa0a8 0%, #d9bd7d 55%, #b3261e 100%);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .idev-title-txt { font-size: 12.5px; color: #cfcfcf; font-weight: 600; letter-spacing: .2px; }
+        .idev-pill {
+            font-size: 9px; font-weight: 800; letter-spacing: .8px; padding: 1px 6px; border-radius: 999px;
+            background: #3a3226; color: #d9bd7d; border: 1px solid #574a33;
+        }
+        .idev-cmdbox {
+            flex: 1; max-width: 460px; margin: 0 auto; height: 26px;
+            display: flex; align-items: center; gap: 7px; padding: 0 10px;
+            background: #252526; border: 1px solid #3c3c3c; border-radius: 7px;
+            cursor: pointer; transition: border-color .12s ease, background .12s ease;
+        }
+        .idev-cmdbox:hover { background: #2a2a2b; border-color: #b08d3f; }
+        .idev-cmdbox-txt { flex: 1; font-size: 11.5px; color: #8f8f8f; }
+        .idev-kbd { font-size: 9.5px; color: #7a7a7a; border: 1px solid #3c3c3c; border-radius: 4px; padding: 1px 4px; }
+        .idev-title-right { display: flex; gap: 6px; flex-shrink: 0; }
+        .idev-btn {
+            padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+            background: #3a3d41; color: #e6e6e6; border: 1px solid #4a4d51; border-radius: 6px;
+        }
+        .idev-btn:hover { background: #45484c; border-color: #b08d3f; }
+
+        .idev-body { flex: 1; display: flex; min-height: 0; }
+
+        .idev-activity {
+            width: 48px; background: #333333; display: flex; flex-direction: column;
+            align-items: center; padding-top: 4px; flex-shrink: 0;
+        }
+        .idev-act {
+            width: 44px; height: 42px; display: grid; place-items: center;
+            color: #9d9d9d; cursor: pointer; border-left: 2px solid transparent;
+        }
+        .idev-act:hover { color: #ffffff; background: #2a2d2e; }
+        .idev-act.active { color: #ffffff; border-left-color: #b08d3f; background: #2a2d2e; }
+        .idev-act.soon { opacity: .38; cursor: not-allowed; }
+        .idev-act.soon:hover { background: transparent; color: #9d9d9d; }
+
+        .idev-side {
+            width: 232px; background: #252526; border-right: 1px solid #2d2d30;
+            display: flex; flex-direction: column; flex-shrink: 0; min-height: 0;
+        }
+        .idev-side-head {
+            height: 30px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 10px; font-size: 10.5px; letter-spacing: .7px; color: #bbbbbb; font-weight: 700;
+        }
+        .idev-tree { flex: 1; overflow: auto; padding: 2px 0; }
+        .idev-tree::-webkit-scrollbar { width: 10px; }
+        .idev-tree::-webkit-scrollbar-thumb { background: #424242; border-radius: 6px; }
+        .idev-file {
+            display: flex; align-items: center; gap: 7px; padding: 4px 10px;
+            font-size: 12.5px; color: #cfcfcf; cursor: pointer; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .idev-file:hover { background: #2a2d2e; }
+        .idev-file.active { background: #37373d; color: #ffffff; }
+        .idev-file-ext { font-size: 9px; font-weight: 800; letter-spacing: .3px; opacity: .75; min-width: 26px; }
+        .idev-empty { padding: 10px; font-size: 11.5px; color: #7a7a7a; line-height: 1.5; }
+        .idev-soonbox { border-top: 1px solid #2d2d30; padding: 6px; flex-shrink: 0; }
+        .idev-soon {
+            display: flex; align-items: center; justify-content: space-between; gap: 6px;
+            font-size: 11px; color: #8a8a8a; padding: 4px 6px; border-radius: 5px;
+        }
+        .idev-soon:hover { background: #2a2d2e; color: #b9b9b9; }
+        .idev-badge {
+            font-size: 8.5px; font-weight: 800; letter-spacing: .5px; padding: 1px 5px;
+            border-radius: 999px; background: #3a3226; color: #d9bd7d; border: 1px solid #574a33;
+        }
+
+        .idev-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+        .idev-tabs { height: 36px; display: flex; align-items: stretch; background: #252526; overflow-x: auto; flex-shrink: 0; }
+        .idev-tabs::-webkit-scrollbar { height: 0; }
+        .idev-tab {
+            display: flex; align-items: center; gap: 8px; padding: 0 10px; font-size: 12px;
+            color: #9d9d9d; background: #2d2d2d; border-right: 1px solid #1e1e1e;
+            cursor: pointer; white-space: nowrap; border-top: 2px solid transparent;
+        }
+        .idev-tab.active { background: #1e1e1e; color: #ffffff; border-top-color: #b08d3f; }
+        .idev-tab-close { font-size: 13px; line-height: 1; opacity: .6; padding: 0 2px; }
+        .idev-tab-close:hover { opacity: 1; color: #ffffff; }
+        .idev-crumbs {
+            height: 22px; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+            font-size: 11px; color: #858585; background: #1e1e1e;
+            border-bottom: 1px solid #2d2d30; flex-shrink: 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .idev-editor { flex: 1; min-height: 0; background: #1e1e1e; }
+
+        .idev-panel { flex-shrink: 0; border-top: 1px solid #2d2d30; background: #1e1e1e; }
+        .idev-panel-head {
+            height: 30px; display: flex; align-items: center; gap: 4px; padding: 0 8px; background: #252526;
+        }
+        .idev-ptab {
+            display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 11px;
+            font-weight: 600; letter-spacing: .3px; color: #9d9d9d; background: transparent;
+            border: none; cursor: default;
+        }
+        .idev-ptab.active { color: #ffffff; border-bottom: 1px solid #b08d3f; }
+        .idev-panel-toggle { margin-left: auto; background: transparent; border: none; color: #9d9d9d; cursor: pointer; font-size: 13px; padding: 2px 8px; }
+        .idev-panel-toggle:hover { color: #ffffff; }
+        .idev-panel-body { display: none; padding: 14px 16px; font-size: 11.5px; color: #8a8a8a; line-height: 1.6; border-top: 1px solid #252526; }
+        .idev-panel.open .idev-panel-body { display: block; }
+        .idev-panel-body code { background: #2a2a2b; color: #d9bd7d; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
+        .idev-ai {
+            width: 306px; flex-shrink: 0; background: #252526; border-left: 1px solid #2d2d30;
+            display: flex; flex-direction: column; min-height: 0;
+        }
+        .idev-ai-head {
+            height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px;
+            border-bottom: 1px solid #2d2d30; flex-shrink: 0;
+        }
+        .idev-ai-head span { font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #cfcfcf; }
+        .idev-ai-model {
+            margin-left: auto; font-size: 10.5px; padding: 3px 6px; background: #3a3d41;
+            color: #e6e6e6; border: 1px solid #4a4d51; border-radius: 5px; max-width: 140px;
+        }
+        .idev-ai-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .idev-ai-log::-webkit-scrollbar { width: 10px; }
+        .idev-ai-log::-webkit-scrollbar-thumb { background: #424242; border-radius: 6px; }
+        .idev-msg { font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+        .idev-msg.user { background: #2f3b52; color: #dbe7ff; align-self: flex-end; max-width: 92%; }
+        .idev-msg.bot { background: #2d2d30; color: #dcdcdc; align-self: flex-start; max-width: 96%; }
+        .idev-msg.sys { background: transparent; color: #8a8a8a; font-size: 11px; padding: 2px; }
+        .idev-ai-input { border-top: 1px solid #2d2d30; padding: 8px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+        .idev-ai-input textarea {
+            width: 100%; height: 58px; resize: none; box-sizing: border-box; padding: 8px;
+            font-size: 12px; color: #e6e6e6; background: #1e1e1e;
+            border: 1px solid #3c3c3c; border-radius: 6px; font-family: inherit;
+        }
+        .idev-ai-input textarea:focus { outline: none; border-color: #b08d3f; }
+        .idev-ai-actions { display: flex; gap: 6px; align-items: center; }
+        .idev-ai-send {
+            margin-left: auto; padding: 5px 14px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+            background: linear-gradient(180deg, #c9a75c 0%, #b08d3f 100%); color: #1b1b1b;
+            border: none; border-radius: 6px;
+        }
+        .idev-ai-send:disabled { opacity: .55; cursor: default; }
+        .idev-ai-hint { font-size: 10px; color: #7a7a7a; }
+
+        .idev-status {
+            height: 22px; display: flex; align-items: center; gap: 14px; padding: 0 10px;
+            background: #1f1f1f; border-top: 1px solid #2d2d30; color: #a5a5a5;
+            font-size: 10.5px; flex-shrink: 0;
+        }
+        .idev-st-item { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+        .idev-toast {
+            position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%);
+            background: #2d2d30; color: #e6e6e6; border: 1px solid #4a4d51; border-radius: 8px;
+            padding: 8px 14px; font-size: 11.5px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+            z-index: 30; opacity: 0; transition: opacity .18s ease; pointer-events: none;
+        }
+        .idev-toast.show { opacity: 1; }
+        .idev-palette-back {
+            position: absolute; inset: 0; background: rgba(0,0,0,.42); z-index: 40;
+            display: none; align-items: flex-start; justify-content: center; padding-top: 54px;
+        }
+        .idev-palette-back.show { display: flex; }
+        .idev-palette {
+            width: 470px; max-width: 92%; background: #252526; border: 1px solid #454545;
+            border-radius: 8px; overflow: hidden; box-shadow: 0 18px 48px rgba(0,0,0,.55);
+        }
+        .idev-palette input {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 12.5px;
+            background: #3a3d41; color: #ffffff; border: none; border-bottom: 1px solid #454545;
+        }
+        .idev-palette input:focus { outline: none; }
+        .idev-palette-list { max-height: 300px; overflow-y: auto; }
+        .idev-pal-item { padding: 8px 12px; font-size: 12px; color: #cfcfcf; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
+        .idev-pal-item:hover, .idev-pal-item.sel { background: #094771; color: #ffffff; }
+        .idev-pal-kind { font-size: 10px; color: #8f8f8f; }
+
+        /* the IDE wants the whole width, not the 800px reading column */
+        body.idev-mode .container { max-width: 100% !important; margin-top: 12px; }
+
+        @media (max-width: 1100px) { .idev-ai { display: none; } }
+        @media (max-width: 860px) {
+            .idev { height: calc(100vh - 110px); min-height: 480px; }
+            .idev-side { width: 170px; }
+            .idev-title-txt, .idev-pill, .idev-kbd { display: none; }
+            .idev-cmdbox { max-width: 220px; }
+        }
+        @media (max-width: 620px) {
+            .idev-side { display: none; }
+            .idev-cmdbox { display: none; }
+            .idev-title-right .idev-btn { padding: 4px 7px; font-size: 11px; }
+        }
     </style>
     
     <!-- Firebase SDKs -->
@@ -383,6 +588,10 @@
             <div class="menu-item" onclick="showSection('contactbook')">📇 Contact Book</div>
             <div class="menu-item" onclick="showSection('leadsbook')">📈 Leads Book</div>
             <div class="menu-item" onclick="showSection('seo')">🔎 SEO Agent</div>
+            <div class="menu-item" onclick="showSection('aiide')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; cursor:pointer;">
+                <span>💻 AI IDE WORKSPACE</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#3b82f6; color:#fff; font-weight:bold;">NEW</span>
+            </div>
             <div class="menu-item" onclick="openNewsPage()">📰 News & Info Collection</div>
             <div class="menu-item" onclick="showSection('news'); if (typeof naLoadStatus === 'function') naLoadStatus();">📡 Browsing News Agent</div>
             <div class="menu-item" onclick="openGoldPage()">🥇 Gold Market</div>
@@ -3258,8 +3467,140 @@
                 </div>
             </div>
 
+            <!-- AI IDE WORKSPACE Section -->
+            <div id="aiideSection" class="app-section">
+                <!-- ============================================================
+                     ATS AI IDE WORKSPACE  (VS Code style shell)
+                     Working now: explorer, tabs, editor, AI dock, palette, save.
+                     RESERVED + "SOON": terminal, output, problems, ports, git,
+                     run/debug, extensions. Space is already laid out for them.
+                     ============================================================ -->
+                <div class="idev" id="idevRoot">
+                    <div class="idev-title">
+                        <div class="idev-title-left">
+                            <span class="idev-logo">ATS</span>
+                            <span class="idev-title-txt">AI IDE Workspace</span>
+                            <span class="idev-pill">BETA</span>
+                        </div>
+                        <div class="idev-cmdbox" onclick="idevPalette()" title="Command palette (Ctrl+Shift+P)">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9d9d9d" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+                            <span class="idev-cmdbox-txt">Search files and commands</span>
+                            <span class="idev-kbd">Ctrl Shift P</span>
+                        </div>
+                        <div class="idev-title-right">
+                            <button class="idev-btn" onclick="idevNewFile()">+ New</button>
+                            <button class="idev-btn" onclick="idevSave()">Save</button>
+                            <button class="idev-btn" onclick="idevLoadFiles(true)">Refresh</button>
+                        </div>
+                    </div>
 
-        </div>
+                    <div class="idev-body">
+                        <div class="idev-activity">
+                            <div class="idev-act active" data-idev-act="explorer" onclick="idevAct(this)" title="Explorer">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4h6l2 2h8v14H4z"/></svg>
+                            </div>
+                            <div class="idev-act soon" data-idev-act="search" onclick="idevSoon('Search across files')" title="Search in files (coming soon)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+                            </div>
+                            <div class="idev-act soon" data-idev-act="git" onclick="idevSoon('Source Control (Git)')" title="Source Control (coming soon)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="6" r="2.2"/><circle cx="7" cy="18" r="2.2"/><circle cx="17" cy="12" r="2.2"/><line x1="7" y1="8.2" x2="7" y2="15.8"/><path d="M9.2 6H13a4 4 0 0 1 4 4v.8"/></svg>
+                            </div>
+                            <div class="idev-act soon" data-idev-act="run" onclick="idevSoon('Run and Debug')" title="Run and Debug (coming soon)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5l11 7-11 7z"/></svg>
+                            </div>
+                            <div class="idev-act soon" data-idev-act="ext" onclick="idevSoon('Extensions')" title="Extensions (coming soon)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><rect x="14" y="14" width="6" height="6"/></svg>
+                            </div>
+                            <div class="idev-act soon" data-idev-act="settings" onclick="idevSoon('Settings')" title="Settings (coming soon)">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+                            </div>
+                        </div>
+
+                        <div class="idev-side">
+                            <div class="idev-side-head">
+                                <span id="idevSideTitle">EXPLORER</span>
+                                <span style="display:flex;gap:8px;">
+                                    <span onclick="idevNewFile()" title="New file" style="cursor:pointer;">+</span>
+                                    <span onclick="idevLoadFiles(true)" title="Refresh" style="cursor:pointer;">R</span>
+                                </span>
+                            </div>
+                            <div class="idev-tree" id="idevTree">
+                                <div class="idev-empty">Loading files...</div>
+                            </div>
+                            <div class="idev-soonbox" id="idevSoonBox">
+                                <div class="idev-soon"><span>Terminal</span><span class="idev-badge">SOON</span></div>
+                                <div class="idev-soon"><span>Source Control</span><span class="idev-badge">SOON</span></div>
+                                <div class="idev-soon"><span>Run and Debug</span><span class="idev-badge">SOON</span></div>
+                                <div class="idev-soon"><span>Extensions</span><span class="idev-badge">SOON</span></div>
+                                <div class="idev-soon"><span>Search in files</span><span class="idev-badge">SOON</span></div>
+                            </div>
+                        </div>
+
+                        <div class="idev-main">
+                            <div class="idev-tabs" id="idevTabs"></div>
+                            <div class="idev-crumbs" id="idevCrumbs">workspace</div>
+                            <div class="idev-editor" id="idevEditor"></div>
+
+                            <!-- RESERVED: bottom panel (terminal / output / problems / ports).
+                                 Only the header is shown for now; the body is a placeholder. -->
+                            <div class="idev-panel" id="idevPanel">
+                                <div class="idev-panel-head">
+                                    <button class="idev-ptab active" type="button">TERMINAL <span class="idev-badge">SOON</span></button>
+                                    <button class="idev-ptab" type="button">OUTPUT <span class="idev-badge">SOON</span></button>
+                                    <button class="idev-ptab" type="button">PROBLEMS <span class="idev-badge">SOON</span></button>
+                                    <button class="idev-ptab" type="button">PORTS <span class="idev-badge">SOON</span></button>
+                                    <button class="idev-panel-toggle" type="button" onclick="idevTogglePanel()" title="Show / hide panel">^</button>
+                                </div>
+                                <div class="idev-panel-body" id="idevPanelBody">
+                                    This panel is already reserved for the live <code>Terminal</code>, <code>Output</code>,
+                                    <code>Problems</code> and <code>Ports</code> views. It becomes active after the server
+                                    upgrade to 4 GB RAM, because a real shell and build process run on the server.
+                                    Until then, edits saved here go to My Files and are applied through the normal deploy.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="idev-ai">
+                            <div class="idev-ai-head">
+                                <span>AI ASSISTANT</span>
+                                <select class="idev-ai-model" id="idevModel">
+                                    <option value="deepseek">DeepSeek V4.1 Flash</option>
+                                    <option value="gemini">Gemini 2.5 Flash</option>
+                                </select>
+                            </div>
+                            <div class="idev-ai-log" id="idevAiLog">
+                                <div class="idev-msg sys">Ask about the open file, or request a change. The assistant sees the current file content.</div>
+                            </div>
+                            <div class="idev-ai-input">
+                                <textarea id="idevAiInput" placeholder="Ask the AI to explain, fix or extend this file..."></textarea>
+                                <div class="idev-ai-actions">
+                                    <span class="idev-ai-hint">Ctrl+Enter to send</span>
+                                    <button class="idev-ai-send" id="idevAiSendBtn" onclick="idevAiSend()">Send</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="idev-status">
+                        <span class="idev-st-item" title="Source control arrives with the 4 GB upgrade">main <span class="idev-badge">SOON</span></span>
+                        <span class="idev-st-item" id="idevStPos">Ln 1, Col 1</span>
+                        <span class="idev-st-item">Spaces: 2</span>
+                        <span class="idev-st-item">UTF-8</span>
+                        <span class="idev-st-item" id="idevStLang">plaintext</span>
+                        <span style="flex:1"></span>
+                        <span class="idev-st-item" id="idevStMsg"></span>
+                        <span class="idev-st-item">ATS IDE v1.0</span>
+                    </div>
+
+                    <div class="idev-toast" id="idevToast"></div>
+                    <div class="idev-palette-back" id="idevPaletteBack" onclick="idevPaletteClose(event)">
+                        <div class="idev-palette" onclick="event.stopPropagation()">
+                            <input id="idevPaletteInput" placeholder="Type a command or file name..." oninput="idevPaletteFilter()" onkeydown="idevPaletteKey(event)">
+                            <div class="idev-palette-list" id="idevPaletteList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
@@ -3598,6 +3939,16 @@
                 console.warn('[showSection] section loader error:', loaderErr);
             }
         }
+
+        // Support direct hash navigation (e.g. #aiide, #seo, #trade)
+        function handleHashNav() {
+            const h = (window.location.hash || '').replace(/^#/, '');
+            if (h && document.getElementById(h + 'Section')) {
+                showSection(h);
+            }
+        }
+        window.addEventListener('DOMContentLoaded', handleHashNav);
+        window.addEventListener('hashchange', handleHashNav);
 
         // Data Fetching logic
         async function loadKnowledge() {
@@ -11892,5 +12243,363 @@
     <!-- 🔴 Live Interactive Discussion / Meeting Board Engine -->
     <script src="/liveMeetingClient.js"></script>
     <script src="/liveMeetingSessionsClient.js"></script>
+<script>
+/* ===================== ATS AI IDE WORKSPACE (client only, no build step) =====================
+   Uses the Monaco engine already loaded by Code Studio plus the existing file API
+   (api/seo/code/files). No server change, no shell, no RCE surface.
+   Reserved for later: terminal, output, problems, ports, git, run/debug, extensions. */
+(function () {
+    var st = { editor: null, model: null, tabs: [], activeId: null, files: [], booted: false, aiBusy: false };
+    var LANG = {
+        js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+        json: 'json', html: 'html', htm: 'html', css: 'css', scss: 'css', less: 'css', php: 'php', py: 'python',
+        md: 'markdown', markdown: 'markdown', txt: 'plaintext', sql: 'sql', yml: 'yaml', yaml: 'yaml',
+        sh: 'shell', bash: 'shell', xml: 'xml', java: 'java', kt: 'kotlin', svg: 'xml'
+    };
+    function $(id) { return document.getElementById(id); }
+    function mk(tag, cls, txt) { var d = document.createElement(tag); if (cls) d.className = cls; if (txt != null) d.textContent = txt; return d; }
+    function toast(msg) {
+        var t = $('idevToast'); if (!t) return;
+        t.textContent = msg; t.classList.add('show');
+        clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 2400);
+    }
+    function setMsg(m) { var s = $('idevStMsg'); if (s) s.textContent = m || ''; }
+    function extOf(name) { var p = String(name || '').split('.'); return p.length > 1 ? p.pop().toLowerCase() : ''; }
+    function langFor(name) { return LANG[extOf(name)] || 'plaintext'; }
+    function activeTab() { for (var i = 0; i < st.tabs.length; i++) { if (st.tabs[i].id === st.activeId) return st.tabs[i]; } return null; }
+
+    /* ---------- boot ---------- */
+    function boot() {
+        var host = $('idevEditor');
+        if (!host) return;
+        document.body.classList.add('idev-mode');
+        if (st.booted) { if (st.editor) { try { st.editor.layout(); } catch (e) {} } return; }
+        if (typeof initMonacoLoader !== 'function') { toast('Editor engine not available yet'); return; }
+        st.booted = true;
+        initMonacoLoader(function () {
+            if (st.editor) { try { st.editor.layout(); } catch (e) {} return; }
+            try {
+                st.editor = monaco.editor.create(host, {
+                    value: '// ATS AI IDE Workspace\n// 1. Pick a file in EXPLORER on the left (or press + New)\n// 2. Edit, then Save (Ctrl+S)\n// 3. Ctrl+Shift+P opens the command palette\n',
+                    language: 'javascript', theme: 'vs-dark', automaticLayout: true,
+                    fontSize: 13, lineHeight: 20, tabSize: 2,
+                    minimap: { enabled: true }, wordWrap: 'off',
+                    renderWhitespace: 'selection', smoothScrolling: true,
+                    fontFamily: 'Consolas, "Courier New", monospace',
+                    padding: { top: 10 },
+                    scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 }
+                });
+            } catch (e) { toast('Could not start the editor: ' + e.message); return; }
+            st.editor.onDidChangeCursorPosition(function (e) {
+                var p = e.position, s = $('idevStPos');
+                if (s) s.textContent = 'Ln ' + p.lineNumber + ', Col ' + p.column;
+            });
+            try {
+                st.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () { window.idevSave(); });
+                st.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, function () { window.idevPalette(); });
+            } catch (e) { /* keybindings are optional */ }
+            window.idevLoadFiles();
+            renderTabs();
+            setTimeout(function () { try { st.editor.layout(); } catch (e) {} }, 160);
+            var lg = $('idevStLang'); if (lg) lg.textContent = 'javascript';
+        });
+    }
+    window.idevInit = boot;
+
+    /* ---------- explorer ---------- */
+    window.idevLoadFiles = function () {
+        var tree = $('idevTree'); if (!tree) return;
+        fetch('api/seo/code/files', { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (list) {
+                st.files = Array.isArray(list) ? list : [];
+                tree.innerHTML = '';
+                if (!st.files.length) {
+                    tree.appendChild(mk('div', 'idev-empty', 'No saved files yet. Press + New, write code, then Save.'));
+                    return;
+                }
+                st.files.forEach(function (f) {
+                    var row = mk('div', 'idev-file' + (st.activeId === f.id ? ' active' : ''));
+                    row.appendChild(mk('span', 'idev-file-ext', (extOf(f.name) || 'txt').toUpperCase()));
+                    row.appendChild(mk('span', null, f.name || 'untitled'));
+                    row.title = (f.name || '') + (f.updatedAt ? '  (updated ' + f.updatedAt + ')' : '');
+                    row.onclick = function () { window.idevOpenFile(f.id, f.name, f.language); };
+                    tree.appendChild(row);
+                });
+            })
+            .catch(function (e) {
+                tree.innerHTML = '';
+                tree.appendChild(mk('div', 'idev-empty', 'Could not load files: ' + e.message));
+            });
+    };
+
+    window.idevOpenFile = function (id, name, language) {
+        setMsg('Opening...');
+        fetch('api/seo/code/files/' + encodeURIComponent(id), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var tab = null;
+                for (var i = 0; i < st.tabs.length; i++) { if (st.tabs[i].id === id) tab = st.tabs[i]; }
+                if (!tab) {
+                    tab = { id: id, name: d.name || name, language: d.language || language || langFor(name), content: d.content || '' };
+                    st.tabs.push(tab);
+                } else {
+                    tab.content = d.content || tab.content;
+                }
+                st.activeId = id;
+                attachModel(tab);
+                renderTabs(); renderCrumbs(tab); window.idevLoadFiles();
+                setMsg(''); 
+            })
+            .catch(function (e) { setMsg('Open failed'); toast('Open failed: ' + e.message); });
+    };
+
+    function attachModel(tab) {
+        if (!st.editor) return;
+        if (!tab.model) {
+            tab.model = monaco.editor.createModel(tab.content || '', tab.language || 'plaintext');
+        } else if (tab.content && tab.model.getValue() !== tab.content && !st.editor.getModel()) {
+            tab.model.setValue(tab.content);
+        }
+        st.editor.setModel(tab.model);
+        if (st.model && st.model !== tab.model) { try { st.model.dispose(); } catch (e) {} }
+        st.model = tab.model;
+        var lg = $('idevStLang'); if (lg) lg.textContent = tab.language || 'plaintext';
+    }
+
+    window.idevNewFile = function () {
+        var name = prompt('New file name (for example index.html):', 'untitled.js');
+        if (!name) return;
+        name = String(name).trim(); if (!name) return;
+        var id = 'new_' + Date.now();
+        var tab = { id: id, name: name, language: langFor(name), content: '' };
+        st.tabs.push(tab); st.activeId = id;
+        attachModel(tab);
+        renderTabs(); renderCrumbs(tab);
+        toast('New file: ' + name + ' (remember to Save)');
+    };
+
+    function renderTabs() {
+        var host = $('idevTabs'); if (!host) return;
+        host.innerHTML = '';
+        if (!st.tabs.length) {
+            var hint = mk('div', 'idev-tab active', 'Welcome');
+            host.appendChild(hint);
+            return;
+        }
+        st.tabs.forEach(function (t) {
+            var tab = mk('div', 'idev-tab' + (t.id === st.activeId ? ' active' : ''));
+            tab.appendChild(mk('span', null, t.name));
+            var x = mk('span', 'idev-tab-close', 'x');
+            x.title = 'Close';
+            x.onclick = function (ev) {
+                ev.stopPropagation();
+                st.tabs = st.tabs.filter(function (o) { return o.id !== t.id; });
+                if (st.activeId === t.id) {
+                    var next = st.tabs[0];
+                    st.activeId = next ? next.id : null;
+                    if (next) { attachModel(next); renderCrumbs(next); }
+                    else if (st.editor) { st.editor.setValue(''); }
+                }
+                try { if (t.model) t.model.dispose(); } catch (e) {}
+                renderTabs();
+            };
+            tab.onclick = function () { st.activeId = t.id; attachModel(t); renderTabs(); renderCrumbs(t); };
+            host.appendChild(tab);
+        });
+    }
+
+    function renderCrumbs(tab) {
+        var c = $('idevCrumbs'); if (!c) return;
+        c.textContent = tab ? ('workspace  >  ' + tab.name) : 'workspace';
+    }
+
+    /* ---------- save ---------- */
+    window.idevSave = function () {
+        var tab = activeTab();
+        if (!st.editor) { toast('Editor is still starting'); return; }
+        if (!tab) { toast('Open or create a file first'); return; }
+        var isNew = String(tab.id).indexOf('new_') === 0;
+        var body = { id: isNew ? null : tab.id, name: tab.name, language: tab.language, content: st.editor.getValue() };
+        setMsg('Saving...');
+        fetch('api/seo/code/files', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) {
+                if (!res.ok) throw new Error(res.d.error || 'save failed');
+                tab.id = res.d.id || tab.id;
+                st.activeId = tab.id;
+                setMsg('Saved');
+                toast('Saved: ' + tab.name);
+                renderTabs(); window.idevLoadFiles();
+            })
+            .catch(function (e) { setMsg('Save failed'); toast('Save failed: ' + e.message); });
+    };
+
+    /* ---------- activity bar + reserved features ---------- */
+    window.idevAct = function (el) {
+        if (!el || el.classList.contains('soon')) return;
+        document.querySelectorAll('.idev-act').forEach(function (a) { a.classList.remove('active'); });
+        el.classList.add('active');
+    };
+    window.idevSoon = function (what) {
+        toast(what + ' is coming soon - space is reserved in this workspace (needs the 4 GB upgrade).');
+    };
+    window.idevTogglePanel = function () {
+        var p = $('idevPanel'); if (!p) return;
+        p.classList.toggle('open');
+        if (st.editor) setTimeout(function () { try { st.editor.layout(); } catch (e) {} }, 60);
+    };
+
+    /* ---------- command palette ---------- */
+    var palItems = [], palIndex = 0;
+    function commands() {
+        return [
+            { label: 'Save file', kind: 'Command', run: function () { window.idevSave(); } },
+            { label: 'New file', kind: 'Command', run: function () { window.idevNewFile(); } },
+            { label: 'Refresh file list', kind: 'Command', run: function () { window.idevLoadFiles(); } },
+            { label: 'Toggle minimap', kind: 'Command', run: function () {
+                if (!st.editor) return;
+                var on = st.editor.getOption(monaco.editor.EditorOption.minimap).enabled;
+                st.editor.updateOptions({ minimap: { enabled: !on } });
+            } },
+            { label: 'Toggle word wrap', kind: 'Command', run: function () {
+                if (!st.editor) return;
+                var w = st.editor.getOption(monaco.editor.EditorOption.wordWrap);
+                st.editor.updateOptions({ wordWrap: (w === 'on' ? 'off' : 'on') });
+            } },
+            { label: 'Format document', kind: 'Command', run: function () {
+                if (st.editor) st.editor.getAction('editor.action.formatDocument').run();
+            } },
+            { label: 'Go to line', kind: 'Command', run: function () {
+                if (st.editor) st.editor.getAction('editor.action.gotoLine').run();
+            } },
+            { label: 'Toggle panel', kind: 'Command', run: function () { window.idevTogglePanel(); } },
+            { label: 'Terminal (coming soon)', kind: 'Soon', run: function () { window.idevSoon('Terminal'); } },
+            { label: 'Source control (coming soon)', kind: 'Soon', run: function () { window.idevSoon('Source Control'); } }
+        ];
+    }
+    window.idevPalette = function () {
+        var back = $('idevPaletteBack'); if (!back) return;
+        var base = commands();
+        var fileItems = st.files.map(function (f) {
+            return { label: f.name, kind: 'File', run: function () { window.idevOpenFile(f.id, f.name, f.language); } };
+        });
+        palItems = base.concat(fileItems);
+        palIndex = 0;
+        var inp = $('idevPaletteInput');
+        if (inp) inp.value = '';
+        back.classList.add('show');
+        window.idevPaletteFilter();
+        if (inp) setTimeout(function () { inp.focus(); }, 30);
+    };
+    window.idevPaletteClose = function (ev) {
+        if (ev && ev.target && ev.target.id !== 'idevPaletteBack') return;
+        var back = $('idevPaletteBack'); if (back) back.classList.remove('show');
+    };
+    window.idevPaletteFilter = function () {
+        var list = $('idevPaletteList'); if (!list) return;
+        var q = (($('idevPaletteInput') || {}).value || '').toLowerCase();
+        var shown = palItems.filter(function (i) { return i.label.toLowerCase().indexOf(q) !== -1; });
+        if (palIndex >= shown.length) palIndex = 0;
+        list.innerHTML = '';
+        shown.forEach(function (item, idx) {
+            var row = mk('div', 'idev-pal-item' + (idx === palIndex ? ' sel' : ''));
+            row.appendChild(mk('span', null, item.label));
+            row.appendChild(mk('span', 'idev-pal-kind', item.kind));
+            row.onclick = function () {
+                var back = $('idevPaletteBack'); if (back) back.classList.remove('show');
+                item.run();
+            };
+            list.appendChild(row);
+        });
+        list._shown = shown;
+    };
+    window.idevPaletteKey = function (ev) {
+        var list = $('idevPaletteList');
+        var shown = (list && list._shown) || [];
+        if (ev.key === 'Escape') { var back = $('idevPaletteBack'); if (back) back.classList.remove('show'); return; }
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            palIndex += (ev.key === 'ArrowDown' ? 1 : -1);
+            if (palIndex < 0) palIndex = shown.length - 1;
+            if (palIndex >= shown.length) palIndex = 0;
+            window.idevPaletteFilter();
+            return;
+        }
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            var pick = shown[palIndex];
+            if (pick) { var b = $('idevPaletteBack'); if (b) b.classList.remove('show'); pick.run(); }
+        }
+    };
+
+    /* ---------- AI dock ---------- */
+    function addMsg(kind, text) {
+        var log = $('idevAiLog'); if (!log) return null;
+        var m = mk('div', 'idev-msg ' + kind, text);
+        log.appendChild(m);
+        log.scrollTop = log.scrollHeight;
+        return m;
+    }
+    function removeLast(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+
+    window.idevAiSend = function () {
+        if (st.aiBusy) return;
+        var inp = $('idevAiInput'); if (!inp) return;
+        var q = String(inp.value || '').trim(); if (!q) return;
+        var tab = activeTab();
+        var code = st.editor ? st.editor.getValue() : '';
+        if (code.length > 6000) code = code.slice(0, 6000) + '\n/* ... truncated ... */';
+        addMsg('user', q);
+        inp.value = '';
+        var btn = $('idevAiSendBtn'); st.aiBusy = true; if (btn) btn.disabled = true;
+        var thinking = addMsg('sys', 'Thinking...');
+        var model = (($('idevModel') || {}).value) || 'deepseek';
+        var siteEl = document.getElementById('aiWsSite');
+        var siteKey = (siteEl && siteEl.value) ? siteEl.value : '';
+        var prompt = tab
+            ? ('You are helping inside an in-app IDE. Current file: ' + tab.name + '\n\n```' + (tab.language || '') + '\n' + code + '\n```\n\nRequest: ' + q)
+            : ('No file is open. Request: ' + q);
+        fetch('api/seo/ai-chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], model: model, siteKey: siteKey })
+        })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) {
+                removeLast(thinking);
+                if (!res.ok) throw new Error(res.d.error || 'AI error');
+                addMsg('bot', res.d.reply || '(no reply)');
+            })
+            .catch(function (e) { removeLast(thinking); addMsg('bot', 'Error: ' + e.message); })
+            .then(function () { st.aiBusy = false; if (btn) btn.disabled = false; });
+    };
+
+    /* ---------- auto boot when the section becomes visible ---------- */
+    function autoBoot() {
+        var sec = $('aiideSection');
+        if (sec && sec.classList.contains('active')) setTimeout(boot, 80);
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        var sec = $('aiideSection');
+        if (sec && window.MutationObserver) {
+            new MutationObserver(function () {
+                var on = sec.classList.contains('active');
+                document.body.classList.toggle('idev-mode', on);
+                if (on) setTimeout(boot, 80);
+            }).observe(sec, { attributes: true, attributeFilter: ['class'] });
+        }
+        autoBoot();
+        var ai = $('idevAiInput');
+        if (ai) {
+            ai.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window.idevAiSend(); }
+            });
+        }
+    });
+    if (document.readyState !== 'loading') setTimeout(autoBoot, 200);
+})();
+</script>
 </body>
 </html>
