@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "devall": "nodemon index.js",
     "build": "echo 'No build step required - plain JavaScript project'"
   },
   "dependencies": {
