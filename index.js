@@ -19,6 +19,7 @@ import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
+import { registerWorkshopRoutes } from './workshopApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { registerAlignRoutes } from './alignApi.mjs';
 import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
@@ -163,6 +164,8 @@ registerTradeAccountsRoutes(app, db);
 registerAgentsRoutes(app, db);
 // 🏢 Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
 registerOfficeRoutes(app, db);
+// 🏗️ Websites Workshop (site takeover inspection, manager + engineers, health checks)
+registerWorkshopRoutes(app, db);
 // 📖 Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
 registerRuleBookRoutes(app, db);
 // 🎯 AlignTasks: name-based staff login, team unlock gate, stamped task writes

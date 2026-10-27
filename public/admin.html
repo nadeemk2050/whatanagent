@@ -452,6 +452,112 @@
             .idev-cmdbox { display: none; }
             .idev-title-right .idev-btn { padding: 4px 7px; font-size: 11px; }
         }
+
+        /* ===================== 🏗️ WEBSITES WORKSHOP ===================== */
+        .ws, #workshopSection { --ws-line: #e3e7ec; --ws-ink: #111827; --ws-muted: #6b7280; --ws-brass-1: #f6e0a8; --ws-brass-2: #d8b978; --ws-brass-3: #a8842f; }
+        .ws-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+        .ws-h2 { margin: 0; font-size: 22px; letter-spacing: -0.3px; color: var(--ws-ink); }
+        .ws-sub { margin: 5px 0 0 0; font-size: 13px; line-height: 1.5; color: var(--ws-muted); max-width: 640px; }
+        .ws-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ws-chip { background: #fff; border: 1px solid var(--ws-line); border-radius: 999px; padding: 6px 13px; font-size: 12px; font-weight: 600; color: #374151; white-space: nowrap; }
+        .ws-chip b { color: var(--ws-ink); font-size: 13px; }
+        .ws-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .ws-tab { display: inline-flex; align-items: center; gap: 6px; padding: 10px 15px; border-radius: 10px; border: 1px solid var(--ws-line); background: #fff; color: #374151; font-weight: 700; font-size: 13px; cursor: pointer; transition: all .15s ease; }
+        .ws-tab:hover { background: #f8fafc; }
+        .ws-tab.active { background: linear-gradient(135deg, #1f2937, #0f172a); color: #fff; border-color: #0f172a; box-shadow: 0 6px 16px rgba(15, 23, 42, .18); }
+        .ws-soon { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fef3c7; color: #92400e; font-weight: 800; }
+        .ws-tab.active .ws-soon { background: rgba(255,255,255,.16); color: #fde68a; }
+        .ws-pane { display: none; }
+        .ws-pane.active { display: block; }
+        .ws-card { background: #fff; border: 1px solid var(--ws-line); border-radius: 14px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05); }
+        .ws-h3 { margin: 0; font-size: 15px; color: var(--ws-ink); display: flex; align-items: center; gap: 9px; }
+        .ws-step { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: #0f172a; color: #fff; font-size: 12px; font-weight: 700; align-items: center; justify-content: center; flex: none; }
+        .ws-hint { font-size: 12px; line-height: 1.55; color: var(--ws-muted); }
+        .ws-input, .ws-select, .ws-textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--ws-line); border-radius: 10px; font-size: 14px; box-sizing: border-box; background: #fff; color: var(--ws-ink); font-family: inherit; }
+        .ws-textarea { resize: vertical; }
+        .ws-input:focus, .ws-select:focus, .ws-textarea:focus { outline: none; border-color: #0f172a; box-shadow: 0 0 0 3px rgba(15, 23, 42, .07); }
+        .ws-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .ws-btn { padding: 10px 15px; border-radius: 10px; border: 1px solid var(--ws-line); background: #fff; color: var(--ws-ink); font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; transition: all .15s ease; }
+        .ws-btn:hover { background: #f3f4f6; }
+        .ws-btn.primary { background: linear-gradient(135deg, #0f766e, #115e59); border-color: #0f766e; color: #fff; }
+        .ws-btn.dark { background: linear-gradient(135deg, #1f2937, #0f172a); border-color: #0f172a; color: #fff; }
+        .ws-btn.bad { color: #b91c1c; border-color: #fecaca; }
+        .ws-btn.sm { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+        .ws-btn:disabled { opacity: .55; cursor: not-allowed; }
+        .ws-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+        .ws-field label { display: block; font-size: 11.5px; font-weight: 800; color: #4b5563; margin-bottom: 5px; letter-spacing: .2px; text-transform: uppercase; }
+        .ws-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .ws-pill.ok { background: #dcfce7; color: #166534; }
+        .ws-pill.warn { background: #fef3c7; color: #92400e; }
+        .ws-pill.bad { background: #fee2e2; color: #991b1b; }
+        .ws-pill.mut { background: #f1f5f9; color: #475569; }
+        .ws-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; margin-top: 12px; }
+        .ws-fact { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: #1f2937; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px; padding: 9px 11px; line-height: 1.45; }
+        .ws-fact.warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+        .ws-needs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-top: 12px; }
+        .ws-need { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--ws-line); border-radius: 11px; padding: 11px 12px; background: #fff; }
+        .ws-need.done { border-color: #a7f3d0; background: #f0fdf4; }
+        .ws-need input[type=checkbox] { margin-top: 2px; width: 16px; height: 16px; flex: none; cursor: pointer; }
+        .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }
+        .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
+        .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
+        .ws-door { position: relative; background: linear-gradient(180deg, #3a4048, #2b3037); border-radius: 14px; padding: 16px; color: #f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(15, 23, 42, .16); overflow: hidden; }
+        .ws-door:before { content: ''; position: absolute; inset: 7px; border: 1px solid rgba(216, 185, 120, .32); border-radius: 10px; pointer-events: none; }
+        .ws-door > * { position: relative; }
+        .ws-plate { background: linear-gradient(180deg, #e9cd95, var(--ws-brass-2) 55%, var(--ws-brass-3)); color: #2b2118; border-radius: 8px; padding: 9px 12px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.65); }
+        .ws-plate .nm { font-weight: 800; letter-spacing: .5px; font-size: 14.5px; text-transform: uppercase; line-height: 1.2; }
+        .ws-plate .rl { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .82; margin-top: 3px; }
+        .ws-door .meta { font-size: 12px; color: #cbd5e1; display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+        .ws-door .meta b { color: #fff; }
+        .ws-door .acts { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+        .ws-door .acts .ws-btn { flex: 1; min-width: 92px; padding: 7px 9px; font-size: 11.5px; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); color: #f1f5f9; }
+        .ws-door .acts .ws-btn:hover { background: rgba(255,255,255,.16); }
+        .ws-door .acts .ws-btn.gold { background: linear-gradient(135deg, #d8b978, #a8842f); border-color: #a8842f; color: #1f1a12; }
+        .ws-door.manager { background: linear-gradient(180deg, #232a33, #131920); }
+        .ws-door.manager .ws-plate { padding: 13px 14px; }
+        .ws-door.vacant { background: repeating-linear-gradient(45deg, #f8fafc, #f8fafc 10px, #eef2f7 10px, #eef2f7 20px); color: #334155; border: 1px dashed #94a3b8; box-shadow: none; }
+        .ws-door.vacant:before { border-color: rgba(148, 163, 184, .45); }
+        .ws-door.vacant .ws-plate { background: #fff; border: 1px dashed #cbd5e1; box-shadow: none; color: #475569; }
+        .ws-door.vacant .meta { color: #64748b; }
+        .ws-door.vacant .acts .ws-btn { background: #fff; border-color: #cbd5e1; color: #1f2937; }
+        .ws-doors { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+        .ws-tblwrap { overflow-x: auto; border: 1px solid var(--ws-line); border-radius: 12px; -webkit-overflow-scrolling: touch; }
+        table.ws-tbl { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 940px; }
+        .ws-tbl th { background: #f8fafc; text-align: left; padding: 11px 12px; font-size: 10.5px; letter-spacing: .7px; text-transform: uppercase; color: #64748b; border-bottom: 1px solid var(--ws-line); white-space: nowrap; }
+        .ws-tbl td { padding: 11px 12px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+        .ws-tbl tr:last-child td { border-bottom: none; }
+        .ws-tbl tr:hover td { background: #fcfdff; }
+        .ws-site-name { font-weight: 700; color: #0f172a; }
+        .ws-site-url { font-size: 11.5px; color: #64748b; word-break: break-all; margin-top: 2px; }
+        .ws-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .ws-dot.ok { background: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.15); }
+        .ws-dot.bad { background: #dc2626; box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+        .ws-dot.mut { background: #94a3b8; }
+        .ws-empty { text-align: center; padding: 34px 18px; color: var(--ws-muted); font-size: 13px; }
+        .ws-empty .big { font-size: 34px; margin-bottom: 8px; }
+        .ws-modal-back { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, .55); z-index: 3600; padding: 18px; overflow-y: auto; }
+        .ws-modal-back.open { display: flex; align-items: flex-start; justify-content: center; }
+        .ws-modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 460px; margin: auto; box-shadow: 0 24px 60px rgba(15, 23, 42, .35); }
+        .ws-modal h3 { margin: 0 0 4px 0; font-size: 17px; color: var(--ws-ink); }
+        .ws-modal .ws-hint { margin-bottom: 14px; }
+        .ws-modal .ws-grid2 { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+        .ws-pick { display: flex; align-items: center; gap: 10px; border: 1px solid var(--ws-line); border-radius: 10px; padding: 9px 11px; margin-bottom: 8px; cursor: pointer; }
+        .ws-pick:hover { background: #f8fafc; }
+        .ws-pick input { width: 16px; height: 16px; }
+        .ws-pick .n { font-weight: 700; font-size: 13px; }
+        .ws-pick .r { font-size: 11px; color: var(--ws-muted); }
+        .ws-room { border: 1px dashed #cbd5e1; border-radius: 14px; padding: 30px 20px; text-align: center; background: repeating-linear-gradient(135deg, #f8fafc, #f8fafc 12px, #f1f5f9 12px, #f1f5f9 24px); }
+        .ws-room h3 { margin: 0 0 6px 0; font-size: 17px; color: #334155; }
+        .ws-room .ws-hint { max-width: 520px; margin: 0 auto; }
+        .ws-plan { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 18px; text-align: left; }
+        .ws-plan div { background: #fff; border: 1px solid var(--ws-line); border-radius: 10px; padding: 11px 12px; font-size: 12.5px; color: #334155; }
+        .ws-plan b { display: block; font-size: 11px; letter-spacing: .6px; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; }
+        @media (max-width: 640px) {
+            .ws-head { align-items: flex-start; }
+            .ws-h2 { font-size: 19px; }
+            .ws-tab { flex: 1 1 calc(50% - 8px); justify-content: center; font-size: 12px; padding: 9px 10px; }
+            .ws-card { padding: 14px; }
+        }
     </style>
     
     <!-- Firebase SDKs -->
@@ -612,6 +718,10 @@
             <div class="menu-item" onclick="showSection('aiide')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(59, 130, 246, 0.08); border-left: 4px solid #3b82f6; cursor:pointer;">
                 <span>💻 AI IDE WORKSPACE</span>
                 <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#3b82f6; color:#fff; font-weight:bold;">NEW</span>
+            </div>
+            <div class="menu-item" onclick="showSection('workshop')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(15, 118, 110, 0.08); border-left: 4px solid #0f766e; cursor:pointer;">
+                <span>🏗️ Websites Workshop</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#0f766e; color:#fff; font-weight:bold;">NEW</span>
             </div>
             <div class="menu-item" onclick="openNewsPage()">📰 News & Info Collection</div>
             <div class="menu-item" onclick="showSection('news'); if (typeof naLoadStatus === 'function') naLoadStatus();">📡 Browsing News Agent</div>
@@ -3618,6 +3728,132 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ============================================================
+                 🏗️ WEBSITES WORKSHOP
+                 Tab 1  add a website (AI inspection -> access checklist -> save)
+                 Tab 2  workshop office (manager name plate + engineers' offices)
+                 Tab 3  websites register (health, pages, engineer assigned)
+                 Tab 4  meeting room (reserved — COMING SOON)
+                 ============================================================ -->
+            <div id="workshopSection" class="app-section">
+                <div class="ws">
+                    <div class="ws-head">
+                        <div>
+                            <h2 class="ws-h2">🏗️ Websites Workshop</h2>
+                            <p class="ws-sub">One manager, a team of engineers, and every website they run. Add a site, the workshop inspects it and tells you exactly what access it needs — then a manager and engineers take it from there.</p>
+                        </div>
+                        <div class="ws-chips" id="wsStats">
+                            <span class="ws-chip">Sites <b>—</b></span>
+                            <span class="ws-chip">Engineers <b>—</b></span>
+                            <span class="ws-chip">Healthy <b>—</b></span>
+                            <span class="ws-chip">Unassigned <b>—</b></span>
+                        </div>
+                    </div>
+
+                    <div class="ws-tabs">
+                        <button class="ws-tab active" id="wsTabBtn-add" onclick="wshopTab('add')">➕ Add New Website</button>
+                        <button class="ws-tab" id="wsTabBtn-office" onclick="wshopTab('office')">🏢 Workshop Office</button>
+                        <button class="ws-tab" id="wsTabBtn-sites" onclick="wshopTab('sites')">🌐 Websites Register</button>
+                        <button class="ws-tab" id="wsTabBtn-meeting" onclick="wshopTab('meeting')">🚪 Meeting Room <span class="ws-soon">SOON</span></button>
+                    </div>
+
+                    <!-- ---------------- TAB 1 : ADD NEW WEBSITE ---------------- -->
+                    <div class="ws-pane active" id="wsPane-add">
+                        <div class="ws-card">
+                            <h3 class="ws-h3"><span class="ws-step">1</span> Website address — inspect it first</h3>
+                            <p class="ws-hint" style="margin:6px 0 0 0;">Paste the address. The workshop reads the live site, its DNS and its public files (CMS, host, CDN, sitemap, REST API) and then lists exactly which keys and approvals are needed for full control.</p>
+                            <div class="ws-row" style="margin-top:13px;">
+                                <input id="wsUrl" class="ws-input" style="flex:1; min-width:240px;" placeholder="https://example.com" onkeydown="if(event.key==='Enter'){wshopInspect();}">
+                                <button class="ws-btn primary" id="wsInspectBtn" onclick="wshopInspect()">🔍 Inspect website</button>
+                            </div>
+                            <div id="wsScanOut" style="margin-top:14px;"></div>
+                        </div>
+
+                        <div class="ws-card" id="wsCheckCard" style="display:none;">
+                            <h3 class="ws-h3"><span class="ws-step">2</span> Access the workshop needs</h3>
+                            <p class="ws-hint" style="margin:6px 0 0 0;">Tick each item once you have supplied it. Anything marked <b>required</b> must be in place before the website can be added. Nothing is used until a staff member is assigned to the site.</p>
+                            <div id="wsCheckList" class="ws-needs"></div>
+                        </div>
+
+                        <div class="ws-card" id="wsFormCard" style="display:none;">
+                            <h3 class="ws-h3"><span class="ws-step">3</span> Website details</h3>
+                            <div class="ws-grid2" style="margin-top:13px;">
+                                <div class="ws-field"><label>Workshop name for this site</label><input id="wsName" class="ws-input" placeholder="e.g. Al Shaab Al Waseem"></div>
+                                <div class="ws-field"><label>Website address</label><input id="wsUrl2" class="ws-input"></div>
+                                <div class="ws-field"><label>Platform</label><select id="wsPlatform" class="ws-select"><option value="wordpress">WordPress</option><option value="shopify">Shopify</option><option value="wix">Wix</option><option value="custom">Custom / HTML</option><option value="other">Other</option></select></div>
+                                <div class="ws-field"><label>Admin / login address</label><input id="wsAdminUrl" class="ws-input" placeholder="https://example.com/wp-admin"></div>
+                                <div class="ws-field"><label>Username</label><input id="wsUser" class="ws-input" autocomplete="off" placeholder="workshop account, not your personal one"></div>
+                                <div class="ws-field"><label>App password / API key</label><input id="wsPass" class="ws-input" type="password" autocomplete="new-password" placeholder="revocable key only"></div>
+                                <div class="ws-field"><label>Sitemap (optional)</label><input id="wsSitemap" class="ws-input" placeholder="https://example.com/sitemap.xml"></div>
+                                <div class="ws-field"><label>Authorised by (owner approval)</label><input id="wsApprovedBy" class="ws-input" placeholder="name + date"></div>
+                            </div>
+                            <div class="ws-field" style="margin-top:12px;"><label>Notes for the manager</label><textarea id="wsNotes" class="ws-textarea" rows="3" placeholder="What matters most on this site? Anything the team must never touch?"></textarea></div>
+                            <div class="ws-row" style="margin-top:14px;">
+                                <button class="ws-btn dark" id="wsAddBtn" onclick="wshopAddSite()">💾 Add website to the workshop</button>
+                                <button class="ws-btn" onclick="wshopReset()">Clear</button>
+                                <span class="ws-hint" id="wsAddMsg"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ---------------- TAB 2 : WORKSHOP OFFICE ---------------- -->
+                    <div class="ws-pane" id="wsPane-office">
+                        <div id="wsManagerOffice" style="margin-bottom:16px;"></div>
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between;">
+                                <h3 class="ws-h3">🧑‍🔧 Engineers' offices</h3>
+                                <button class="ws-btn dark" onclick="wshopHire('engineer')">➕ Hire engineer</button>
+                            </div>
+                            <p class="ws-hint" style="margin:6px 0 0 0;">Every engineer has an office with their name on the door. Assign them to websites from the Websites Register tab.</p>
+                            <div id="wsEngineerOffices" class="ws-doors" style="margin-top:14px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- ---------------- TAB 3 : WEBSITES REGISTER ---------------- -->
+                    <div class="ws-pane" id="wsPane-sites">
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between;">
+                                <h3 class="ws-h3">🌐 Websites register</h3>
+                                <div class="ws-row">
+                                    <button class="ws-btn" id="wsHealthBtn" onclick="wshopHealthAll()">🩺 Check all health</button>
+                                    <button class="ws-btn dark" onclick="wshopTab('add')">➕ Add website</button>
+                                </div>
+                            </div>
+                            <div id="wsSitesTable" style="margin-top:14px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- ---------------- TAB 4 : MEETING ROOM ---------------- -->
+                    <div class="ws-pane" id="wsPane-meeting">
+                        <div class="ws-card">
+                            <div class="ws-room">
+                                <h3>🚪 Meeting Room — coming soon</h3>
+                                <p class="ws-hint">The room is built and reserved. When it opens, the manager and the engineers will meet here per website: agenda, decisions, work orders and the owner's approval in one place.</p>
+                                <div class="ws-plan">
+                                    <div><b>Planned</b>Daily stand-up per website with the assigned engineer</div>
+                                    <div><b>Planned</b>Work orders created in the meeting and tracked to done</div>
+                                    <div><b>Planned</b>Owner approval queue for anything destructive</div>
+                                    <div><b>Planned</b>Minutes saved to the site file and the staff academy</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- shared modal -->
+                <div class="ws-modal-back" id="wsModalBack" onclick="wshopModalClose(event)">
+                    <div class="ws-modal" onclick="event.stopPropagation()">
+                        <h3 id="wsModalTitle">Title</h3>
+                        <p class="ws-hint" id="wsModalHint"></p>
+                        <div id="wsModalBody"></div>
+                        <div class="ws-row" style="justify-content:flex-end; margin-top:16px;">
+                            <button class="ws-btn" onclick="wshopModalClose()">Cancel</button>
+                            <button class="ws-btn primary" id="wsModalOk" onclick="wshopModalOk()">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
@@ -3951,6 +4187,8 @@
                     if (typeof loadBrains === 'function') loadBrains();
                 } else if (id === 'dashboard') {
                     if (typeof loadDashboardStats === 'function') loadDashboardStats();
+                } else if (id === 'workshop') {
+                    if (typeof wshopLoad === 'function') wshopLoad();
                 }
             } catch(loaderErr) {
                 console.warn('[showSection] section loader error:', loaderErr);
@@ -12750,6 +12988,594 @@
         }
     });
     if (document.readyState !== 'loading') setTimeout(autoBoot, 200);
+})();
+</script>
+
+<script>
+/* ===================== 🏗️ WEBSITES WORKSHOP (client, no build step) ===================== */
+(function () {
+    'use strict';
+
+    var WS = { data: null, scan: null, checks: {}, modalOk: null, busy: false };
+    var MODELS = [
+        ['qwen3.8-flash', 'Qwen3.8-Flash (fast, cheapest)'],
+        ['qwen3.8-omni-flash', 'Qwen3.8-Omni-Flash (text + image + audio)'],
+        ['deepseek-v4.1-flash', 'DeepSeek V4.1 Flash (strict reasoning)'],
+        ['gemini-2.5-flash', 'Gemini 2.5 Flash'],
+        ['gemini-3.8-flash', 'Gemini 3.8 Flash']
+    ];
+
+    function $(id) { return document.getElementById(id); }
+    function val(id) { var el = $(id); return el ? String(el.value || '').trim() : ''; }
+    function esc(v) {
+        return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function when(ts) {
+        if (!ts) return '—';
+        var d = new Date(Number(ts));
+        if (isNaN(d.getTime())) return '—';
+        var mins = Math.round((Date.now() - d.getTime()) / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + ' min ago';
+        if (mins < 1440) return Math.round(mins / 60) + ' h ago';
+        return d.toLocaleDateString();
+    }
+
+    async function api(path, opts) {
+        opts = opts || {};
+        var url = '/api/workshop' + path;
+        var send = function () {
+            return fetch(url, {
+                method: opts.method || 'GET',
+                headers: Object.assign({ 'Content-Type': 'application/json', 'x-admin-token': adminToken() }, opts.headers || {}),
+                body: opts.body ? JSON.stringify(opts.body) : undefined
+            });
+        };
+        var res = await send();
+        if (res.status === 401) {
+            var t = window.prompt('The Websites Workshop is protected.\n\nEnter your ADMIN TOKEN (the ADMIN_TOKEN value set in the hosting environment):');
+            if (t && t.trim()) { setAdminToken(t.trim()); res = await send(); }
+        }
+        var data = {};
+        try { data = await res.json(); } catch (e) { data = {}; }
+        if (res.status === 503) throw new Error(data.error || 'The admin token is not configured on the server (ADMIN_TOKEN).');
+        if (!res.ok || data.ok === false) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+        return data;
+    }
+
+    /* ---------------- tabs ---------------- */
+    function tab(name) {
+        ['add', 'office', 'sites', 'meeting'].forEach(function (n) {
+            var b = $('wsTabBtn-' + n), p = $('wsPane-' + n);
+            if (b) b.classList.toggle('active', n === name);
+            if (p) p.classList.toggle('active', n === name);
+        });
+        if (name === 'office' || name === 'sites') load(false);
+    }
+
+    /* ---------------- state + rendering ---------------- */
+    async function load(force) {
+        if (!force && Date.now() - (WS.lastLoad || 0) < 800) return;
+        WS.lastLoad = Date.now();
+        try {
+            var d = await api('/state');
+            WS.data = d;
+            renderStats();
+            renderManager();
+            renderEngineers();
+            renderSites();
+        } catch (e) {
+            var box = $('wsSitesTable');
+            if (box && !WS.data) {
+                box.innerHTML = '<div class="ws-empty"><div class="big">🔐</div><b>Workshop locked</b><div style="margin-top:6px;">' + esc(e.message) + '</div></div>';
+            }
+        }
+    }
+
+    function renderStats() {
+        var s = (WS.data && WS.data.stats) || { sites: 0, engineers: 0, healthy: 0, unassigned: 0, manager: 0 };
+        var box = $('wsStats');
+        if (!box) return;
+        box.innerHTML =
+            '<span class="ws-chip">Sites <b>' + s.sites + '</b></span>' +
+            '<span class="ws-chip">Engineers <b>' + s.engineers + '</b></span>' +
+            '<span class="ws-chip">Healthy <b>' + s.healthy + '</b></span>' +
+            '<span class="ws-chip">Unassigned <b>' + s.unassigned + '</b></span>';
+    }
+
+    function renderManager() {
+        var box = $('wsManagerOffice');
+        if (!box) return;
+        var m = WS.data && WS.data.manager;
+        var sites = (WS.data && WS.data.sites) || [];
+        var engs = (WS.data && WS.data.engineers) || [];
+        var healthy = sites.filter(function (s) { return s.health && s.health.ok; }).length;
+
+        if (!m) {
+            box.innerHTML =
+                '<div class="ws-door manager vacant">' +
+                    '<div class="ws-plate"><div class="nm">Manager\u2019s Office</div><div class="rl">Vacant</div></div>' +
+                    '<div class="meta"><span>No Workshop Manager yet</span><span>0 engineers</span></div>' +
+                    '<div class="acts">' +
+                        '<button class="ws-btn gold" onclick="wshopHire(\'manager\')">👷 Hire the Workshop Manager</button>' +
+                        '<button class="ws-btn" onclick="wshopAppoint()">Appoint existing staff</button>' +
+                    '</div>' +
+                '</div>';
+            return;
+        }
+        box.innerHTML =
+            '<div class="ws-door manager">' +
+                '<div class="ws-plate"><div class="nm">' + esc(m.emoji || '👷') + ' ' + esc(m.name) + '</div><div class="rl">Websites Workshop Manager</div></div>' +
+                '<div class="meta">' +
+                    '<span>Engineers under him: <b>' + engs.length + '</b></span>' +
+                    '<span>Sites run: <b>' + sites.length + '</b></span>' +
+                    '<span>Healthy: <b>' + healthy + '/' + sites.length + '</b></span>' +
+                    '<span>Model: <b>' + esc(m.model || '—') + '</b></span>' +
+                '</div>' +
+                '<div class="acts">' +
+                    '<a class="ws-btn gold" href="/academy.html" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;">🎓 Open his staff file</a>' +
+                    '<button class="ws-btn" onclick="wshopHire(\'manager\')">Replace manager</button>' +
+                    '<button class="ws-btn" onclick="wshopFire(\'' + esc(m.id) + '\')">Fire</button>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function renderEngineers() {
+        var box = $('wsEngineerOffices');
+        if (!box) return;
+        var engs = (WS.data && WS.data.engineers) || [];
+        if (!engs.length) {
+            box.innerHTML =
+                '<div class="ws-door vacant">' +
+                    '<div class="ws-plate"><div class="nm">No engineers yet</div><div class="rl">Vacant office</div></div>' +
+                    '<div class="meta"><span>Hire the first engineer</span><span>0 sites</span></div>' +
+                    '<div class="acts"><button class="ws-btn" onclick="wshopHire(\'engineer\')">➕ Hire engineer</button></div>' +
+                '</div>';
+            return;
+        }
+        box.innerHTML = engs.map(function (e) {
+            var sites = e.sites || [];
+            var names = sites.length
+                ? sites.map(function (s) { return '<span class="ws-pill ' + (s.healthy ? 'ok' : 'warn') + '">' + esc(s.name || s.key) + '</span>'; }).join(' ')
+                : '<span class="ws-pill mut">No website assigned yet</span>';
+            return '<div class="ws-door">' +
+                    '<div class="ws-plate"><div class="nm">' + esc(e.emoji || '🧑‍🔧') + ' ' + esc(e.name) + '</div><div class="rl">' + esc(e.role || 'Website Engineer') + '</div></div>' +
+                    '<div class="meta"><span>Sites: <b>' + sites.length + '</b></span><span>Model: <b>' + esc(e.model || '—') + '</b></span></div>' +
+                    '<div style="margin-top:9px; display:flex; gap:5px; flex-wrap:wrap;">' + names + '</div>' +
+                    '<div class="acts">' +
+                        '<a class="ws-btn" href="/academy.html" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;">🎓 Staff file</a>' +
+                        '<button class="ws-btn" onclick="wshopFire(\'' + esc(e.id) + '\')">Fire</button>' +
+                    '</div>' +
+                '</div>';
+        }).join('');
+    }
+
+    function healthCell(h) {
+        if (!h) return '<span class="ws-pill mut">not checked</span>';
+        if (h.ok) return '<span class="ws-pill ok"><span class="ws-dot ok"></span>' + (h.status || 200) + ' \u00b7 ' + (h.ms || 0) + ' ms</span>';
+        return '<span class="ws-pill bad"><span class="ws-dot bad"></span>' + esc(h.status || 'down') + '</span>';
+    }
+
+    function renderSites() {
+        var box = $('wsSitesTable');
+        if (!box) return;
+        var list = (WS.data && WS.data.sites) || [];
+        if (!list.length) {
+            box.innerHTML = '<div class="ws-empty"><div class="big">🌐</div><b>No websites in the workshop yet</b>' +
+                '<div style="margin-top:6px;">Go to <b>Add New Website</b>, paste an address and let the workshop inspect it.</div></div>';
+            return;
+        }
+        var rows = list.map(function (s) {
+            var eng = (s.engineers && s.engineers.length)
+                ? s.engineers.map(function (e) { return '<span class="ws-pill ok">' + esc(e.emoji || '') + ' ' + esc(e.name) + '</span>'; }).join(' ')
+                : '<span class="ws-pill warn">Unassigned</span>';
+            var host = s.host || {};
+            var hostBits = [];
+            if (host.provider) hostBits.push(esc(host.provider));
+            if (host.cdn) hostBits.push(esc(host.cdn));
+            if (!hostBits.length && s.scan && s.scan.dns && s.scan.dns.provider) hostBits.push(esc(s.scan.dns.provider));
+            var pages = (s.pages && s.pages.count) || (s.scan && s.scan.pages && s.scan.pages.count) || 0;
+            return '<tr>' +
+                '<td><div class="ws-site-name">' + esc(s.name || s.key) + '</div><div class="ws-site-url">' + esc(s.url) + '</div></td>' +
+                '<td>' + healthCell(s.health) + '</td>' +
+                '<td>' + (pages ? pages : '<span class="ws-hint">—</span>') + '</td>' +
+                '<td><span class="ws-pill mut">' + esc(s.cmsPlatform || 'unknown') + '</span></td>' +
+                '<td>' + (hostBits.length ? hostBits.join(' \u00b7 ') : '<span class="ws-hint">—</span>') +
+                    (s.hasPassword ? ' <span class="ws-pill ok" title="Access key saved">🔑</span>' : ' <span class="ws-pill warn" title="No access key saved">no key</span>') + '</td>' +
+                '<td>' + eng + '</td>' +
+                '<td><span class="ws-hint">' + when(s.addedAt) + '</span></td>' +
+                '<td><div class="ws-row" style="gap:6px;flex-wrap:nowrap;">' +
+                    '<button class="ws-btn sm dark" onclick="wshopAssign(\'' + esc(s.key) + '\')">Assign</button>' +
+                    '<button class="ws-btn sm" onclick="wshopHealthOne(\'' + esc(s.key) + '\')" title="Check health">🩺</button>' +
+                    '<a class="ws-btn sm" href="' + esc(s.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">↗</a>' +
+                    '<button class="ws-btn sm bad" onclick="wshopRemoveSite(\'' + esc(s.key) + '\')" title="Remove">🗑</button>' +
+                '</div></td>' +
+            '</tr>';
+        }).join('');
+        box.innerHTML = '<div class="ws-tblwrap"><table class="ws-tbl"><thead><tr>' +
+            '<th>Website address</th><th>Health</th><th>Pages</th><th>Platform</th><th>Host / DNS</th><th>Engineer assigned</th><th>Added</th><th>Actions</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    }
+
+    /* ---------------- tab 1: inspection ---------------- */
+    async function inspect() {
+        var url = val('wsUrl');
+        if (!url) { toastMsg('⚠️ Enter the website address first'); return; }
+        if (WS.busy) return;
+        WS.busy = true;
+        var btn = $('wsInspectBtn');
+        var old = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Inspecting…'; }
+        if ($('wsScanOut')) $('wsScanOut').innerHTML = '<div class="ws-hint">Reading DNS, HTTP headers and public files…</div>';
+        try {
+            var r = await api('/scan', { method: 'POST', body: { url: url } });
+            WS.scan = r;
+            renderScan(r);
+            renderChecklist(r.checklist || []);
+            prefill(r);
+            if ($('wsCheckCard')) $('wsCheckCard').style.display = '';
+            if ($('wsFormCard')) $('wsFormCard').style.display = '';
+            $('wsUrl2').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (e) {
+            WS.scan = null;
+            if ($('wsScanOut')) $('wsScanOut').innerHTML = '<div class="ws-fact warn">⚠️ ' + esc(e.message) + '</div>';
+        } finally {
+            WS.busy = false;
+            if (btn) { btn.disabled = false; btn.textContent = old; }
+        }
+    }
+
+    function renderScan(r) {
+        var out = $('wsScanOut');
+        if (!out) return;
+        var pills = [];
+        pills.push('<span class="ws-pill ' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✅ Reachable' : '⚠️ Not reachable') + '</span>');
+        if (r.stack && r.stack.platform) pills.push('<span class="ws-pill mut">' + esc(r.stack.platform) + (r.stack.version ? ' ' + esc(r.stack.version) : '') + '</span>');
+        if (r.stack && r.stack.cdn) pills.push('<span class="ws-pill mut">' + esc(r.stack.cdn) + '</span>');
+        if (r.dns && r.dns.provider) pills.push('<span class="ws-pill mut">DNS: ' + esc(r.dns.provider) + '</span>');
+        if (r.pages && r.pages.count) pills.push('<span class="ws-pill mut">' + r.pages.count + ' pages</span>');
+
+        var facts = (r.facts || []).map(function (f) { return '<div class="ws-fact">ℹ️ <span>' + esc(f) + '</span></div>'; }).join('');
+        var warns = (r.warnings || []).map(function (w) { return '<div class="ws-fact warn">⚠️ <span>' + esc(w) + '</span></div>'; }).join('');
+        out.innerHTML = '<div class="ws-row" style="gap:6px;">' + pills.join('') + '</div><div class="ws-facts">' + facts + warns + '</div>';
+    }
+
+    function renderChecklist(items) {
+        WS.checks = {};
+        var box = $('wsCheckList');
+        if (!box) return;
+        if (!items.length) { box.innerHTML = '<div class="ws-hint">Nothing outstanding.</div>'; return; }
+        box.innerHTML = items.map(function (it) {
+            return '<label class="ws-need" id="wsNeed-' + esc(it.id) + '">' +
+                '<input type="checkbox" data-need="' + esc(it.id) + '" onchange="wshopNeedToggle(this)">' +
+                '<span><span class="t">' + esc(it.label) + (it.required ? '<span class="req">REQUIRED</span>' : '') + '</span>' +
+                '<div class="w">' + esc(it.why) + '</div></span>' +
+                '</label>';
+        }).join('');
+        // pre-tick anything already visible in the form
+        syncNeeds();
+    }
+
+    function needHave(id) {
+        if (id === 'cms.username') return !!val('wsUser');
+        if (id === 'cms.appPassword' || id === 'cms.shopifyToken' || id === 'cms.wixKey') return !!val('wsPass');
+        if (id === 'approval.owner') return !!val('wsApprovedBy');
+        if (id === 'cms.adminUrl') return true;
+        return !!WS.checks[id];
+    }
+
+    function syncNeeds() {
+        var boxes = document.querySelectorAll('#wsCheckList input[data-need]');
+        for (var i = 0; i < boxes.length; i++) {
+            var id = boxes[i].getAttribute('data-need');
+            var have = needHave(id);
+            if (needHave(id) && id.indexOf('cms.') === 0) boxes[i].checked = have;
+            if (id === 'approval.owner' && have) boxes[i].checked = true;
+            var row = $('wsNeed-' + id);
+            if (row) row.classList.toggle('done', boxes[i].checked || have);
+        }
+    }
+
+    function needToggle(el) {
+        var id = el.getAttribute('data-need');
+        WS.checks[id] = !!el.checked;
+        var row = $('wsNeed-' + id);
+        if (row) row.classList.toggle('done', !!el.checked);
+    }
+
+    function prefill(r) {
+        var host = r.host || '';
+        var origin = 'https://' + host;
+        try { origin = new URL(r.http && r.http.finalUrl ? r.http.finalUrl : r.url).origin; } catch (e) {}
+        if ($('wsName')) $('wsName').value = host.replace(/^www\./, '');
+        if ($('wsUrl2')) $('wsUrl2').value = r.url || origin;
+        var plat = 'other';
+        var p = (r.stack && r.stack.platform) || '';
+        if (/wordpress/i.test(p)) plat = 'wordpress';
+        else if (/shopify/i.test(p)) plat = 'shopify';
+        else if (/wix/i.test(p)) plat = 'wix';
+        else if (/next|webflow|gatsby|squarespace|blogger|custom/i.test(p)) plat = 'custom';
+        if ($('wsPlatform')) $('wsPlatform').value = plat;
+        if ($('wsAdminUrl')) $('wsAdminUrl').value = plat === 'wordpress' ? origin + '/wp-admin' : origin + '/login';
+        if ($('wsSitemap')) $('wsSitemap').value = (r.sitemap && r.sitemap.url) || (origin + '/sitemap.xml');
+    }
+
+    async function addSite() {
+        var url = val('wsUrl2') || val('wsUrl');
+        if (!url) { msg('⚠️ Enter the website address in step 1.'); $('wsUrl').focus(); return; }
+
+        var missing = [];
+        var items = (WS.scan && WS.scan.checklist) || [];
+        items.forEach(function (it) {
+            if (it.required && !needHave(it.id)) missing.push(it.label);
+        });
+        if (missing.length) {
+            msg('⚠️ Still needed: ' + missing.join(', '));
+            if ($('wsCheckCard')) $('wsCheckCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        var btn = $('wsAddBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+        msg('');
+        try {
+            var r = WS.scan || {};
+            var host = {
+                provider: (r.dns && r.dns.provider) || '',
+                cdn: (r.stack && r.stack.cdn) || '',
+                server: (r.stack && r.stack.server) || '',
+                platform: (r.stack && r.stack.platform) || '',
+                version: (r.stack && r.stack.version) || '',
+                nameservers: (r.dns && r.dns.nameservers) || []
+            };
+            await api('/site', {
+                method: 'POST',
+                body: {
+                    url: url,
+                    name: val('wsName') || url.replace(/^https?:\/\//, '').replace(/\/.*$/, ''),
+                    cmsPlatform: val('wsPlatform') || 'wordpress',
+                    cmsAdminUrl: val('wsAdminUrl'),
+                    cmsUsername: val('wsUser'),
+                    cmsPassword: val('wsPass'),
+                    sitemapUrl: val('wsSitemap'),
+                    notes: val('wsNotes'),
+                    approvedBy: val('wsApprovedBy'),
+                    approvals: WS.checks,
+                    host: host,
+                    scan: r.ok === undefined ? null : {
+                        checkedAt: r.checkedAt, platform: host.platform, version: host.version,
+                        cdn: host.cdn, server: host.server, provider: host.provider,
+                        pages: r.pages || null, https: !!(r.http && r.http.https),
+                        ms: (r.http && r.http.ms) || 0, warnings: r.warnings || [], facts: r.facts || []
+                    }
+                }
+            });
+            toastMsg('✅ ' + (val('wsName') || url) + ' added to the workshop');
+            reset();
+            await load(true);
+            tab('sites');
+        } catch (e) {
+            msg('⚠️ ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '💾 Add website to the workshop'; }
+        }
+    }
+
+    function msg(text) { var m = $('wsAddMsg'); if (m) { m.textContent = text || ''; m.style.color = text.indexOf('⚠️') === 0 ? '#b91c1c' : '#166534'; } }
+
+    function reset() {
+        WS.scan = null; WS.checks = {};
+        ['wsUrl', 'wsName', 'wsUrl2', 'wsAdminUrl', 'wsUser', 'wsPass', 'wsSitemap', 'wsApprovedBy', 'wsNotes'].forEach(function (id) {
+            var el = $(id); if (el) el.value = '';
+        });
+        ['wsScanOut', 'wsCheckList'].forEach(function (id) { var el = $(id); if (el) el.innerHTML = ''; });
+        if ($('wsCheckCard')) $('wsCheckCard').style.display = 'none';
+        if ($('wsFormCard')) $('wsFormCard').style.display = 'none';
+        msg('');
+    }
+
+    /* ---------------- tab 2: hire / assign ---------------- */
+    function modelOptions() {
+        return MODELS.map(function (m) { return '<option value="' + m[0] + '">' + esc(m[1]) + '</option>'; }).join('');
+    }
+
+    function openModal(cfg) {
+        WS.modalOk = cfg.ok || null;
+        $('wsModalTitle').textContent = cfg.title || '';
+        $('wsModalHint').textContent = cfg.hint || '';
+        $('wsModalBody').innerHTML = cfg.body || '';
+        var ok = $('wsModalOk');
+        ok.textContent = cfg.okText || 'Save';
+        ok.style.display = cfg.ok ? '' : 'none';
+        $('wsModalBack').classList.add('open');
+    }
+    function closeModal() { $('wsModalBack').classList.remove('open'); WS.modalOk = null; }
+    async function modalOk() {
+        if (!WS.modalOk) return;
+        var btn = $('wsModalOk');
+        btn.disabled = true;
+        try { await WS.modalOk(); } catch (e) { toastMsg('⚠️ ' + e.message); }
+        finally { btn.disabled = false; }
+    }
+
+    function hire(kind) {
+        var isManager = kind === 'manager';
+        if (isManager && WS.data && WS.data.manager) {
+            if (!confirm('A manager already exists. Replace ' + WS.data.manager.name + '?')) return;
+        }
+        openModal({
+            title: isManager ? '👷 Hire the Workshop Manager' : '🧑‍🔧 Hire an engineer',
+            hint: 'They are created in the 🎓 AI Staff Academy, so you can train them there too.',
+            okText: 'Hire',
+            body: '<div class="ws-grid2">' +
+                '<div class="ws-field"><label>Name</label><input id="wsHireName" class="ws-input" placeholder="e.g. Bilal Ahmed"></div>' +
+                '<div class="ws-field"><label>Emoji</label><input id="wsHireEmoji" class="ws-input" value="' + (isManager ? '👷' : '🧑‍🔧') + '"></div>' +
+                (isManager ? '' : '<div class="ws-field"><label>Speciality</label><input id="wsHireRole" class="ws-input" value="Full-Stack Website Engineer"></div>') +
+                '<div class="ws-field"><label>Model</label><select id="wsHireModel" class="ws-select">' + modelOptions() + '</select></div>' +
+                '</div>',
+            ok: async function () {
+                var name = val('wsHireName');
+                if (!name) throw new Error('Give the new staff member a name.');
+                await api('/hire', {
+                    method: 'POST',
+                    body: {
+                        kind: kind, name: name, emoji: val('wsHireEmoji'),
+                        role: isManager ? '' : val('wsHireRole'),
+                        model: val('wsHireModel'), replace: true
+                    }
+                });
+                closeModal();
+                toastMsg('✅ ' + name + ' hired');
+                await load(true);
+                tab('office');
+            }
+        });
+    }
+
+    function appoint() {
+        var staff = (WS.data && WS.data.staff) || [];
+        if (!staff.length) { toastMsg('⚠️ No staff in the academy yet — hire one first'); hire('manager'); return; }
+        openModal({
+            title: 'Appoint an existing staff member',
+            hint: 'Choose who runs the workshop.',
+            okText: 'Appoint',
+            body: staff.map(function (s) {
+                return '<label class="ws-pick"><input type="radio" name="wsMgr" value="' + esc(s.id) + '">' +
+                    '<span><span class="n">' + esc(s.emoji || '') + ' ' + esc(s.name) + '</span><div class="r">' + esc(s.role || 'staff') + '</div></span></label>';
+            }).join(''),
+            ok: async function () {
+                var picked = document.querySelector('input[name="wsMgr"]:checked');
+                if (!picked) throw new Error('Choose a staff member.');
+                await api('/manager', { method: 'POST', body: { agentId: picked.value } });
+                closeModal();
+                toastMsg('✅ Manager appointed');
+                await load(true);
+                tab('office');
+            }
+        });
+    }
+
+    function assign(key) {
+        var site = ((WS.data && WS.data.sites) || []).filter(function (s) { return s.key === key; })[0];
+        if (!site) return;
+        var engs = (WS.data && WS.data.engineers) || [];
+        if (!engs.length) {
+            openModal({
+                title: 'No engineers yet',
+                hint: 'Hire at least one engineer before assigning this website.',
+                body: '<div class="ws-fact">' + esc(site.name || key) + ' is waiting.</div>',
+                okText: 'Hire an engineer',
+                ok: async function () { closeModal(); hire('engineer'); }
+            });
+            return;
+        }
+        var current = (site.engineers || []).map(function (e) { return e.id; });
+        openModal({
+            title: 'Assign engineers',
+            hint: 'Who works on ' + (site.name || key) + '? Up to 6 engineers.',
+            okText: 'Assign',
+            body: engs.map(function (e) {
+                var on = current.indexOf(e.id) >= 0 ? ' checked' : '';
+                return '<label class="ws-pick"><input type="checkbox" name="wsEng" value="' + esc(e.id) + '"' + on + '>' +
+                    '<span><span class="n">' + esc(e.emoji || '') + ' ' + esc(e.name) + '</span><div class="r">' + (e.sites || []).length + ' site(s) · ' + esc(e.role || '') + '</div></span></label>';
+            }).join(''),
+            ok: async function () {
+                var picked = [].slice.call(document.querySelectorAll('input[name="wsEng"]:checked')).map(function (i) { return i.value; });
+                await api('/site/assign', { method: 'POST', body: { key: key, engineers: picked } });
+                closeModal();
+                toastMsg(picked.length ? '✅ Engineer assigned' : '✅ Site left unassigned');
+                await load(true);
+            }
+        });
+    }
+
+    async function fire(agentId) {
+        var who = null;
+        ((WS.data && WS.data.staff) || []).forEach(function (s) { if (s.id === agentId) who = s; });
+        if (WS.data && WS.data.manager && WS.data.manager.id === agentId) who = WS.data.manager;
+        var name = who ? who.name : agentId;
+        if (!confirm('Remove ' + name + ' from the workshop?\n\nThey stay in the AI Staff Academy — only the workshop assignment is cleared.')) return;
+        try {
+            await api('/staff/remove', { method: 'POST', body: { agentId: agentId } });
+            toastMsg('Removed from the workshop');
+            await load(true);
+        } catch (e) { toastMsg('⚠️ ' + e.message); }
+    }
+
+    /* ---------------- tab 3: health / remove ---------------- */
+    async function healthAll() {
+        var btn = $('wsHealthBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking…'; }
+        try {
+            var d = await api('/health', { method: 'POST', body: {} });
+            await load(true);
+            var keys = Object.keys(d.health || {});
+            var up = keys.filter(function (k) { return d.health[k].ok; }).length;
+            toastMsg('🩺 ' + up + '/' + keys.length + ' websites answering');
+        } catch (e) { toastMsg('⚠️ ' + e.message); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = '🩺 Check all health'; } }
+    }
+
+    async function healthOne(key) {
+        try {
+            await api('/health', { method: 'POST', body: { keys: [key] } });
+            await load(true);
+            toastMsg('🩺 Health updated');
+        } catch (e) { toastMsg('⚠️ ' + e.message); }
+    }
+
+    async function removeSite(key) {
+        var site = ((WS.data && WS.data.sites) || []).filter(function (s) { return s.key === key; })[0];
+        var name = site ? (site.name || site.key) : key;
+        if (!confirm('Remove ' + name + ' from the workshop?\n\nThis also removes it from the SEO Agent site list.')) return;
+        try {
+            await api('/site/remove', { method: 'POST', body: { key: key } });
+            toastMsg('Website removed');
+            await load(true);
+        } catch (e) { toastMsg('⚠️ ' + e.message); }
+    }
+
+    /* ---------------- wiring ---------------- */
+    window.wshopTab = tab;
+    window.wshopLoad = function () { return load(false); };
+    window.wshopInspect = inspect;
+    window.wshopAddSite = addSite;
+    window.wshopReset = reset;
+    window.wshopHire = hire;
+    window.wshopAppoint = appoint;
+    window.wshopAssign = assign;
+    window.wshopFire = fire;
+    window.wshopHealthAll = healthAll;
+    window.wshopHealthOne = healthOne;
+    window.wshopRemoveSite = removeSite;
+    window.wshopModalOk = modalOk;
+    window.wshopNeedToggle = needToggle;
+    window.wshopModalClose = function (ev) {
+        if (ev && ev.target && ev.target.id !== 'wsModalBack') return;
+        closeModal();
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var sec = $('workshopSection');
+        ['wsUser', 'wsPass', 'wsApprovedBy'].forEach(function (id) {
+            var el = $(id);
+            if (el) el.addEventListener('input', syncNeeds);
+        });
+        if (sec && window.MutationObserver) {
+            var wasOn = false;
+            new MutationObserver(function () {
+                var on = sec.classList.contains('active');
+                if (on && !wasOn) load(false);
+                wasOn = on;
+            }).observe(sec, { attributes: true, attributeFilter: ['class'] });
+            if (sec.classList.contains('active')) { wasOn = true; load(false); }
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeModal();
+        });
+    });
 })();
 </script>
 </body>
