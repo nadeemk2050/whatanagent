@@ -383,6 +383,27 @@
         }
         .idev-ai-send:disabled { opacity: .55; cursor: default; }
         .idev-ai-hint { font-size: 10px; color: #7a7a7a; }
+        /* workspace / project selector */
+        .idev-ws {
+            font-size: 10.5px; padding: 3px 6px; border-radius: 6px; cursor: pointer;
+            background: #3a3d41; color: #e6e6e6; border: 1px solid #4a4d51; max-width: 150px;
+        }
+        .idev-ws:hover { border-color: #b08d3f; }
+        /* image attachments in the AI dock */
+        .idev-mini {
+            padding: 4px 9px; font-size: 10.5px; font-weight: 600; cursor: pointer;
+            background: #3a3d41; color: #dcdcdc; border: 1px solid #4a4d51; border-radius: 5px;
+        }
+        .idev-mini:hover { border-color: #b08d3f; color: #ffffff; }
+        .idev-attach { display: flex; flex-wrap: wrap; gap: 5px; }
+        .idev-chip {
+            display: flex; align-items: center; gap: 6px; max-width: 100%;
+            background: #1f2937; border: 1px solid #3f4a5a; border-radius: 6px;
+            padding: 3px 6px; font-size: 10.5px; color: #cbd5e1;
+        }
+        .idev-chip img { width: 26px; height: 26px; object-fit: cover; border-radius: 4px; }
+        .idev-chip-x { cursor: pointer; color: #f87171; font-weight: 800; }
+        .idev-chip-x:hover { color: #ffffff; }
 
         .idev-status {
             height: 22px; display: flex; align-items: center; gap: 14px; padding: 0 10px;
@@ -3465,6 +3486,13 @@
                             <span class="idev-logo">ATS</span>
                             <span class="idev-title-txt">AI IDE Workspace</span>
                             <span class="idev-pill">BETA</span>
+                            <select class="idev-ws" id="idevWorkspace" onchange="idevSetWorkspace(this.value)" title="Which project the AI should work on">
+                                <option value="whatanagent">WhatAnAgent app</option>
+                                <option value="aligntasks">AlignTasks PWA</option>
+                                <option value="android">Android app</option>
+                                <option value="wordpress">Website (SEO)</option>
+                                <option value="general">General / unsure</option>
+                            </select>
                         </div>
                         <div class="idev-cmdbox" onclick="idevPalette()" title="Command palette (Ctrl+Shift+P)">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9d9d9d" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
@@ -3556,8 +3584,12 @@
                                 <div class="idev-msg sys">Ask about the open file, or request a change. The assistant sees the current file content.</div>
                             </div>
                             <div class="idev-ai-input">
-                                <textarea id="idevAiInput" placeholder="Ask the AI to explain, fix or extend this file..."></textarea>
+                                <div class="idev-attach" id="idevAttach"></div>
+                                <textarea id="idevAiInput" placeholder="Ask the AI to explain, fix or extend this file... (paste a screenshot with Ctrl+V)"></textarea>
                                 <div class="idev-ai-actions">
+                                    <button class="idev-mini" type="button" onclick="document.getElementById('idevFileInput').click()" title="Attach an image">Image</button>
+                                    <button class="idev-mini" type="button" onclick="idevPasteHint()" title="Paste an image from the clipboard">Paste</button>
+                                    <input type="file" id="idevFileInput" accept="image/*" multiple style="display:none" onchange="idevFilesPicked(this.files)">
                                     <span class="idev-ai-hint">Ctrl+Enter to send</span>
                                     <button class="idev-ai-send" id="idevAiSendBtn" onclick="idevAiSend()">Send</button>
                                 </div>
@@ -3566,6 +3598,7 @@
                     </div>
 
                     <div class="idev-status">
+                        <span class="idev-st-item" id="idevStWs">WhatAnAgent app</span>
                         <span class="idev-st-item" title="Source control arrives with the 4 GB upgrade">main <span class="idev-badge">SOON</span></span>
                         <span class="idev-st-item" id="idevStPos">Ln 1, Col 1</span>
                         <span class="idev-st-item">Spaces: 2</span>
@@ -12252,6 +12285,41 @@
     function langFor(name) { return LANG[extOf(name)] || 'plaintext'; }
     function activeTab() { for (var i = 0; i < st.tabs.length; i++) { if (st.tabs[i].id === st.activeId) return st.tabs[i]; } return null; }
 
+    /* ---------- which project are we working on? ---------- */
+    var PROJECTS = {
+        whatanagent: {
+            label: 'WhatAnAgent app',
+            brief: 'Node.js/Express app named WhatAnAgent (whatsapp-ai-agent). Single process index.js on port 3000 behind Caddy on a Tencent VPS; static dashboards live in public/. Feature modules are ES modules at the repo root: alignApi.mjs (all /api/align routes), alignAuth.mjs, alignAdmin.mjs, waWebClient.js (WhatsApp Web linked-device client), agentsStore.mjs, agentRunner.mjs, agentTemplates.mjs, agentLearning.mjs, notebookApi.mjs, liveMeetingApi.mjs, liveMeetingWs.mjs, goldAgent.mjs, tradeAccountsApi.mjs, contactBrain.mjs, ruleBook.mjs, ruleBookApi.mjs, officeApi.mjs, adminGuard.mjs, aiProviders.mjs, aiTracker.mjs, modelSwitcher.mjs. Dashboards: public/admin.html (AI Admin Dashboard, the biggest file), public/trade.html, public/live.html, public/academy.html. Firebase project whatanagent-a1e59 (Firestore + hosting). Deploy: push to master -> GitHub Actions .github/workflows/deploy.yml (SSH to the VPS) and firebase deploy --only hosting. Rules: never break the running WhatsApp agent; no secrets in code; keep changes surgical.'
+        },
+        aligntasks: {
+            label: 'AlignTasks PWA',
+            brief: 'AlignTasks is a task board embedded in the app as a PWA. Main file public/aligntasks/index.html (single-file app, ~490KB, inline JS), plus public/aligntasks/sw.js (service worker, bump CACHE_NAME on deploy) and manifest.json. Data lives in Firestore under artifacts/1:410197132578:web:97cfc3ae33f39ed3df917b/public/data (teams, users, staff, tasks_for_all, tasks, projects/*/tasks), guarded by firestore.rules which require a teamId filter. Server routes are /api/align/* in alignApi.mjs (staff login, tasks, WhatsApp bridge, push, AI follow-up). There is also a native Android port in android-kotlin/ (Kotlin + Compose). Design language: titanium bars, light-golden background, ivory cards, ATS wordmark, no emojis in menus.'
+        },
+        android: {
+            label: 'Android app (Kotlin)',
+            brief: 'Native Kotlin/Jetpack Compose app in android-kotlin/, package com.assigntask.app. Key files: app/src/main/java/com/assigntask/app/MainActivity.kt (Compose UI, ~4500 lines), TaskViewModel.kt (Firestore listeners/mappers), TaskItem.kt (models), TeamSession.kt, AiFollowUp.kt, TaskAlerts.kt, AppUpdate.kt (updater disabled via AppUpdate.ENABLED=false), AccountScreens.kt (profile + team logins), AppWidgets.kt. Build: app/build.gradle.kts (versionCode/versionName + releaseNotes + releaseMandatory). CI .github/workflows/build-android-kotlin.yml builds a signed release APK and publishes public/downloads/aligntasks-<version>.apk plus version.json. Kotlin gotchas in this repo: composable helpers must be top-level, block comments nest, emptyList() needs an explicit type.'
+        },
+        wordpress: {
+            label: 'Website (WordPress / SEO agent)',
+            brief: 'WordPress sites are managed by the SEO agent inside the WhatAnAgent admin dashboard (AI Workspace). Sites and credentials are stored in Firestore appData/seoAgent -> sites{}. Server routes in index.js: /api/seo/ai-chat (the agent loop), /api/seo/upload-image (uploads to the site media library), /api/seo/code/* (saved code snippets), plus page/post tools. Work here is about creating/editing pages, posts, media and SEO metadata for the selected site; always act on the currently selected siteKey.'
+        },
+        general: {
+            label: 'General',
+            brief: 'No specific project is selected. Ask the user which app or website they mean (WhatAnAgent app, AlignTasks PWA, Android app, or one of the WordPress websites) before proposing file-level changes.'
+        }
+    };
+    function currentWorkspace() {
+        var key = localStorage.getItem('idevWorkspace') || 'whatanagent';
+        if (!PROJECTS[key]) key = 'whatanagent';
+        return key;
+    }
+    window.idevSetWorkspace = function (key) {
+        if (!PROJECTS[key]) key = 'whatanagent';
+        localStorage.setItem('idevWorkspace', key);
+        var st1 = $('idevStWs'); if (st1) st1.textContent = PROJECTS[key].label;
+        toast('Workspace: ' + PROJECTS[key].label);
+    };
+
     /* ---------- boot ---------- */
     function boot() {
         var host = $('idevEditor');
@@ -12519,6 +12587,83 @@
         }
     };
 
+    /* ---------- image attachments (paste / drop / picker) ---------- */
+    var attachments = [];
+    function fmtSize(n) { return n > 1048576 ? (Math.round(n / 1048576) + ' MB') : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+    function renderAttach() {
+        var box = $('idevAttach'); if (!box) return;
+        box.innerHTML = '';
+        attachments.forEach(function (a, i) {
+            var chip = mk('div', 'idev-chip');
+            var img = document.createElement('img'); img.src = a.dataUrl; chip.appendChild(img);
+            chip.appendChild(mk('span', null, a.name + '  ' + fmtSize(a.size)));
+            var x = mk('span', 'idev-chip-x', 'x');
+            x.title = 'Remove';
+            x.onclick = function () { attachments.splice(i, 1); renderAttach(); };
+            chip.appendChild(x);
+            box.appendChild(chip);
+        });
+    }
+    function addFiles(fileList) {
+        var files = [].slice.call(fileList || []).filter(function (f) { return /^image\//.test(f.type); });
+        if (!files.length) { toast('Only image files can be attached'); return; }
+        files.forEach(function (f) {
+            if (f.size > 6 * 1024 * 1024) { toast(f.name + ' is larger than 6 MB'); return; }
+            var reader = new FileReader();
+            reader.onload = function () {
+                var dataUrl = String(reader.result || '');
+                attachments.push({ name: f.name || ('pasted-' + Date.now() + '.png'), mime: f.type, size: f.size, dataUrl: dataUrl, base64: dataUrl.split(',')[1] || '' });
+                renderAttach();
+            };
+            reader.readAsDataURL(f);
+        });
+    }
+    window.idevFilesPicked = function (files) { addFiles(files); var inp = $('idevFileInput'); if (inp) inp.value = ''; };
+    window.idevPasteHint = function () { toast('Click in the message box and press Ctrl+V to paste an image from the clipboard'); };
+    function uploadAttachments() {
+        var siteEl = document.getElementById('aiWsSite');
+        var siteKey = (siteEl && siteEl.value) ? siteEl.value : '';
+        if (!siteKey) return Promise.reject(new Error('images are uploaded to a WordPress media library, so choose the site first: Workspace = "Website (SEO)" and pick the site in the AI Workspace site dropdown'));
+        var out = [];
+        return attachments.reduce(function (p, a) {
+            return p.then(function () {
+                return fetch('api/seo/upload-image', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ siteKey: siteKey, filename: a.name, mimeType: a.mime, fileBase64: a.base64 })
+                }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                  .then(function (res) {
+                      if (!res.ok || !res.d.url) throw new Error(res.d.error || ('upload failed: ' + a.name));
+                      out.push(res.d);
+                  });
+            });
+        }, Promise.resolve()).then(function () { return out; });
+    }
+    (function bindImageEvents() {
+        function bind() {
+            var ta = $('idevAiInput');
+            var dock = document.querySelector('.idev-ai');
+            if (!ta) return false;
+            ta.addEventListener('paste', function (e) {
+                var items = (e.clipboardData && e.clipboardData.items) || [];
+                var files = [];
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].kind === 'file' && /^image\//.test(items[i].type)) {
+                        var f = items[i].getAsFile(); if (f) files.push(f);
+                    }
+                }
+                if (files.length) { e.preventDefault(); addFiles(files); }
+            });
+            if (dock) {
+                dock.addEventListener('dragover', function (e) { e.preventDefault(); });
+                dock.addEventListener('drop', function (e) {
+                    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); }
+                });
+            }
+            return true;
+        }
+        if (!bind()) setTimeout(bind, 600);
+    })();
+
     /* ---------- AI dock ---------- */
     function addMsg(kind, text) {
         var log = $('idevAiLog'); if (!log) return null;
@@ -12532,30 +12677,48 @@
     window.idevAiSend = function () {
         if (st.aiBusy) return;
         var inp = $('idevAiInput'); if (!inp) return;
-        var q = String(inp.value || '').trim(); if (!q) return;
+        var q = String(inp.value || '').trim();
+        if (!q && !attachments.length) return;
         var tab = activeTab();
         var code = st.editor ? st.editor.getValue() : '';
         if (code.length > 6000) code = code.slice(0, 6000) + '\n/* ... truncated ... */';
-        addMsg('user', q);
-        inp.value = '';
-        var btn = $('idevAiSendBtn'); st.aiBusy = true; if (btn) btn.disabled = true;
-        var thinking = addMsg('sys', 'Thinking...');
-        var model = (($('idevModel') || {}).value) || 'deepseek';
+        var wsKey = currentWorkspace();
+        var ws = PROJECTS[wsKey] || PROJECTS.general;
         var siteEl = document.getElementById('aiWsSite');
         var siteKey = (siteEl && siteEl.value) ? siteEl.value : '';
-        var prompt = tab
-            ? ('You are helping inside an in-app IDE. Current file: ' + tab.name + '\n\n```' + (tab.language || '') + '\n' + code + '\n```\n\nRequest: ' + q)
-            : ('No file is open. Request: ' + q);
-        fetch('api/seo/ai-chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], model: model, siteKey: siteKey })
+
+        addMsg('user', q + (attachments.length ? '\n[' + attachments.length + ' image' + (attachments.length === 1 ? '' : 's') + ' attached]' : ''));
+        inp.value = '';
+        var btn = $('idevAiSendBtn'); st.aiBusy = true; if (btn) btn.disabled = true;
+        var thinking = addMsg('sys', attachments.length ? 'Uploading image(s)...' : 'Thinking...');
+        var model = (($('idevModel') || {}).value) || 'deepseek';
+        var pending = attachments.slice();
+
+        var uploadStep = pending.length ? uploadAttachments() : Promise.resolve([]);
+
+        uploadStep.then(function (uploaded) {
+            if (uploaded.length) thinking.textContent = 'Thinking...';
+            attachments = []; renderAttach();
+            var header = 'PROJECT CONTEXT (selected in the IDE): ' + ws.label + '\n' + ws.brief + '\n';
+            if (wsKey === 'wordpress' && siteKey) header += 'SELECTED WEBSITE: ' + siteKey + '\n';
+            if (uploaded.length) {
+                header += 'ATTACHED IMAGE(S) ALREADY UPLOADED to the media library of "' + siteKey + '":\n' +
+                    uploaded.map(function (u) { return '- ' + u.filename + ' -> ' + u.url + ' (media id ' + u.id + ')'; }).join('\n') +
+                    '\nDo NOT upload them again. To place one into a page or post use add_images_to_page / add_images_to_post with that URL.\n';
+            }
+            var body = tab
+                ? (header + '\nCURRENT FILE: ' + tab.name + '\n```' + (tab.language || '') + '\n' + code + '\n```\n\nRequest: ' + (q || '(see the attached image)'))
+                : (header + '\nNo file is open.\nRequest: ' + (q || '(see the attached image)'));
+            return fetch('api/seo/ai-chat', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: [{ role: 'user', content: body }], model: model, siteKey: siteKey })
+            }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+              .then(function (res) {
+                  removeLast(thinking);
+                  if (!res.ok) throw new Error(res.d.error || 'AI error');
+                  addMsg('bot', res.d.reply || '(no reply)');
+              });
         })
-            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-            .then(function (res) {
-                removeLast(thinking);
-                if (!res.ok) throw new Error(res.d.error || 'AI error');
-                addMsg('bot', res.d.reply || '(no reply)');
-            })
             .catch(function (e) { removeLast(thinking); addMsg('bot', 'Error: ' + e.message); })
             .then(function () { st.aiBusy = false; if (btn) btn.disabled = false; });
     };
@@ -12567,6 +12730,8 @@
     }
     document.addEventListener('DOMContentLoaded', function () {
         var sec = $('aiideSection');
+        var wsSel = $('idevWorkspace');
+        if (wsSel) { wsSel.value = currentWorkspace(); window.idevSetWorkspace(wsSel.value); }
         if (sec && window.MutationObserver) {
             new MutationObserver(function () {
                 var on = sec.classList.contains('active');
@@ -12575,6 +12740,8 @@
             }).observe(sec, { attributes: true, attributeFilter: ['class'] });
         }
         autoBoot();
+        var wsSel2 = $('idevWorkspace');
+        if (wsSel2) { wsSel2.value = currentWorkspace(); var sws = $('idevStWs'); if (sws) sws.textContent = PROJECTS[currentWorkspace()].label; }
         var ai = $('idevAiInput');
         if (ai) {
             ai.addEventListener('keydown', function (e) {
