@@ -2,7 +2,7 @@
   "versionCode": 25,
   "versionName": "4.0",
   "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-4.0.apk",
-  "notes": "4.0 - ATS look (ivory, titanium and brass) now matches the web board exactly. New: My Personal Tasks and My Personal Projects sections, the All / Today / Overdue / Completed filter, and Team Settings, Reminders and Group Updates now open inside the app instead of a browser.",
+  "notes": "4.0 - ATS look (ivory, titanium, brass) matches the web board. New: My Personal Tasks and My Personal Projects sections, All / Today / Overdue / Completed filter, and Team Settings, Reminders and Group Updates now open inside the app instead of a browser.",
   "mandatory": false,
   "publishedAt": "2026-10-28"
 }
