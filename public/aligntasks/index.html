@@ -438,7 +438,218 @@
             font-weight: 600 !important;
         }
 
+        /* ============================================================
+           ATS SURFACE PASS  (Team Settings · Invites · Staff admin ·
+           Profile · Scheduled Reminders · Group Updates)
+           Scoped overrides only: the markup, ids and JS stay untouched, so
+           nothing here can break behaviour. Every panel that used Tailwind's
+           white cards / green+blue buttons now reads as the same titanium,
+           ivory and brass system as the top bar.
+           ============================================================ */
+        #settings-page .bg-white,
+        #profile-modal .bg-white,
+        #edit-staff-modal .bg-white,
+        #scheduled-reminders-modal .bg-white,
+        #group-updates-modal .bg-white {
+            background: var(--ats-card) !important;
+            border: 1px solid var(--ats-line);
+            border-radius: 14px;
+            box-shadow: 0 1px 3px rgba(31, 33, 38, .05) !important;
+        }
+
+        /* panel headings + helper text (modal headers already have the ATS titanium
+           treatment at the top of this stylesheet — do not override their colour) */
+        #settings-page h2 {
+            color: var(--ats-ink) !important;
+            font-weight: 800 !important;
+            letter-spacing: -.2px;
+        }
+        #settings-page .text-gray-500,
+        #profile-modal .text-gray-500,
+        #edit-staff-modal .text-gray-500,
+        #scheduled-reminders-modal .text-gray-500,
+        #group-updates-modal .text-gray-500 { color: var(--ats-ink-soft) !important; }
+        #settings-page .text-gray-400,
+        #edit-staff-modal .text-gray-400 { color: #8a8f97 !important; }
+
+        /* field labels: small, spaced, upper-case like the rest of the system */
+        #settings-page label.text-sm,
+        #profile-modal label.text-sm,
+        #edit-staff-modal label.text-sm,
+        #scheduled-reminders-modal label.text-sm,
+        #group-updates-modal label.text-sm {
+            display: block;
+            font-size: 10.5px !important;
+            font-weight: 800 !important;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            color: #6b6f76 !important;
+            margin-bottom: 4px;
+        }
+        #settings-page label.text-sm .text-xs,
+        #edit-staff-modal label.text-sm .text-xs {
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 600 !important;
+        }
+
+        /* inputs, selects, textareas */
+        #settings-page input:not([type=checkbox]):not([type=radio]),
+        #settings-page select,
+        #settings-page textarea,
+        #profile-modal input,
+        #edit-staff-modal input,
+        #edit-staff-modal textarea,
+        #scheduled-reminders-modal input,
+        #group-updates-modal input,
+        #group-updates-modal select {
+            background: var(--ats-bg-2) !important;
+            border: 1px solid var(--ats-line) !important;
+            border-radius: 10px !important;
+            color: var(--ats-ink) !important;
+            font-family: inherit;
+            font-size: 14px;
+            padding: 9px 11px;
+            box-shadow: none !important;
+        }
+        #settings-page input:focus,
+        #settings-page select:focus,
+        #settings-page textarea:focus,
+        #profile-modal input:focus,
+        #edit-staff-modal input:focus,
+        #edit-staff-modal textarea:focus,
+        #group-updates-modal input:focus {
+            outline: none !important;
+            border-color: var(--ats-charcoal) !important;
+            box-shadow: 0 0 0 3px rgba(52, 55, 61, .08) !important;
+        }
+        #settings-page input[readonly],
+        #profile-modal input[readonly],
+        #edit-staff-modal input[readonly] {
+            background: #f1ede2 !important;
+            color: var(--ats-ink-soft) !important;
+            cursor: not-allowed;
+        }
+
+        /* buttons: green and blue collapse into titanium; brass is the accent */
+        #settings-page .bg-green-500,
+        #settings-page .bg-green-600,
+        #settings-page .bg-blue-600,
+        #profile-modal .bg-blue-600,
+        #edit-staff-modal .bg-blue-600,
+        #scheduled-reminders-modal .bg-blue-600,
+        #group-updates-modal .bg-blue-600,
+        #group-updates-modal .bg-green-600 {
+            background: var(--ats-charcoal) !important;
+            color: var(--ats-card) !important;
+            border: 1px solid var(--ats-charcoal) !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            box-shadow: none !important;
+        }
+        #settings-page .hover\:bg-green-600:hover,
+        #settings-page .hover\:bg-green-700:hover,
+        #settings-page .hover\:bg-blue-700:hover,
+        #profile-modal .hover\:bg-blue-700:hover,
+        #edit-staff-modal .hover\:bg-blue-700:hover,
+        #group-updates-modal .hover\:bg-blue-700:hover {
+            background: #202329 !important;
+            border-color: #202329 !important;
+        }
+        #settings-page .bg-white.border,
+        #edit-staff-modal .bg-white.border,
+        #edit-staff-modal .bg-gray-200,
+        #settings-page .hover\:bg-gray-50:hover,
+        #edit-staff-modal .hover\:bg-gray-300:hover {
+            background: var(--ats-card) !important;
+            border: 1px solid var(--ats-line) !important;
+            border-radius: 10px !important;
+            color: var(--ats-ink) !important;
+        }
+        #edit-staff-modal .bg-gray-200 {
+            color: var(--ats-ink-soft) !important;
+        }
+        #settings-page .bg-red-600,
+        #settings-page .hover\:bg-red-700:hover {
+            background: #a3231d !important;
+            border: 1px solid #a3231d !important;
+            border-radius: 10px !important;
+            color: #fff !important;
+        }
+        #settings-page .border-red-200 { border-color: #e8c9c5 !important; }
+        #settings-page .text-red-700 { color: #a3231d !important; }
+
+        /* the "Show password" chip and the team sign-in button keep a gold accent */
+        #edit-staff-showpw {
+            background: linear-gradient(180deg, #d9bd7d, #b08d3f) !important;
+            color: #2b2118 !important;
+            border-radius: 8px !important;
+            font-weight: 800 !important;
+        }
+        #edit-staff-signin {
+            background: var(--ats-card) !important;
+            color: var(--ats-gold) !important;
+            border: 1px solid var(--ats-gold-soft) !important;
+            border-radius: 10px !important;
+        }
+
+        /* separators, footers, scroll areas */
+        #settings-page .border-t,
+        #profile-modal .border-b,
+        #edit-staff-modal .border-t,
+        #edit-staff-modal .border-b,
+        #scheduled-reminders-modal .border-b,
+        #group-updates-modal .border-b { border-color: var(--ats-line) !important; }
+        #edit-staff-modal .bg-gray-50 { background: var(--ats-bg-2) !important; }
+        #settings-page .rounded-xl,
+        #scheduled-reminders-modal .rounded-xl,
+        #group-updates-modal .rounded-xl { border-radius: 14px !important; }
+
+        /* the team-id footer strip */
+        #settings-page .text-xs.text-gray-500 {
+            color: var(--ats-ink-soft) !important;
+            letter-spacing: .2px;
+        }
+        #team-id-label { font-weight: 700; color: var(--ats-ink); }
+
+        /* modal chrome for the two sheet-style panels */
+        #profile-modal,
+        #edit-staff-modal { background: rgba(24, 26, 30, .55) !important; }
+        #scheduled-reminders-modal,
+        #group-updates-modal { background: rgba(24, 26, 30, .55) !important; }
+
+        /* the three action buttons under Team Settings: one tidy row instead of mt-4/ml-2 drift */
+        #settings-page #team-wa-test,
+        #settings-page #team-save-button,
+        #settings-page #team-export-button {
+            margin: 12px 8px 0 0 !important;
+        }
+        #settings-page #team-export-button { margin-right: 0 !important; }
+
+        /* modal footers: let the action buttons wrap instead of squeezing into two lines */
+        #edit-staff-modal .justify-end,
+        #profile-modal .justify-end { flex-wrap: wrap; }
+        #edit-staff-modal .justify-end > button,
+        #profile-modal .justify-end > button { white-space: nowrap; }
+
+        /* ATS button used by the new chips/rows rendered from JS */
+        .ats-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            padding: 9px 14px; border-radius: 10px; border: 1px solid var(--ats-line);
+            background: var(--ats-card); color: var(--ats-ink);
+            font-weight: 700; font-size: 12.5px; cursor: pointer; font-family: inherit;
+            transition: background .15s ease;
+        }
+        .ats-btn:hover { background: #f7f2e6; }
+        .ats-btn-dark { background: var(--ats-charcoal); border-color: var(--ats-charcoal); color: var(--ats-card); }
+        .ats-btn-dark:hover { background: #202329; }
+        .ats-btn-gold {
+            background: linear-gradient(180deg, var(--ats-gold-soft), var(--ats-gold));
+            border-color: #a8842f; color: #2b2118;
+        }
+        .ats-btn-danger { background: #fdf2f1; border-color: #f0c9c5; color: #a3231d; }
     </style>
+
 </head>
 <body class="bg-gray-100 font-sans text-gray-800">
 
