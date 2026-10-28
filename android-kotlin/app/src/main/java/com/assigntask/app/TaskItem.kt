@@ -2,11 +2,11 @@ package com.assigntask.app
 
 data class Task(
     val id: String = "",
-    val description: String = "",
-    val assigneeEmail: String = "",
+    override val description: String = "",
+    override val assigneeEmail: String = "",
     val ownerAdminUid: String = "",
-    val status: String = "To Do",
-    val dueDate: String? = null,
+    override val status: String = "To Do",
+    override val dueDate: String? = null,
     @Suppress("UNCHECKED_CAST")
     val comments: List<Map<String, Any>> = emptyList(),
     val createdBy: String = "",
@@ -27,8 +27,17 @@ data class Task(
     val alarmEnabled: Boolean = false,
     val notifyBeforeMinutes: Int? = null,
     val alarmRingtoneUri: String? = null,
-    val alarmRingtoneTitle: String? = null
-) {
+    val alarmRingtoneTitle: String? = null,
+    // --- ATS 4.0 parity fields (all optional, so existing documents keep working) ---
+    val priority: String = "",
+    val category: String = "",
+    val notes: String = "",
+    val projectId: String = "",
+    val taskType: String = "",
+    val createdByName: String = "",
+    val updatedByUid: String = ""
+) : TaskLike {
+    override val createdAtMs: Long get() = tsMs(createdAt)
     val isDone: Boolean get() = status == "Done"
     val repeatType: String get() = repeat?.get("type") as? String ?: "none"
     val repeatRemaining: Int? get() = (repeat?.get("remaining") as? Long)?.toInt()

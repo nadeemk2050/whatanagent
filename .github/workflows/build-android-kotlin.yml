@@ -65,6 +65,12 @@ jobs:
             echo "no keystore secret - building a debug APK"
           fi
 
+      - name: Android parity gate (PWA vs Kotlin registry)
+        run: node scripts/android-parity.mjs
+
+      - name: Unit tests (board logic parity)
+        run: gradle :app:testDebugUnitTest
+
       - name: Build APK
         run: |
           if [ "$SIGNED" = "1" ]; then

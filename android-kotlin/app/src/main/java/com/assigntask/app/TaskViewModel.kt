@@ -436,7 +436,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         alarmEnabled = data["alarmEnabled"] as? Boolean ?: false,
         notifyBeforeMinutes = (data["notifyBeforeMinutes"] as? Long)?.toInt(),
         alarmRingtoneUri = data["alarmRingtoneUri"] as? String,
-        alarmRingtoneTitle = data["alarmRingtoneTitle"] as? String
+        alarmRingtoneTitle = data["alarmRingtoneTitle"] as? String,
+        priority = data["priority"] as? String ?: "",
+        category = data["category"] as? String ?: "",
+        notes = data["notes"] as? String ?: "",
+        projectId = data["projectId"] as? String ?: "",
+        taskType = data["taskType"] as? String ?: "",
+        createdByName = data["createdByName"] as? String ?: "",
+        updatedByUid = data["updatedByUid"] as? String ?: ""
     )
 
     private fun sortTasksDescending(tasks: List<Task>): List<Task> = tasks.sortedByDescending { taskTimestampValue(it.createdAt) }

@@ -1,0 +1,32 @@
+{
+  "$comment": "Android parity contract. Every screen the AlignTasks PWA offers must exist in the Kotlin registry (app/src/main/java/com/assigntask/app/Screens.kt). scripts/android-parity.mjs fails the build when this drifts.",
+  "version": "4.0",
+  "screens": [
+    { "pwa": "#section-nav-menu / nav-tasks-button", "key": "tasksForAll", "label": "Tasks for All" },
+    { "pwa": "#section-nav-menu / nav-personal-tasks-button", "key": "personalTasks", "label": "My Personal Tasks" },
+    { "pwa": "#section-nav-menu / nav-projects-button", "key": "projects", "label": "Project Management" },
+    { "pwa": "#section-nav-menu / nav-personal-projects-button", "key": "personalProjects", "label": "My Personal Projects" },
+    { "pwa": "#menu-completed-tasks", "key": "completedTasks", "label": "Completed Tasks" },
+    { "pwa": "#menu-edit-profile", "key": "profile", "label": "Edit Profile" },
+    { "pwa": "#menu-add-subusers", "key": "teamMembers", "label": "Team Members" },
+    { "pwa": "#menu-team-settings", "key": "teamSettings", "label": "Team Settings" },
+    { "pwa": "#menu-scheduled-reminders", "key": "scheduledReminders", "label": "Reminders" },
+    { "pwa": "#menu-group-updates", "key": "groupUpdates", "label": "Group Updates" },
+    { "pwa": "#menu-push-notify", "key": "notifications", "label": "Notifications" },
+    { "pwa": "#menu-logout", "key": "logout", "label": "Logout" }
+  ],
+  "views": [
+    { "pwa": "#view-nav-menu data-view=all", "key": "all" },
+    { "pwa": "#view-nav-menu data-view=today", "key": "today" },
+    { "pwa": "#view-nav-menu data-view=overdue", "key": "overdue" },
+    { "pwa": "#view-nav-menu data-view=done", "key": "done" }
+  ],
+  "androidExtras": [
+    { "key": "planner", "why": "Timetable planner - native-only, not in the PWA" },
+    { "key": "reminderHistory", "why": "Reminder call history - native-only" },
+    { "key": "reminderCall", "why": "Ringing reminder call screen - native-only" },
+    { "key": "addSubUser", "why": "Add sub user dialog - native-only entry point" },
+    { "key": "individualTasks", "why": "Legacy individual tasks page kept for existing users" },
+    { "key": "settings", "why": "Push + alarm settings - native-only" }
+  ]
+}

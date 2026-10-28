@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
         val initialPage = intent?.getStringExtra(EXTRA_OPEN_PAGE) ?: "tasksForAll"
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            AtsTheme {
                 AppRoot(initialPage = initialPage)
             }
         }
@@ -248,7 +248,16 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
         }
     }
     var currentPage by remember { mutableStateOf(initialPage) }
-    var showSectionMenu by remember { mutableStateOf(false) }
+    // The top-bar view filter (All / Today / Overdue / Completed) — the PWA's #view-nav.
+    var taskView by remember { mutableStateOf(TaskView.ALL) }
+    val boardTasks by vm.tasks.collectAsState()
+    val boardTasksForAll by vm.tasksForAll.collectAsState()
+    val viewCount = remember(taskView, boardTasks, boardTasksForAll) {
+        val f = TaskFilter(view = taskView)
+        val now = System.currentTimeMillis()
+        filterTasks(boardTasks, f, isGeneral = false, nowMs = now).size +
+            filterTasks(boardTasksForAll, f, isGeneral = true, nowMs = now).size
+    }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -364,14 +373,7 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
         drawerContent = {
             NavigationDrawerContent(
                 currentPage = currentPage,
-                onPageSelect = { page ->
-                    if (page.startsWith("web:")) {
-                        openWebApp(context, page.removePrefix("web:"))
-                    } else {
-                        currentPage = page
-                    }
-                    scope.launch { drawerState.close() }
-                },
+                onPageSelect = { page -> currentPage = page },
                 profile = profile,
                 vm = vm,
                 user = user,
@@ -383,75 +385,26 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        // Section pill with a dropdown — same idea as the web app's "Tasks for All ⌄".
-                        Box {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = Color.White,
-                                shape = RoundedCornerShape(50),
-                                modifier = Modifier.clickable { showSectionMenu = true }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = pageTitle(currentPage),
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Icon(Icons.Default.KeyboardArrowDown, "Change section")
-                                }
-                            }
-                            DropdownMenu(expanded = showSectionMenu, onDismissRequest = { showSectionMenu = false }) {
-                                APP_SECTIONS.forEach { (key, label) ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                label,
-                                                fontWeight = if (key == currentPage) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        },
-                                        onClick = {
-                                            showSectionMenu = false
-                                            currentPage = key
-                                        }
-                                    )
-                                }
-                            }
+                AtsTopBar(
+                    title = Screens.pillLabel(currentPage),
+                    viewLabel = taskView.label,
+                    viewCount = viewCount,
+                    onMenu = {
+                        scope.launch {
+                            if (drawerState.isOpen) drawerState.close() else drawerState.open()
                         }
                     },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            scope.launch {
-                                if (drawerState.isOpen) drawerState.close() else drawerState.open()
-                            }
-                        }) {
-                            Icon(Icons.Default.Menu, "Menu")
-                        }
+                    onSection = { section -> currentPage = section.key },
+                    onView = { v ->
+                        taskView = v
+                        // The view filter only makes sense on the board views.
+                        if (currentPage !in BoardSection.entries.map { it.key }) currentPage = BoardSection.TASKS_FOR_ALL.key
                     },
-                    actions = {
-                        IconButton(
-                            enabled = !refreshing,
-                            onClick = {
-                                refreshing = true
-                                vm.forceRefresh()
-                                Toast.makeText(context, "Refreshing…", Toast.LENGTH_SHORT).show()
-                                refreshing = false
-                            }
-                        ) {
-                            Icon(Icons.Default.Refresh, "Refresh")
-                        }
-                        IconButton(onClick = { currentPage = "completedTasks" }) {
-                            Icon(Icons.Default.CheckCircle, "Completed Tasks")
-                        }
-                        IconButton(onClick = { currentPage = "reminderHistory" }) {
-                            Icon(Icons.Default.History, "Reminder Calls History")
-                        }
-                    }
+                    onAccount = { entry ->
+                        if (entry == MenuEntry.LOGOUT) vm.signOut() else currentPage = entry.key
+                    },
+                    onSearch = { currentPage = BoardSection.TASKS_FOR_ALL.key },
+                    showViewPill = currentPage in BoardSection.entries.map { it.key }
                 )
             },
             modifier = Modifier.fillMaxSize()
@@ -464,6 +417,12 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         profile = profile
                     )
                     "individualTasks" -> IndividualTasksPage(vm, user, profile)
+                    "personalTasks" -> PersonalTasksScreen(uid = user.uid, filter = TaskFilter(view = taskView), onFilter = { taskView = it.view })
+                    "personalProjects" -> PersonalProjectsScreen(uid = user.uid)
+                    "teamSettings" -> TeamSettingsScreen(vm = vm, user = user, profile = profile)
+                    "scheduledReminders" -> ScheduledRemindersScreen()
+                    "groupUpdates" -> GroupUpdatesScreen()
+                    "notifications" -> SettingsPage(vm)
                     "completedTasks" -> CompletedTasksPage(vm, user, profile)
                     "projects" -> ProjectsPage(vm, user, profile)
                     "addSubUser" -> AddSubUserDialog(vm, user) { currentPage = "tasksForAll" }
@@ -549,19 +508,22 @@ fun NavigationDrawerContent(
         }
         HorizontalDivider()
 
-        DrawerLink("🔒  My Personal Tasks", currentPage == "individualTasks") { onPageSelect("individualTasks") }
-        DrawerLink("Edit Profile", currentPage == "profile") { onPageSelect("profile") }
-        DrawerLink("👥  Team Members", currentPage == "teamMembers") { onPageSelect("teamMembers") }
-        DrawerLink("⚙️  Team Settings & Invites", false) { onPageSelect("web:settings") }
-        DrawerLink("📅  Scheduled Reminders", false) { onPageSelect("web:reminders") }
-        DrawerLink("📢  Group Updates", false) { onPageSelect("web:groups") }
-        DrawerLink("🔔  Push notifications", currentPage == "settings") { onPageSelect("settings") }
+        // Sections — the same four the top-bar pill offers.
+        BoardSection.entries.forEach { s ->
+            DrawerLink(s.label, currentPage == s.key) { onPageSelect(s.key) }
+        }
+        HorizontalDivider()
+
+        // Utilities — the PWA's account menu, in its exact order.
+        MenuEntry.menu.filter { it != MenuEntry.LOGOUT && it != MenuEntry.PERSONAL_TASKS }.forEach { item ->
+            DrawerLink(item.label, currentPage == item.key) { onPageSelect(item.key) }
+        }
 
         Spacer(Modifier.weight(1f))
         HorizontalDivider()
         DrawerLink("Logout", false, danger = true, onClick = onLogout)
         Text(
-            "ALIGNTASK v" + BuildConfig.VERSION_NAME,
+            "ATS " + BuildConfig.VERSION_NAME,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface.copy(0.5f),
             modifier = Modifier.padding(start = 16.dp, bottom = 14.dp, top = 4.dp)
@@ -583,45 +545,8 @@ private fun DrawerLink(label: String, selected: Boolean, danger: Boolean = false
     )
 }
 
-/** Opens the matching page of the web app for the few features that only exist server-side. */
-private fun openWebApp(context: Context, section: String) {
-    val url = "https://whatanagent.duckdns.org/aligntasks/index.html"
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        Toast.makeText(context, "Opening the web app…", Toast.LENGTH_SHORT).show()
-    } catch (e: Exception) {
-        Toast.makeText(context, "Could not open the web app", Toast.LENGTH_SHORT).show()
-    }
-}
-
-fun pageTitle(page: String): String = when (page) {
-    "tasksForAll" -> "Tasks For All"
-    "individualTasks" -> "Individual Tasks"
-    "completedTasks" -> "Completed Tasks"
-    "projects" -> "Projects"
-    "addSubUser" -> "Add Sub User"
-    "teamMembers" -> "Team Members"
-    "planner" -> "Timetable Planner"
-    "reminderHistory" -> "Reminder Calls History"
-    "reminderCall" -> "Reminder Call Ringing"
-    "settings" -> "Settings"
-    "profile" -> "User Profile"
-    else -> "ALIGNTASK"
-}
-
-/** Every section, in the order shown by the app-bar dropdown and the drawer. */
-val APP_SECTIONS: List<Pair<String, String>> = listOf(
-    "tasksForAll" to "Tasks For All",
-    "individualTasks" to "Individual Tasks",
-    "completedTasks" to "Completed Tasks",
-    "projects" to "Projects",
-    "teamMembers" to "Team Members",
-    "addSubUser" to "Add Sub User",
-    "planner" to "Timetable Planner",
-    "reminderHistory" to "Calls History",
-    "settings" to "Settings",
-    "profile" to "Edit Profile"
-)
+/** The registry is the single source of truth for titles — see Screens.kt. */
+fun pageTitle(page: String): String = Screens.title(page)
 
 @Composable
 fun ReminderCallsHistoryPage(user: FirebaseUser, profile: UserProfile) {
