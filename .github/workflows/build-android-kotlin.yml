@@ -66,6 +66,7 @@ jobs:
           fi
 
       - name: Android parity gate (PWA vs Kotlin registry)
+        working-directory: ${{ github.workspace }}
         run: node scripts/android-parity.mjs
 
       - name: Unit tests (board logic parity)
