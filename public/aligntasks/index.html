@@ -95,6 +95,8 @@
             display: flex; align-items: center; gap: 6px; padding: 0 8px;
         }
         .task-swipe-actions button { white-space: nowrap; font-size: 11px !important; padding: 6px 9px !important; }
+        /* dragged the other way: the same actions mirror to the right edge */
+        .task-swipe.from-right .task-swipe-actions { left: auto; right: 0; }
         .task-swipe .task-list-item {
             position: relative; background: var(--ats-card);
             border-bottom: none !important;
@@ -3162,8 +3164,9 @@
                 if (!wrapper) return;
                 wrapper.classList.remove('swiping');
                 wrapper.setAttribute('data-open', open ? '1' : '0');
+                const dir = wrapper.getAttribute('data-dir') === 'left' ? -1 : 1;
                 const row = wrapper.querySelector('.task-list-item, .personal-task-card');
-                if (row) row.style.transform = open ? 'translateX(' + SWIPE_OPEN_PX + 'px)' : 'translateX(0)';
+                if (row) row.style.transform = open ? 'translateX(' + (dir * SWIPE_OPEN_PX) + 'px)' : 'translateX(0)';
             }
 
             function closeAllSwipes(except) {
@@ -3224,7 +3227,9 @@
                     const wrap = target.el.closest('.task-swipe');
                     if (wrap) {
                         st.wrapper = wrap;
-                        st.startOffset = wrap.getAttribute('data-open') === '1' ? SWIPE_OPEN_PX : 0;
+                        const wasOpen = wrap.getAttribute('data-open') === '1';
+                        const wasDir = wrap.getAttribute('data-dir') === 'left' ? -1 : 1;
+                        st.startOffset = wasOpen ? wasDir * SWIPE_OPEN_PX : 0;
                     }
                 }
                 st.timer = setTimeout(() => {
@@ -3242,14 +3247,22 @@
                 const dx = e.clientX - st.x;
                 const dy = e.clientY - st.y;
                 if (!st.dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) && st.wrapper) {
-                    // Horizontal push → swipe-to-reveal Reminder / Quick send
+                    // Either direction reveals the actions; a leftward drag mirrors the panel
+                    // to the right edge (.from-right) so the gesture always works.
                     st.dragging = true;
+                    st.dir = dx < 0 ? 'left' : 'right';
+                    st.wrapper.setAttribute('data-dir', st.dir);
+                    st.wrapper.classList.toggle('from-right', st.dir === 'left');
+                    if (st.startOffset !== 0 && (st.dir === 'left' ? st.startOffset > 0 : st.startOffset < 0)) st.startOffset = 0;
                     cancelPress_timerOnly(st);
                     st.wrapper.classList.add('swiping');
                 }
                 if (st.dragging) {
                     if (e.cancelable) e.preventDefault();
-                    const next = Math.min(Math.max(0, st.startOffset + dx), SWIPE_OPEN_PX);
+                    const raw = st.startOffset + dx;
+                    const next = st.dir === 'left'
+                        ? Math.max(Math.min(0, raw), -SWIPE_OPEN_PX)
+                        : Math.min(Math.max(0, raw), SWIPE_OPEN_PX);
                     st.el.style.transform = 'translateX(' + next + 'px)';
                 } else if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
                     cancelPress();
@@ -3264,7 +3277,7 @@
                 if (st.dragging) {
                     const dx = e.clientX - st.x;
                     const finalOffset = st.startOffset + dx;
-                    const open = finalOffset > SWIPE_OPEN_PX / 2;
+                    const open = Math.abs(finalOffset) > SWIPE_OPEN_PX / 2;
                     if (open) closeAllSwipes(st.wrapper);
                     setSwipeOpen(st.wrapper, open);
                     lastLongPressAt = Date.now();   // the release must not count as a tap

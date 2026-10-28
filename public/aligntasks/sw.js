@@ -1,4 +1,4 @@
-const CACHE_NAME = 'task-board-cache-v63'; // Change this version number (v2, v3, etc.) every time you deploy
+const CACHE_NAME = 'task-board-cache-v64'; // Change this version number (v2, v3, etc.) every time you deploy
 const urlsToCache = [
   './',
   './index.html',
@@ -96,9 +96,9 @@ self.addEventListener('fetch', event => {
 
             return response;
           }
-        ).catch(() => offlineResponse());
+        ).catch(() => Response.error());   // a real network failure, not a fake 503 page
       })
-      .catch(() => offlineResponse())
+      .catch(() => Response.error())
   );
 });
 
