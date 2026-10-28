@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "3.5 - same gestures as the web board: short tap on a task opens a zoomed full-text view, long press opens Edit / Task completed / Delete (ask for the name when completing). Status dots replace the checkboxes. Short tap on a project name opens a full editor (name, due date, add or remove team members); long press gives Edit / Delete with the action password."
+val releaseNotes = "4.0 - ATS look (ivory, titanium, brass) matches the web board. New: My Personal Tasks and My Personal Projects sections, All / Today / Overdue / Completed filter, and Team Settings, Reminders and Group Updates now open inside the app instead of a browser."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {

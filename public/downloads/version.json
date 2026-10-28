@@ -2,7 +2,7 @@
   "versionCode": 25,
   "versionName": "4.0",
   "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-4.0.apk",
-  "notes": "3.5 - same gestures as the web board: short tap on a task opens a zoomed full-text view, long press opens Edit / Task completed / Delete (ask for the name when completing). Status dots replace the checkboxes. Short tap on a project name opens a full editor (name, due date, add or remove team members); long press gives Edit / Delete with the action password.",
+  "notes": "4.0 - ATS look (ivory, titanium and brass) now matches the web board exactly. New: My Personal Tasks and My Personal Projects sections, the All / Today / Overdue / Completed filter, and Team Settings, Reminders and Group Updates now open inside the app instead of a browser.",
   "mandatory": false,
   "publishedAt": "2026-10-28"
 }
