@@ -3414,6 +3414,8 @@
                         let docRef;
                         if (ctx.taskType === 'project') {
                             docRef = db.collection(base + `projects/${ctx.projectId}/tasks`).doc(ctx.taskId);
+                        } else if (ctx.taskType === 'personal_project') {
+                            docRef = db.collection(base + `users/${currentUser.uid}/personal_projects/${ctx.projectId}/tasks`).doc(ctx.taskId);
                         } else if (ctx.taskType === 'personal_tasks') {
                             docRef = db.collection(base + `users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId);
                         } else {
@@ -3452,6 +3454,11 @@
                 if (!ok) return;
                 if (wantEdit) {
                     if (ctx.taskType === 'personal_tasks') openEditPersonalTaskModal(ctx.taskId);
+                    else if (ctx.taskType === 'personal_project') {
+                        const proj = (personalProjectsCache || []).find(p => p.id === ctx.projectId) || { id: ctx.projectId, name: 'Personal project' };
+                        const task = (ppTasksCache[ctx.projectId] || []).find(t => t.id === ctx.taskId) || (taskRowCache[ctx.taskId] || null);
+                        showPersonalProjectTaskModal(true, proj, task);
+                    }
                     else await openEditTaskModal({ taskId: ctx.taskId, taskType: ctx.taskType, projectId: ctx.projectId });
                     return;
                 }
@@ -3459,6 +3466,8 @@
                 try {
                     if (ctx.taskType === 'project') {
                         await db.collection(`/artifacts/${appId}/public/data/projects/${ctx.projectId}/tasks`).doc(ctx.taskId).delete();
+                    } else if (ctx.taskType === 'personal_project') {
+                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_projects/${ctx.projectId}/tasks`).doc(ctx.taskId).delete();
                     } else if (ctx.taskType === 'personal_tasks') {
                         await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId).delete();
                     } else {
@@ -4296,14 +4305,21 @@
             }
 
             function personalProjectTaskRow(projectId, task, done) {
+                // Registered so the zoomed view (short press) shows the real record, not the DOM text.
+                if (window.taskRowCacheRef) window.taskRowCacheRef[task.id] = task;
                 return `
-                    <div class="task-list-item">
-                        <input type="checkbox" class="pp-task-checkbox" data-pp-id="${projectId}" data-task-id="${task.id}" ${done ? 'checked' : ''}>
+                    <div class="task-swipe">
+                       <div class="task-swipe-actions">
+                           <button type="button" class="pp-task-complete text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-pp-id="${projectId}" data-task-id="${task.id}" title="${done ? 'Move back to pending' : 'Mark this task done'}">${done ? 'Reopen' : 'Complete'}</button>
+                           <button type="button" class="pp-task-del-action text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-red-600 font-semibold" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete this task">Delete</button>
+                       </div>
+                    <div class="task-list-item" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}">
+                        <span class="task-status-dot ${done ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0">
                             <p class="text-sm break-words ${done ? 'line-through text-gray-400' : 'text-gray-800'}">${waEsc(task.description)}</p>
                             <div class="task-meta">${task.dueDate ? 'Due: ' + formatTaskTimestamp(task.dueDate) : 'No due date'}${done ? ' · completed' : ''}</div>
                         </div>
-                        <button class="pp-task-delete" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete task" style="border:none;background:transparent;color:#ef4444;font-size:12px;cursor:pointer;">Del</button>
+                    </div>
                     </div>`;
             }
 
@@ -4312,11 +4328,16 @@
                 if (m) m.style.display = show ? 'block' : 'none';
                 if (show) { const i = document.getElementById('personal-project-name'); if (i) i.focus(); }
             }
-            function showPersonalProjectTaskModal(show, project) {
+            function showPersonalProjectTaskModal(show, project, task) {
                 const m = document.getElementById('personal-project-task-modal');
                 if (m) m.style.display = show ? 'block' : 'none';
                 if (!show) return;
+                const editing = !!(task && task.id);
                 document.getElementById('personal-project-task-project-id').value = project ? project.id : '';
+                document.getElementById('personal-project-task-id').value = editing ? task.id : '';
+                document.getElementById('personal-project-task-title').textContent = editing ? 'Edit Personal Task' : 'New Personal Task';
+                document.getElementById('personal-project-task-desc').value = editing ? (task.description || '') : '';
+                document.getElementById('personal-project-task-due').value = editing ? (task.dueDate || '') : '';
                 const sub = document.getElementById('personal-project-task-sub');
                 if (sub) sub.textContent = project ? project.name : '';
                 const i = document.getElementById('personal-project-task-desc');
@@ -5771,19 +5792,25 @@
             document.getElementById('personal-project-task-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const projectId = document.getElementById('personal-project-task-project-id').value;
+                const taskId = document.getElementById('personal-project-task-id').value;
                 const description = document.getElementById('personal-project-task-desc').value.trim();
                 const dueDate = document.getElementById('personal-project-task-due').value || '';
                 if (!projectId || !description) return;
                 try {
-                    await personalProjectsCol().doc(projectId).collection('tasks').add({
-                        description,
-                        dueDate,
-                        status: 'To Do',
-                        createdAt: new Date()
-                    });
+                    const col = personalProjectsCol().doc(projectId).collection('tasks');
+                    if (taskId) {
+                        await col.doc(taskId).update({ description, dueDate, lastUpdatedAt: new Date() });
+                    } else {
+                        await col.add({
+                            description,
+                            dueDate,
+                            status: 'To Do',
+                            createdAt: new Date()
+                        });
+                    }
                     closePersonalProjectTaskModal();
                 } catch (err) {
-                    alert('Could not add the task: ' + (err.message || err));
+                    alert('Could not ' + (taskId ? 'save' : 'add') + ' the task: ' + (err.message || err));
                 }
             });
 
@@ -5811,6 +5838,38 @@
                     try {
                         await personalProjectsCol().doc(delTask.getAttribute('data-pp-id')).collection('tasks').doc(delTask.getAttribute('data-task-id')).delete();
                     } catch (err) { alert( (err.message || err)); }
+                    return;
+                }
+                // Swipe actions on a personal-project task. They act on the doc directly, so the
+                // gesture works even when the long-press password prompt is not wanted.
+                const swipeComplete = e.target.closest('.pp-task-complete');
+                if (swipeComplete) {
+                    const pid = swipeComplete.getAttribute('data-pp-id');
+                    const tid = swipeComplete.getAttribute('data-task-id');
+                    const task = (ppTasksCache[pid] || []).find(t => t.id === tid);
+                    const isDone = !!(task && task.status === 'Done');
+                    const who = (currentUserProfile && (currentUserProfile.name || currentUserProfile.handle)) || (currentUser && currentUser.email) || 'Me';
+                    try {
+                        const ref = personalProjectsCol().doc(pid).collection('tasks').doc(tid);
+                        if (isDone) {
+                            await ref.update({ status: 'To Do', completedAt: firebase.firestore.FieldValue.delete(), completedBy: firebase.firestore.FieldValue.delete(), lastUpdatedAt: new Date() });
+                            showTopNotice('↩️ Moved back to pending tasks');
+                        } else {
+                            await ref.update({ status: 'Done', completedAt: new Date(), completedBy: who, completedByName: who, lastUpdatedAt: new Date() });
+                            showTopNotice('✅ Completed by ' + who);
+                        }
+                    } catch (err) { alert('Could not update the task: ' + (err.message || err)); }
+                    return;
+                }
+                const swipeDelete = e.target.closest('.pp-task-del-action');
+                if (swipeDelete) {
+                    const pid = swipeDelete.getAttribute('data-pp-id');
+                    const tid = swipeDelete.getAttribute('data-task-id');
+                    if (!confirm('Delete this task?')) return;
+                    try {
+                        await personalProjectsCol().doc(pid).collection('tasks').doc(tid).delete();
+                        showTopNotice('🗑️ Task deleted');
+                    } catch (err) { alert('Could not delete the task: ' + (err.message || err)); }
                     return;
                 }
                 const delBtn = e.target.closest('.pp-delete');
@@ -6759,13 +6818,14 @@
         <div style="max-width:480px;width:100%;margin:9vh auto 0;background:#fbf8f0;border:1px solid #d5cfc2;border-radius:12px;box-shadow:0 24px 60px rgba(15,23,42,.32), 0 0 0 1px rgba(176,141,63,.15);overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;background:linear-gradient(180deg,#3f4249 0%,#292b30 100%);color:#f7ecd6;border-bottom:2px solid #b08d3f;">
                 <div style="min-width:0;">
-                    <div style="font-size:14.5px;font-weight:600;letter-spacing:0.3px;">New Personal Task</div>
+                    <div id="personal-project-task-title" style="font-size:14.5px;font-weight:600;letter-spacing:0.3px;">New Personal Task</div>
                     <div id="personal-project-task-sub" style="font-size:11px;color:#c8c4b7;margin-top:2px;">—</div>
                 </div>
                 <button type="button" id="cancel-personal-project-task-modal" aria-label="Close" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#f1ede4;width:26px;height:26px;border-radius:6px;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">&times;</button>
             </div>
             <form id="personal-project-task-form" style="padding:18px;display:flex;flex-direction:column;gap:13px;">
                 <input type="hidden" id="personal-project-task-project-id" />
+                <input type="hidden" id="personal-project-task-id" />
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Task details *</label>
                     <input type="text" id="personal-project-task-desc" placeholder="What has to be done?" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required />
