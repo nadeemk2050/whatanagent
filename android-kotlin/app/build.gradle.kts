@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "4.0 - ATS look (ivory, titanium, brass) matches the web board. New: My Personal Tasks and My Personal Projects sections, All / Today / Overdue / Completed filter, and Team Settings, Reminders and Group Updates now open inside the app instead of a browser."
+val releaseNotes = "4.0.1 - fixes personal tasks. Firestore keeps them read-only for the phone, so adding, completing and deleting now go through the team API like the web board does. Also: repeat rules and priority (urgent/high/normal/low) now match the web exactly."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 25
-        versionName = "4.0"
+        versionCode = 26
+        versionName = "4.0.1"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

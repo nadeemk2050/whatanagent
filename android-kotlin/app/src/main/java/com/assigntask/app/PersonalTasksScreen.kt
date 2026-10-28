@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +51,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -64,8 +69,10 @@ import java.util.Locale
 fun PersonalTasksScreen(uid: String, filter: TaskFilter, onFilter: (TaskFilter) -> Unit) {
     val ctx = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
+    val scope = rememberCoroutineScope()
     val tasks = remember { mutableStateListOf<PersonalTask>() }
     var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<PersonalTask?>(null) }
     var showForm by remember { mutableStateOf(false) }
@@ -162,16 +169,32 @@ fun PersonalTasksScreen(uid: String, filter: TaskFilter, onFilter: (TaskFilter) 
                 PersonalTaskRow(
                     task = t,
                     onToggle = {
-                        val done = !t.isDone()
-                        col.document(t.id).update(
-                            mapOf(
-                                "status" to if (done) "Done" else "To Do",
-                                "completedAt" to if (done) com.google.firebase.firestore.FieldValue.serverTimestamp() else null
-                            )
-                        )
+                        // personal_tasks are read-only for clients, so every write goes through
+                        // /api/align/personal where the server stamps who did it.
+                        scope.launch {
+                            busy = true
+                            withContext(Dispatchers.IO) {
+                                runCatching {
+                                    AlignApi.patchPersonalTask(
+                                        ctx, t.id,
+                                        JSONObject().put("status", if (t.isDone()) "To Do" else "Done")
+                                    )
+                                }.onFailure { error = it.message }
+                            }
+                            busy = false
+                        }
                     },
                     onEdit = { editing = t; showForm = true },
-                    onDelete = { col.document(t.id).delete() }
+                    onDelete = {
+                        scope.launch {
+                            busy = true
+                            withContext(Dispatchers.IO) {
+                                runCatching { AlignApi.deletePersonalTask(ctx, t.id) }
+                                    .onFailure { error = it.message }
+                            }
+                            busy = false
+                        }
+                    }
                 )
             }
         }
@@ -191,23 +214,38 @@ fun PersonalTasksScreen(uid: String, filter: TaskFilter, onFilter: (TaskFilter) 
             existing = editing,
             onDismiss = { showForm = false },
             onSave = { values ->
-                val body = hashMapOf<String, Any?>(
-                    "description" to values.description,
-                    "category" to values.category,
-                    "priority" to values.priority,
-                    "dueDate" to values.dueDate,
-                    "notes" to values.notes,
-                    "repeat" to values.repeat,
-                    "status" to (editing?.status ?: "To Do")
-                )
-                if (editing == null) {
-                    body["createdAt"] = com.google.firebase.firestore.FieldValue.serverTimestamp()
-                    body["ownerUid"] = uid
-                    col.add(body)
-                } else {
-                    col.document(editing!!.id).update(body)
+                scope.launch {
+                    busy = true
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            if (editing == null) {
+                                AlignApi.addPersonalTask(
+                                    ctx,
+                                    JSONObject()
+                                        .put("description", values.description)
+                                        .put("category", values.category)
+                                        .put("priority", values.priority)
+                                        .put("dueDate", values.dueDate ?: "")
+                                        .put("notes", values.notes)
+                                        .put("repeat", values.repeat)
+                                )
+                            } else {
+                                AlignApi.patchPersonalTask(
+                                    ctx, editing!!.id,
+                                    JSONObject()
+                                        .put("description", values.description)
+                                        .put("category", values.category)
+                                        .put("priority", values.priority)
+                                        .put("dueDate", values.dueDate ?: "")
+                                        .put("notes", values.notes)
+                                        .put("repeat", values.repeat)
+                                )
+                            }
+                        }.onFailure { error = it.message }
+                    }
+                    busy = false
+                    showForm = false
                 }
-                showForm = false
             }
         )
     }
@@ -312,7 +350,7 @@ private fun PersonalTaskForm(
         Spacer(Modifier.height(10.dp))
         Text("Priority", fontSize = 11.sp, color = Ats.inkSoft, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
-            listOf("low", "normal", "high").forEach { p ->
+            listOf("urgent", "high", "normal", "low").forEach { p ->
                 val on = priority == p
                 Box(
                     modifier = Modifier

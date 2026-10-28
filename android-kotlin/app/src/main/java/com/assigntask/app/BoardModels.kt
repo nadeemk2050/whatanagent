@@ -64,12 +64,14 @@ data class PersonalTask(
             category = d.str("category"),
             priority = d.str("priority"),
             status = d.str("status").ifBlank { "To Do" },
-            dueDate = d["dueDate"] as? String,
+            dueDate = (d["dueDate"] as? String)?.takeIf { it.isNotBlank() },
             notes = d.str("notes"),
-            repeat = d.str("repeat").ifBlank { "none" },
+            // the server stores repeat as { type: "daily" }; older docs may hold a plain string
+            repeat = (d["repeat"] as? Map<*, *>)?.get("type") as? String
+                ?: d.str("repeat").ifBlank { "none" },
             createdAtRaw = d["createdAt"],
             completedAtRaw = d["completedAt"],
-            completedBy = d.str("completedBy")
+            completedBy = d.str("completedByName").ifBlank { d.str("completedBy") }
         )
     }
 }
