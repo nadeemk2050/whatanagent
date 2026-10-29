@@ -785,6 +785,7 @@
                                 <button id="menu-team-settings" class="ats-menu-item">Team Settings</button>
                                 <div class="ats-menu-sep"></div>
                                 <button id="menu-scheduled-reminders" class="ats-menu-item">Reminders</button>
+                                <button id="menu-wa-account" class="ats-menu-item">WhatsApp number</button>
                                 <button id="menu-group-updates" class="ats-menu-item">Group Updates</button>
                                 <button id="menu-push-notify" class="ats-menu-item">Notifications</button>
                                 <button id="menu-install-app" class="ats-menu-item">Install</button>
@@ -1063,6 +1064,21 @@
         </div>
         <div class="flex-grow overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50">
                 <div id="wa-remind-bridge" class="hidden text-xs rounded-lg px-3 py-2 border"></div>
+                <div id="wa-send-from-box" class="hidden border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
+                    <div class="text-sm font-medium text-gray-700">Send from</div>
+                    <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+                        <input type="radio" name="wa-send-from" id="wa-send-from-account" value="account" class="h-4 w-4 mt-0.5" checked />
+                        <span><b>My WhatsApp number</b> <span id="wa-send-from-account-label" class="text-xs text-green-700"></span><br><span class="text-xs text-gray-500">Sends automatically from this server — no app needs to be open.</span></span>
+                    </label>
+                    <label class="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+                        <input type="radio" name="wa-send-from" id="wa-send-from-device" value="device" class="h-4 w-4 mt-0.5" />
+                        <span><b>Open WhatsApp on my device</b><br><span class="text-xs text-gray-500">Opens WhatsApp with the message ready — nothing is queued here.</span></span>
+                    </label>
+                </div>
+                <div id="wa-link-hint" class="hidden text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-900">
+                    Connect your own WhatsApp number to send reminders automatically.
+                    <button type="button" id="wa-link-from-remind" class="ml-2 font-bold underline">Connect a number</button>
+                </div>
                 <div class="border border-gray-200 rounded-lg p-3 space-y-1 bg-white">
                     <label class="text-sm font-medium text-gray-700">Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
                     <textarea id="wa-remind-message" rows="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
@@ -1197,6 +1213,34 @@
         #scheduled-reminders-list { flex: 1 1 auto; min-height: 0; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
         .sched-scope-btn { border:1px solid #d5cfc2; background:#fffdf8; color:#6b5f45; border-radius:8px; height:26px; padding:0 8px; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap; }
     </style>
+    <div id="wa-account-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">WhatsApp — my number</h3>
+                    <p class="task-meta">Link your own number once. It stays linked on the server until you unlink it.</p>
+                </div>
+                <button id="wa-account-close" class="text-gray-400 hover:text-gray-600 text-3xl" title="Close">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-3">
+                <div id="wa-account-status" class="text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700">Checking…</div>
+                <div id="wa-account-qr-box" class="hidden text-center space-y-2">
+                    <p class="text-xs text-gray-500">WhatsApp → Settings → Linked devices → Link a device, then scan this code.</p>
+                    <img id="wa-account-qr" alt="WhatsApp QR code" style="width:280px;height:280px;margin:0 auto;display:block;border:1px solid #e5e7eb;border-radius:12px;" />
+                    <p id="wa-account-qr-note" class="text-xs text-gray-400">The code refreshes by itself. Scanning it keeps the link on the server.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button id="wa-account-link" class="bg-[#34373d] text-white text-sm font-semibold px-3 py-2 rounded-lg">Connect a number</button>
+                    <button id="wa-account-groups" class="text-sm font-semibold px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hidden">Refresh groups</button>
+                    <button id="wa-account-unlink" class="text-sm font-semibold px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hidden">Unlink</button>
+                </div>
+                <p id="wa-account-note" class="text-[11px] leading-relaxed text-gray-500">
+                    AlignTasks only reads your contacts and groups and sends the reminders you create — no chats are downloaded, no AI replies, no inbox.
+                    This is an unofficial WhatsApp connection: avoid bulk sending, because WhatsApp may restrict a number that behaves like spam.
+                </p>
+            </div>
+        </div>
+    </div>
     <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center">
@@ -2453,7 +2497,6 @@
                 return st;
             }
             async function openWaRemindPicker(type, taskId, projectId) {
-                if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                 const taskRef = (type === 'personal_tasks')
                     ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
                     : (type === 'personal_project' && projectId)
@@ -2500,6 +2543,7 @@
                 resetWaScheduleFields();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
                 paintWaBridges();
+                refreshWaAccount(true);          // decides: send from my number vs open WhatsApp
                 loadWaGroupsLive(false);   // warm the group list, so ⭐ Manage favorites opens instantly
             }
             // ===== WhatsApp group favorites for task reminders (webapp side) =====
@@ -2539,6 +2583,19 @@
             // The group list comes live from the connected WhatsApp (a group created a minute ago is
             // already there), and the shared index document is only the fallback.
             async function loadWaGroupsLive(force) {
+                // A linked personal number owns its own group list; otherwise use the server bridge.
+                if (waAccount && waAccount.linked) {
+                    try {
+                        const mine = await window.alignApi('/wa/multi/groups' + (force ? '?refresh=1' : ''), { noRedirect: true });
+                        if (mine && mine.ok && Array.isArray(mine.groups) && mine.groups.length) {
+                            waGroupsIndexCache = mine.groups;
+                            waGroupsLastAt = Date.now();
+                            const s = document.getElementById('wa-remind-group-search');
+                            if (s) s.placeholder = 'Search ' + mine.groups.length + ' groups';
+                            return true;
+                        }
+                    } catch (e) { /* fall through to the shared lists */ }
+                }
                 try {
                     const live = await window.alignApi('/wa/groups' + (force ? '?refresh=1' : ''));
                     if (live && live.ok && Array.isArray(live.groups) && live.groups.length) {
@@ -2772,8 +2829,11 @@
                 const scheduling = document.getElementById('wa-remind-schedule-toggle').checked;
                 const sendBtn = document.getElementById('wa-remind-send');
 
-                // Hand-off mode (default): nothing is queued on the server — WhatsApp opens with the message ready.
-                if (teamCtx.reminderMode === 'handoff' && !scheduling) {
+                // Send from my own linked number (auto) vs open WhatsApp on this device.
+                const fromAccountEl = document.getElementById('wa-send-from-account');
+                const useAccount = !!(waAccount && waAccount.linked && fromAccountEl && fromAccountEl.checked);
+                // Hand-off mode: nothing is queued on the server — WhatsApp opens with the message ready.
+                if (!useAccount && (teamCtx.reminderMode === 'handoff' || !(waAccount && waAccount.linked)) && !scheduling) {
                     const items = [];
                     for (const cb of memberBoxes) {
                         const email = String(cb.value || '').toLowerCase();
@@ -2832,6 +2892,8 @@
                             aiRewrite: sched.aiRewrite,
                             source: 'aligntasks-web',
                             createdBy: (currentUser && currentUser.email) || '',
+                            createdByUid: (currentUser && currentUser.uid) || '',
+                            viaAccount: useAccount ? (waAccount.uid || (currentUser && currentUser.uid) || '') : undefined,
                             updatedAt: Date.now()
                         };
                         Object.keys(docData).forEach(k => { if (docData[k] === undefined) delete docData[k]; });
@@ -2850,6 +2912,25 @@
                         return;
                     }
                     if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = '…sending'; }
+                    if (useAccount) {
+                        // Automatic send from the customer's own linked number.
+                        const pay = targets.map(tg => ({
+                            type: String(tg.type) === 'group' ? 'group' : 'contact',
+                            id: String(tg.id || ''),
+                            name: String(tg.name || '')
+                        }));
+                        try {
+                            const res = await window.alignApi('/wa/multi/send', { method: 'POST', body: { message: baseMessage, targets: pay } });
+                            document.getElementById('wa-remind-modal').classList.add('hidden');
+                            waRemindCtx = null;
+                            alert('Sent from your WhatsApp: ' + (res.sent || 0) + ' of ' + pay.length + ' destination' + (pay.length === 1 ? '' : 's') + ' done' + ((res.failed || 0) ? ('\n' + res.failed + ' failed: ' + (res.results || []).filter(r => !r.ok).map(r => r.name + ' — ' + (r.error || 'failed')).join(', ')) : '') + '.');
+                        } catch (err) {
+                            alert('Could not send from your WhatsApp: ' + ((err && err.message) || err));
+                        } finally {
+                            if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Send on WhatsApp'; }
+                        }
+                        return;
+                    }
                     const bridge = await waBridgeStatus(true);
                     let sent = 0;
                     let failed = 0;
@@ -3179,7 +3260,6 @@
 
             let scheduledScope = null;
             async function openScheduledReminders(scope) {
-                if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
                 if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
@@ -3200,6 +3280,12 @@
                     try { snap = await db.collection('alignWaSchedules').orderBy('createdAt', 'desc').limit(60).get(); }
                     catch (e1) { snap = await db.collection('alignWaSchedules').limit(60).get(); }
                     let items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    // Customers only ever see their own reminders (the queue is shared storage).
+                    if (!waBridgeAllowed()) {
+                        const uid = (currentUser && currentUser.uid) || '';
+                        const email = String((currentUser && currentUser.email) || '').toLowerCase();
+                        items = items.filter(s => (uid && (String(s.viaAccount || '') === uid || String(s.createdByUid || '') === uid)) || (email && String(s.createdBy || '').toLowerCase() === email));
+                    }
                     if (scheduledScope) items = items.filter(s => waScheduleInScope(s, scheduledScope));
                     if (!items.length) { list.innerHTML = scheduledScope ? '<p class="text-sm text-gray-500 p-2">No ongoing or past scheduled reminders here yet. Open a task → Reminder → tick "Schedule for later".</p>' : '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → Remind → tick "Schedule for later".</p>'; return; }
                     list.innerHTML = items.map(s => waScheduleCardHTML(s)).join('');
@@ -3226,6 +3312,132 @@
                 e.stopPropagation();
                 openScheduledReminders({ type: b.getAttribute('data-scope-type'), projectId: b.getAttribute('data-scope-id') || '', name: b.getAttribute('data-scope-name') || '' });
             });
+            // ===== Per-account WhatsApp number (QR link on this server, send-only) =====
+            let waAccount = { linked: false, uid: '', status: '', phone: '', name: '', cap: 4, groups: 0 };
+            let waLinkPoll = null;
+
+            function paintWaAccountUi() {
+                const st = document.getElementById('wa-account-status');
+                const qrBox = document.getElementById('wa-account-qr-box');
+                const linkBtn = document.getElementById('wa-account-link');
+                const unlinkBtn = document.getElementById('wa-account-unlink');
+                const groupsBtn = document.getElementById('wa-account-groups');
+                if (st) {
+                    if (waAccount.status === 'connected') {
+                        st.className = 'text-sm rounded-lg px-3 py-2 border border-green-200 bg-green-50 text-green-800';
+                        st.innerHTML = 'Connected' + (waAccount.phone ? ' as <b>+' + waEsc(waAccount.phone) + '</b>' : '') + (waAccount.name ? ' (' + waEsc(waAccount.name) + ')' : '') + ' — reminders send from this number.';
+                    } else if (waAccount.status === 'qr_ready') {
+                        st.className = 'text-sm rounded-lg px-3 py-2 border border-blue-200 bg-blue-50 text-blue-800';
+                        st.textContent = 'Scan the QR code with your phone to connect.';
+                    } else if (waAccount.status === 'connecting') {
+                        st.className = 'text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700';
+                        st.textContent = 'Connecting… (reopening the saved link)';
+                    } else if (waAccount.linked) {
+                        st.className = 'text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700';
+                        st.innerHTML = 'Linked' + (waAccount.phone ? ' as <b>+' + waEsc(waAccount.phone) + '</b>' : '') + ' — it reconnects automatically when a reminder is due.';
+                    } else {
+                        st.className = 'text-sm rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-900';
+                        st.textContent = 'No number linked yet (' + waAccount.cap + ' slots on this server).';
+                    }
+                }
+                if (qrBox) qrBox.classList.toggle('hidden', waAccount.status !== 'qr_ready' || !waAccount.qr);
+                if (waAccount.qr) { const img = document.getElementById('wa-account-qr'); if (img) img.src = waAccount.qr; }
+                if (linkBtn) {
+                    linkBtn.classList.toggle('hidden', waAccount.status === 'connected' || waAccount.status === 'qr_ready');
+                    linkBtn.textContent = waAccount.linked ? 'Reconnect' : 'Connect a number';
+                }
+                if (unlinkBtn) unlinkBtn.classList.toggle('hidden', !waAccount.linked && waAccount.status !== 'connected');
+                if (groupsBtn) groupsBtn.classList.toggle('hidden', !waAccount.linked);
+                // Reminder picker
+                const fromBox = document.getElementById('wa-send-from-box');
+                const hint = document.getElementById('wa-link-hint');
+                if (fromBox && hint) {
+                    fromBox.classList.toggle('hidden', !waAccount.linked);
+                    hint.classList.toggle('hidden', waAccount.linked);
+                    const lbl = document.getElementById('wa-send-from-account-label');
+                    if (lbl) lbl.textContent = waAccount.phone ? ('(+' + waAccount.phone + ')') : '';
+                }
+            }
+
+            async function refreshWaAccount(force) {
+                try {
+                    const d = await window.alignApi('/wa/multi/status' + (force ? '?_t=' + Date.now() : ''), { noRedirect: true });
+                    if (d && d.ok !== false) {
+                        waAccount = {
+                            linked: !!d.linked,
+                            uid: d.uid || '',
+                            status: d.status || '',
+                            phone: d.phone || '',
+                            name: d.name || '',
+                            qr: d.qr || '',
+                            cap: d.cap || 4,
+                            groups: d.groups || 0
+                        };
+                    }
+                } catch (e) { /* leave the previous state */ }
+                paintWaAccountUi();
+                return waAccount;
+            }
+
+            function openWaAccountModal() {
+                const modal = document.getElementById('wa-account-modal');
+                if (!modal) return;
+                modal.classList.remove('hidden');
+                refreshWaAccount(true);
+            }
+            function closeWaAccountModal() {
+                const modal = document.getElementById('wa-account-modal');
+                if (modal) modal.classList.add('hidden');
+                stopWaLinkPoll();
+            }
+            function stopWaLinkPoll() {
+                if (waLinkPoll) { clearInterval(waLinkPoll); waLinkPoll = null; }
+            }
+            async function startWaLink() {
+                const btn = document.getElementById('wa-account-link');
+                if (btn) { btn.disabled = true; btn.textContent = 'Starting…'; }
+                try {
+                    const d = await window.alignApi('/wa/multi/link', { method: 'POST', body: { teamId: teamCtx.teamId, name: teamCtx.teamName } });
+                    waAccount = Object.assign(waAccount, {
+                        linked: !!d.linked, status: d.status || '', qr: d.qr || '', phone: d.phone || '', cap: d.cap || waAccount.cap
+                    });
+                    paintWaAccountUi();
+                    stopWaLinkPoll();
+                    let tries = 0;
+                    waLinkPoll = setInterval(async () => {
+                        tries++;
+                        try {
+                            const s = await window.alignApi('/wa/multi/link/status?_t=' + Date.now(), { noRedirect: true });
+                            if (s && s.ok !== false) {
+                                waAccount = Object.assign(waAccount, { linked: !!s.linked, status: s.status || '', qr: s.qr || '', phone: s.phone || '', name: s.name || '' });
+                                paintWaAccountUi();
+                                if (s.status === 'connected') {
+                                    stopWaLinkPoll();
+                                    await refreshWaAccount(true);
+                                    try { await window.alignApi('/wa/multi/groups?refresh=1', { noRedirect: true }); } catch (e) { /* ignore */ }
+                                    loadWaGroupsLive(true);
+                                    showTopNotice('✅ WhatsApp connected' + (s.phone ? ' (+' + s.phone + ')' : '') + ' — reminders will send from this number');
+                                }
+                            }
+                        } catch (e) { /* keep polling */ }
+                        if (tries > 60) stopWaLinkPoll();   // ~2.5 minutes
+                    }, 2500);
+                } catch (err) {
+                    alert((err && err.message) || 'Could not start the WhatsApp link.');
+                } finally {
+                    if (btn) { btn.disabled = false; paintWaAccountUi(); }
+                }
+            }
+            async function unlinkWaAccount() {
+                if (!confirm('Unlink this WhatsApp number? Linked devices on the phone will no longer send reminders from AlignTasks.')) return;
+                try {
+                    await window.alignApi('/wa/multi/unlink', { method: 'POST', body: {} });
+                    stopWaLinkPoll();
+                    await refreshWaAccount(true);
+                    showTopNotice('WhatsApp number unlinked');
+                } catch (e) { alert((e && e.message) || 'Could not unlink.'); }
+            }
+
             function waScheduleCardHTML(s) {
                 const st = String(s.status || 'pending');
                 const targets = Array.isArray(s.targets) ? s.targets : [];
@@ -6092,6 +6304,31 @@
                 accountMenu.classList.add('hidden');
                 openScheduledReminders();
             });
+            (function () {
+                const mi = document.getElementById('menu-wa-account');
+                if (mi) mi.addEventListener('click', () => { accountMenu.classList.add('hidden'); openWaAccountModal(); });
+                const close = document.getElementById('wa-account-close');
+                if (close) close.addEventListener('click', closeWaAccountModal);
+                const link = document.getElementById('wa-account-link');
+                if (link) link.addEventListener('click', startWaLink);
+                const un = document.getElementById('wa-account-unlink');
+                if (un) un.addEventListener('click', unlinkWaAccount);
+                const gr = document.getElementById('wa-account-groups');
+                if (gr) gr.addEventListener('click', async () => {
+                    gr.disabled = true;
+                    try {
+                        const d = await window.alignApi('/wa/multi/groups?refresh=1', { noRedirect: true });
+                        showTopNotice((d.total || 0) + ' groups loaded from your WhatsApp');
+                        await refreshWaAccount(true);
+                    } catch (e) { alert((e && e.message) || 'Could not refresh groups.'); }
+                    finally { gr.disabled = false; }
+                });
+                const fromHint = document.getElementById('wa-link-from-remind');
+                if (fromHint) fromHint.addEventListener('click', () => { closeScheduledRemindersSafe(); openWaAccountModal(); });
+                const modal = document.getElementById('wa-account-modal');
+                if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeWaAccountModal(); });
+            })();
+            function closeScheduledRemindersSafe() { try { document.getElementById('wa-remind-modal').classList.add('hidden'); } catch (e) {} }
             document.getElementById('menu-group-updates').addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 openGroupUpdates();

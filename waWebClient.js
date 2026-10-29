@@ -1393,7 +1393,24 @@ async function processScheduleOccurrence(ref, d) {
   try {
     const status = String(d.status || '');
     if (status !== 'pending' && status !== 'active') return;
-    if (!sock || waWebState.status !== 'connected') return;   // retry on a later tick
+    // A reminder created from an account's own linked number is sent through that number,
+    // never through the main company bridge.
+    const viaAccount = String(d.viaAccount || '').trim();
+    let viaLinked = false;
+    if (viaAccount) {
+      try {
+        const mod = await import('./alignWaMulti.mjs');
+        viaLinked = mod.isLinked(viaAccount);
+      } catch (e) { viaLinked = false; }
+      if (!viaLinked) {
+        const paused = String(d.pauseReason || '') === 'whatsapp-unlinked';
+        if (!paused) {
+          await setDoc(ref, { pauseReason: 'whatsapp-unlinked', lastError: 'The linked WhatsApp number is not connected — reconnect it in AlignTasks → WhatsApp.', updatedAt: Date.now() }, { merge: true });
+          console.log('[ALIGN SCHED] ⏸ paused — the account\'s own WhatsApp number is not linked (' + viaAccount + ')');
+        }
+        return;   // retried on a later tick once the number is linked again
+      }
+    } else if (!sock || waWebState.status !== 'connected') return;   // retry on a later tick
     const now = Date.now();
     const nextAt = Number(d.nextAt || 0);
     if (!nextAt || nextAt > now) return;
@@ -1421,10 +1438,15 @@ async function processScheduleOccurrence(ref, d) {
         extraLine = tg.name ? ('\n👤 For: ' + tg.name) : '';
       }
       try {
-        await Promise.race([
-          sendWaWebMessage(toJid, usedMsg + extraLine),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
-        ]);
+        if (viaAccount) {
+          const mod = await import('./alignWaMulti.mjs');
+          await mod.sendFromAccount(viaAccount, toJid, usedMsg + extraLine);
+        } else {
+          await Promise.race([
+            sendWaWebMessage(toJid, usedMsg + extraLine),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+          ]);
+        }
         okCount++;
       } catch (e) { failCount++; }
     }
@@ -1451,6 +1473,8 @@ async function processScheduleOccurrence(ref, d) {
     if (!complete && mode !== 'dates' && gonext <= now) gonext = now + interval;   // never lag behind after downtime
     await setDoc(ref, {
       status: complete ? 'completed' : 'active',
+      pauseReason: '',
+      lastError: '',
       sentCount: occurrenceNo,
       lastSentAt: now,
       lastOk: okCount,

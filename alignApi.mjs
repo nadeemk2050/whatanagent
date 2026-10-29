@@ -27,6 +27,7 @@ import {
   normalizeHandle, SESSION_HOURS, UNLOCK_HOURS,
   getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff, revealStaffPassword
 } from './alignAuth.mjs';
+import { registerAlignWaMultiRoutes } from './alignWaMulti.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
 const bad = (res, msg, code = 400) => res.status(code).json({ ok: false, error: msg });
@@ -213,6 +214,10 @@ export function registerAlignRoutes(app) {
   // staff lists / task boards (browsers cache JSON GETs heuristically).
   app.use(api, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   console.log('[ALIGN] 🎯 AlignTasks API registered');
+
+  // Per-account WhatsApp linking (QR scan on the customer's own number, send-only).
+  try { registerAlignWaMultiRoutes(app, { api, requireStaff }); }
+  catch (e) { console.warn('[ALIGN] WhatsApp multi-account routes unavailable: ' + ((e && e.message) || e)); }
 
   // ============================================================ status
   app.get(api + '/status', (req, res) => {
