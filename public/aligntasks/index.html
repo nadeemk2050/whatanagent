@@ -1529,15 +1529,25 @@
             // "coming soon" note until its own bridge exists.
             const WA_BRIDGE_EMAILS = ['nadeemalsaham@gmail.com'];
             function waBridgeAllowed() {
-                const email = String(
-                    (currentUser && currentUser.email) ||
-                    (currentUserProfile && currentUserProfile.email) || ''
-                ).toLowerCase();
-                return WA_BRIDGE_EMAILS.includes(email);
+                // The Firebase identity may be a team-login custom token (no e-mail claim),
+                // so the team's sign-up account is checked as well as the signed-in profile.
+                const emails = [
+                    currentUser && currentUser.email,
+                    currentUserProfile && currentUserProfile.email,
+                    window.alignAccountInfo && window.alignAccountInfo.ownerEmail
+                ].map(e => String(e || '').toLowerCase());
+                return emails.some(e => !!e && WA_BRIDGE_EMAILS.includes(e));
+            }
+            async function waBridgeReady() {
+                if (window.alignAccountInfo === null || window.alignAccountInfo === undefined) {
+                    try { if (typeof window.alignRefreshAccountInfo === 'function') await window.alignRefreshAccountInfo(); } catch (e) { /* ignore */ }
+                }
+                return waBridgeAllowed();
             }
             function showWaComingSoon() {
                 alert('WhatsApp for your account is coming soon.\n\nYour own WhatsApp bridge is not connected yet, so reminders and quick sends are off for now. Projects, tasks, personal tasks and completed lists work normally.');
             }
+            window.alignWaBridgeAllowed = waBridgeAllowed;
             function sortByCreatedDesc(a, b) {
                 const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (new Date(a.createdAt || 0).getTime() || 0);
                 const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (new Date(b.createdAt || 0).getTime() || 0);
@@ -2023,6 +2033,7 @@
                 }
                 window.alignAccountInfo = info;
             }
+            window.alignRefreshAccountInfo = refreshAccountInfo;
 
             async function applyTeam(teamId, opts) {
                 opts = opts || {};
@@ -2426,7 +2437,7 @@
                 }
             }
             async function paintWaBridges(force) {
-                if (!waBridgeAllowed()) {
+                if (!(await waBridgeReady())) {
                     ['wa-remind-bridge', 'team-wa-bridge'].forEach(id => {
                         const el = document.getElementById(id);
                         if (!el) return;
@@ -2442,7 +2453,7 @@
                 return st;
             }
             async function openWaRemindPicker(type, taskId, projectId) {
-                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
+                if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                 const taskRef = (type === 'personal_tasks')
                     ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
                     : (type === 'personal_project' && projectId)
@@ -3167,8 +3178,8 @@
             }
 
             let scheduledScope = null;
-            function openScheduledReminders(scope) {
-                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
+            async function openScheduledReminders(scope) {
+                if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
                 if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
@@ -3300,7 +3311,7 @@
 
             // ===== Group updates settings (assign the announcement group + weekly summary day/time) =====
             async function openGroupUpdates() {
-                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
+                if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                 const modal = document.getElementById('group-updates-modal');
                 modal.classList.remove('hidden');
                 const statusEl = document.getElementById('gu-status');
@@ -5482,7 +5493,7 @@
                 });
             });
             applyTaskFilters();
-            document.body.addEventListener('click', e => {
+            document.body.addEventListener('click', async e => {
                 const copyBtn = e.target.closest('.invite-copy-btn');
                 if (copyBtn) {
                     copyToClipboard(copyBtn.getAttribute('data-url') || '');
@@ -5501,7 +5512,7 @@
                 if (memberRemoveBtn) { memberRemove(memberRemoveBtn.getAttribute('data-email')); return; }
                 const waBtn = e.target.closest('.task-wa-button');
                 if (waBtn) {
-                    if (!waBridgeAllowed()) { showWaComingSoon(); return; }
+                    if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                     const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};
                     const staff = staffByEmail(task.assigneeEmail);
                     const message = waTemplateReminder(task);
