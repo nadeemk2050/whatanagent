@@ -1995,6 +1995,7 @@
                 try {
                     window.alignTeamNames = {};
                     Object.keys(teamsCache).forEach(id => { window.alignTeamNames[id] = teamsCache[id].name || id; });
+                    window.alignMyTeamIds = teamCtx.teamIds.slice();
                 } catch (e) { /* ignore */ }
                 return teamCtx.teamIds;
             }
@@ -5870,7 +5871,42 @@
             }
 
             // --- Auth State Change Handler ---
+            let lastAuthUid = '';
              auth.onAuthStateChanged(async user => {
+                // A different person signed in on this device: drop every trace of the
+                // previous account's team so one customer never sees another's board
+                // (Tasks for All, Project Management, staff, personal tasks).
+                if (user && lastAuthUid && lastAuthUid !== user.uid) {
+                    try {
+                        currentUnsubscribes.forEach(u => { try { u(); } catch (e) {} });
+                        currentUnsubscribes = [];
+                        if (projectTaskUnsubs && projectTaskUnsubs.forEach) {
+                            projectTaskUnsubs.forEach(u => { try { u(); } catch (e) {} });
+                            projectTaskUnsubs.clear();
+                        }
+                        if (ppTaskUnsubs && ppTaskUnsubs.forEach) {
+                            ppTaskUnsubs.forEach(u => { try { u(); } catch (e) {} });
+                            ppTaskUnsubs.clear();
+                        }
+                        Object.keys(projectTasksCache || {}).forEach(k => delete projectTasksCache[k]);
+                        Object.keys(ppTasksCache || {}).forEach(k => delete ppTasksCache[k]);
+                        if (expandedProjects && expandedProjects.clear) expandedProjects.clear();
+                        if (expandedPersonalProjects && expandedPersonalProjects.clear) expandedPersonalProjects.clear();
+                    } catch (e) { /* ignore */ }
+                    teamCtx = { teamId: '', teamName: '', role: 'owner', teamIds: [], teamRoles: {}, defaultTeamId: '', reminderMode: 'server' };
+                    teamsCache = {};
+                    currentUserProfile = null;
+                    staffListCache = [];
+                    boardTasksCache = {};
+                    pendingTeamLogin = null;
+                    window.alignAccountInfo = null;
+                    try {
+                        const pp = document.getElementById('projects-container'); if (pp) pp.innerHTML = '';
+                        const ppp = document.getElementById('personal-projects-container'); if (ppp) ppp.innerHTML = '';
+                        const tf = document.getElementById('tasks-for-all-todo-list'); if (tf) tf.innerHTML = '';
+                    } catch (e) { /* ignore */ }
+                }
+                lastAuthUid = user ? user.uid : '';
                 currentUser = user;
                 loadingIndicator.classList.add('hidden');
                  
@@ -7705,9 +7741,18 @@
         }
 
         async function completeLogin(name, password) {
+            // Prove which e-mail account is signed in: the server refuses a team login that
+            // belongs to a different customer, so boards can never be mixed up.
+            let idToken = '';
+            try {
+                const u = window.firebase && firebase.auth ? firebase.auth().currentUser : null;
+                if (u) idToken = await u.getIdToken();
+            } catch (e) { /* fall back to the legacy name + password check */ }
+            const loginHeaders = { 'Content-Type': 'application/json' };
+            if (idToken) loginHeaders['x-firebase-token'] = idToken;
             const r = await fetch(API + '/staff/login', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: loginHeaders,
                 body: JSON.stringify({ name, password })
             });
             const d = await r.json().catch(() => ({}));
@@ -7878,7 +7923,22 @@
             if (getSession()) {
                 try {
                     const r = await fetch(API + '/staff/me?_t=' + Date.now(), { headers: { 'x-align-session': getSession() }, cache: 'no-store' });
-                    if (r.ok) { const d = await r.json(); confirmStaff = d.staff || null; }
+                    if (r.ok) {
+                        const d = await r.json();
+                        const staff = d.staff || null;
+                        const fbUid = firebaseUser() ? firebaseUser().uid : '';
+                        const sessionUid = String((staff && staff.uid) || '');
+                        const myTeams = Array.isArray(window.alignMyTeamIds) ? window.alignMyTeamIds : [];
+                        const sessionTeams = (staff && Array.isArray(staff.teamIds)) ? staff.teamIds : [];
+                        const sameTeam = sessionTeams.some(t => myTeams.includes(t));
+                        if (fbUid && sessionUid && sessionUid !== fbUid && !sameTeam) {
+                            // Another person signed in on this device with a different e-mail
+                            // account: never continue with the old team session.
+                            setSession(''); setSessionName(''); confirmStaff = null;
+                        } else {
+                            confirmStaff = staff;
+                        }
+                    }
                     else if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); }
                 } catch (e) {
                     // Network hiccup must never throw the person out — fall back to the stored name.

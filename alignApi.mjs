@@ -222,6 +222,34 @@ export function registerAlignRoutes(app) {
       const out = loginStaff(sstr(b.name || b.handle, 60), sstr(b.password, 200));
 
       // Also mint a Firebase custom token so the browser gets a real Firebase
+      // A signed-in e-mail account may only open a team login that belongs to it or to one
+      // of its own teams. Otherwise one customer could land inside another customer's board
+      // (team logins all live in one store, and names can repeat across customers).
+      const fbRaw = String(req.headers['x-firebase-token'] || '').trim();
+      if (fbRaw) {
+        try {
+          const decoded = await alignAuth().verifyIdToken(fbRaw);
+          const rec = getStaffByUid(out.staff.uid);
+          if (rec && decoded.uid !== rec.uid) {
+            let myTeams = [];
+            try {
+              const u = await alignDb().doc(`${ALIGN_BASE}/users/${decoded.uid}`).get();
+              myTeams = u.exists ? ((u.data() || {}).teamIds || []) : [];
+            } catch (e) { /* storage unavailable: fall through to the team list check below */ }
+            const recTeams = Array.isArray(rec.teamIds) ? rec.teamIds : [];
+            const shared = recTeams.some(t => myTeams.includes(t));
+            if (!shared) {
+              return res.status(403).json({
+                ok: false,
+                error: 'That team login belongs to a different account. Pick a different name for your team login.'
+              });
+            }
+          }
+        } catch (e) {
+          // Unverifiable token: keep the legacy name+password behaviour.
+        }
+      }
+
       // identity (needed for Firestore reads and for the WebSocket session).
       let customToken = null;
       try {
@@ -274,8 +302,8 @@ export function registerAlignRoutes(app) {
 
       const existing = getStaffByUid(uid);
       const clash = getStaffByHandle(name);
-      if (!existing && clash && clash.uid && clash.uid !== uid) {
-        return bad(res, 'That name is already used. Choose a different name for your team login.');
+      if (!existing && clash && String(clash.uid || '') !== String(uid) && !(Array.isArray(clash.teamIds) && clash.teamIds.some(t => teamIds.includes(t)))) {
+        return bad(res, 'That name is already used by another team. Choose a different name for your team login.');
       }
       const handle = existing ? existing.handle : name;
       const saved = upsertStaff({
