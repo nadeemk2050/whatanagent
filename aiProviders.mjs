@@ -18,7 +18,11 @@ const first = (...vals) => {
 };
 
 export function deepSeekViaDashScope() {
-  return String(process.env.DEEPSEEK_VIA_DASHSCOPE || '').toLowerCase() !== 'false';
+  // Accept the usual "off" spellings. Previously only the exact string 'false' worked, so a
+  // value of 0 / no / off was silently ignored and traffic kept going through DashScope.
+  const v = String(process.env.DEEPSEEK_VIA_DASHSCOPE ?? '').trim().toLowerCase();
+  if (v === '') return true;                       // default: via Alibaba
+  return !['false', '0', 'no', 'off', 'n'].includes(v);
 }
 
 export const isDashScope = (base) => /dashscope/i.test(String(base || ''));
@@ -34,14 +38,17 @@ export const deepseekFetchExtras = (base) => (isDashScope(base) ? { enable_think
 // (Firestore doc, merged settings, or {}), falling back to environment variables.
 export function resolveDeepSeek(settings = {}) {
   const viaAlibaba = deepSeekViaDashScope();
-  const override = first(settings.DEEPSEEK_MODEL, process.env.DEEPSEEK_MODEL);
-  const dashKey = first(settings.QWEN_API_KEY, process.env.QWEN_API_KEY, settings.DASHSCOPE_API_KEY, process.env.DASHSCOPE_API_KEY);
-  const dashBase = first(settings.QWEN_BASE_URL, process.env.QWEN_BASE_URL, DASHSCOPE_COMPAT_BASE).replace(/\/+$/, '');
+  // Environment wins over the database. A secret set in .env is authoritative (that is the rule
+  // the dashboard's own save-path follows), so a stale key left in Firestore can never shadow the
+  // configured one and silently cause 401s.
+  const override = first(process.env.DEEPSEEK_MODEL, settings.DEEPSEEK_MODEL);
+  const dashKey = first(process.env.QWEN_API_KEY, process.env.DASHSCOPE_API_KEY, settings.QWEN_API_KEY, settings.DASHSCOPE_API_KEY);
+  const dashBase = first(process.env.QWEN_BASE_URL, settings.QWEN_BASE_URL, DASHSCOPE_COMPAT_BASE).replace(/\/+$/, '');
 
   if (viaAlibaba && dashKey) {
     return { key: dashKey, base: dashBase, model: override || DEEPSEEK_DASHSCOPE_MODEL, provider: 'alibaba' };
   }
-  const directKey = first(settings.DEEPSEEK_API_KEY, process.env.DEEPSEEK_API_KEY);
+  const directKey = first(process.env.DEEPSEEK_API_KEY, settings.DEEPSEEK_API_KEY);
   if (directKey) {
     return { key: directKey, base: DEEPSEEK_DIRECT_BASE, model: override || DEEPSEEK_DIRECT_MODEL, provider: 'deepseek' };
   }
