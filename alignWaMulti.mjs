@@ -206,11 +206,12 @@ export function status(uid) {
   const id = safeId(uid);
   const st = state(id);
   const linked = hasCreds(id) || st.status === 'connected';
+  const shown = st.status === 'logged_out' ? 'idle' : st.status;
   return {
     uid: id,
     linked,
-    status: st.status,
-    qr: st.status === 'qr_ready' ? st.qr : '',
+    status: shown,
+    qr: shown === 'qr_ready' ? st.qr : '',
     phone: st.phone || '',
     name: st.name || '',
     lastError: st.lastError || '',

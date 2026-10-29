@@ -2482,14 +2482,12 @@
             }
             async function paintWaBridges(force) {
                 if (!(await waBridgeReady())) {
+                    // Customers work with their own linked number instead of the company bridge.
                     ['wa-remind-bridge', 'team-wa-bridge'].forEach(id => {
                         const el = document.getElementById(id);
-                        if (!el) return;
-                        el.className = 'mt-2 text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-800';
-                        el.innerHTML = 'WhatsApp for your account is coming soon — your own bridge will be connected shortly. Tasks, projects and reminders setup keep working normally.';
-                        el.classList.remove('hidden');
+                        if (el) { el.innerHTML = ''; el.classList.add('hidden'); }
                     });
-                    return { connected: false, status: 'coming-soon' };
+                    return { connected: false, status: 'customer-account' };
                 }
                 const st = await waBridgeStatus(force);
                 paintWaBridge('wa-remind-bridge', st);
@@ -5724,7 +5722,6 @@
                 if (memberRemoveBtn) { memberRemove(memberRemoveBtn.getAttribute('data-email')); return; }
                 const waBtn = e.target.closest('.task-wa-button');
                 if (waBtn) {
-                    if (!(await waBridgeReady())) { showWaComingSoon(); return; }
                     const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};
                     const staff = staffByEmail(task.assigneeEmail);
                     const message = waTemplateReminder(task);
