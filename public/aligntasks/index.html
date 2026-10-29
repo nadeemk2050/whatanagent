@@ -711,7 +711,16 @@
                     <div id="signup-name-row" class="hidden"><label class="text-sm font-medium text-gray-700" for="signup-name">Your Name</label><input id="signup-name" type="text" placeholder="e.g. Ahmed Khan" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
                     <div><label class="text-sm font-medium text-gray-700" for="email">Email Address</label><input id="email" type="email" placeholder="you@example.com" required class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
                     <div><label class="text-sm font-medium text-gray-700" for="password">Password</label><input id="password" type="password" placeholder="••••••••" required minLength="6" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /></div>
-                    <div id="signup-team-row" class="hidden"><label class="text-sm font-medium text-gray-700" for="signup-team">Team Name</label><input id="signup-team" type="text" placeholder="e.g. Al Saham Trading" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" /><p class="text-xs text-gray-500 mt-1">A new team will be created for you — you will be its owner.</p></div>
+                    <div id="signup-member-row" class="hidden">
+                        <label class="text-sm font-medium text-gray-700" for="signup-member-name">First Team Member Name</label>
+                        <input id="signup-member-name" type="text" placeholder="e.g. Ahmed" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" />
+                        <p class="text-xs text-gray-500 mt-1">The name you sign in with on the board. More members can be added later.</p>
+                    </div>
+                    <div id="signup-member-password-row" class="hidden">
+                        <label class="text-sm font-medium text-gray-700" for="signup-member-password">First Team Member Password</label>
+                        <input id="signup-member-password" type="password" placeholder="••••••••" minlength="6" class="w-full mt-1 pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400" />
+                        <p class="text-xs text-gray-500 mt-1">Used with that name at the team sign-in step.</p>
+                    </div>
                     <button id="auth-button" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sign In</button>
                 </form>
                 <div class="text-center mt-6"><button id="auth-toggle" class="text-sm text-blue-600 hover:underline">Need an account? Sign Up</button></div>
@@ -1772,9 +1781,12 @@
                     ? (pendingInviteCode ? 'You will join the team that invited you' : 'Sign up and get your own team')
                     : 'Sign in to manage your team';
                 const nameRow = document.getElementById('signup-name-row');
-                const teamRow = document.getElementById('signup-team-row');
+                const memberRow = document.getElementById('signup-member-row');
+                const memberPwRow = document.getElementById('signup-member-password-row');
+                const showMember = isSignup && !pendingInviteCode;
                 if (nameRow) nameRow.classList.toggle('hidden', !isSignup);
-                if (teamRow) teamRow.classList.toggle('hidden', !isSignup || !!pendingInviteCode);
+                if (memberRow) memberRow.classList.toggle('hidden', !showMember);
+                if (memberPwRow) memberPwRow.classList.toggle('hidden', !showMember);
                 authToggle.classList.remove('hidden');
                 authError.classList.add('hidden');
             }
@@ -5600,6 +5612,23 @@
 
 
             // ===== 2.0: provisioning, team bootstrap, invites, team settings =====
+            // The signup form asks for the first team member name + password. That pair becomes
+            // this account's team login as soon as the team exists, so the board opens straight
+            // away instead of asking again at the gate.
+            let pendingTeamLogin = null;
+            async function ensureFirstTeamLogin(user) {
+                const cred = pendingTeamLogin;
+                if (!cred || !user) return;
+                pendingTeamLogin = null;
+                if (typeof window.alignCreateTeamLogin !== 'function' || typeof window.alignApplyTeamSession !== 'function') return;
+                try {
+                    const made = await window.alignCreateTeamLogin(cred.name, cred.password);
+                    if (made && made.ok) window.alignApplyTeamSession(made.data, cred.name);
+                    else if (made && made.error) console.warn('[signup] team login:', made.error);
+                } catch (e) {
+                    console.warn('[signup] team login failed:', (e && e.message) || e);
+                }
+            }
             // A brand-new account always gets its OWN team. It is never attached to a team that
             // already exists, so two different customers can never share a board.
             async function ensureUserHasTeam(user) {
@@ -5646,9 +5675,7 @@
             async function provisionNewAccount(user) {
                 const email = String(user.email || '').toLowerCase();
                 const nameEl = document.getElementById('signup-name');
-                const teamEl = document.getElementById('signup-team');
                 const typedName = ((nameEl && nameEl.value) || '').trim();
-                const typedTeam = ((teamEl && teamEl.value) || '').trim();
                 const displayName = typedName || email.split('@')[0];
 
                 await boardCol('users').doc(user.uid).set({
@@ -5667,7 +5694,7 @@
                     if (!pendingInviteInfo) await loadPendingInvite();
                     if (pendingInviteInfo) { await acceptPendingInvite(); return; }
                 }
-                await createTeamFor(user, typedTeam || (displayName + "'s Team"), 'owner');
+                await createTeamFor(user, displayName + "'s Team", 'owner');
             }
 
             async function createTeamFor(user, name, role) {
@@ -5891,6 +5918,7 @@
                                         return;
                                     }
                                 }
+                                if (teamCtx.teamId) await ensureFirstTeamLogin(user);
                                 if (!teamCtx.teamId) {
                                     appError.textContent = 'You are not in a team yet, so there is nothing to show. Ask an owner to add you to their team.';
                                     appError.classList.remove('hidden');
@@ -5939,10 +5967,28 @@
                 const password = document.getElementById('password').value;
                 const isLogin = authForm.dataset.view === 'login';
                 if (!isLogin) {
+                    const memberNameEl = document.getElementById('signup-member-name');
+                    const memberPwEl = document.getElementById('signup-member-password');
+                    const accountName = ((document.getElementById('signup-name') || {}).value || '').trim();
+                    const memberName = ((memberNameEl && memberNameEl.value) || '').trim() || accountName;
+                    const memberPw = (memberPwEl && memberPwEl.value) || '';
+                    authError.classList.add('hidden');
+                    if (!memberName) {
+                        authError.textContent = 'Enter the first team member name.';
+                        authError.classList.remove('hidden');
+                        return;
+                    }
+                    if (memberPw.length < 6) {
+                        authError.textContent = 'The first team member password needs at least 6 characters.';
+                        authError.classList.remove('hidden');
+                        return;
+                    }
+                    pendingTeamLogin = { name: memberName, password: memberPw };
                     const msg = pendingInviteCode
                         ? 'Create your account and join the team that invited you?'
-                        : 'Create your account? A new team will be created for you and you will be its owner.';
+                        : 'Create your account? A private team and the team login "' + memberName + '" will be created for you.';
                     if (!window.confirm(msg)) {
+                        pendingTeamLogin = null;
                         return;
                     }
                 }
@@ -7758,6 +7804,18 @@
         window.alignApi = api;
         window.alignSession = getSession;
         window.alignShowGate = showGate;
+        window.alignCreateTeamLogin = createTeamLogin;
+        // Called right after signup: the freshly created team login replaces the gate.
+        window.alignApplyTeamSession = function (d, fallbackName) {
+            if (!d || !d.session) return false;
+            setSession(d.session);
+            setSessionName((d.staff && (d.staff.name || d.staff.handle)) || fallbackName || '');
+            gateBootDone = true;
+            try { hideGate(); } catch (e) { /* ignore */ }
+            try { loadProfile(); } catch (e) { /* ignore */ }
+            try { if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters(); } catch (e) { /* ignore */ }
+            return true;
+        };
         // Task writes need the team (name + password) sign-in; nothing more.
         window.alignRequireUnlock = async function () {
             if (getSession()) return true;
