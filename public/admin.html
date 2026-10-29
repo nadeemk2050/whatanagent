@@ -4394,7 +4394,23 @@
         }
 
         async function loadEnv() {
-            const res = await fetch('api/env');
+            // /api/env is admin-guarded: it reports which keys are configured and the owner's
+            // phone number, so it must never answer anonymously.
+            let res = await fetch('api/env', { headers: { 'x-admin-token': adminToken() } });
+            if (res.status === 401) {
+                const t = window.prompt('The Env Settings are protected.\n\nEnter your ADMIN TOKEN (the ADMIN_TOKEN value set in the hosting environment):');
+                if (t && t.trim()) {
+                    setAdminToken(t.trim());
+                    refreshAdminTokenStatus();
+                    res = await fetch('api/env', { headers: { 'x-admin-token': adminToken() } });
+                }
+            }
+            if (!res.ok) {
+                toastMsg(res.status === 503
+                    ? '⚠️ ADMIN_TOKEN is not configured on the server, so Env Settings are locked.'
+                    : '⚠️ Could not load Env Settings (' + res.status + ').');
+                return;
+            }
             const data = await res.json();
             document.getElementById('envProvider').value = data.ACTIVE_AI_PROVIDER || 'deepseek';
             document.getElementById('envDeepseek').value = data.DEEPSEEK_API_KEY || '';

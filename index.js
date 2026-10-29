@@ -1780,7 +1780,7 @@ app.get('/', (req, res) => {
 });
 
 // Secrets are NEVER returned in clear text - only a masked hint and whether one is configured.
-app.get('/api/env', async (req, res) => {
+app.get('/api/env', legacyAdminRoute, async (req, res) => {
   const settings = await getSettings();
   res.json({
     ACTIVE_AI_PROVIDER: settings.ACTIVE_AI_PROVIDER || 'deepseek',
