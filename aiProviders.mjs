@@ -54,3 +54,29 @@ export function resolveDeepSeek(settings = {}) {
 }
 
 export const hasDeepSeek = (settings = {}) => !!resolveDeepSeek(settings).key;
+
+/**
+ * Optional override for BACKGROUND work (learning, staff meetings).
+ *
+ * IMPORTANT — measured on this app's real prompts, DeepSeek is NOT cheaper here:
+ *
+ *   Qwen3.8-Flash   in $0.15/M  cache-hit $0.02/M  out $0.47/M
+ *   DeepSeek        in $0.30/M  cache-hit $0.03/M  out $1.20/M
+ *
+ * Both providers cache the prompt prefix automatically (Qwen measured 4096/4576 tokens cached
+ * = 89%, DeepSeek 4352/4452 = 98%), so caching is already working on the current model. The
+ * output price is what decides the bill, and DeepSeek's output is 2.55x Qwen's — making a
+ * typical learning call ~2x MORE expensive ($0.00169 vs $0.000785). DeepSeek only wins if you
+ * need its reasoning quality, not to save money.
+ *
+ * So this returns '' by default (keep the agent's model). Set AGENT_BACKGROUND_MODEL to opt in.
+ */
+export function backgroundModelFor(settings = {}) {
+  const forced = first(process.env.AGENT_BACKGROUND_MODEL, process.env.AGENT_LEARNING_MODEL);
+  if (!forced) return '';                       // default: never silently switch models
+  if (forced === 'auto') {                      // explicit opt-in to "whatever DeepSeek route exists"
+    const ds = resolveDeepSeek(settings);
+    return ds.key ? ds.model : '';
+  }
+  return forced;
+}

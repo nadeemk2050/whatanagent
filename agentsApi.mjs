@@ -536,7 +536,8 @@ export function registerAgentsRoutes(app, db) {
       });
       res.json({
         ok: true, reply: r.text, model: r.model,
-        usedFallback: r.usedFallback, tokensIn: r.tokensIn, tokensOut: r.tokensOut
+        usedFallback: r.usedFallback, tokensIn: r.tokensIn, tokensOut: r.tokensOut,
+        cachedTokens: r.cachedTokens || 0
       });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });

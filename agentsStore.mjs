@@ -95,7 +95,7 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   a.systemPrompt = sstr(raw.systemPrompt != null ? raw.systemPrompt : existing.systemPrompt, 12000);
   a.promptVersion = Number(raw.promptVersion != null ? raw.promptVersion : existing.promptVersion) || 1;
   a.requireApprovalForWrites = asBool(raw.requireApprovalForWrites != null ? raw.requireApprovalForWrites : existing.requireApprovalForWrites, true);
-  a.dailyBudgetUsd = Number(raw.dailyBudgetUsd != null ? raw.dailyBudgetUsd : existing.dailyBudgetUsd) || 0.5;
+  a.dailyBudgetUsd = Number(raw.dailyBudgetUsd != null ? raw.dailyBudgetUsd : existing.dailyBudgetUsd) || 0.25;
   a.readyThreshold = clamp(raw.readyThreshold != null ? raw.readyThreshold : existing.readyThreshold, 0, 100) || DEFAULT_READY_THRESHOLD;
   a.weights = { ...DEFAULT_WEIGHTS, ...(existing.weights || {}), ...(raw.weights || {}) };
 

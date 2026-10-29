@@ -9,7 +9,7 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { doc, getDoc } from 'firebase/firestore';
-import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor } from './aiProviders.mjs';
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
@@ -153,28 +153,77 @@ export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '', 
   }
 
   // 🌱 What this staff member learned about the people it was assigned to study.
-  const sources = (a.sources || []).filter(src => src && src.learned && (src.learned.style || (src.learned.facts || []).length));
-  const visible = forJid ? sources.filter(src => src.jid === forJid) : sources;
-  if (visible.length) {
-    s += '\n--- PEOPLE / GROUPS YOU LEARNED ABOUT (use to understand context; never repeat these notes to anyone) ---\n';
-    let budget = 2000;
-    for (const src of visible.slice(0, 6)) {
-      const line = '• ' + (src.name || src.jid) + (src.isGroup ? ' (group)' : '') + ': ' +
-        sstr(src.learned.style, 240) +
-        ((src.learned.facts || []).length ? ' Facts: ' + src.learned.facts.slice(0, 5).map(f => sstr(f, 90)).join('; ') : '') + '\n';
-      if (line.length > budget) break;
-      s += line; budget -= line.length;
-    }
-  }
-
+  //
+  // IMPORTANT for cost: the ONLY part of the prompt that changes between two calls for the
+  // same agent is the per-contact learned notes (see buildVolatileContext). Providers cache a
+  // repeated prompt PREFIX and bill those tokens ~10x cheaper, so the stable block ends here
+  // and the volatile tail is appended after the rule book.
   s += UNIVERSAL_SAFETY;
+  return s;
+}
+
+/**
+ * The volatile tail of the system prompt: per-contact learned notes (+ anything else that
+ * differs call to call). Kept last so the stable block above stays byte-identical and the
+ * provider's context cache keeps hitting.
+ */
+export function buildVolatileContext(agent, opts = {}) {
+  if (!agent) return '';
+  const forJid = opts && opts.forJid ? String(opts.forJid) : '';
+  const sources = (agent.sources || []).filter(src => src && src.learned && (src.learned.style || (src.learned.facts || []).length));
+  const visible = forJid ? sources.filter(src => src.jid === forJid) : sources;
+  if (!visible.length) return '';
+  let s = '\n--- PEOPLE / GROUPS YOU LEARNED ABOUT (use to understand context; never repeat these notes to anyone) ---\n';
+  let budget = 2000;
+  for (const src of visible.slice(0, 6)) {
+    const line = '• ' + (src.name || src.jid) + (src.isGroup ? ' (group)' : '') + ': ' +
+      sstr(src.learned.style, 240) +
+      ((src.learned.facts || []).length ? ' Facts: ' + src.learned.facts.slice(0, 5).map(f => sstr(f, 90)).join('; ') : '') + '\n';
+    if (line.length > budget) break;
+    s += line; budget -= line.length;
+  }
   return s;
 }
 
 // ---------------------------------------------------------------------------
 // Model calls
 // ---------------------------------------------------------------------------
-function todaySpend(areaPrefix, agentName) {
+/**
+ * Which purposes are "background work" — the non-interactive jobs that should run on the
+ * cheaper cached route. Interactive replies (a customer waiting, or the boss chatting in the
+ * dashboard) deliberately keep the agent's configured model so the voice never silently changes.
+ */
+export function isBackgroundPurpose(purpose) {
+  const p = String(purpose || '').toLowerCase();
+  return /^(learning|meeting|scorecard|guardrail|handover|briefing|review|advisor)/.test(p);
+}
+
+// Accurate per-day spend per agent.
+//
+// The old version scanned getAiActivityLog(), whose in-memory ring buffer keeps only the last
+// 500 entries — so after 500 calls in a day the oldest entries fell out and todaySpend()
+// undercounted, which meant dailyBudgetUsd silently stopped protecting the owner.
+// This ledger is incremented on every call and reset at local midnight, so it never loses data.
+const dailySpend = new Map();   // 'YYYY-MM-DD|agentName' -> usd
+function spendKey(agentName) {
+  const d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '|' + String(agentName || '');
+}
+function addSpend(agentName, usd) {
+  const amount = Number(usd) || 0;
+  if (amount <= 0) return;
+  const key = spendKey(agentName);
+  dailySpend.set(key, (dailySpend.get(key) || 0) + amount);
+  if (dailySpend.size > 5000) {
+    // drop yesterday's keys so this map can never grow without bound
+    const today = spendKey('');
+    for (const k of Array.from(dailySpend.keys())) if (!k.startsWith(today.split('|')[0])) dailySpend.delete(k);
+  }
+}
+function todaySpend(_areaPrefix, agentName) {
+  const mine = dailySpend.get(spendKey(agentName)) || 0;
+  if (mine > 0) return mine;
+  // First call since a restart: fall back to the activity log for today's history.
   try {
     const res = getAiActivityLog({ limit: 500, area: 'AI Staff' }) || {};
     const logs = Array.isArray(res) ? res : (Array.isArray(res.logs) ? res.logs : []);
@@ -214,7 +263,8 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
     });
     return {
       text: (comp.choices[0]?.message?.content || '').trim(),
-      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0, provider
+      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0,
+      cachedTokens: comp.usage?.prompt_tokens_details?.cached_tokens || 0, provider
     };
   }
 
@@ -232,7 +282,8 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
     });
     return {
       text: (comp.choices[0]?.message?.content || '').trim(),
-      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0, provider
+      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0,
+      cachedTokens: comp.usage?.prompt_tokens_details?.cached_tokens || 0, provider
     };
   }
 
@@ -243,10 +294,23 @@ const DEFAULT_CHAIN = ['qwen3.8-flash', 'gemini-2.5-flash'];
 
 export async function callAgentModel({
   system, messages, model, fallbackModel, temperature = 0.4, maxTokens = 1200,
-  agentName = 'AI Staff', purpose = 'chat'
+  agentName = 'AI Staff', purpose = 'chat', preferBackground = false
 }) {
-  const chain = Array.from(new Set([model, fallbackModel, ...DEFAULT_CHAIN].filter(Boolean)));
   const settings = await getAiSettings();
+
+  // Background jobs (learning, meetings) can be pinned to a specific model with
+  // AGENT_BACKGROUND_MODEL. By default we deliberately keep the agent's own model: measured on
+  // this app's prompts, DeepSeek costs ~2x more than Qwen even with cache hits (see
+  // aiProviders.backgroundModelFor).
+  if (preferBackground) {
+    const bg = backgroundModelFor(settings);
+    if (bg && bg !== model) {
+      fallbackModel = fallbackModel || model;
+      model = bg;
+    }
+  }
+
+  const chain = Array.from(new Set([model, fallbackModel, ...DEFAULT_CHAIN].filter(Boolean)));
   let lastErr = null;
   let attempted = 0;
 
@@ -256,15 +320,16 @@ export async function callAgentModel({
     try {
       const r = await callOnce({ model: m, system, messages, temperature, maxTokens, settings });
       if (!r.text) throw new Error('empty reply');
-      recordAiCall({
+      const logged = recordAiCall({
         provider: r.provider, model: r.model,
         area: 'AI Staff: ' + agentName + ' · ' + purpose,
         isAutoFetch: false,
         prompt: messages && messages.length ? messages[messages.length - 1].content : system,
         response: r.text,
-        tokensIn: r.tokensIn, tokensOut: r.tokensOut,
+        tokensIn: r.tokensIn, tokensOut: r.tokensOut, cachedTokens: r.cachedTokens || 0,
         durationMs: Date.now() - started
       });
+      addSpend(agentName, logged && logged.costUsd);
       return { ...r, attempts: attempted, usedFallback: attempted > 1 };
     } catch (e) {
       lastErr = e;
@@ -283,11 +348,14 @@ export async function callAgentModel({
 // ---------------------------------------------------------------------------
 // Run an agent
 // ---------------------------------------------------------------------------
-export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens, forJid = '' } = {}) {
+export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens, forJid = '', model, fallbackModel, preferBackground } = {}) {
   if (!agent) throw new Error('Agent not found');
   const blocks = await getCompiledBlocks(agent.id);
   // 📖 App Rule Book applies to every staff agent, every purpose.
-  const system = await withRuleBook(buildAgentSystemPrompt(agent, blocks, businessKbText, { forJid }), 'academy');
+  // Order matters for cost: stable persona/knowledge/rules first, volatile per-contact notes
+  // last, so the provider's context cache can reuse the prefix on the next call.
+  const stable = await withRuleBook(buildAgentSystemPrompt(agent, blocks, businessKbText), 'academy');
+  const system = stable + buildVolatileContext(agent, { forJid });
 
   const spend = todaySpend('AI Staff', agent.name);
   const budget = Number(agent.dailyBudgetUsd) || 0;
@@ -297,10 +365,13 @@ export async function runAgent(agent, messages, { purpose = 'chat', businessKbTe
 
   const out = await callAgentModel({
     system, messages,
-    model: agent.model, fallbackModel: agent.fallbackModel,
+    model: model || agent.model, fallbackModel: fallbackModel || agent.fallbackModel,
     temperature: temperature === undefined ? 0.4 : temperature,
     maxTokens: maxTokens || 1200,
-    agentName: agent.name, purpose
+    agentName: agent.name, purpose,
+    preferBackground: preferBackground !== undefined
+      ? !!preferBackground
+      : isBackgroundPurpose(purpose)
   });
   // Script guard: never let Devanagari leave the app (Rule #1).
   if (out && typeof out.text === 'string' && hasDevanagari(out.text)) out.text = enforceScript(out.text).text;

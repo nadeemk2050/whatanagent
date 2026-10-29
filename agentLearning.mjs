@@ -83,7 +83,8 @@ export async function learnFromSource(agent, source, { maxMessages = 150 } = {})
       temperature: 0.2,
       maxTokens: 1400,
       agentName: agent.name,
-      purpose: 'learning · ' + (source.name || jid)
+      purpose: 'learning · ' + (source.name || jid),
+      preferBackground: true   // honours AGENT_BACKGROUND_MODEL; default keeps the agent's model
     });
     model = r.model;
     const s = r.text.indexOf('{'), e = r.text.lastIndexOf('}');
@@ -229,9 +230,16 @@ export async function learnFromAllSources(agent, { maxSources = 6 } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Daily automatic learning (self-throttled: at most once every 6 hours)
+// Automatic learning (self-throttled)
+//
+// Was every 6 hours — that alone was ~60% of the AI bill, re-reading the SAME messages four
+// times a day. Default is now once a day; override with AGENT_AUTOLEARN_HOURS if you want more.
 // ---------------------------------------------------------------------------
-const AUTO_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const AUTO_INTERVAL_MS = (() => {
+  const h = Number(process.env.AGENT_AUTOLEARN_HOURS);
+  const hours = Number.isFinite(h) && h > 0 ? h : 24;
+  return hours * 60 * 60 * 1000;
+})();
 let autoRunning = false;
 
 export async function maybeAutoLearn(agents) {

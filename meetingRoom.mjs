@@ -19,7 +19,7 @@ export function attachMeetingDb(db) { if (db) meetDb = db; }
 export const MEETINGS = 'staffMeetings';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
-const DEFAULTS = { maxRounds: 2, maxTokens: 14000, maxMs: 120000, maxParticipants: 6, turnTimeoutMs: 45000 };
+const DEFAULTS = { maxRounds: 1, maxTokens: 10000, maxMs: 120000, maxParticipants: 6, turnTimeoutMs: 45000 };
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -75,7 +75,9 @@ export async function getMeeting(id) {
 }
 
 async function ask(agent, messages, purpose) {
-  const r = await runAgent(agent, messages, { purpose });
+  // Meetings are background work: they run on the cheaper cached route via isBackgroundPurpose,
+  // and the per-turn answer is capped so a 1-round meeting cannot run away with the budget.
+  const r = await runAgent(agent, messages, { purpose, maxTokens: 700, preferBackground: true });
   return { text: String(r.text || '').trim(), model: r.model, tokensIn: r.tokensIn || 0, tokensOut: r.tokensOut || 0 };
 }
 

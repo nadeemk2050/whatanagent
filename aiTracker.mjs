@@ -26,12 +26,13 @@ const LOGS_DOC = ['appData', 'aiActivityLogs'];
 // Estimated Pricing ($ per 1,000,000 tokens)
 const MODEL_PRICING = {
   // DeepSeek (V4.1 Flash; billed at the same rate through Alibaba Model Studio)
-  'deepseek-v4.1-flash': { inPerM: 0.30, outPerM: 1.20 },
-  'deepseek-flash': { inPerM: 0.30, outPerM: 1.20 },
-  'deepseek-v4-flash': { inPerM: 0.30, outPerM: 1.20 },
-  'deepseek-chat': { inPerM: 0.30, outPerM: 1.20 },
-  'deepseek-coder': { inPerM: 0.30, outPerM: 1.20 },
-  'deepseek': { inPerM: 0.30, outPerM: 1.20 },
+  // cacheInPerM = price of a prompt token that hit the provider's context cache.
+  'deepseek-v4.1-flash': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
+  'deepseek-flash': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
+  'deepseek-v4-flash': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
+  'deepseek-chat': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
+  'deepseek-coder': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
+  'deepseek': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
 
   // Google Gemini
   'gemini-2.5-flash': { inPerM: 0.30, outPerM: 2.50 },
@@ -43,12 +44,12 @@ const MODEL_PRICING = {
   'gemini': { inPerM: 0.75, outPerM: 3.75 },
 
   // Alibaba Qwen (DashScope)
-  'qwen3.8-flash': { inPerM: 0.15, outPerM: 0.47 },
-  'qwen3.8-omni-flash': { inPerM: 0.15, outPerM: 0.47 },
-  'qwen3.8-max': { inPerM: 2.00, outPerM: 6.00 },
-  'qwen-plus': { inPerM: 0.40, outPerM: 1.20 },
-  'qwen-max': { inPerM: 1.60, outPerM: 4.80 },
-  'qwen': { inPerM: 0.15, outPerM: 0.47 },
+  'qwen3.8-flash': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
+  'qwen3.8-omni-flash': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
+  'qwen3.8-max': { inPerM: 2.00, outPerM: 6.00, cacheInPerM: 0.20 },
+  'qwen-plus': { inPerM: 0.40, outPerM: 1.20, cacheInPerM: 0.04 },
+  'qwen-max': { inPerM: 1.60, outPerM: 4.80, cacheInPerM: 0.16 },
+  'qwen': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
 
   // OpenAI
   'gpt-4o': { inPerM: 2.50, outPerM: 10.00 },
@@ -139,15 +140,23 @@ export async function setAiAutoFetchStopped(stopped, user = 'dashboard') {
   };
 }
 
-export function calculateEstimatedCost(provider, model, tokensIn = 0, tokensOut = 0) {
+export function calculateEstimatedCost(provider, model, tokensIn = 0, tokensOut = 0, cachedTokens = 0) {
   const modKey = String(model || '').toLowerCase();
   const provKey = String(provider || '').toLowerCase();
 
-  let rates = MODEL_PRICING[modKey] || MODEL_PRICING[provKey] || { inPerM: 0.20, outPerM: 0.50 };
+  const rates = MODEL_PRICING[modKey] || MODEL_PRICING[provKey] || { inPerM: 0.20, outPerM: 0.50 };
 
-  const inCost = (tokensIn / 1000000) * rates.inPerM;
+  // Providers bill a *cache hit* on the prompt prefix at a fraction of the normal input
+  // rate (DeepSeek ~10x cheaper, Qwen similar). When the API reports cached tokens we must
+  // price them at the cached rate, otherwise the dashboard overstates every call.
+  const cached = Math.min(Math.max(0, Number(cachedTokens) || 0), Math.max(0, tokensIn));
+  const fresh = Math.max(0, tokensIn - cached);
+  const cacheRate = Number(rates.cacheInPerM) > 0 ? Number(rates.cacheInPerM) : rates.inPerM;
+
+  const inCost = (fresh / 1000000) * rates.inPerM;
+  const cachedCost = (cached / 1000000) * cacheRate;
   const outCost = (tokensOut / 1000000) * rates.outPerM;
-  return Number((inCost + outCost).toFixed(6));
+  return Number((inCost + cachedCost + outCost).toFixed(6));
 }
 
 export function estimateTokens(text) {
@@ -167,6 +176,9 @@ export function recordAiCall(entry) {
 
     let tokensIn = Number(entry.tokensIn) || 0;
     let tokensOut = Number(entry.tokensOut) || 0;
+    // Cached prompt tokens: the provider reused a cached prefix, so these are billed cheaper.
+    // Recorded separately so the dashboard can show how much of the prompt was free-ish.
+    const cachedTokens = Math.min(Math.max(0, Number(entry.cachedTokens) || 0), tokensIn);
 
     if (!tokensIn && entry.prompt) {
       tokensIn = estimateTokens(typeof entry.prompt === 'string' ? entry.prompt : JSON.stringify(entry.prompt));
@@ -180,7 +192,7 @@ export function recordAiCall(entry) {
       if (status === 'blocked') {
         costUsd = 0;
       } else {
-        costUsd = calculateEstimatedCost(provider, model, tokensIn, tokensOut);
+        costUsd = calculateEstimatedCost(provider, model, tokensIn, tokensOut, cachedTokens);
       }
     }
 
@@ -212,6 +224,7 @@ export function recordAiCall(entry) {
       error: entry.error ? String(entry.error).substring(0, 300) : '',
       tokensIn,
       tokensOut,
+      cachedTokens,
       totalTokens: tokensIn + tokensOut,
       costUsd,
       durationMs: Number(entry.durationMs) || 0,
@@ -265,10 +278,13 @@ export function getAiSummaryStats() {
     manualCalls: 0,
     totalTokens: 0,
     totalCostUsd: 0,
+    cachedTokens: 0,
+    cacheHitRate: 0,
     byProvider: {},
     byArea: {}
   };
 
+  let promptTokensAll = 0;
   for (const item of memoryLogs) {
     if (item.status === 'success') stats.successfulCalls++;
     else if (item.status === 'blocked') stats.blockedCalls++;
@@ -279,6 +295,8 @@ export function getAiSummaryStats() {
 
     stats.totalTokens += (item.totalTokens || 0);
     stats.totalCostUsd += (item.costUsd || 0);
+    promptTokensAll += (item.tokensIn || 0);
+    stats.cachedTokens += (item.cachedTokens || 0);
 
     // Group by Provider
     const p = item.provider || 'unknown';
@@ -303,6 +321,9 @@ export function getAiSummaryStats() {
 
   // Format decimals cleanly
   stats.totalCostUsd = Number(stats.totalCostUsd.toFixed(5));
+  // Share of all prompt tokens that the provider served from its cache (billable at the
+  // cached rate). 0% means the prompt prefix is changing on every call.
+  stats.cacheHitRate = promptTokensAll > 0 ? Number(((stats.cachedTokens / promptTokensAll) * 100).toFixed(1)) : 0;
   for (const k of Object.keys(stats.byProvider)) {
     stats.byProvider[k].costUsd = Number(stats.byProvider[k].costUsd.toFixed(5));
   }
