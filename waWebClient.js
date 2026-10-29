@@ -1361,8 +1361,8 @@ async function processAlignQueueItem(ref, d) {
 
 // ================= SCHEDULED REMINDERS (alignWaSchedules) =================
 // A schedule doc (created from the AlignTasks webapp) looks like:
-// { message, targets:[{type:'member'|'group', id, name}], startAt, repeatMode:'once'|'count'|'until',
-//   repeatEveryMs, repeatCount, repeatUntil, aiRewrite, status:'pending'|'active'|'completed',
+// { message, targets:[{type:'member'|'group', id, name}], startAt, repeatMode:'once'|'count'|'until'|'dates',
+//   repeatEveryMs, repeatCount, repeatUntil, repeatDates:[epochMs,...] (mode 'dates'), aiRewrite, status:'pending'|'active'|'completed',
 //   sentCount, nextAt, lastSentAt, lastOk, lastFailed, lastMessage, history[] }
 // The 45s tick fires every due occurrence; when aiRewrite is on, the wording is rephrased each time
 // (season/occasion aware) via the same AI chain used everywhere else (Gemini → DeepSeek → Qwen).
@@ -1442,8 +1442,13 @@ async function processScheduleOccurrence(ref, d) {
       gonext = startAt + occurrenceNo * interval;
       const until = Number(d.repeatUntil || 0);
       if (!until || gonext > until) complete = true;
+    } else if (mode === 'dates') {
+      // Hand-picked send times: next = first later pick; picks missed by >6h of downtime are skipped
+      const picks = (Array.isArray(d.repeatDates) ? d.repeatDates : []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      gonext = picks.find(t => t > nextAt && t > now - 6 * 3600000) || 0;
+      if (!gonext) complete = true;
     } else complete = true;   // 'once'
-    if (!complete && gonext <= now) gonext = now + interval;   // never lag behind after downtime
+    if (!complete && mode !== 'dates' && gonext <= now) gonext = now + interval;   // never lag behind after downtime
     await setDoc(ref, {
       status: complete ? 'completed' : 'active',
       sentCount: occurrenceNo,

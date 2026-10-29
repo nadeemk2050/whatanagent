@@ -9,9 +9,16 @@
 			"problemMatcher": []
 		},
 		{
+			"label": "inventory",
+			"type": "shell",
+			"command": "node C:/Users/Dell/AppData/Local/Temp/g_c.mjs",
+			"options": { "cwd": "${workspaceFolder}" },
+			"problemMatcher": []
+		},
+		{
 			"label": "publish-all",
 			"type": "shell",
-			"command": "npm run build; git add -A; git commit -m 'AlignTasks: project long-press menu + Share, reminder page scroll fix (sw v67)'; git push origin master; npx firebase deploy --only hosting",
+			"command": "node --check waWebClient.js; git rm -q --ignore-unmatch .menu-final.png .pp-menu2.png .proj-menu.png .rem-schedule.png .wa-remind.png; npm run build; git add -A; git commit -m 'AlignTasks: reminder calendar - pick exact dates and times per date (sw v68)'; git push origin master; npx firebase deploy --only hosting",
 			"options": { "cwd": "${workspaceFolder}" },
 			"problemMatcher": [],
 			"presentation": { "reveal": "always", "panel": "dedicated", "clear": true }

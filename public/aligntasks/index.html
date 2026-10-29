@@ -665,6 +665,29 @@
             -webkit-overflow-scrolling: touch;
             scrollbar-gutter: stable;
         }
+
+        /* Calendar picker for "exact dates & times" reminders */
+        .wa-cal-box { border: 1px solid var(--ats-line); border-radius: 12px; padding: 10px; background: var(--ats-bg-2); }
+        .wa-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--ats-ink); }
+        .wa-cal-nav { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--ats-line); background: var(--ats-card); color: var(--ats-ink); font-size: 18px; line-height: 1; cursor: pointer; }
+        .wa-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .wa-cal-dow { text-align: center; font-size: 10px; font-weight: 700; color: var(--ats-ink-soft); padding: 2px 0; text-transform: uppercase; }
+        .wa-cal-day { height: 34px; border-radius: 8px; border: 1px solid transparent; background: var(--ats-card); color: var(--ats-ink); font-size: 13px; cursor: pointer; }
+        .wa-cal-day:hover:not(:disabled) { border-color: var(--ats-gold-soft); }
+        .wa-cal-day:disabled { opacity: .35; cursor: not-allowed; }
+        .wa-cal-day.today { border-color: var(--ats-gold); }
+        .wa-cal-day.picked { background: var(--ats-charcoal); color: #f7ecd6; font-weight: 800; border-color: var(--ats-charcoal); }
+        .wa-cal-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+        .wa-cal-link { font-size: 12px; font-weight: 700; color: var(--ats-gold); background: none; border: none; cursor: pointer; padding: 2px 4px; }
+        .wa-cal-danger { color: #a3231d; }
+        .wa-cal-selected { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+        .wa-cal-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--ats-line); border-radius: 10px; background: var(--ats-card); }
+        .wa-cal-row-date { font-size: 12px; font-weight: 700; color: var(--ats-ink); min-width: 118px; }
+        .wa-cal-time { display: inline-flex; align-items: center; gap: 2px; }
+        .wa-cal-time input { padding: 3px 4px; border: 1px solid var(--ats-line); border-radius: 8px; font-size: 13px; background: #fff; }
+        .wa-cal-x { border: none; background: none; color: #a3231d; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 3px; }
+        .wa-cal-add { font-size: 11px; font-weight: 700; color: var(--ats-gold); background: none; border: 1px dashed var(--ats-gold-soft); border-radius: 8px; padding: 3px 7px; cursor: pointer; }
+        .wa-cal-chip-mini { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; margin: 1px 0; border-radius: 999px; background: var(--ats-bg-2); border: 1px solid var(--ats-line); color: var(--ats-ink); }
     </style>
 
 </head>
@@ -1039,7 +1062,7 @@
                         Schedule for later (pick date, time &amp; repeat)
                     </label>
                     <div id="wa-remind-schedule-fields" class="hidden space-y-2 pt-1">
-                        <div class="grid grid-cols-2 gap-2">
+                        <div id="wa-remind-start-row" class="grid grid-cols-2 gap-2">
                             <div><label class="text-xs text-gray-500">Date</label><input type="date" id="wa-remind-date" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
                             <div><label class="text-xs text-gray-500">Time</label><input type="time" id="wa-remind-time" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
                         </div>
@@ -1049,9 +1072,10 @@
                                     <option value="once">No repeat (once only)</option>
                                     <option value="count">Repeat N times</option>
                                     <option value="until">Repeat until a date</option>
+                                    <option value="dates">Pick exact dates &amp; times (calendar)</option>
                                 </select>
                             </div>
-                            <div><label class="text-xs text-gray-500">Every</label>
+                            <div id="wa-remind-every-box"><label class="text-xs text-gray-500">Every</label>
                                 <select id="wa-remind-interval" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
                                     <option value="900000">15 minutes</option>
                                     <option value="1800000">30 minutes</option>
@@ -1061,9 +1085,28 @@
                                     <option value="43200000">12 hours</option>
                                     <option value="86400000">1 day</option>
                                     <option value="172800000">2 days</option>
+                                    <option value="259200000">3 days</option>
                                     <option value="604800000">1 week</option>
+                                    <option value="1209600000">2 weeks</option>
                                 </select>
                             </div>
+                        </div>
+                        <div id="wa-remind-dates-row" class="hidden wa-cal-box">
+                            <div class="wa-cal-head">
+                                <button type="button" id="wa-cal-prev" class="wa-cal-nav" title="Previous month">&#8249;</button>
+                                <b id="wa-cal-title"></b>
+                                <button type="button" id="wa-cal-next" class="wa-cal-nav" title="Next month">&#8250;</button>
+                            </div>
+                            <div id="wa-cal-grid" class="wa-cal-grid"></div>
+                            <div class="wa-cal-tools">
+                                <label class="text-xs text-gray-500">Time for newly picked dates</label>
+                                <input type="time" id="wa-cal-default-time" value="09:00" class="p-1 border border-gray-300 rounded-lg text-sm">
+                                <button type="button" id="wa-cal-apply-all" class="wa-cal-link">Set this time on all dates</button>
+                                <button type="button" id="wa-cal-clear" class="wa-cal-link wa-cal-danger">Clear all</button>
+                            </div>
+                            <div id="wa-cal-selected" class="wa-cal-selected"></div>
+                            <p id="wa-cal-count" class="text-xs font-semibold" style="color:#8a6d2f"></p>
+                            <p class="text-xs text-gray-400">Tap days to select or unselect them. Each date can have its own time, and you can add more than one time on the same day.</p>
                         </div>
                         <div id="wa-remind-count-row" class="hidden"><label class="text-xs text-gray-500">How many times in total</label><input type="number" id="wa-remind-count" min="2" max="200" value="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
                         <div id="wa-remind-until-row" class="hidden"><label class="text-xs text-gray-500">Repeat until (date &amp; time)</label><input type="datetime-local" id="wa-remind-until" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
@@ -2683,6 +2726,7 @@
                             repeatEveryMs: sched.repeatEveryMs,
                             repeatCount: sched.repeatCount,
                             repeatUntil: sched.repeatUntil,
+                            repeatDates: sched.repeatDates || [],
                             aiRewrite: sched.aiRewrite,
                             source: 'aligntasks-web',
                             createdBy: (currentUser && currentUser.email) || '',
@@ -2784,14 +2828,149 @@
                 return 'Reminder (from AlignTasks):\n"' + String(t.description || '').substring(0, 150) + '"' + (due ? ('\nDue: ' + due) : '') + '\n\nPlease check and update the board when done.';
             }
 
+            // ---- "Exact dates & times" calendar: { 'YYYY-MM-DD': ['HH:MM', ...] } ----
+            let waCalDates = {};
+            let waCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            const WA_CAL_MAX = 100;
+
+            function waCalKey(y, m, d) { return y + '-' + twoDigit(m + 1) + '-' + twoDigit(d); }
+            function waCalDefaultTime() { return (document.getElementById('wa-cal-default-time') || {}).value || '09:00'; }
+            function waCalCount() { return Object.keys(waCalDates).reduce((n, k) => n + waCalDates[k].length, 0); }
+
+            // flat, sorted, de-duplicated list of epoch-ms send times
+            function waCalEntries() {
+                const out = [];
+                Object.keys(waCalDates).forEach(k => {
+                    waCalDates[k].forEach(t => {
+                        const ms = new Date(k + 'T' + (t || waCalDefaultTime())).getTime();
+                        if (ms && !isNaN(ms)) out.push(ms);
+                    });
+                });
+                return Array.from(new Set(out)).sort((a, b) => a - b);
+            }
+
+            function waCalLoadFromMs(list) {
+                waCalDates = {};
+                (list || []).forEach(ms => {
+                    const k = localDateValue(ms);
+                    (waCalDates[k] = waCalDates[k] || []).push(localTimeValue(ms));
+                });
+                Object.keys(waCalDates).forEach(k => waCalDates[k].sort());
+                const first = (list || [])[0];
+                waCalMonth = first ? new Date(new Date(first).getFullYear(), new Date(first).getMonth(), 1) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+                renderWaCalendar();
+            }
+
+            function renderWaCalendar() {
+                const grid = document.getElementById('wa-cal-grid');
+                if (!grid) return;
+                const y = waCalMonth.getFullYear(), m = waCalMonth.getMonth();
+                document.getElementById('wa-cal-title').textContent = waCalMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+                const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+                const lead = (new Date(y, m, 1).getDay() + 6) % 7;      // week starts on Monday
+                const days = new Date(y, m + 1, 0).getDate();
+                let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(n => '<div class="wa-cal-dow">' + n + '</div>').join('');
+                for (let i = 0; i < lead; i++) html += '<div></div>';
+                for (let d = 1; d <= days; d++) {
+                    const key = waCalKey(y, m, d);
+                    const past = new Date(y, m, d).getTime() < todayStart.getTime();
+                    const cls = 'wa-cal-day' + (waCalDates[key] ? ' picked' : '') + (new Date(y, m, d).getTime() === todayStart.getTime() ? ' today' : '');
+                    html += '<button type="button" class="' + cls + '" data-key="' + key + '"' + (past ? ' disabled' : '') + '>' + d + '</button>';
+                }
+                grid.innerHTML = html;
+
+                const keys = Object.keys(waCalDates).sort();
+                const box = document.getElementById('wa-cal-selected');
+                box.innerHTML = keys.length ? keys.map(k => {
+                    const label = new Date(k + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+                    const times = waCalDates[k].map((t, i) =>
+                        '<span class="wa-cal-time"><input type="time" value="' + t + '" data-key="' + k + '" data-idx="' + i + '" class="wa-cal-time-input">' +
+                        '<button type="button" class="wa-cal-x" data-key="' + k + '" data-idx="' + i + '" title="Remove this time">&times;</button></span>').join('');
+                    return '<div class="wa-cal-row"><span class="wa-cal-row-date">' + label + '</span>' + times +
+                        '<button type="button" class="wa-cal-add" data-key="' + k + '">+ time</button></div>';
+                }).join('') : '<p class="text-xs text-gray-400">No dates picked yet.</p>';
+                const n = waCalCount();
+                const cnt = document.getElementById('wa-cal-count');
+                if (cnt) cnt.textContent = n ? (n + ' reminder' + (n === 1 ? '' : 's') + ' will be sent') : '';
+            }
+
+            function waCalToggleDay(key) {
+                if (waCalDates[key]) delete waCalDates[key];
+                else {
+                    if (waCalCount() >= WA_CAL_MAX) { alert('Up to ' + WA_CAL_MAX + ' reminder times per schedule.'); return; }
+                    waCalDates[key] = [waCalDefaultTime()];
+                }
+                renderWaCalendar();
+            }
+
+            (function wireWaCalendar() {
+                const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+                on('wa-cal-prev', () => { waCalMonth = new Date(waCalMonth.getFullYear(), waCalMonth.getMonth() - 1, 1); renderWaCalendar(); });
+                on('wa-cal-next', () => { waCalMonth = new Date(waCalMonth.getFullYear(), waCalMonth.getMonth() + 1, 1); renderWaCalendar(); });
+                on('wa-cal-clear', () => { waCalDates = {}; renderWaCalendar(); });
+                on('wa-cal-apply-all', () => {
+                    const t = waCalDefaultTime();
+                    Object.keys(waCalDates).forEach(k => { waCalDates[k] = [t]; });
+                    renderWaCalendar();
+                });
+                const grid = document.getElementById('wa-cal-grid');
+                if (grid) grid.addEventListener('click', e => {
+                    const b = e.target.closest('.wa-cal-day');
+                    if (b && !b.disabled) waCalToggleDay(b.getAttribute('data-key'));
+                });
+                const sel = document.getElementById('wa-cal-selected');
+                if (sel) {
+                    sel.addEventListener('change', e => {
+                        const inp = e.target.closest('.wa-cal-time-input');
+                        if (!inp) return;
+                        const k = inp.getAttribute('data-key');
+                        const arr = waCalDates[k];
+                        if (!arr) return;
+                        arr[parseInt(inp.getAttribute('data-idx'), 10)] = inp.value || waCalDefaultTime();
+                        waCalDates[k] = Array.from(new Set(arr)).sort();
+                        renderWaCalendar();
+                    });
+                    sel.addEventListener('click', e => {
+                        const x = e.target.closest('.wa-cal-x');
+                        if (x) {
+                            const k = x.getAttribute('data-key');
+                            const arr = waCalDates[k] || [];
+                            arr.splice(parseInt(x.getAttribute('data-idx'), 10), 1);
+                            if (!arr.length) delete waCalDates[k];
+                            renderWaCalendar();
+                            return;
+                        }
+                        const add = e.target.closest('.wa-cal-add');
+                        if (add) {
+                            if (waCalCount() >= WA_CAL_MAX) { alert('Up to ' + WA_CAL_MAX + ' reminder times per schedule.'); return; }
+                            const k = add.getAttribute('data-key');
+                            const arr = waCalDates[k] || (waCalDates[k] = []);
+                            const last = arr[arr.length - 1] || waCalDefaultTime();
+                            const h = Math.min(23, (parseInt(last.split(':')[0], 10) || 0) + 1);
+                            let cand = twoDigit(h) + ':' + (last.split(':')[1] || '00');
+                            while (arr.indexOf(cand) !== -1) cand = twoDigit(Math.min(23, parseInt(cand.split(':')[0], 10) + 1)) + ':' + twoDigit((parseInt(cand.split(':')[1], 10) + 1) % 60);
+                            arr.push(cand); arr.sort();
+                            renderWaCalendar();
+                        }
+                    });
+                }
+            })();
+
             function updateWaScheduleRows() {
                 const mode = document.getElementById('wa-remind-repeat').value;
+                const dates = mode === 'dates';
                 document.getElementById('wa-remind-count-row').classList.toggle('hidden', mode !== 'count');
                 document.getElementById('wa-remind-until-row').classList.toggle('hidden', mode !== 'until');
+                document.getElementById('wa-remind-dates-row').classList.toggle('hidden', !dates);
+                document.getElementById('wa-remind-start-row').classList.toggle('hidden', dates);
+                document.getElementById('wa-remind-every-box').classList.toggle('hidden', dates || mode === 'once');
+                if (dates) renderWaCalendar();
             }
 
             function resetWaScheduleFields() {
                 waScheduleEditId = null;
+                waCalDates = {};
+                waCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
                 document.getElementById('wa-remind-title').innerText = 'Send WhatsApp Reminder';
                 document.getElementById('wa-remind-schedule-toggle').checked = false;
                 document.getElementById('wa-remind-schedule-fields').classList.add('hidden');
@@ -2807,6 +2986,14 @@
             }
 
             function readWaScheduleForm() {
+                const aiRewrite = document.getElementById('wa-remind-ai-rewrite').checked;
+                if (document.getElementById('wa-remind-repeat').value === 'dates') {
+                    const list = waCalEntries();
+                    if (!list.length) throw new Error('Pick at least one date on the calendar');
+                    if (list.length > WA_CAL_MAX) throw new Error('Up to ' + WA_CAL_MAX + ' reminder times per schedule');
+                    if (list[0] < Date.now() + 30000) throw new Error('The earliest pick (' + new Date(list[0]).toLocaleString() + ') is already past — choose a later time');
+                    return { startAt: list[0], repeatMode: 'dates', repeatEveryMs: 0, repeatCount: list.length, repeatUntil: 0, repeatDates: list, aiRewrite };
+                }
                 const dateVal = document.getElementById('wa-remind-date').value;
                 const timeVal = document.getElementById('wa-remind-time').value;
                 if (!dateVal || !timeVal) throw new Error('Pick the date and time for the reminder');
@@ -2826,7 +3013,7 @@
                     repeatUntil = new Date(uv).getTime();
                     if (!repeatUntil || repeatUntil <= startAt) throw new Error('"Repeat until" must be after the first send time');
                 }
-                return { startAt, repeatMode, repeatEveryMs, repeatCount, repeatUntil, aiRewrite: document.getElementById('wa-remind-ai-rewrite').checked };
+                return { startAt, repeatMode, repeatEveryMs, repeatCount, repeatUntil, repeatDates: [], aiRewrite };
             }
 
             document.getElementById('wa-remind-schedule-toggle').addEventListener('change', () => {
@@ -2878,6 +3065,7 @@
                 if (d.repeatCount) document.getElementById('wa-remind-count').value = String(d.repeatCount);
                 document.getElementById('wa-remind-until').value = d.repeatUntil ? localDateTimeValue(Number(d.repeatUntil)) : '';
                 document.getElementById('wa-remind-ai-rewrite').checked = !!d.aiRewrite;
+                if (d.repeatMode === 'dates' && Array.isArray(d.repeatDates)) waCalLoadFromMs(d.repeatDates.map(Number).filter(Boolean));
                 updateWaScheduleRows();
                 document.getElementById('wa-remind-schedule-toggle').checked = true;
                 document.getElementById('wa-remind-schedule-fields').classList.remove('hidden');
@@ -2941,6 +3129,7 @@
                     '<div class="text-xs text-gray-600 space-y-0.5">' +
                         '<div>' + targets.length + ' destination(s) — ' + nMembers + ' member(s), ' + nGroups + ' group(s) · ' + progress + (s.aiRewrite ? ' · AI wording each time' : '') + '</div>' +
                         (nextStr ? '<div>Next send: <b>' + nextStr + '</b></div>' : '') +
+                        (s.repeatMode === 'dates' && showNext ? '<div>Custom dates left: ' + (Array.isArray(s.repeatDates) ? s.repeatDates.filter(t => Number(t) > when).slice(0, 6).map(t => '<span class="wa-cal-chip-mini">' + waEsc(new Date(Number(t)).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span>').join(' ') + (Array.isArray(s.repeatDates) && s.repeatDates.filter(t => Number(t) > when).length > 6 ? ' …' : '') : '') + '</div>' : '') +
                         (lastStr ? '<div>Last send: ' + lastStr + ' (' + (Number(s.lastOk) || 0) + ' ok' + ((Number(s.lastFailed) || 0) ? (', ' + s.lastFailed + ' failed') : '') + ')</div>' : '') +
                     '</div>' +
                     '<div class="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2 whitespace-pre-wrap break-words">' + waEsc(String(s.message || '').substring(0, 240)) + '</div>' +
