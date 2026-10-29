@@ -315,7 +315,7 @@ async function pace() {
 export async function sendFromAccount(uid, jid, text) {
   const id = safeId(uid);
   if (!/^[0-9A-Za-z._:\-]+@(s\.whatsapp\.net|g\.us|lid)$/i.test(String(jid || ''))) {
-    throw new Error('Invalid WhatsApp destination.');
+    throw new Error('Invalid WhatsApp destination (' + String(jid || 'empty').slice(0, 40) + ').');
   }
   const st = state(id);
   st.pending = (st.pending || 0) + 1;
@@ -411,11 +411,22 @@ export function registerAlignWaMultiRoutes(app, opts) {
       if (!targets.length) return res.status(400).json({ ok: false, error: 'Pick at least one person or group.' });
       const results = [];
       for (const t of targets) {
-        const raw = String(t.id || '').trim();
-        const isGroup = String(t.type) === 'group' || /@g\.us$/i.test(raw);
-        const jid = isGroup ? raw : (String(t.phone || '').replace(/[^0-9]/g, '') ? String(t.phone || '').replace(/[^0-9]/g, '') + '@s.whatsapp.net' : '');
-        const label = String(t.name || jid || '').slice(0, 80);
-        if (!jid) { results.push({ name: label, ok: false, error: 'no-whatsapp-number' }); continue; }
+        const raw = String(t.id || t.phone || '').trim();
+        const explicitGroup = String(t.type) === 'group' || /@g\.us$/i.test(raw);
+        const digits = String(t.phone || (raw.includes('@') ? '' : raw)).replace(/[^0-9]/g, '');
+        let jid = '';
+        if (explicitGroup) jid = /@g\.us$/i.test(raw) ? raw : '';
+        else if (/@(s\.whatsapp\.net|lid)$/i.test(raw)) jid = raw;
+        else if (digits) jid = digits + '@s.whatsapp.net';
+        const label = String(t.name || raw || '').slice(0, 80);
+        if (!jid) {
+          results.push({
+            name: label,
+            ok: false,
+            error: explicitGroup ? 'group-link-missing (open WhatsApp → Refresh groups, then pick it again)' : 'no-whatsapp-number'
+          });
+          continue;
+        }
         try {
           await sendFromAccount(uid, jid, message);
           results.push({ name: label, ok: true });

@@ -2541,8 +2541,8 @@
                 resetWaScheduleFields();
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
                 paintWaBridges();
-                refreshWaAccount(true);          // decides: send from my number vs open WhatsApp
-                loadWaGroupsLive(false);   // warm the group list, so ⭐ Manage favorites opens instantly
+                await refreshWaAccount(true);    // decides: send from my number vs open WhatsApp
+                await loadWaGroupsLive(false);   // full group list when a number is linked
             }
             // ===== WhatsApp group favorites for task reminders (webapp side) =====
             let waGroupFavoritesCache = [];
@@ -2564,16 +2564,31 @@
                 }
                 box.innerHTML = waGroupFavoritesCache.map(g => {
                     const isContact = String(g.type || 'group') === 'contact';
-                    const val = String(isContact ? (g.phone || g.jid || '') : (g.jid || '')).replace(/"/g, '&quot;');
-                    const nm = String(g.name || g.jid || '').replace(/"/g, '&quot;');
+                    // Older favorites stored the jid only as the document id.
+                    const rawJid = String(g.jid || (/(@g\.us|@s\.whatsapp\.net|@lid)$/i.test(String(g.id || '')) ? g.id : '') || '');
+                    const val = String(isContact ? (g.phone || rawJid || '') : rawJid).replace(/"/g, '&quot;');
+                    const nm = String(g.name || rawJid || '').replace(/"/g, '&quot;');
                     const sub = isContact ? ('+' + String(g.phone || '').replace(/[^0-9]/g, '')) : 'group';
                     return '<div class="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-50">' +
-                        '<input type="checkbox" class="' + (isContact ? 'wa-remind-contact-cb' : 'wa-remind-group-cb') + ' h-4 w-4 shrink-0" value="' + val + '" data-name="' + nm + '" data-jid="' + String(g.jid || '').replace(/"/g, '&quot;') + '" />' +
-                        '<span class="text-sm text-gray-800 truncate flex-grow">' + (isContact ? '' : '[Group] ') + (g.name || g.jid) + '</span>' +
+                        '<input type="checkbox" class="' + (isContact ? 'wa-remind-contact-cb' : 'wa-remind-group-cb') + ' h-4 w-4 shrink-0" value="' + val + '" data-name="' + nm + '" data-jid="' + rawJid.replace(/"/g, '&quot;') + '" />' +
+                        '<span class="text-sm text-gray-800 truncate flex-grow">' + (isContact ? '' : '[Group] ') + (g.name || rawJid) + '</span>' +
                         '<span class="text-[10px] text-gray-400 shrink-0">' + sub + '</span>' +
                         '<button type="button" class="wa-fav-remove shrink-0 text-gray-300 hover:text-red-600 text-sm px-1" data-id="' + String(g.id).replace(/"/g, '&quot;') + '" title="Remove favorite" style="font-size:16px;line-height:1;">&times;</button>' +
                         '</div>';
                 }).join('');
+                // A linked personal number lists ALL of its groups, so nothing has to be starred first.
+                if (waAccount && waAccount.linked && Array.isArray(waGroupsIndexCache) && waGroupsIndexCache.length) {
+                    const have = new Set(waGroupFavoritesCache.filter(g => String(g.type || 'group') !== 'contact').map(g => String(g.jid || g.id || '')));
+                    const rest = waGroupsIndexCache.filter(g => g.jid && !have.has(String(g.jid)));
+                    if (rest.length) {
+                        box.innerHTML += '<p class="text-[10px] text-gray-400 px-1 pt-2">All groups from your number (' + rest.length + ')</p>' +
+                            rest.map(g => '<div class="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-50">' +
+                                '<input type="checkbox" class="wa-remind-group-cb h-4 w-4 shrink-0" value="' + String(g.jid).replace(/"/g, '&quot;') + '" data-name="' + String(g.name || g.jid).replace(/"/g, '&quot;') + '" data-jid="' + String(g.jid).replace(/"/g, '&quot;') + '" />' +
+                                '<span class="text-sm text-gray-800 truncate flex-grow">' + String(g.name || g.jid) + '</span>' +
+                                '<span class="text-[10px] text-amber-600 shrink-0">group</span>' +
+                                '</div>').join('');
+                    }
+                }
             }
 
             let waGroupsTimer = null;
@@ -2590,6 +2605,8 @@
                             waGroupsLastAt = Date.now();
                             const s = document.getElementById('wa-remind-group-search');
                             if (s) s.placeholder = 'Search ' + mine.groups.length + ' groups';
+                            paintWaGroupsStatus();
+                            loadWaRemindFavorites();   // re-render with the full group list
                             return true;
                         }
                     } catch (e) { /* fall through to the shared lists */ }
