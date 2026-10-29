@@ -26,8 +26,20 @@ const TEAMS_FILE = path.join(DATA_DIR, 'alignTeams.json');
 const SECRET_FILE = path.join(DATA_DIR, 'secret.key');
 const AUDIT_FILE = path.join(DATA_DIR, 'alignAuthAudit.log');
 
-export const SESSION_HOURS = 12;         // staff session lifetime
-export const UNLOCK_HOURS = 12;          // team unlock lifetime (boss: "you decide" -> one working day)
+// Staff session lifetime. The token is a signed cookie-equivalent kept in localStorage, so this
+// value is exactly "how long am I logged in". It used to be 12 hours, which threw the team back
+// to the login gate twice a day. Default is now one year: people stay signed in until they press
+// Logout (or "Hand device to another member"). Override with ALIGN_SESSION_HOURS.
+export const SESSION_HOURS = (() => {
+  const h = Number(process.env.ALIGN_SESSION_HOURS);
+  return Number.isFinite(h) && h > 0 ? h : 8760;      // 8760 h = 365 days
+})();
+// Team unlock lifetime (extra password for owner-only actions). Unchanged by default — expiry here
+// only asks for that password again, it never logs anybody out.
+export const UNLOCK_HOURS = (() => {
+  const h = Number(process.env.ALIGN_UNLOCK_HOURS);
+  return Number.isFinite(h) && h > 0 ? h : 12;
+})();
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
 const SCRYPT_N = 16384;
