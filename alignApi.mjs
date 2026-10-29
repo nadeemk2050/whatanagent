@@ -249,7 +249,7 @@ export function registerAlignRoutes(app) {
     try {
       const b = req.body || {};
       const name = sstr(b.name || b.handle, 60);
-      const out = loginStaff(name, sstr(b.password, 200), verified ? myTeams : undefined);
+      const out = loginStaff(name, sstr(b.password, 200), verified ? (myTeams.length ? myTeams : ['__no-team__']) : undefined);
 
       // Also mint a Firebase custom token so the browser gets a real Firebase
       // identity (needed for Firestore reads and for the WebSocket session).
@@ -312,6 +312,7 @@ export function registerAlignRoutes(app) {
       }
 
       // The team the caller is actually working in (validated against their own teams).
+      if (!teamIdsAll.length) return bad(res, 'Your team is not ready yet — reload the page and try again.', 409);
       const wantedTeam = sstr(b.teamId, 80);
       const teamIds = (wantedTeam && teamIdsAll.includes(wantedTeam)) ? [wantedTeam] : teamIdsAll;
 

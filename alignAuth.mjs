@@ -396,9 +396,7 @@ export function getStaffByHandle(handle, teamIds) {
   // Team logins are scoped: two different accounts may each have a "nadeemk".
   if (Array.isArray(teamIds) && teamIds.length) {
     const scoped = matches.filter(r => Array.isArray(r.teamIds) && r.teamIds.some(t => teamIds.includes(t)));
-    if (scoped.length) return scoped[0];
-    const legacy = matches.filter(r => !Array.isArray(r.teamIds) || !r.teamIds.length);
-    return legacy[0] || null;
+    return scoped[0] || null;
   }
   return matches[0];
 }
@@ -464,7 +462,7 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
     if (!matchesHandle(r)) continue;
     const rTeams = Array.isArray(r.teamIds) ? r.teamIds : [];
     if (teams.length && rTeams.some(t => teams.includes(t))) { entry = [k, r]; break; }
-    if (!entry && (!teams.length || !rTeams.length)) entry = [k, r];
+    if (!entry && !teams.length && !rTeams.length) entry = [k, r];
   }
   const existing = entry ? entry[1] : null;
   const key = entry ? entry[0] : (teams.length ? teams[0] + '::' + h : h);
