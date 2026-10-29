@@ -113,13 +113,14 @@ function requireStaffMember(req, res, next) {
   next();
 }
 
-function isOwnerRecord(handle) {
-  const rec = getStaffByHandle(handle);
+function isOwnerRecord(handle, teamIds) {
+  const rec = getStaffByHandle(handle, teamIds);
   return !!(rec && (rec.role === 'owner' || rec.role === 'admin'));
 }
 
 function canTouchMember(req, handle) {
-  if (!isOwnerRecord(handle)) return true;
+  const teams = staffTeams(req);
+  if (!isOwnerRecord(handle, teams.length ? teams : undefined)) return true;
   return !!(req.staff && (req.staff.role === 'owner' || req.staff.role === 'admin'));
 }
 
@@ -128,6 +129,17 @@ const stampOf = (staff) => ({
   handle: staff.handle,
   name: staff.name
 });
+
+// The signed session only carries uid/handle/name/role, so team scope is read from the
+// staff record (which is also the source of truth when membership changes).
+function staffTeams(req) {
+  try {
+    const rec = req && req.staff && req.staff.uid ? getStaffByUid(req.staff.uid) : null;
+    return rec && Array.isArray(rec.teamIds) ? rec.teamIds.slice() : [];
+  } catch (e) {
+    return [];
+  }
+}
 
 function noAdmin(res) {
   const st = alignAdminStatus();
@@ -217,39 +229,29 @@ export function registerAlignRoutes(app) {
 
   // ============================================================ staff login
   app.post(api + '/staff/login', async (req, res) => {
+    // Which teams does the e-mail account that is signed in belong to? Team logins are
+    // scoped by team, so two different accounts may each have a member called "nadeemk".
+    let myTeams = [];
+    let verified = false;
+    const fbRaw = String(req.headers['x-firebase-token'] || '').trim();
+    if (fbRaw) {
+      try {
+        const decoded = await alignAuth().verifyIdToken(fbRaw);
+        verified = true;
+        try {
+          const u = await alignDb().doc(`${ALIGN_BASE}/users/${decoded.uid}`).get();
+          myTeams = u.exists ? ((u.data() || {}).teamIds || []) : [];
+        } catch (e) { /* storage unavailable: fall back to an unscoped lookup */ }
+      } catch (e) {
+        // Unverifiable token: keep the legacy name+password behaviour.
+      }
+    }
     try {
       const b = req.body || {};
-      const out = loginStaff(sstr(b.name || b.handle, 60), sstr(b.password, 200));
+      const name = sstr(b.name || b.handle, 60);
+      const out = loginStaff(name, sstr(b.password, 200), verified ? myTeams : undefined);
 
       // Also mint a Firebase custom token so the browser gets a real Firebase
-      // A signed-in e-mail account may only open a team login that belongs to it or to one
-      // of its own teams. Otherwise one customer could land inside another customer's board
-      // (team logins all live in one store, and names can repeat across customers).
-      const fbRaw = String(req.headers['x-firebase-token'] || '').trim();
-      if (fbRaw) {
-        try {
-          const decoded = await alignAuth().verifyIdToken(fbRaw);
-          const rec = getStaffByUid(out.staff.uid);
-          if (rec && decoded.uid !== rec.uid) {
-            let myTeams = [];
-            try {
-              const u = await alignDb().doc(`${ALIGN_BASE}/users/${decoded.uid}`).get();
-              myTeams = u.exists ? ((u.data() || {}).teamIds || []) : [];
-            } catch (e) { /* storage unavailable: fall through to the team list check below */ }
-            const recTeams = Array.isArray(rec.teamIds) ? rec.teamIds : [];
-            const shared = recTeams.some(t => myTeams.includes(t));
-            if (!shared) {
-              return res.status(403).json({
-                ok: false,
-                error: 'That team login belongs to a different account. Pick a different name for your team login.'
-              });
-            }
-          }
-        } catch (e) {
-          // Unverifiable token: keep the legacy name+password behaviour.
-        }
-      }
-
       // identity (needed for Firestore reads and for the WebSocket session).
       let customToken = null;
       try {
@@ -265,8 +267,17 @@ export function registerAlignRoutes(app) {
 
       res.json({ ok: true, ...out, customToken, teams: out.staff.teamIds || [] });
     } catch (e) {
-      const code = /incorrect|Too many|disabled/.test(e.message) ? 401 : 400;
-      res.status(code).json({ ok: false, error: e.message });
+      const isAuth = /incorrect|Too many|disabled|no password/i.test(e.message);
+      let scoped = null;
+      try {
+        const b2 = req.body || {};
+        scoped = getStaffByHandle(sstr(b2.name || b2.handle, 60), verified ? myTeams : undefined);
+      } catch (err) { /* ignore */ }
+      res.status(isAuth ? 401 : 400).json({
+        ok: false,
+        error: e.message,
+        code: isAuth ? (scoped ? 'bad-password' : 'no-team-login') : undefined
+      });
     }
   });
 
@@ -290,33 +301,35 @@ export function registerAlignRoutes(app) {
       if (!name) return bad(res, 'Enter your name.');
       if (password.length < 6) return bad(res, 'Choose a password of at least 6 characters.');
 
-      let teamIds = [];
+      let teamIdsAll = [];
       try {
         const snap = await alignDb().doc(`${ALIGN_BASE}/users/${uid}`).get();
         const u = snap.exists ? (snap.data() || {}) : {};
-        teamIds = Array.isArray(u.teamIds) ? u.teamIds.slice(0, 50) : [];
+        teamIdsAll = Array.isArray(u.teamIds) ? u.teamIds.slice(0, 50) : [];
       } catch (e) {
         if (e.code === 'align-no-admin') return noAdmin(res);
         console.warn('[ALIGN] signup profile read skipped: ' + sstr(e.message, 120));
       }
 
+      // The team the caller is actually working in (validated against their own teams).
+      const wantedTeam = sstr(b.teamId, 80);
+      const teamIds = (wantedTeam && teamIdsAll.includes(wantedTeam)) ? [wantedTeam] : teamIdsAll;
+
+      // Team logins are keyed per team, so a name used by another account is not a clash:
+      // this account gets its own "nadeemk" inside its own team.
       const existing = getStaffByUid(uid);
-      const clash = getStaffByHandle(name);
-      if (!existing && clash && String(clash.uid || '') !== String(uid) && !(Array.isArray(clash.teamIds) && clash.teamIds.some(t => teamIds.includes(t)))) {
-        return bad(res, 'That name is already used by another team. Choose a different name for your team login.');
-      }
       const handle = existing ? existing.handle : name;
       const saved = upsertStaff({
         handle,
         name,
         password,
         role: existing ? existing.role : 'owner',
-        teamIds: teamIds.length ? teamIds : ((existing && existing.teamIds) || []),
+        teamIds: teamIds,
         uid,
         aliases: decoded.email ? [String(decoded.email).toLowerCase()] : []
       });
       if (!saved) return bad(res, 'Could not create your team login.');
-      const out = loginStaff(handle, password);
+      const out = loginStaff(handle, password, teamIds);
 
       let customToken = null;
       try {
@@ -502,7 +515,8 @@ export function registerAlignRoutes(app) {
   // This is the panel inside AlignTasks: the owner is already signed in with a
   // staff name + password, so requiring ADMIN_TOKEN here would be a second login.
   app.get(api + '/team/staff', requireStaff, requireStaffMember, (req, res) => {
-    res.json({ ok: true, staff: listStaff() });
+    const myTeams = staffTeams(req);
+    res.json({ ok: true, staff: listStaff(myTeams.length ? myTeams : undefined) });
   });
 
   app.post(api + '/team/staff', requireStaff, requireStaffMember, async (req, res) => {
@@ -510,13 +524,14 @@ export function registerAlignRoutes(app) {
       const b = req.body || {};
       const handle = normalizeHandle(b.handle || b.name);
       const name = sstr(b.name, 60).trim();
-      if (isOwnerRecord(handle) && !canTouchMember(req, handle)) {
+      const myTeams = staffTeams(req);
+      if (isOwnerRecord(handle, myTeams) && !canTouchMember(req, handle)) {
         return bad(res, 'Only an owner can change another owner’s login.', 403);
       }
       const password = sstr(b.password, 200);
       if (!handle || !name) return bad(res, 'A name is required.');
       if (handle.length < 2) return bad(res, 'Name must be at least 2 characters.');
-      const existing = getStaffByHandle(handle);
+      const existing = getStaffByHandle(handle, myTeams.length ? myTeams : undefined);
       if (!existing && !password) return bad(res, 'Set a password for the new member.');
       if (password && password.length < 6) return bad(res, 'Password must be at least 6 characters.');
 
@@ -562,11 +577,11 @@ export function registerAlignRoutes(app) {
         aliases: Array.isArray(b.aliases) ? b.aliases : undefined
       });
       authAudit({ action: 'staff_save', handle: saved.handle, note: 'by ' + (req.staff ? req.staff.handle : 'unknown') });
-      try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
+      try { await ensureBoardUser(getStaffByHandle(saved.handle, myTeams.length ? myTeams : undefined)); } catch (e) { /* non-fatal */ }
       // Mirror into the board staff directory (once per team) so the new member also shows
       // up in assignee pickers. Never creates duplicates.
       try {
-        const rec = getStaffByHandle(saved.handle) || {};
+        const rec = getStaffByHandle(saved.handle, myTeams.length ? myTeams : undefined) || {};
         const teams = Array.isArray(rec.teamIds) ? rec.teamIds : [];
         const email = String((rec.aliases && rec.aliases[0]) || (rec.handle + '@staff.align.internal')).toLowerCase();
         for (const teamId of teams) {
@@ -602,10 +617,12 @@ export function registerAlignRoutes(app) {
 
   app.delete(api + '/team/staff/:handle', requireStaff, requireStaffMember, (req, res) => {
     try {
-      if (isOwnerRecord(req.params.handle) && !canTouchMember(req, req.params.handle)) {
+      const myTeams = staffTeams(req);
+      const scope = myTeams.length ? myTeams : undefined;
+      if (isOwnerRecord(req.params.handle, scope) && !canTouchMember(req, req.params.handle)) {
         return bad(res, 'Only an owner can remove another owner’s login.', 403);
       }
-      deleteStaff(req.params.handle);
+      deleteStaff(req.params.handle, scope);
       authAudit({ action: 'staff_delete', handle: req.params.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
@@ -616,7 +633,8 @@ export function registerAlignRoutes(app) {
     try {
       const handle = sstr((req.body || {}).handle, 60).trim();
       if (!handle) return bad(res, 'Which member?');
-      const out = revealStaffPassword(handle);
+      const myTeams = staffTeams(req);
+      const out = revealStaffPassword(handle, myTeams.length ? myTeams : undefined);
       authAudit({ action: 'password_reveal', handle: out.handle, note: 'by ' + req.staff.handle });
       res.json({ ok: true, ...out });
     } catch (e) { bad(res, e.message); }
@@ -646,6 +664,8 @@ export function registerAlignRoutes(app) {
       if (password && password.length < 6) return bad(res, 'Password must be at least 6 characters.');
 
       let saved = null;
+      const myTeams = staffTeams(req);
+      const scope = myTeams.length ? myTeams : undefined;
       if (handle || email) {
         saved = adminUpdateStaff({
           handle: handle || name,
@@ -654,7 +674,8 @@ export function registerAlignRoutes(app) {
           whatsapp: b.whatsapp,
           address: b.address,
           remarks: b.remarks,
-          password: password || undefined
+          password: password || undefined,
+          teamIds: scope
         });
       }
 
@@ -665,7 +686,7 @@ export function registerAlignRoutes(app) {
             await alignAuth().updateUser(saved.uid, { password: String(password).toLowerCase(), displayName: name, disabled: saved.active === false });
           }
         } catch (e) { console.warn('[ALIGN] Firebase password sync skipped: ' + sstr(e.message, 120)); }
-        try { await ensureBoardUser(getStaffByHandle(saved.handle)); } catch (e) { /* non-fatal */ }
+        try { await ensureBoardUser(getStaffByHandle(saved.handle, scope)); } catch (e) { /* non-fatal */ }
       }
 
       res.json({ ok: true, staffLogin: !!saved, staff: saved });

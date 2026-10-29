@@ -7738,10 +7738,11 @@
                 const u = window.firebase && firebase.auth ? firebase.auth().currentUser : null;
                 if (!u) return { ok: false, error: 'Sign in with your email first.' };
                 const idToken = await u.getIdToken();
+                const teamId = (window.alignAccountInfo && window.alignAccountInfo.teamId) || '';
                 const r = await fetch(API + '/staff/signup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-firebase-token': idToken },
-                    body: JSON.stringify({ name, password })
+                    body: JSON.stringify({ name, password, teamId })
                 });
                 const d = await r.json().catch(() => ({}));
                 if (!r.ok || !d.ok) return { ok: false, error: d.error || ('HTTP ' + r.status) };
@@ -7768,8 +7769,10 @@
             });
             const d = await r.json().catch(() => ({}));
             if (!r.ok) {
-                // First visit of a newly signed-up account: create its team login, then continue.
-                if (r.status === 401 && firebaseUser()) {
+                // First visit of a newly signed-up account (no team login inside this account's
+                // own team): create one, then continue. A wrong password on an existing team
+                // login is reported as an error instead — no silent duplicate is created.
+                if (r.status === 401 && d.code === 'no-team-login' && firebaseUser()) {
                     const created = await createTeamLogin(name, password);
                     if (created.ok) {
                         const cd = created.data || {};

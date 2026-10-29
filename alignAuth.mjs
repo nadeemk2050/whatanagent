@@ -314,8 +314,8 @@ export function getOwnProfile(uid) {
 }
 
 // Owner-only: reveal the stored password so a forgotten one can be read back.
-export function revealStaffPassword(handle) {
-  const rec = getStaffByHandle(handle);
+export function revealStaffPassword(handle, teamIds) {
+  const rec = getStaffByHandle(handle, teamIds);
   if (!rec) throw new Error('Staff member not found.');
   if (!rec.hash) return { handle: rec.handle, name: rec.name, password: '', note: 'No password set yet.' };
   const pw = decryptPassword(rec.passwordEnc);
@@ -329,18 +329,18 @@ export function revealStaffPassword(handle) {
 
 // Fields an owner may set when creating/updating a staff record.
 const FIELD_MAX = { bio: 500, remarks: 500, address: 200 };
-export function setStaffProfileFields(handle, patch = {}) {
+export function setStaffProfileFields(handle, patch = {}, teamIds) {
   const h = normalizeHandle(handle);
   const staff = loadStaff();
-  if (!staff[h]) throw new Error('Staff member not found.');
-  const rec = staff[h];
+  const rec = getStaffByHandle(handle, teamIds);
+  if (!rec) throw new Error('Staff member not found.');
   for (const f of PROFILE_FIELDS) {
     if (patch[f] === undefined) continue;
     rec[f] = String(patch[f] == null ? '' : patch[f]).slice(0, FIELD_MAX[f] || 80).trim();
   }
   if (patch.remarks !== undefined) rec.remarks = String(patch.remarks == null ? '' : patch.remarks).slice(0, 500).trim();
   rec.updatedAt = Date.now();
-  staff[rec.handle] = rec;
+  staff[keyOf(staff, rec)] = rec;
   saveStaff(staff);
   return publicStaff(rec);
 }
@@ -348,8 +348,8 @@ export function setStaffProfileFields(handle, patch = {}) {
 // Owner-only edit of a sub user: name, email (kept as an alias), WhatsApp, address,
 // remarks and the team-login password. Returns null when the person has no login yet,
 // so the caller can still update the board record.
-export function adminUpdateStaff({ handle, name, email, whatsapp, address, remarks, password }) {
-  const target = getStaffByHandle(handle) || (email ? getStaffByHandle(email) : null);
+export function adminUpdateStaff({ handle, name, email, whatsapp, address, remarks, password, teamIds }) {
+  const target = getStaffByHandle(handle, teamIds) || (email ? getStaffByHandle(email, teamIds) : null);
   if (!target) return null;
   const saved = upsertStaff({
     handle: target.handle,
@@ -364,33 +364,50 @@ export function adminUpdateStaff({ handle, name, email, whatsapp, address, remar
   if (whatsapp !== undefined) fields.whatsapp = whatsapp;
   if (address !== undefined) fields.address = address;
   if (remarks !== undefined) fields.remarks = remarks;
-  const out = setStaffProfileFields(target.handle, fields);
+  const out = setStaffProfileFields(target.handle, fields, teamIds);
   authAudit({ action: 'owner_subuser_edit', handle: target.handle, note: 'email=' + (email || '') + ' pw=' + (password ? 'changed' : 'kept') });
   return out;
 }
 
-export function listStaff() {
-  return Object.values(loadStaff()).map(publicStaff).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+export function listStaff(teamIds) {
+  const all = Object.values(loadStaff());
+  const scoped = Array.isArray(teamIds) && teamIds.length
+    ? all.filter(r => Array.isArray(r.teamIds) && r.teamIds.some(t => teamIds.includes(t)))
+    : all;
+  return scoped.map(publicStaff).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
-export function getStaffByHandle(handle) {
+export function getStaffByHandle(handle, teamIds) {
   const h = normalizeHandle(handle);
   if (!h) return null;
   const staff = loadStaff();
-  if (staff[h]) return staff[h];
   const asked = String(handle || '').trim().toLowerCase();
-  // legacy email / alternate names resolve through aliases
-  for (const rec of Object.values(staff)) {
+
+  const matchesHandle = (rec) => {
+    if (rec.handle === h) return true;
     const list = Array.isArray(rec.aliases) ? rec.aliases : [];
-    if (list.some(a => String(a).trim().toLowerCase() === asked)) return rec;
+    if (list.some(a => String(a).trim().toLowerCase() === asked)) return true;
+    return normalizeHandle(rec.name) === h.replace(/\s+/g, ' ');
+  };
+
+  const matches = Object.values(staff).filter(matchesHandle);
+  if (!matches.length) return null;
+
+  // Team logins are scoped: two different accounts may each have a "nadeemk".
+  if (Array.isArray(teamIds) && teamIds.length) {
+    const scoped = matches.filter(r => Array.isArray(r.teamIds) && r.teamIds.some(t => teamIds.includes(t)));
+    if (scoped.length) return scoped[0];
+    const legacy = matches.filter(r => !Array.isArray(r.teamIds) || !r.teamIds.length);
+    return legacy[0] || null;
   }
-  // People type their display name ("Nadeem Khan") rather than the short login name
-  // ("nadeem"), so accept that too — ignoring capitalisation and spacing.
-  const squashed = h.replace(/\s+/g, ' ');
-  for (const rec of Object.values(staff)) {
-    if (normalizeHandle(rec.name) === squashed) return rec;
-  }
-  return null;
+  return matches[0];
+}
+
+// The JSON map is keyed by "<teamId>::<handle>" for team logins (and by the bare
+// handle for records created before teams were scoped), so always write back by key.
+function keyOf(staff, rec) {
+  for (const [k, r] of Object.entries(staff)) if (r === rec) return k;
+  return rec.handle;
 }
 
 // Import staff that already exist elsewhere (e.g. the old Firestore staff list),
@@ -420,7 +437,7 @@ export function importStaff({ handle, name, uid, role = 'member', teamIds = [], 
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
-  staff[rec.handle] = rec;
+  staff[keyOf(staff, rec)] = rec;
   saveStaff(staff);
   authAudit({ action: 'staff_imported', handle: h, note: 'uid=' + rec.uid });
   return publicStaff(rec);
@@ -437,7 +454,20 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
   if (!String(name || '').trim()) throw new Error('A display name is required.');
 
   const staff = loadStaff();
-  const existing = staff[h] || null;
+  const teams = Array.isArray(teamIds) ? teamIds.map(t => String(t).slice(0, 80)).slice(0, 50) : [];
+  const matchesHandle = (rec) => rec.handle === h || normalizeHandle(rec.name) === h.replace(/\s+/g, ' ');
+
+  // A record is reused only when it belongs to the same team; a name used by another
+  // account gets its own record instead of taking that account's login over.
+  let entry = null;
+  for (const [k, r] of Object.entries(staff)) {
+    if (!matchesHandle(r)) continue;
+    const rTeams = Array.isArray(r.teamIds) ? r.teamIds : [];
+    if (teams.length && rTeams.some(t => teams.includes(t))) { entry = [k, r]; break; }
+    if (!entry && (!teams.length || !rTeams.length)) entry = [k, r];
+  }
+  const existing = entry ? entry[1] : null;
+  const key = entry ? entry[0] : (teams.length ? teams[0] + '::' + h : h);
 
   if (!existing && !password) throw new Error('A password is required for a new staff member.');
   if (password && String(password).length < 6) throw new Error('Password must be at least 6 characters.');
@@ -450,16 +480,18 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
 
   rec.name = String(name).trim().slice(0, 60);
   rec.role = role === 'owner' ? 'owner' : (role === 'admin' ? 'admin' : 'member');
-  rec.teamIds = Array.isArray(teamIds) ? teamIds.map(t => String(t).slice(0, 80)).slice(0, 50) : (rec.teamIds || []);
+  rec.teamIds = teams.length ? teams : (rec.teamIds || []);
   rec.active = active !== false;
   rec.updatedAt = Date.now();
   if (Array.isArray(aliases)) {
     rec.aliases = Array.from(new Set([...(rec.aliases || []), ...aliases.map(a => String(a).trim().toLowerCase()).filter(Boolean)])).slice(0, 10);
   }
-  // An alias must never point at two people.
-  for (const [otherHandle, other] of Object.entries(staff)) {
-    if (otherHandle === h || !Array.isArray(other.aliases) || !rec.aliases) continue;
-    other.aliases = other.aliases.filter(a => !rec.aliases.includes(a));
+  // An alias must never point at two people inside the same team.
+  for (const [otherKey, other] of Object.entries(staff)) {
+    if (otherKey === key || !Array.isArray(other.aliases) || !rec.aliases) continue;
+    const otherTeams = Array.isArray(other.teamIds) ? other.teamIds : [];
+    const sameScope = teams.length ? otherTeams.some(t => teams.includes(t)) : !otherTeams.length;
+    if (sameScope) other.aliases = other.aliases.filter(a => !rec.aliases.includes(a));
   }
 
   if (password) {
@@ -471,30 +503,37 @@ export function upsertStaff({ handle, name, password, role = 'member', teamIds =
     rec.passwordChangedAt = Date.now();
   }
 
-  staff[rec.handle] = rec;
+  staff[key] = rec;
   saveStaff(staff);
   authAudit({ action: existing ? 'staff_updated' : 'staff_created', handle: h, note: existing ? '' : 'uid=' + rec.uid });
   return publicStaff(rec);
 }
 
-export function deleteStaff(handle) {
+export function deleteStaff(handle, teamIds) {
   const h = normalizeHandle(handle);
   const staff = loadStaff();
-  if (!staff[h]) throw new Error('Staff member not found.');
-  if (staff[h].role === 'owner' && Object.values(staff).filter(s => s.role === 'owner').length <= 1) {
+  const rec = getStaffByHandle(handle, teamIds);
+  if (!rec) throw new Error('Staff member not found.');
+  const key = keyOf(staff, rec);
+  const sameScopeOwners = Object.entries(staff).filter(([k, s]) => {
+    if (k === key || s.role !== 'owner') return false;
+    const sTeams = Array.isArray(s.teamIds) ? s.teamIds : [];
+    return Array.isArray(teamIds) && teamIds.length ? sTeams.some(t => teamIds.includes(t)) : !sTeams.length;
+  });
+  if (rec.role === 'owner' && !sameScopeOwners.length) {
     throw new Error('Cannot delete the only owner account.');
   }
-  delete staff[h];
+  delete staff[key];
   saveStaff(staff);
   authAudit({ action: 'staff_deleted', handle: h });
   return true;
 }
 
 // --------------------------------------------------------------------------- login
-export function loginStaff(handle, password) {
+export function loginStaff(handle, password, teamIds) {
   const h = normalizeHandle(handle);
   const staff = loadStaff();
-  const rec = getStaffByHandle(handle);
+  const rec = getStaffByHandle(handle, teamIds);
 
   if (!rec) {
     authAudit({ action: 'login_failed', handle: h, ok: false, note: 'unknown name' });
@@ -525,12 +564,12 @@ export function loginStaff(handle, password) {
       rec.lockedUntil = Date.now() + LOCK_MINUTES * 60000;
       rec.failedAttempts = 0;
       authAudit({ action: 'login_locked', handle: h, ok: false, note: LOCK_MINUTES + 'min' });
-      staff[rec.handle] = rec;
+      staff[keyOf(staff, rec)] = rec;
       saveStaff(staff);
       throw new Error('Too many wrong attempts. Try again in ' + LOCK_MINUTES + ' minute(s).');
     }
     authAudit({ action: 'login_failed', handle: h, ok: false, note: 'attempt ' + rec.failedAttempts });
-    staff[rec.handle] = rec;
+    staff[keyOf(staff, rec)] = rec;
     saveStaff(staff);
     throw new Error('Name or password is incorrect.');
   }
@@ -538,7 +577,7 @@ export function loginStaff(handle, password) {
   rec.failedAttempts = 0;
   rec.lockedUntil = 0;
   rec.lastLoginAt = Date.now();
-  staff[rec.handle] = rec;
+  staff[keyOf(staff, rec)] = rec;
   saveStaff(staff);
 
   authAudit({ action: 'login_ok', handle: h });
