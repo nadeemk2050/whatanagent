@@ -1175,6 +1175,18 @@
             <div id="completed-tasks-list" class="p-4 overflow-y-auto space-y-2"></div>
         </div>
     </div>
+    <div id="proj-done-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="z-index:9995;">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <div class="min-w-0">
+                    <h3 id="proj-done-title" class="text-lg font-bold text-gray-800 truncate">Completed tasks</h3>
+                    <p id="proj-done-sub" class="task-meta">—</p>
+                </div>
+                <button id="proj-done-close" class="text-gray-400 hover:text-gray-600 text-3xl" title="Close">&times;</button>
+            </div>
+            <div id="proj-done-list" class="p-4 overflow-y-auto space-y-2"></div>
+        </div>
+    </div>
     <div id="edit-task-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
             <div class="p-6 border-b flex justify-between items-center"><h3 class="text-xl font-bold text-gray-800">Edit Task</h3><button id="edit-task-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
@@ -4157,6 +4169,7 @@
                                     <div class="task-meta">${waEsc(members || '—')}${due ? ' · ' + due : ''}</div>
                                 </button>
                                 <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap" title="completed / total tasks"><span data-proj-done="${p.id}">0</span>/<span data-proj-total="${p.id}">0</span></span>
+                                <button class="project-done-btn" data-project-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
                                 <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #d5cfc2;background:#f3ecdd;color:#6b5f45;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
                                 ${canManage ? `<button class="project-delete" data-project-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;">Del</button>` : ''}
                                 <button class="project-toggle text-gray-400 text-xs px-1" data-project-id="${p.id}" title="Open / close">${open ? '▲' : '▼'}</button>
@@ -4185,6 +4198,63 @@
                 // The preferred person, due date and stamps are all inside each row's ⓘ badge.
                 listEl.innerHTML = box.innerHTML;
             }
+
+            // ---------- per-project completed list ----------
+            // One small ✓ button on every project card opens ONLY that project's finished tasks.
+            // kind: 'project' (team) or 'personal' (my private projects).
+            function openProjectDoneModal(kind, projectId, preloadedTasks) {
+                const modal = document.getElementById('proj-done-modal');
+                const list = document.getElementById('proj-done-list');
+                const title = document.getElementById('proj-done-title');
+                const sub = document.getElementById('proj-done-sub');
+                if (!modal || !list) return;
+
+                const isPersonal = kind === 'personal';
+                const project = (isPersonal ? personalProjectsCache : projectsCache).find(p => p.id === projectId);
+                const source = Array.isArray(preloadedTasks)
+                    ? preloadedTasks
+                    : (isPersonal ? (ppTasksCache[projectId] || []) : (projectTasksCache[projectId] || []));
+                const tasks = source.filter(t => t.status === 'Done');
+
+                // Newest completion first; fall back to creation order when there is no stamp.
+                tasks.sort((a, b) => tsMsLocal(b.completedAt || b.lastUpdatedAt || b.createdAt) - tsMsLocal(a.completedAt || a.lastUpdatedAt || a.createdAt));
+
+                if (title) title.textContent = project ? project.name : 'Completed tasks';
+                if (sub) sub.textContent = (isPersonal ? 'Private project' : 'Project') + ' · ' + tasks.length + ' completed';
+
+                if (!tasks.length) {
+                    list.innerHTML = '<p class="text-sm text-gray-500 py-3">No completed tasks in this project yet.</p>';
+                } else {
+                    list.innerHTML = tasks.map(t => {
+                        const who = t.completedByName || t.completedBy || (t.completedByEmail ? personNameByEmail(t.completedByEmail) : '') || '';
+                        const when = t.completedAt ? formatTaskTimestamp(t.completedAt) : (t.lastUpdatedAt ? formatTaskTimestamp(t.lastUpdatedAt) : '');
+                        const bits = [];
+                        if (who) bits.push('by ' + waEsc(String(who).split('@')[0]));
+                        if (when) bits.push(when);
+                        return `
+                            <div class="flex items-start gap-2 rounded-lg border" style="border-color:#e6e0d2;background:#fffdf8;padding:9px 11px;">
+                                <span class="task-status-dot done" style="margin-top:5px;"></span>
+                                <div class="flex-grow min-w-0">
+                                    <p class="text-sm break-words" style="color:#6b7280;text-decoration:line-through;">${waEsc(t.description || '')}</p>
+                                    <div class="task-meta">${bits.length ? waEsc(bits.join(' · ')) : 'completed'}</div>
+                                </div>
+                            </div>`;
+                    }).join('');
+                }
+                modal.classList.remove('hidden');
+            }
+            function closeProjectDoneModal() {
+                const m = document.getElementById('proj-done-modal');
+                if (m) m.classList.add('hidden');
+            }
+            // Exposed where the function actually lives (this closure), so deep links can call it.
+            window.alignProjectDone = openProjectDoneModal;
+            (function () {
+                const close = document.getElementById('proj-done-close');
+                if (close) close.addEventListener('click', closeProjectDoneModal);
+                const modal = document.getElementById('proj-done-modal');
+                if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeProjectDoneModal(); });
+            })();
 
             function watchProjectTasks(project) {
                 if (projectTaskUnsubs.has(project.id)) return;
@@ -4278,6 +4348,7 @@
                                     <div class="task-meta">Private${due ? ' · ' + due : ''}</div>
                                 </button>
                                 <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap"><span data-pp-done="${p.id}">0</span>/<span data-pp-total="${p.id}">0</span></span>
+                                <button class="pp-done-btn" data-pp-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
                                 <button class="pp-add-task" data-pp-id="${p.id}" title="Add a task" style="width:26px;height:26px;border-radius:8px;border:1px solid #ddd6fe;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
                                 <button class="pp-delete" data-pp-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;">Del</button>
                                 <button class="pp-toggle text-gray-400 text-xs px-1" data-pp-id="${p.id}">${open ? '▲' : '▼'}</button>
@@ -5753,6 +5824,11 @@
 
             // project card interactions (delegated)
             document.getElementById('projects-container').addEventListener('click', async e => {
+                const doneBtn = e.target.closest('.project-done-btn');
+                if (doneBtn) {
+                    openProjectDoneModal('project', doneBtn.getAttribute('data-project-id'));
+                    return;
+                }
                 const toggleBtn = e.target.closest('.project-toggle');
                 if (toggleBtn) {
                     const id = toggleBtn.getAttribute('data-project-id');
@@ -5828,6 +5904,11 @@
             });
 
             document.getElementById('personal-projects-container').addEventListener('click', async e => {
+                const ppDoneBtn = e.target.closest('.pp-done-btn');
+                if (ppDoneBtn) {
+                    openProjectDoneModal('personal', ppDoneBtn.getAttribute('data-pp-id'));
+                    return;
+                }
                 const toggleBtn = e.target.closest('.pp-toggle');
                 if (toggleBtn) {
                     const id = toggleBtn.getAttribute('data-pp-id');
