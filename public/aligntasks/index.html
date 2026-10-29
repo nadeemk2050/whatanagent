@@ -848,6 +848,7 @@
                     </div>
                     <div>
                         <div class="bg-white rounded-xl shadow-sm p-4">
+                            <div class="flex justify-end mb-2"><button type="button" class="sched-scope-btn" data-scope-type="tasks_for_all" data-scope-name="Tasks for All" title="Ongoing &amp; past scheduled reminders of Tasks for All">🔔 Tasks for All reminders</button></div>
                             <div id="tasks-for-all-todo-list"></div>
                             <button id="tasks-for-all-toggle-completed" class="text-sm text-blue-500 mt-2 hidden">Show 0 Completed</button>
                             <div id="tasks-for-all-done-list" class="hidden"></div>
@@ -963,6 +964,7 @@
                     </div>
 
                     <!-- Personal Tasks List -->
+                    <div class="flex justify-end"><button type="button" class="sched-scope-btn" data-scope-type="personal_tasks" data-scope-name="My Personal Tasks" title="Ongoing &amp; past scheduled reminders of my personal tasks">🔔 My Personal Tasks reminders</button></div>
                     <div id="personal-tasks-list" class="space-y-3">
                         <div class="bg-white p-8 rounded-2xl text-center text-gray-400 border border-gray-200">
                             Loading your personal tasks...
@@ -1177,10 +1179,19 @@
             <button id="wa-remind-send" class="bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600">Send on WhatsApp</button>
         </div>
     </div>
+    <style>
+        #scheduled-reminders-modal { padding: 0 !important; align-items: stretch !important; z-index: 70 !important; }
+        #scheduled-reminders-modal > div {
+            max-width: none !important; width: 100% !important; height: 100% !important; max-height: none !important;
+            border-radius: 0 !important; border: 0 !important;
+        }
+        #scheduled-reminders-list { flex: 1 1 auto; min-height: 0; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+        .sched-scope-btn { border:1px solid #d5cfc2; background:#fffdf8; color:#6b5f45; border-radius:8px; height:26px; padding:0 8px; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap; }
+    </style>
     <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center">
-                <h3 class="text-xl font-bold text-gray-800">Scheduled Reminders</h3>
+                <h3 id="scheduled-reminders-title" class="text-xl font-bold text-gray-800">Scheduled Reminders</h3>
                 <div class="flex items-center gap-3">
                     <button id="scheduled-refresh" class="text-sm text-blue-600 font-semibold">↻ Refresh</button>
                     <button id="scheduled-reminders-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
@@ -1227,6 +1238,18 @@
             </div>
         </div>
     </div>
+    <style>
+        #task-action-menu, #project-action-menu { z-index: 100000 !important; }
+        #password-confirm-modal { z-index: 100001 !important; }
+        #task-zoom-modal { z-index: 99990 !important; }
+        #proj-done-list, #completed-tasks-list { flex: 1 1 auto; min-height: 0; }
+        .done-row { touch-action: manipulation; }
+        #completed-tasks-modal, #proj-done-modal { padding: 0 !important; align-items: stretch !important; }
+        #completed-tasks-modal > div, #proj-done-modal > div {
+            max-width: none !important; width: 100% !important; height: 100% !important; max-height: none !important;
+            border-radius: 0 !important; border: 0 !important;
+        }
+    </style>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center"><h3 id="completed-tasks-modal-title" class="text-xl font-bold text-gray-800">Completed Tasks</h3><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
@@ -2358,7 +2381,9 @@
             async function openWaRemindPicker(type, taskId, projectId) {
                 const taskRef = (type === 'personal_tasks')
                     ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
-                    : (type === 'project' && projectId)
+                    : (type === 'personal_project' && projectId)
+                        ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_projects/${projectId}/tasks`).doc(taskId)
+                        : (type === 'project' && projectId)
                         ? db.collection(`/artifacts/${appId}/public/data/projects/${projectId}/tasks`).doc(taskId)
                         : db.collection(`/artifacts/${appId}/public/data/${type}`).doc(taskId);
                 const snap = await taskRef.get();
@@ -2720,6 +2745,8 @@
                             message: baseMessage,
                             taskId: waRemindCtx.taskId || null,
                             taskTitle: String(t.description || '').substring(0, 80) || baseMessage.substring(0, 60),
+                            scopeType: waRemindCtx.type || (waScheduleEditId ? undefined : null),
+                            scopeProjectId: waRemindCtx.type ? (waRemindCtx.projectId || null) : (waScheduleEditId ? undefined : null),
                             targets: targets,
                             startAt: sched.startAt,
                             repeatMode: sched.repeatMode,
@@ -2732,6 +2759,7 @@
                             createdBy: (currentUser && currentUser.email) || '',
                             updatedAt: Date.now()
                         };
+                        Object.keys(docData).forEach(k => { if (docData[k] === undefined) delete docData[k]; });
                         if (waScheduleEditId) {
                             await db.collection('alignWaSchedules').doc(waScheduleEditId).set(Object.assign({}, docData, { nextAt: sched.startAt }), { merge: true });
                             waScheduleEditId = null;
@@ -3074,7 +3102,11 @@
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
             }
 
-            function openScheduledReminders() {
+            let scheduledScope = null;
+            function openScheduledReminders(scope) {
+                scheduledScope = (scope && scope.type) ? scope : null;
+                const h = document.getElementById('scheduled-reminders-title');
+                if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
                 document.getElementById('scheduled-reminders-modal').classList.remove('hidden');
                 loadScheduledReminders();
                 if (scheduledRefreshTimer) clearInterval(scheduledRefreshTimer);
@@ -3091,13 +3123,33 @@
                     let snap;
                     try { snap = await db.collection('alignWaSchedules').orderBy('createdAt', 'desc').limit(60).get(); }
                     catch (e1) { snap = await db.collection('alignWaSchedules').limit(60).get(); }
-                    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    if (!items.length) { list.innerHTML = '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → Remind → tick "Schedule for later".</p>'; return; }
+                    let items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    if (scheduledScope) items = items.filter(s => waScheduleInScope(s, scheduledScope));
+                    if (!items.length) { list.innerHTML = scheduledScope ? '<p class="text-sm text-gray-500 p-2">No ongoing or past scheduled reminders here yet. Open a task → Reminder → tick "Schedule for later".</p>' : '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → Remind → tick "Schedule for later".</p>'; return; }
                     list.innerHTML = items.map(s => waScheduleCardHTML(s)).join('');
                 } catch (e) {
                     list.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load scheduled reminders: ' + waEsc(e.message || e) + '</p>';
                 }
             }
+            function waScheduleInScope(s, scope) {
+                const st = s.scopeType || '';
+                if (st) {
+                    if (scope.type === 'tasks_for_all') return st === 'tasks_for_all' || st === 'tasks';
+                    if (scope.type === 'personal_tasks') return st === 'personal_tasks';
+                    return st === scope.type && String(s.scopeProjectId || '') === String(scope.projectId || '');
+                }
+                // Older reminders have no scope stamp: match projects through their task ids.
+                if (!s.taskId) return false;
+                if (scope.type === 'project') return (projectTasksCache[scope.projectId] || []).some(t => t.id === s.taskId);
+                if (scope.type === 'personal_project') return (ppTasksCache[scope.projectId] || []).some(t => t.id === s.taskId);
+                return false;
+            }
+            document.body.addEventListener('click', e => {
+                const b = e.target.closest('.sched-scope-btn');
+                if (!b) return;
+                e.stopPropagation();
+                openScheduledReminders({ type: b.getAttribute('data-scope-type'), projectId: b.getAttribute('data-scope-id') || '', name: b.getAttribute('data-scope-name') || '' });
+            });
             function waScheduleCardHTML(s) {
                 const st = String(s.status || 'pending');
                 const targets = Array.isArray(s.targets) ? s.targets : [];
@@ -3330,7 +3382,7 @@
                     '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(label) + '</p>' +
                     '<button type="button" class="task-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Edit task</button>' +
                     (isDone
-                        ? '<button type="button" class="task-menu-complete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-amber-50 text-amber-700">Move back to pending</button>'
+                        ? '<button type="button" class="task-menu-complete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-amber-50 text-amber-700">Undo complete</button>'
                         : '<button type="button" class="task-menu-complete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-green-50 text-green-700">Task completed</button>') +
                     '<button type="button" class="task-menu-delete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600">Delete task</button>' +
                     '<button type="button" class="task-menu-cancel w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 text-gray-500">Cancel</button>';
@@ -3399,7 +3451,7 @@
                 const pproj = el.closest('.pp-open-editor');
                 if (pproj) return { kind: 'pproject', el: pproj };
                 if (el.closest('button, input, a, label, select, textarea, .task-info-wrap')) return null;
-                const row = el.closest('.task-list-item, .personal-task-card');
+                const row = el.closest('.task-list-item, .personal-task-card, .done-row');
                 if (row && row.getAttribute('data-task-id')) return { kind: 'task', el: row };
                 return null;
             }
@@ -3766,7 +3818,7 @@
 
                 // Complete / reopen — ask for the name of the person who did it, then move it.
                 if (wantComplete) {
-                    const okComplete = await promptForAdminPassword(ctx.isDone ? 'Reopen this task — password' : 'Complete this task — password');
+                    const okComplete = await promptForAdminPassword(ctx.isDone ? 'Reopen this task — password' : 'Complete this task — password', ctx.isDone ? 'Reopen' : 'Complete');
                     if (!okComplete) return;
                     let who = '';
                     if (!ctx.isDone) {
@@ -3970,9 +4022,10 @@
 
             // --- Password Confirmation Modal Logic ---
             let passwordResolve = null;
-            function promptForAdminPassword(title) {
+            function promptForAdminPassword(title, confirmLabel) {
                 return new Promise(resolve => {
                     passwordResolve = resolve;
+                    document.getElementById('password-confirm-modal-confirm').textContent = confirmLabel || 'Delete';
                     document.getElementById('password-confirm-modal-title').textContent = title;
                     document.getElementById('password-confirm-modal-input').value = '';
                     document.getElementById('password-confirm-modal-error').classList.add('hidden');
@@ -4511,8 +4564,9 @@
                                 </button>
                                 <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap" title="completed / total tasks"><span data-proj-done="${p.id}">0</span>/<span data-proj-total="${p.id}">0</span></span>
                                 <button class="project-done-btn" data-project-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
+                                <button class="sched-scope-btn" data-scope-type="project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #d5cfc2;background:#f3ecdd;color:#6b5f45;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
-                                ${canManage ? `<button class="project-delete" data-project-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;">Del</button>` : ''}
+                                ${''}
                                 <button class="project-toggle text-gray-400 text-xs px-1" data-project-id="${p.id}" title="Open / close">${open ? '▲' : '▼'}</button>
                             </div>
                             <div id="project-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
@@ -4572,11 +4626,12 @@
                         const bits = [];
                         if (who) bits.push('by ' + waEsc(String(who).split('@')[0]));
                         if (when) bits.push(when);
+                        if (window.taskRowCacheRef) window.taskRowCacheRef[t.id] = t;
                         return `
-                            <div class="flex items-start gap-2 rounded-lg border" style="border-color:#e6e0d2;background:#fffdf8;padding:9px 11px;">
+                            <div class="done-row flex items-start gap-2 rounded-lg border" data-task-type="${isPersonal ? 'personal_project' : 'project'}" data-task-id="${t.id}" data-project-id="${projectId}" style="border-color:#e6e0d2;background:#fffdf8;padding:9px 11px;user-select:none;-webkit-user-select:none;">
                                 <span class="task-status-dot done" style="margin-top:5px;"></span>
                                 <div class="flex-grow min-w-0">
-                                    <p class="text-sm break-words" style="color:#6b7280;text-decoration:line-through;">${waEsc(t.description || '')}</p>
+                                    <p class="text-sm break-words line-through" style="color:#6b7280;text-decoration:line-through;">${waEsc(t.description || '')}</p>
                                     <div class="task-meta">${bits.length ? waEsc(bits.join(' · ')) : 'completed'}</div>
                                 </div>
                             </div>`;
@@ -4690,8 +4745,9 @@
                                 </button>
                                 <span class="text-[11px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 whitespace-nowrap"><span data-pp-done="${p.id}">0</span>/<span data-pp-total="${p.id}">0</span></span>
                                 <button class="pp-done-btn" data-pp-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
+                                <button class="sched-scope-btn" data-scope-type="personal_project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="pp-add-task" data-pp-id="${p.id}" title="Add a task" style="width:26px;height:26px;border-radius:8px;border:1px solid #ddd6fe;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
-                                <button class="pp-delete" data-pp-id="${p.id}" title="Delete project" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;width:26px;height:26px;font-size:12px;cursor:pointer;">Del</button>
+                                ${''}
                                 <button class="pp-toggle text-gray-400 text-xs px-1" data-pp-id="${p.id}">${open ? '▲' : '▼'}</button>
                             </div>
                             <div id="pp-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
@@ -4736,6 +4792,7 @@
                     <div class="task-swipe">
                        <div class="task-swipe-actions">
                            <button type="button" class="pp-task-complete text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-pp-id="${projectId}" data-task-id="${task.id}" title="${done ? 'Move back to pending' : 'Mark this task done'}">${done ? 'Reopen' : 'Complete'}</button>
+                           <button type="button" class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}" title="Send a WhatsApp reminder">Reminder</button>
                            <button type="button" class="pp-task-del-action text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-red-600 font-semibold" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete this task">Delete</button>
                        </div>
                     <div class="task-list-item" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}">
