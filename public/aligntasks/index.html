@@ -650,6 +650,21 @@
             border-color: #a8842f; color: #2b2118;
         }
         .ats-btn-danger { background: #fdf2f1; border-color: #f0c9c5; color: #a3231d; }
+
+        /* Full-screen reminder page: the shared "modal card" rule above (overflow:hidden + rounded border)
+           froze its scroller, so the page could not scroll. Restore a real scroll area. */
+        #wa-remind-modal { overscroll-behavior: contain; height: 100vh; height: 100dvh; }
+        #wa-remind-modal > div { border-radius: 0 !important; box-shadow: none !important; border-width: 0 !important; }
+        #wa-remind-modal > div:first-child { border-bottom: 1px solid var(--ats-line) !important; }
+        #wa-remind-modal > div:last-child { border-top: 1px solid var(--ats-line) !important; }
+        #wa-remind-modal > div.overflow-y-auto {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            min-height: 0;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-gutter: stable;
+        }
     </style>
 
 </head>
@@ -1014,6 +1029,51 @@
         </div>
         <div class="flex-grow overflow-y-auto p-3 sm:p-4 space-y-3 bg-gray-50">
                 <div id="wa-remind-bridge" class="hidden text-xs rounded-lg px-3 py-2 border"></div>
+                <div class="border border-gray-200 rounded-lg p-3 space-y-1 bg-white">
+                    <label class="text-sm font-medium text-gray-700">Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
+                    <textarea id="wa-remind-message" rows="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="wa-remind-schedule-toggle" class="h-4 w-4" />
+                        Schedule for later (pick date, time &amp; repeat)
+                    </label>
+                    <div id="wa-remind-schedule-fields" class="hidden space-y-2 pt-1">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">Date</label><input type="date" id="wa-remind-date" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                            <div><label class="text-xs text-gray-500">Time</label><input type="time" id="wa-remind-time" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs text-gray-500">Repeat</label>
+                                <select id="wa-remind-repeat" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                    <option value="once">No repeat (once only)</option>
+                                    <option value="count">Repeat N times</option>
+                                    <option value="until">Repeat until a date</option>
+                                </select>
+                            </div>
+                            <div><label class="text-xs text-gray-500">Every</label>
+                                <select id="wa-remind-interval" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                                    <option value="900000">15 minutes</option>
+                                    <option value="1800000">30 minutes</option>
+                                    <option value="3600000" selected>1 hour</option>
+                                    <option value="7200000">2 hours</option>
+                                    <option value="21600000">6 hours</option>
+                                    <option value="43200000">12 hours</option>
+                                    <option value="86400000">1 day</option>
+                                    <option value="172800000">2 days</option>
+                                    <option value="604800000">1 week</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="wa-remind-count-row" class="hidden"><label class="text-xs text-gray-500">How many times in total</label><input type="number" id="wa-remind-count" min="2" max="200" value="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div id="wa-remind-until-row" class="hidden"><label class="text-xs text-gray-500">Repeat until (date &amp; time)</label><input type="datetime-local" id="wa-remind-until" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" id="wa-remind-ai-rewrite" class="h-4 w-4" />
+                            AI: change the wording every time (season / occasion aware)
+                        </label>
+                        <p class="text-xs text-gray-400">Times use this device's clock. The server sends automatically — WhatsApp app does not need to stay open. Track, edit or remove it in Menu → Scheduled Reminders.</p>
+                    </div>
+                </div>
                 <div>
                     <label class="text-sm font-medium text-gray-700">Select team members to remind <span class="text-xs text-gray-400">(one or more)</span></label>
                     <div id="wa-remind-members" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1 max-h-[34vh] overflow-y-auto border border-gray-200 rounded-lg p-2 bg-white mt-1"></div>
@@ -1067,51 +1127,6 @@
                         </div>
                     </div>
                     <p class="text-xs text-gray-500">Pick team members, groups, and/or specify any individual phone number anywhere in the world.</p>
-                </div>
-                <div class="border border-gray-200 rounded-lg p-3 space-y-1 bg-white">
-                    <label class="text-sm font-medium text-gray-700">Reminder wording <span class="text-xs text-gray-400">(edit freely — this exact text goes on WhatsApp)</span></label>
-                    <textarea id="wa-remind-message" rows="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></textarea>
-                </div>
-                <div class="border border-gray-200 rounded-lg p-3 space-y-2 bg-white">
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-                        <input type="checkbox" id="wa-remind-schedule-toggle" class="h-4 w-4" />
-                        Schedule for later (pick date, time &amp; repeat)
-                    </label>
-                    <div id="wa-remind-schedule-fields" class="hidden space-y-2 pt-1">
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><label class="text-xs text-gray-500">Date</label><input type="date" id="wa-remind-date" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
-                            <div><label class="text-xs text-gray-500">Time</label><input type="time" id="wa-remind-time" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><label class="text-xs text-gray-500">Repeat</label>
-                                <select id="wa-remind-repeat" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
-                                    <option value="once">No repeat (once only)</option>
-                                    <option value="count">Repeat N times</option>
-                                    <option value="until">Repeat until a date</option>
-                                </select>
-                            </div>
-                            <div><label class="text-xs text-gray-500">Every</label>
-                                <select id="wa-remind-interval" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
-                                    <option value="900000">15 minutes</option>
-                                    <option value="1800000">30 minutes</option>
-                                    <option value="3600000" selected>1 hour</option>
-                                    <option value="7200000">2 hours</option>
-                                    <option value="21600000">6 hours</option>
-                                    <option value="43200000">12 hours</option>
-                                    <option value="86400000">1 day</option>
-                                    <option value="172800000">2 days</option>
-                                    <option value="604800000">1 week</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div id="wa-remind-count-row" class="hidden"><label class="text-xs text-gray-500">How many times in total</label><input type="number" id="wa-remind-count" min="2" max="200" value="3" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
-                        <div id="wa-remind-until-row" class="hidden"><label class="text-xs text-gray-500">Repeat until (date &amp; time)</label><input type="datetime-local" id="wa-remind-until" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm"></div>
-                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                            <input type="checkbox" id="wa-remind-ai-rewrite" class="h-4 w-4" />
-                            AI: change the wording every time (season / occasion aware)
-                        </label>
-                        <p class="text-xs text-gray-400">Times use this device's clock. The server sends automatically — WhatsApp app does not need to stay open. Track, edit or remove it in Menu → Scheduled Reminders.</p>
-                    </div>
                 </div>
         </div>
         <div class="p-3 border-t bg-white flex justify-end gap-2 shrink-0">
@@ -3192,6 +3207,8 @@
                 // Project names are buttons, so check them before the generic button exclusion.
                 const proj = el.closest('.project-open-editor');
                 if (proj) return { kind: 'project', el: proj };
+                const pproj = el.closest('.pp-open-editor');
+                if (pproj) return { kind: 'pproject', el: pproj };
                 if (el.closest('button, input, a, label, select, textarea, .task-info-wrap')) return null;
                 const row = el.closest('.task-list-item, .personal-task-card');
                 if (row && row.getAttribute('data-task-id')) return { kind: 'task', el: row };
@@ -3202,6 +3219,8 @@
                 lastLongPressAt = Date.now();   // the click that ends the press must not close the menu
                 if (target.kind === 'task') {
                     openTaskActionMenu({ clientX: x, clientY: y }, target.el);
+                } else if (target.kind === 'pproject') {
+                    openPersonalProjectActionMenu(x, y, target.el.getAttribute('data-pp-id'));
                 } else {
                     openProjectActionMenu(x, y, target.el.getAttribute('data-project-id'));
                 }
@@ -3215,6 +3234,11 @@
                         return;
                     }
                     openTaskZoom(target.el);
+                } else if (target.kind === 'pproject') {
+                    // Short press on a private project name opens its editor, same as a team project.
+                    const id = target.el.getAttribute('data-pp-id');
+                    const p = personalProjectsCache.find(x => x.id === id);
+                    if (p) openEditPersonalProjectModal(p);
                 } else {
                     openEditProjectModal(target.el.getAttribute('data-project-id'));
                 }
@@ -3366,33 +3390,161 @@
                 if (m) m.classList.add('hidden');
                 projectMenuCtx = null;
             }
-            function openProjectActionMenu(x, y, projectId) {
+            function openProjectActionMenu(x, y, projectId, preloadedProject) {
                 const menu = document.getElementById('project-action-menu');
-                const project = projectsCache.find(p => p.id === projectId);
+                const project = preloadedProject || projectsCache.find(p => p.id === projectId);
                 if (!menu || !project) return;
                 projectMenuCtx = project;
+                projectMenuKind = 'team';
                 menu.innerHTML =
                     '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(project.name) + '</p>' +
-                    '<button type="button" class="proj-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Edit project</button>' +
+                    '<button type="button" class="proj-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Edit project name</button>' +
+                    '<button type="button" class="proj-menu-share-wa w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-green-50 text-green-700">Share all tasks → WhatsApp</button>' +
+                    '<button type="button" class="proj-menu-share-copy w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Copy all tasks</button>' +
+                    (navigator.share ? '<button type="button" class="proj-menu-share-native w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Share to another app…</button>' : '') +
                     '<button type="button" class="proj-menu-delete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600">Delete project</button>' +
                     '<button type="button" class="proj-menu-cancel w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 text-gray-500">Cancel</button>';
                 menu.classList.remove('hidden');
-                const w = menu.offsetWidth || 192;
-                const h = menu.offsetHeight || 130;
+                const w = menu.offsetWidth || 200;
+                const h = menu.offsetHeight || 170;
                 menu.style.left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - w - 8)) + 'px';
                 menu.style.top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - h - 8)) + 'px';
             }
+
+            // Same options for a private project (long press on its name).
+            function openPersonalProjectActionMenu(x, y, projectId, preloadedProject) {
+                const menu = document.getElementById('project-action-menu');
+                const project = preloadedProject || personalProjectsCache.find(p => p.id === projectId);
+                if (!menu || !project) return;
+                projectMenuCtx = project;
+                projectMenuKind = 'personal';
+                menu.innerHTML =
+                    '<p class="px-3 pt-2 pb-1 text-[10px] text-gray-400 truncate">' + waEsc(project.name) + '</p>' +
+                    '<button type="button" class="proj-menu-edit w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Edit project name</button>' +
+                    '<button type="button" class="proj-menu-share-wa w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-green-50 text-green-700">Share all tasks → WhatsApp</button>' +
+                    '<button type="button" class="proj-menu-share-copy w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Copy all tasks</button>' +
+                    (navigator.share ? '<button type="button" class="proj-menu-share-native w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100">Share to another app…</button>' : '') +
+                    '<button type="button" class="proj-menu-delete w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-red-50 text-red-600">Delete project</button>' +
+                    '<button type="button" class="proj-menu-cancel w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-gray-100 text-gray-500">Cancel</button>';
+                menu.classList.remove('hidden');
+                const w = menu.offsetWidth || 200;
+                const h = menu.offsetHeight || 170;
+                menu.style.left = Math.min(Math.max(8, x), Math.max(8, window.innerWidth - w - 8)) + 'px';
+                menu.style.top = Math.min(Math.max(8, y), Math.max(8, window.innerHeight - h - 8)) + 'px';
+            }
+
+            // ---------- share a whole project ----------
+            let projectMenuKind = 'team';
+            function projectTasksForShare(kind, projectId) {
+                return kind === 'personal'
+                    ? (ppTasksCache[projectId] || [])
+                    : (projectTasksCache[projectId] || []);
+            }
+            function projectShareText(kind, project, tasks) {
+                const list = tasks || [];
+                const pending = list.filter(t => t.status !== 'Done');
+                const done = list.filter(t => t.status === 'Done');
+                const lines = [];
+                lines.push('*' + (project.name || 'Project') + '*');
+                lines.push((kind === 'personal' ? 'Private project' : 'Project') + ' · ' + done.length + '/' + list.length + ' done');
+                if (project.dueDate) lines.push('Due: ' + formatTaskTimestamp(project.dueDate));
+                lines.push('');
+                if (pending.length) {
+                    lines.push('*To do (' + pending.length + ')*');
+                    pending.forEach(t => {
+                        const who = t.assigneeName || (t.assigneeEmail ? personNameByEmail(t.assigneeEmail) : '');
+                        const meta = [];
+                        if (who) meta.push(who);
+                        if (t.dueDate) meta.push('due ' + formatTaskTimestamp(t.dueDate));
+                        lines.push('• ' + String(t.description || '').trim() + (meta.length ? ' — ' + meta.join(' · ') : ''));
+                    });
+                } else {
+                    lines.push('*To do* — nothing pending');
+                }
+                if (done.length) {
+                    lines.push('');
+                    lines.push('*Completed (' + done.length + ')*');
+                    done.forEach(t => {
+                        const who = t.completedByName || t.completedBy || '';
+                        lines.push('✔ ' + String(t.description || '').trim() + (who ? ' — ' + String(who).split('@')[0] : ''));
+                    });
+                }
+                lines.push('');
+                lines.push('— sent from AlignTasks');
+                return lines.join('\n');
+            }
+            async function shareProject(kind, projectId, mode, preloaded) {
+                const project = (preloaded && preloaded.project)
+                    || (kind === 'personal' ? personalProjectsCache : projectsCache).find(p => p.id === projectId);
+                if (!project) return;
+                const tasks = (preloaded && Array.isArray(preloaded.tasks)) ? preloaded.tasks : projectTasksForShare(kind, projectId);
+                const text = projectShareText(kind, project, tasks);
+                if (mode === 'whatsapp') {
+                    // Opens WhatsApp (app or web) with the whole project already typed out.
+                    const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+                    try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
+                    showTopNotice('📲 Opening WhatsApp with ' + tasks.length + ' task(s)');
+                    return;
+                }
+                if (mode === 'native' && navigator.share) {
+                    try { await navigator.share({ title: project.name || 'Project', text }); return; }
+                    catch (e) { if (e && e.name === 'AbortError') return; }
+                }
+                // copy (also the fallback when a native share is cancelled or unsupported)
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(text);
+                    } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+                    }
+                    showTopNotice('📋 Copied ' + tasks.length + ' task(s) — paste anywhere');
+                } catch (e) {
+                    alert('Could not copy automatically. Here is the text:\n\n' + text);
+                }
+            }
+            // Exposed where it is defined (this closure) so menus and deep links can call it.
+            window.alignShareProject = shareProject;
+            window.alignProjectShareText = projectShareText;
+            window.alignProjectMenu = { team: openProjectActionMenu, personal: openPersonalProjectActionMenu };
             (function () {
                 const menu = document.getElementById('project-action-menu');
                 if (!menu) return;
                 menu.addEventListener('click', async e => {
                     const project = projectMenuCtx;
+                    const kind = projectMenuKind;
                     const wantEdit = !!e.target.closest('.proj-menu-edit');
                     const wantDelete = !!e.target.closest('.proj-menu-delete');
+                    const shareWa = !!e.target.closest('.proj-menu-share-wa');
+                    const shareCopy = !!e.target.closest('.proj-menu-share-copy');
+                    const shareNative = !!e.target.closest('.proj-menu-share-native');
                     closeProjectActionMenu();
                     if (!project) return;
-                    if (wantEdit) { openEditProjectModal(project.id); return; }
+                    if (shareWa || shareCopy || shareNative) {
+                        await shareProject(kind, project.id, shareWa ? 'whatsapp' : shareNative ? 'native' : 'copy');
+                        return;
+                    }
+                    if (wantEdit) {
+                        if (kind === 'personal') openEditPersonalProjectModal(project);
+                        else openEditProjectModal(project.id);
+                        return;
+                    }
                     if (!wantDelete) return;
+                    if (kind === 'personal') {
+                        if (!confirm('Delete the personal project "' + project.name + '" and all its tasks?')) return;
+                        try {
+                            const snap = await personalProjectsCol().doc(project.id).collection('tasks').get();
+                            await Promise.all(snap.docs.map(d => d.ref.delete()));
+                            await personalProjectsCol().doc(project.id).delete();
+                            const u = ppTaskUnsubs.get(project.id); if (u) u();
+                            ppTaskUnsubs.delete(project.id);
+                            expandedPersonalProjects.delete(project.id);
+                            delete ppTasksCache[project.id];
+                            showTopNotice('🗑️ Project deleted');
+                        } catch (err) { alert((err.message || err)); }
+                        return;
+                    }
                     const okDelete = await promptForAdminPassword('Delete project — password');
                     if (!okDelete) return;
                     await deleteProjectById(project);
@@ -4343,7 +4495,7 @@
                     return `
                         <div class="bg-white rounded-xl shadow-sm" data-pp-id="${p.id}">
                             <div class="flex items-center gap-2 p-3">
-                                <button class="pp-toggle flex-1 min-w-0 text-left" data-pp-id="${p.id}">
+                                <button class="pp-toggle pp-open-editor flex-1 min-w-0 text-left" data-pp-id="${p.id}" title="Tap to open · long-press for Edit / Share / Delete">
                                     <div class="font-bold text-gray-800 truncate">${waEsc(p.name)}</div>
                                     <div class="task-meta">Private${due ? ' · ' + due : ''}</div>
                                 </button>
@@ -4407,10 +4559,23 @@
                     </div>`;
             }
 
-            function showPersonalProjectModal(show) {
+            function showPersonalProjectModal(show, project) {
                 const m = document.getElementById('personal-project-modal');
                 if (m) m.style.display = show ? 'block' : 'none';
-                if (show) { const i = document.getElementById('personal-project-name'); if (i) i.focus(); }
+                if (!show) return;
+                const editing = !!(project && project.id);
+                const idEl = document.getElementById('personal-project-id');
+                const titleEl = document.getElementById('personal-project-modal-title');
+                if (idEl) idEl.value = editing ? project.id : '';
+                if (titleEl) titleEl.textContent = editing ? 'Edit Personal Project' : 'New Personal Project';
+                const nameEl = document.getElementById('personal-project-name');
+                if (nameEl) nameEl.value = editing ? (project.name || '') : '';
+                const dueEl = document.getElementById('personal-project-due');
+                if (dueEl) dueEl.value = editing ? (project.dueDate || '') : '';
+                if (nameEl) nameEl.focus();
+            }
+            function openEditPersonalProjectModal(project) {
+                if (project) showPersonalProjectModal(true, project);
             }
             function showPersonalProjectTaskModal(show, project, task) {
                 const m = document.getElementById('personal-project-task-modal');
@@ -5862,19 +6027,25 @@
             // ---------- personal projects ----------
             document.getElementById('personal-project-form').addEventListener('submit', async e => {
                 e.preventDefault();
+                const id = (document.getElementById('personal-project-id') || {}).value || '';
                 const name = document.getElementById('personal-project-name').value.trim();
                 const dueDate = document.getElementById('personal-project-due').value || '';
                 if (!name) return;
                 try {
-                    await personalProjectsCol().add({
-                        name,
-                        dueDate,
-                        createdAt: new Date(),
-                        ownerUid: currentUser.uid
-                    });
+                    if (id) {
+                        await personalProjectsCol().doc(id).update({ name, dueDate, updatedAt: new Date() });
+                    } else {
+                        await personalProjectsCol().add({
+                            name,
+                            dueDate,
+                            createdAt: new Date(),
+                            ownerUid: currentUser.uid
+                        });
+                    }
                     closePersonalProjectModal();
+                    showTopNotice(id ? '✏️ Project renamed' : '✅ Project created');
                 } catch (err) {
-                    alert('Could not create the project: ' + (err.message || err));
+                    alert('Could not ' + (id ? 'save' : 'create') + ' the project: ' + (err.message || err));
                 }
             });
 
@@ -5909,7 +6080,11 @@
                     openProjectDoneModal('personal', ppDoneBtn.getAttribute('data-pp-id'));
                     return;
                 }
-                const toggleBtn = e.target.closest('.pp-toggle');
+                const earlyToggle = e.target.closest('.pp-toggle');
+                // The project name is handled by the press gestures (tap = editor, long-press = menu),
+                // so do not also expand/collapse it here.
+                if (earlyToggle && earlyToggle.classList.contains('pp-open-editor')) return;
+                const toggleBtn = earlyToggle;
                 if (toggleBtn) {
                     const id = toggleBtn.getAttribute('data-pp-id');
                     const content = document.getElementById('pp-content-' + id);
@@ -6885,12 +7060,13 @@
         <div style="max-width:500px;width:100%;margin:8vh auto 0;background:#fbf8f0;border:1px solid #d5cfc2;border-radius:12px;box-shadow:0 24px 60px rgba(15,23,42,.32), 0 0 0 1px rgba(176,141,63,.15);overflow:hidden;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;background:linear-gradient(180deg,#3f4249 0%,#292b30 100%);color:#f7ecd6;border-bottom:2px solid #b08d3f;">
                 <div style="min-width:0;">
-                    <div style="font-size:14.5px;font-weight:600;letter-spacing:0.3px;">New Personal Project</div>
+                    <div id="personal-project-modal-title" style="font-size:14.5px;font-weight:600;letter-spacing:0.3px;">New Personal Project</div>
                     <div style="font-size:11px;color:#c8c4b7;margin-top:2px;">Private — only visible to you</div>
                 </div>
                 <button type="button" id="cancel-personal-project-modal" aria-label="Close" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#f1ede4;width:26px;height:26px;border-radius:6px;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">&times;</button>
             </div>
             <form id="personal-project-form" style="padding:18px;display:flex;flex-direction:column;gap:13px;">
+                <input type="hidden" id="personal-project-id" />
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Project name *</label>
                     <input type="text" id="personal-project-name" placeholder="e.g. My 2027 trade plan" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required />
