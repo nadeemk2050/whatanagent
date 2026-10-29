@@ -1999,6 +1999,30 @@
                 return teamCtx.teamIds;
             }
 
+            // Who signed up for this team (shown read-only in the profile dialog).
+            async function refreshAccountInfo() {
+                const teamId = teamCtx.teamId || teamCtx.defaultTeamId;
+                const t = teamsCache[teamId] || {};
+                const info = {
+                    teamId: teamId || '',
+                    teamName: t.name || '',
+                    ownerUid: String(t.ownerUid || ''),
+                    ownerEmail: String(t.ownerEmail || '').toLowerCase(),
+                    ownerName: ''
+                };
+                if (info.ownerUid) {
+                    try {
+                        const snap = await boardCol('users').doc(info.ownerUid).get();
+                        if (snap.exists) {
+                            const u = snap.data() || {};
+                            info.ownerName = String(u.name || '').trim();
+                            if (!info.ownerEmail) info.ownerEmail = String(u.email || '').toLowerCase();
+                        }
+                    } catch (e) { /* the owner document may be unreadable — the email is still shown */ }
+                }
+                window.alignAccountInfo = info;
+            }
+
             async function applyTeam(teamId, opts) {
                 opts = opts || {};
                 if (!teamId) return;
@@ -2016,6 +2040,7 @@
                 renderTeamSwitcher();
                 renderTeamSettings();
                 applyRoleVisibility();
+                refreshAccountInfo().catch(() => {});
                 if (!opts.skipListeners) setupFirestoreListeners();
                 if (opts.reloadProfile) { /* listeners already refreshed */ }
             }
@@ -7158,6 +7183,12 @@
             </div>
             <div style="padding:18px;">
                 <div id="pfMsg" style="display:none;font-size:12.5px;padding:9px 11px;border-radius:10px;margin-bottom:12px;"></div>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+                    <div style="font-size:10.5px;font-weight:800;color:#1e1b4b;letter-spacing:.05em;">ACCOUNT CREATED BY</div>
+                    <div id="pfAccountName" style="font-size:13.5px;font-weight:700;color:#0f172a;margin-top:3px;">—</div>
+                    <div id="pfAccountEmail" style="font-size:12px;color:#475569;">—</div>
+                    <div style="font-size:10.5px;color:#94a3b8;margin-top:3px;">The sign-up account this team belongs to.</div>
+                </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                     <div style="grid-column:1/-1;">
                         <label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:4px;">Full name</label>
@@ -7914,6 +7945,10 @@
             $('pfTimezone').value = p.timezone || '';
             $('pfAvatarEmoji').value = p.avatarEmoji || '';
             $('pfBio').value = p.bio || '';
+            const acct = window.alignAccountInfo || {};
+            const accountName = acct.ownerName || (acct.ownerEmail ? String(acct.ownerEmail).split('@')[0] : '') || '—';
+            if ($('pfAccountName')) $('pfAccountName').textContent = accountName;
+            if ($('pfAccountEmail')) $('pfAccountEmail').textContent = acct.ownerEmail || '—';
             const teams = (p.teamIds || []);
             const names = window.alignTeamNames || {};
             const teamLabel = (id) => names[id] || id;
