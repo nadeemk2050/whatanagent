@@ -1514,6 +1514,21 @@
             const boardCol = (name) => db.collection(`${BOARD_BASE}/${name}`);
             const boardScope = (name) => db.collection(`${BOARD_BASE}/${name}`).where('teamId', '==', teamCtx.teamId);
             const isOwner = () => teamCtx.role === 'owner';
+
+            // Only this account is wired to the WhatsApp bridge (whatsapp-web on the
+            // WhatAnAgent server). Every other team gets AlignTasks on its own and a
+            // "coming soon" note until its own bridge exists.
+            const WA_BRIDGE_EMAILS = ['nadeemalsaham@gmail.com'];
+            function waBridgeAllowed() {
+                const email = String(
+                    (currentUser && currentUser.email) ||
+                    (currentUserProfile && currentUserProfile.email) || ''
+                ).toLowerCase();
+                return WA_BRIDGE_EMAILS.includes(email);
+            }
+            function showWaComingSoon() {
+                alert('WhatsApp for your account is coming soon.\n\nYour own WhatsApp bridge is not connected yet, so reminders and quick sends are off for now. Projects, tasks, personal tasks and completed lists work normally.');
+            }
             function sortByCreatedDesc(a, b) {
                 const ta = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (new Date(a.createdAt || 0).getTime() || 0);
                 const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (new Date(b.createdAt || 0).getTime() || 0);
@@ -2373,12 +2388,23 @@
                 }
             }
             async function paintWaBridges(force) {
+                if (!waBridgeAllowed()) {
+                    ['wa-remind-bridge', 'team-wa-bridge'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.className = 'mt-2 text-xs rounded-lg px-3 py-2 border border-amber-300 bg-amber-50 text-amber-800';
+                        el.innerHTML = 'WhatsApp for your account is coming soon — your own bridge will be connected shortly. Tasks, projects and reminders setup keep working normally.';
+                        el.classList.remove('hidden');
+                    });
+                    return { connected: false, status: 'coming-soon' };
+                }
                 const st = await waBridgeStatus(force);
                 paintWaBridge('wa-remind-bridge', st);
                 paintWaBridge('team-wa-bridge', st);
                 return st;
             }
             async function openWaRemindPicker(type, taskId, projectId) {
+                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
                 const taskRef = (type === 'personal_tasks')
                     ? db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(taskId)
                     : (type === 'personal_project' && projectId)
@@ -3104,6 +3130,7 @@
 
             let scheduledScope = null;
             function openScheduledReminders(scope) {
+                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
                 if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
@@ -3235,6 +3262,7 @@
 
             // ===== Group updates settings (assign the announcement group + weekly summary day/time) =====
             async function openGroupUpdates() {
+                if (!waBridgeAllowed()) { showWaComingSoon(); return; }
                 const modal = document.getElementById('group-updates-modal');
                 modal.classList.remove('hidden');
                 const statusEl = document.getElementById('gu-status');
@@ -5435,6 +5463,7 @@
                 if (memberRemoveBtn) { memberRemove(memberRemoveBtn.getAttribute('data-email')); return; }
                 const waBtn = e.target.closest('.task-wa-button');
                 if (waBtn) {
+                    if (!waBridgeAllowed()) { showWaComingSoon(); return; }
                     const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};
                     const staff = staffByEmail(task.assigneeEmail);
                     const message = waTemplateReminder(task);
@@ -5571,16 +5600,40 @@
 
 
             // ===== 2.0: provisioning, team bootstrap, invites, team settings =====
+            // A brand-new account always gets its OWN team. It is never attached to a team that
+            // already exists, so two different customers can never share a board.
+            async function ensureUserHasTeam(user) {
+                const userRef = boardCol('users').doc(user.uid);
+                const snap = await userRef.get();
+                const existing = snap.exists ? (snap.data() || {}) : {};
+                const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
+                if (teamIds.length) return teamIds;
+                const displayName = ((currentUserProfile && currentUserProfile.name) || String(user.email || '').split('@')[0] || 'My');
+                await userRef.set({
+                    name: existing.name || displayName,
+                    email: String(user.email || '').toLowerCase(),
+                    role: existing.role || 'owner',
+                    active: true,
+                    teamIds: [],
+                    teamRoles: {},
+                    createdBy: existing.createdBy || 'self-signup'
+                }, { merge: true });
+                await createTeamFor(user, displayName + "'s Team", 'owner');
+                return await loadTeamsFor(user);
+            }
+
             async function bootstrapTeams(user) {
                 let teamIds = await loadTeamsFor(user);
                 if (!currentUser || currentUser.uid !== user.uid) return;   // signed out / switched while loading
                 if (!teamIds.length) {
-                    const attached = await attachToDefaultTeam(user);
-                    if (!attached) {
-                        await createTeamFor(user, (((currentUserProfile && currentUserProfile.name) || String(user.email || '').split('@')[0]) + "'s Team"), 'owner');
+                    try {
+                        teamIds = await ensureUserHasTeam(user);
+                    } catch (e) {
+                        showAppError('Could not create your private workspace.', e);
+                        return;
                     }
-                    teamIds = await loadTeamsFor(user);
                 }
+                if (!teamIds.length) { showAppError('Could not create your private workspace. Reload to try again.'); return; }
                 const versionLabel = document.getElementById('app-version-label');
                 if (versionLabel) versionLabel.textContent = `V${WEB_APP_VERSION}`;
                 if (!currentUser || currentUser.uid !== user.uid) return;   // signed out / switched while loading
@@ -5644,28 +5697,9 @@
                 return teamId;
             }
 
-            // Legacy account (created before teams existed) → joins the existing team as a member.
-            async function attachToDefaultTeam(user) {
-                try {
-                    const snap = await db.collection(`${BOARD_BASE}/teams`).limit(1).get();
-                    if (snap.empty) return false;
-                    const teamDoc = snap.docs[0];
-                    const userRef = boardCol('users').doc(user.uid);
-                    const us = await userRef.get();
-                    const existing = us.exists ? (us.data() || {}) : {};
-                    const teamIds = Array.isArray(existing.teamIds) ? existing.teamIds.slice() : [];
-                    if (!teamIds.includes(teamDoc.id)) teamIds.push(teamDoc.id);
-                    const teamRoles = Object.assign({}, existing.teamRoles || {});
-                    if (!teamRoles[teamDoc.id]) teamRoles[teamDoc.id] = 'member';
-                    await userRef.set({
-                        teamIds: teamIds,
-                        teamRoles: teamRoles,
-                        defaultTeamId: teamDoc.id,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                    return true;
-                } catch (e) { console.warn('attach default team', e); return false; }
-            }
+            // Legacy helper retired: a new account must never be attached to somebody
+            // else's team. Kept as a no-op so old call sites cannot silently join a board.
+            async function attachToDefaultTeam() { return false; }
 
             async function createNewTeamPrompt() {
                 const suggested = ((currentUserProfile && currentUserProfile.name) ? currentUserProfile.name + "'s Team" : 'New Team');
@@ -5810,7 +5844,12 @@
                     }
 
                     if (userDocSnap && !userDocSnap.exists) {
-                        await provisionNewAccount(user);
+                        try {
+                            await provisionNewAccount(user);
+                        } catch (err) {
+                            showAppError('Could not finish setting up your account.', err);
+                            return;
+                        }
                     }
 
                     appScreen.classList.remove('hidden');
@@ -5841,6 +5880,17 @@
                                 }
 
                                 if (!teamCtx.teamId) await bootstrapTeams(user);
+                                else {
+                                    // Self-heal: a profile whose team list is empty (or no longer
+                                    // contains the active team) is rebuilt instead of leaving the
+                                    // board stuck on permission-denied.
+                                    const profileTeams = Array.isArray(currentUserProfile.teamIds) ? currentUserProfile.teamIds : [];
+                                    if (!profileTeams.length || !profileTeams.includes(teamCtx.teamId)) {
+                                        teamCtx.teamId = '';
+                                        await bootstrapTeams(user);
+                                        return;
+                                    }
+                                }
                                 if (!teamCtx.teamId) {
                                     appError.textContent = 'You are not in a team yet, so there is nothing to show. Ask an owner to add you to their team.';
                                     appError.classList.remove('hidden');
@@ -7519,7 +7569,7 @@
                 $('gateSubmit').textContent = 'Continue';
                 $('gateSubmit').style.background = '#34373d';
                 $('gateSkip').style.display = 'none';   // no read-only escape: sign in or log out
-                $('gateHint').textContent = 'Your name and password are needed to use the board. Your personal tasks stay private to you.';
+                $('gateHint').textContent = 'Your name and password are needed to use the board. First visit? Your name plus a password you choose (6+ characters) creates your team login. Your personal tasks stay private to you.';
             } else {
                 const nm = (confirmStaff && (confirmStaff.name || confirmStaff.handle)) || 'your account';
                 $('gateTitle').textContent = 'Confirm it is you';
@@ -7557,6 +7607,26 @@
             }
         });
 
+        // A customer who signed up with an email has no team login yet: create one for THIS
+        // account (its own team only) so the gate never blocks a brand-new signup.
+        async function createTeamLogin(name, password) {
+            try {
+                const u = window.firebase && firebase.auth ? firebase.auth().currentUser : null;
+                if (!u) return { ok: false, error: 'Sign in with your email first.' };
+                const idToken = await u.getIdToken();
+                const r = await fetch(API + '/staff/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-firebase-token': idToken },
+                    body: JSON.stringify({ name, password })
+                });
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.ok) return { ok: false, error: d.error || ('HTTP ' + r.status) };
+                return { ok: true, data: d };
+            } catch (e) {
+                return { ok: false, error: e.message || 'Could not create your team login.' };
+            }
+        }
+
         async function completeLogin(name, password) {
             const r = await fetch(API + '/staff/login', {
                 method: 'POST',
@@ -7564,7 +7634,20 @@
                 body: JSON.stringify({ name, password })
             });
             const d = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(d.error || 'Login failed');
+            if (!r.ok) {
+                // First visit of a newly signed-up account: create its team login, then continue.
+                if (r.status === 401 && firebaseUser()) {
+                    const created = await createTeamLogin(name, password);
+                    if (created.ok) {
+                        const cd = created.data || {};
+                        setSession(cd.session);
+                        setSessionName((cd.staff && (cd.staff.name || cd.staff.handle)) || name);
+                        return cd;
+                    }
+                    throw new Error(created.error || d.error || 'Login failed');
+                }
+                throw new Error(d.error || 'Login failed');
+            }
             setSession(d.session);
             setSessionName((d.staff && (d.staff.name || d.staff.handle)) || name);
 

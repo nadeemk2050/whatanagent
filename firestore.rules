@@ -27,7 +27,12 @@ service cloud.firestore {
       return request.auth != null;
     }
     function myTeams(appId) {
-      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid)).data.teamIds;
+      // A missing profile must not raise a rules error (that would surface as
+      // "Missing or insufficient permissions" for every board read).
+      let profile = get(/databases/$(database)/documents/artifacts/$(appId)/public/data/users/$(request.auth.uid));
+      return profile is map && profile.data.get('teamIds', []) is list
+        ? profile.data.get('teamIds', [])
+        : [];
     }
     function inMyTeam(appId, teamId) {
       return signedIn() && teamId is string && teamId != '' && teamId in myTeams(appId);

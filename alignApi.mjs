@@ -242,6 +242,72 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // A customer who signs up with an e-mail gets its OWN team login (name + password) here.
+  // The Firebase ID token proves who is asking, and the team list is read from that account's
+  // board profile — so a new customer can never be attached to somebody else's board.
+  app.post(api + '/staff/signup', async (req, res) => {
+    try {
+      const raw = String(req.headers['x-firebase-token'] || '').trim();
+      if (!raw) return bad(res, 'Sign in with your email first.', 401);
+      let decoded;
+      try {
+        decoded = await alignAuth().verifyIdToken(raw);
+      } catch (e) {
+        return bad(res, 'Your sign-in expired — sign in again.', 401);
+      }
+      const uid = decoded.uid;
+      const b = req.body || {};
+      const name = sstr(b.name || String(decoded.email || '').split('@')[0], 60).trim();
+      const password = sstr(b.password, 200);
+      if (!name) return bad(res, 'Enter your name.');
+      if (password.length < 6) return bad(res, 'Choose a password of at least 6 characters.');
+
+      let teamIds = [];
+      try {
+        const snap = await alignDb().doc(`${ALIGN_BASE}/users/${uid}`).get();
+        const u = snap.exists ? (snap.data() || {}) : {};
+        teamIds = Array.isArray(u.teamIds) ? u.teamIds.slice(0, 50) : [];
+      } catch (e) {
+        if (e.code === 'align-no-admin') return noAdmin(res);
+        console.warn('[ALIGN] signup profile read skipped: ' + sstr(e.message, 120));
+      }
+
+      const existing = getStaffByUid(uid);
+      const clash = getStaffByHandle(name);
+      if (!existing && clash && clash.uid && clash.uid !== uid) {
+        return bad(res, 'That name is already used. Choose a different name for your team login.');
+      }
+      const handle = existing ? existing.handle : name;
+      const saved = upsertStaff({
+        handle,
+        name,
+        password,
+        role: existing ? existing.role : 'owner',
+        teamIds: teamIds.length ? teamIds : ((existing && existing.teamIds) || []),
+        uid,
+        aliases: decoded.email ? [String(decoded.email).toLowerCase()] : []
+      });
+      if (!saved) return bad(res, 'Could not create your team login.');
+      const out = loginStaff(handle, password);
+
+      let customToken = null;
+      try {
+        const rec = getStaffByUid(uid);
+        if (rec && rec.uid) {
+          await ensureBoardUser(rec);
+          customToken = await alignAuth().createCustomToken(rec.uid);
+        }
+      } catch (e) {
+        console.warn('[ALIGN] signup custom token skipped: ' + sstr(e.message, 120));
+      }
+      authAudit({ action: 'staff_self_signup', handle, note: 'teams=' + (teamIds.length ? teamIds.join(',') : 'none') });
+      res.json({ ok: true, ...out, customToken, teams: (out.staff && out.staff.teamIds) || teamIds });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, e.message);
+    }
+  });
+
   app.get(api + '/staff/me', requireStaff, (req, res) => {
     const rec = getStaffByUid(req.staff.uid);
     if (!rec) return res.status(404).json({ ok: false, error: 'Your staff record no longer exists. Ask the owner.' });
