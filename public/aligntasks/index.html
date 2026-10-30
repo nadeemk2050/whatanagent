@@ -1520,11 +1520,36 @@
           window.addEventListener('load', () => {
             navigator.serviceWorker.register('sw.js').then(registration => {
               console.log('ServiceWorker registration successful with scope: ', registration.scope);
+              try { registration.update(); } catch (e) {}
             }, err => {
               console.log('ServiceWorker registration failed: ', err);
             });
           });
         }
+
+        // An installed PWA keeps the page it opened with, so a new deploy is not visible
+        // until it is reloaded. Watch the page's ETag and reload once when it changes
+        // (never while a task/reminder dialog is open, so nothing typed is lost).
+        (function () {
+            let marker = '';
+            const busy = () => !!document.querySelector('#wa-remind-modal:not(.hidden), #wa-account-modal:not(.hidden), #password-confirm-modal:not(.hidden), #general-task-modal:not(.hidden), #personal-task-modal:not(.hidden), #alignProfile:not([style*="display: none"])');
+            const grab = async () => {
+                try {
+                    const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+                    return r.headers.get('etag') || r.headers.get('last-modified') || '';
+                } catch (e) { return ''; }
+            };
+            const check = async () => {
+                if (document.visibilityState !== 'visible') return;
+                const now = await grab();
+                if (!now) return;
+                if (!marker) { marker = now; return; }
+                if (now !== marker && !busy()) { console.log('[app] new version deployed — reloading'); location.reload(); }
+            };
+            window.addEventListener('load', () => { setTimeout(check, 4000); });
+            document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(check, 1200); });
+            setInterval(check, 10 * 60 * 1000);
+        })();
 
         document.addEventListener('DOMContentLoaded', () => {
             // Firebase Config
