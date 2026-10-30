@@ -4488,7 +4488,7 @@
              document.getElementById('edit-project-modal-close').addEventListener('click', () => editProjectModal.classList.add('hidden'));
 
             function renderToggableList(container, tasks, taskType, identifiers) {
-                const todoTasks = tasks.filter(t => t.status === 'To Do');
+                const todoTasks = tasks.filter(t => t.status !== 'Done');
                 const doneTasks = tasks.filter(t => t.status === 'Done');
 
                 const todoListHTML = todoTasks.length > 0 ? todoTasks.map(t => createBaseTaskListItemHTML(t, taskType, identifiers)).join('') : `<p class="text-gray-500 text-sm p-2">No pending tasks.</p>`;
@@ -4591,7 +4591,7 @@
                 const todoEl = document.getElementById('personal-stat-todo');
                 const urgentEl = document.getElementById('personal-stat-urgent');
                 const doneEl = document.getElementById('personal-stat-done');
-                if (totalEl) totalEl.textContent = totalCount;
+                if (totalEl) totalEl.textContent = todoCount;
                 if (todoEl) todoEl.textContent = todoCount;
                 if (urgentEl) urgentEl.textContent = urgentCount;
                 if (doneEl) doneEl.textContent = doneCount;
@@ -4601,15 +4601,18 @@
                 const tabTodo = document.getElementById('tab-count-todo');
                 const tabUrgent = document.getElementById('tab-count-urgent');
                 const tabDone = document.getElementById('tab-count-done');
-                if (tabAll) tabAll.textContent = totalCount;
+                if (tabAll) tabAll.textContent = todoCount;
                 if (tabTodo) tabTodo.textContent = todoCount;
                 if (tabUrgent) tabUrgent.textContent = urgentCount;
                 if (tabDone) tabDone.textContent = doneCount;
 
+                // Finished tasks leave the active lists and only show under the Done tab.
                 let filtered = personalTasksCache;
 
                 // Tab Filter
-                if (currentPersonalFilter === 'todo') {
+                if (currentPersonalFilter === 'all') {
+                    filtered = filtered.filter(t => t.status !== 'Done');
+                } else if (currentPersonalFilter === 'todo') {
                     filtered = filtered.filter(t => t.status !== 'Done');
                 } else if (currentPersonalFilter === 'urgent') {
                     filtered = filtered.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'Done');
@@ -5107,9 +5110,10 @@
                 const pending = tasks.filter(t => t.status !== 'Done');
                 const doneTasks = tasks.filter(t => t.status === 'Done');
                 const rows = pending.map(t => personalProjectTaskRow(projectId, t, false)).join('');
-                const doneRows = doneTasks.map(t => personalProjectTaskRow(projectId, t, true)).join('');
-                listEl.innerHTML = (rows || (doneTasks.length ? '<p class="text-gray-500 text-sm py-2">Everything here is done</p>' : '')) +
-                    (doneRows ? '<div class="task-meta mt-2">' + doneTasks.length + ' completed</div>' + doneRows : '');
+                // Completed tasks are moved out of the list; they live under the project's ✓ button.
+                listEl.innerHTML = rows
+                    ? rows + (doneTasks.length ? '<div class="task-meta mt-2">' + doneTasks.length + ' completed — tap ✓ to view</div>' : '')
+                    : '<p class="text-gray-500 text-sm py-2">' + (doneTasks.length ? 'Everything here is done — tap ✓ to see completed tasks' : 'No pending tasks.') + '</p>';
             }
 
             function watchPersonalProjectTasks(project) {
@@ -5180,7 +5184,7 @@
                 const doneList = document.getElementById('tasks-for-all-done-list');
                 const toggleButton = document.getElementById('tasks-for-all-toggle-completed');
                 
-                const todoTasks = tasks.filter(t => t.status === 'To Do');
+                const todoTasks = tasks.filter(t => t.status !== 'Done');
                 const doneTasks = tasks.filter(t => t.status === 'Done');
 
                 // In the "Completed" filter the finished tasks are listed right here.
