@@ -8609,8 +8609,23 @@
         await loadLeaflet();
         if (map) return;
         map = L.map('vessel-map', { worldCopyJump: true }).setView([20, 60], 3);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
-        L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 0.9 }).addTo(map);
+        // Esri Ocean cartography: nautical look, and it permits app use (OpenStreetMap's public
+        // tile servers block apps that hotlink them, which showed as "403 Access blocked").
+        const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 13, attribution: 'Tiles © Esri — GEBCO, NOAA, National Geographic, DeLorme, HERE, Geonames.org'
+        }).addTo(map);
+        let tileErrs = 0;
+        base.on('tileerror', () => {
+            if (++tileErrs !== 5) return;
+            // Second source, so a blocked tile host never leaves the map blank again.
+            try { map.removeLayer(base); } catch (e) { /* already gone */ }
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+                maxZoom: 18, attribution: '© OpenStreetMap contributors · © CARTO'
+            }).addTo(map);
+        });
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 13, opacity: 0.9
+        }).addTo(map);
     }
 
     function shipIcon(deg, live) {
