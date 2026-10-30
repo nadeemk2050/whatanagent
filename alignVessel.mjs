@@ -42,6 +42,134 @@ function typeName(t) {
   return 'Vessel';
 }
 
+// ---------- shipping line (carrier) detection from the vessel name ----------
+// AIS never carries the operator, so the line is read from the ship-name prefix every
+// carrier uses ("MSC …", "MAERSK …", "EVER …"). Longest match wins; nothing is invented.
+const LINE_RULES = [
+  ['MSC', 'MSC'], ['MAERSK', 'Maersk'], ['SEALAND', 'Sealand (Maersk)'], ['CMA CGM', 'CMA CGM'], ['CMACGM', 'CMA CGM'],
+  ['APL', 'APL (CMA CGM)'], ['CNC', 'CNC (CMA CGM)'], ['ANL', 'ANL (CMA CGM)'], ['COSCO', 'COSCO'], ['OOCL', 'OOCL'],
+  ['CSCL', 'COSCO'], ['EVERGREEN', 'Evergreen'], ['EVER', 'Evergreen'], ['HAPAG', 'Hapag-Lloyd'], ['HLC', 'Hapag-Lloyd'],
+  ['ONE', 'Ocean Network Express (ONE)'], ['YANG MING', 'Yang Ming'], ['YM', 'Yang Ming'], ['HMM', 'HMM'], ['HYUNDAI', 'HMM'],
+  ['ZIM', 'ZIM'], ['WAN HAI', 'Wan Hai'], ['WHL', 'Wan Hai'], ['KMTC', 'KMTC'], ['SITC', 'SITC'], ['PAN OCEAN', 'Pan Ocean'],
+  ['SINOKOR', 'Sinokor'], ['HEUNG A', 'Heung-A'], ['NAMSUNG', 'Namsung'], ['TS LINES', 'TS Lines'], ['RCL', 'Regional Container Lines'],
+  ['PIL', 'PIL'], ['PACIFIC INTERNATIONAL', 'PIL'], ['SAMUDERA', 'Samudera'], ['TEMAS', 'Temas Line'], ['ARKAS', 'Arkas'],
+  ['MEDKON', 'Medkon'], ['TURKON', 'Turkon'], ['X PRESS', 'X-Press Feeders'], ['XPRESS', 'X-Press Feeders'], ['UNIFEEDER', 'Unifeeder'],
+  ['BG FREIGHT', 'BG Freight Line'], ['TEAM LINES', 'Team Lines'], ['SAFEEN', 'Safeen (AD Ports)'], ['ESL', 'Emirates Shipping Line'],
+  ['EMIRATES SHIPPING', 'Emirates Shipping Line'], ['BAHRI', 'Bahri'], ['NSCSA', 'Bahri'], ['GRIMALDI', 'Grimaldi Lines'],
+  ['HOEGH', 'Höegh Autoliners'], ['NYK', 'NYK'], ['MOL', 'MOL'], ['K LINE', 'K Line'], ['KAWASAKI', 'K Line'],
+  ['SPLIETHOFF', 'Spliethoff'], ['BBC', 'BBC Chartering'], ['AAL', 'AAL Shipping'], ['ECOL', 'Ecolines'],
+  ['MASTERS', 'Masters Shipping'], ['SWIRE', 'Swire Shipping'], ['FESCO', 'FESCO'], ['SFL', 'SFL'], ['BG', 'BG Freight Line'],
+  ['CSA', 'CSA'], ['SEATRADE', 'Seatrade'], ['GREAT WHITE', 'Great White Fleet'], ['DÖHLE', 'Döhle'], ['DOEHLE', 'Döhle'],
+  ['CONMAR', 'Conmar'], ['SEABOARD', 'Seaboard Marine'], ['TOTE', 'TOTE'], ['CROWLEY', 'Crowley'], ['MATSON', 'Matson'],
+  ['KONGSBERG', ''], ['ELBDEICH', 'Elbdeich'], ['MEDSTAR', 'Medstar'], ['BLUE STAR', 'Blue Star'], ['ALIANCA', 'Aliança'],
+  ['NORASIA', 'Norasia'], ['DELMAS', 'Delmas'], ['MARFRET', 'Marfret'], ['C MA', 'CMA CGM'], ['CMA', 'CMA CGM'],
+  ['CMA', 'CMA CGM']
+].filter(r => r[1]);
+
+function detectLine(name) {
+  const k = norm(name);
+  if (!k) return '';
+  let best = '';
+  let bestLen = 0;
+  for (const [pre, line] of LINE_RULES) {
+    const p = norm(pre);
+    if (p && k.startsWith(p) && p.length > bestLen) { best = line; bestLen = p.length; }
+  }
+  return best;
+}
+
+// ---------- VesselFinder public vessel pages ----------
+// Used for what AIS cannot give: resolving a name to IMO/MMSI before the AIS directory is
+// warm, and reading the declared destination / ETA / owner block as a cross-check.
+const VF_BASE = 'https://www.vesselfinder.com';
+const VF_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const vfCache = new Map();
+let vfGate = 0;
+const stripTags = (h) => String(h || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, '|').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/\|{2,}/g, '|').replace(/[ \t]+/g, ' ');
+
+async function vfGet(pathname) {
+  const hit = vfCache.get(pathname);
+  if (hit && Date.now() - hit.at < 15 * 60000) return hit.html;
+  const wait = Math.max(0, 1200 - (Date.now() - vfGate));
+  if (wait) await new Promise(r => setTimeout(r, wait));
+  vfGate = Date.now();
+  try {
+    const r = await fetch(VF_BASE + pathname, {
+      headers: { 'User-Agent': VF_UA, 'Accept-Language': 'en', Referer: VF_BASE + '/' },
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!r.ok) return '';
+    const html = await r.text();
+    if (vfCache.size > 400) vfCache.delete(vfCache.keys().next().value);
+    vfCache.set(pathname, { at: Date.now(), html });
+    return html;
+  } catch (e) { return ''; }
+}
+
+function parseEtaMs(s) {
+  const m = /^([A-Z][a-z]{2}) (\d{1,2}), (\d{2}):(\d{2})$/.exec(String(s || '').trim());
+  if (!m) return 0;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const mo = months.indexOf(m[1]);
+  if (mo < 0) return 0;
+  const now = new Date();
+  let t = Date.UTC(now.getUTCFullYear(), mo, Number(m[2]), Number(m[3]), Number(m[4]));
+  if (t < Date.now() - 60 * DAY) t = Date.UTC(now.getUTCFullYear() + 1, mo, Number(m[2]), Number(m[3]), Number(m[4]));
+  return t;
+}
+
+async function vfSearch(q) {
+  const html = await vfGet('/vessels?name=' + encodeURIComponent(q));
+  if (!html) return [];
+  const out = [];
+  const rows = html.match(/<tr[^>]*>[\s\S]{0,3000}?<\/tr>/g) || [];
+  for (const row of rows) {
+    const id = /\/vessels\/details\/(\d{7})/.exec(row);
+    if (!id) continue;
+    const cells = stripTags(row).split('|').map(s => s.trim()).filter(Boolean);
+    const name = cells.find(c => /[A-Za-z]{2}/.test(c) && !/^(ship|vessel|unknown)$/i.test(c)) || '';
+    if (!name) continue;
+    const type = cells.find(c => /(ship|tanker|cargo|tug|barge|ferry|dredger|fishing|yacht|container|bulk|oil|chemical|gas|ro-ro|reefer)/i.test(c)) || '';
+    const sizeCell = cells.find(c => /^\d{2,3} \/ \d{1,2}$/.test(c)) || '';
+    const [len, beam] = sizeCell ? sizeCell.split('/').map(x => Number(x.trim())) : [0, 0];
+    out.push({ imo: id[1], mmsi: '', name, type, length: len || 0, beam: beam || 0, callSign: '', destination: '', etaMs: 0, source: 'vesselfinder' });
+  }
+  return out.slice(0, 12);
+}
+
+async function vfDetails(imo) {
+  if (!/^\d{7}$/.test(String(imo || ''))) return null;
+  const html = await vfGet('/vessels/details/' + imo);
+  if (!html) return null;
+  // The summary lives in a meta tag (an attribute, so it is read from the raw HTML)…
+  const meta = /<meta name="description" content="Vessel (.+?) \(IMO (\d+), MMSI (\d+)\) is a (.+?) built in (\d{4}) and currently sailing under the flag of (.+?)\."/i.exec(html);
+  // …while the destination block is table text; collapse the tag separators first.
+  const text = stripTags(html).replace(/\|/g, ' ').replace(/\s+/g, ' ');
+  const dest = /Destination (?!-)(.{2,60}?) ETA: ([A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2})/i.exec(text);
+  const destOnly = /Destination (?!-)(.{2,60}?) (?:ETA: -|Remaining Distance|Current draught)/i.exec(text);
+  const draught = /Current draught ([\d.]+) m/i.exec(text);
+  const posRecv = /Position Received[\s\S]{0,400}?data-title="([^"]+)"/i.exec(html);
+  const nav = /Navigation Status (.{1,40}?) Position Received/i.exec(text);
+  const owner = /Registered Owner[\s\S]{0,120}?<td class="tpc2">([^<]{2,80})<\/td>/i.exec(html);
+  return {
+    imo: String(imo),
+    mmsi: meta ? meta[3] : '',
+    name: meta ? clean(meta[1]) : '',
+    type: meta ? clean(meta[4]) : '',
+    flag: meta ? clean(meta[6]) : '',
+    built: meta ? Number(meta[5]) : 0,
+    destination: dest ? clean(dest[1]) : (destOnly ? clean(destOnly[1]) : ''),
+    etaMs: dest ? parseEtaMs(dest[2]) : 0,
+    draught: draught ? Number(draught[1]) : 0,
+    navText: nav ? clean(nav[1]).replace(/^-+$/, '') : '',
+    owner: owner ? clean(owner[1]) : '',
+    posReceivedText: posRecv ? String(posRecv[1]) : '',
+    url: VF_BASE + '/vessels/details/' + imo,
+    at: Date.now()
+  };
+}
+
+
 // ---------- storage ----------
 const vessels = new Map();           // mmsi -> {m,n,k,i,c,t,d,e,dr,l,w,u}
 const positions = new Map();         // mmsi -> {pos:{lat,lon,sog,cog,hdg,nav,at}, trail:[[lat,lon,at]]}
@@ -338,13 +466,13 @@ function brief(r) {
   };
 }
 
-function search(q) {
+function searchLocal(q) {
   const raw = sstr(q, 60).trim();
   const out = [];
   const now = Date.now();
   if (/^\d{9}$/.test(raw)) {
     const r = vessels.get(raw);
-    out.push(r ? brief(r) : { mmsi: raw, name: '', imo: '', type: 'Vessel', destination: '', lastHeardMs: 0 });
+    out.push(r ? brief(r) : { mmsi: raw, name: '', imo: '', type: 'Vessel', destination: '', lastHeardMs: 0, shippingLine: '' });
     return out;
   }
   const imo = /^(?:imo\s*)?(\d{7})$/i.exec(raw);
@@ -361,8 +489,33 @@ function search(q) {
     if (score) scored.push([score, r.u || 0, r]);
   }
   scored.sort((a, b) => b[0] - a[0] || b[1] - a[1]);
-  return scored.slice(0, 15).map(x => brief(x[2]));
+  return scored.slice(0, 15).map(x => Object.assign(brief(x[2]), { shippingLine: detectLine(x[2].n) }));
 }
+
+// Local AIS directory first (fast, real-time), then the public vessel database so a name can
+// be resolved even before the AIS directory has seen that ship.
+async function searchAll(q, allowWeb) {
+  const local = searchLocal(q);
+  if (!allowWeb) return { results: local, web: false };
+  const raw = sstr(q, 60).trim();
+  if (!/^\d{7,9}$/.test(raw) && norm(raw).length < 3) return { results: local, web: false };
+  const knownImo = new Set(local.map(r => r.imo).filter(Boolean));
+  const knownName = new Set(local.map(r => norm(r.name)).filter(Boolean));
+  let web = [];
+  try {
+    if (/^\d{7}$/.test(raw)) {
+      const d = await vfDetails(raw);
+      if (d && d.name) web = [{ imo: d.imo, mmsi: d.mmsi, name: d.name, type: d.type, length: 0, beam: 0, lastHeardMs: 0, source: 'vesselfinder' }];
+    } else {
+      web = await vfSearch(raw);
+    }
+  } catch (e) { web = []; }
+  const extra = web
+    .filter(c => !knownImo.has(c.imo) && !knownName.has(norm(c.name)))
+    .map(c => Object.assign({}, c, { shippingLine: detectLine(c.name) }));
+  return { results: local.concat(extra).slice(0, 20), web: extra.length > 0 };
+}
+
 
 function freshness(pos) {
   if (!pos) return { state: 'none', ageMin: null };
@@ -377,9 +530,15 @@ function snapshot(entry) {
   const pe = positions.get(mmsi);
   const pos = pe && pe.pos ? pe.pos : null;
   const f = freshness(pos);
+  const vf = entry.vf || null;
+  const line = entry.line || detectLine(entry.name) || '';
   return {
-    tracked: { mmsi, name: entry.name || '', imo: entry.imo || '', voyage: entry.voyage || '', line: entry.line || '', expectedPort: entry.expectedPort || '', note: entry.note || '', addedAt: entry.addedAt || 0 },
-    vessel: rec ? brief(rec) : { mmsi, name: entry.name || '', imo: entry.imo || '', destination: '', type: 'Vessel' },
+    tracked: { mmsi, name: entry.name || '', imo: entry.imo || (vf && vf.imo) || '', voyage: entry.voyage || '', line, lineSource: entry.line ? (entry.lineAuto ? 'name' : 'manual') : (line ? 'name' : ''), expectedPort: entry.expectedPort || '', note: entry.note || '', addedAt: entry.addedAt || 0 },
+    vessel: Object.assign(
+      rec ? brief(rec) : { mmsi, name: entry.name || '', imo: entry.imo || '', destination: '', type: 'Vessel' },
+      { shippingLine: line, owner: (vf && vf.owner) || '', flag: (vf && vf.flag) || '', type: (rec && rec.t) ? typeName(rec.t) : ((vf && vf.type) || 'Vessel') }
+    ),
+    vf: vf ? { destination: vf.destination || '', etaMs: vf.etaMs || 0, draught: vf.draught || 0, navText: vf.navText || '', posReceivedText: vf.posReceivedText || '', owner: vf.owner || '', type: vf.type || '', flag: vf.flag || '', url: vf.url || '', at: vf.at || 0 } : null,
     position: pos ? {
       lat: pos.lat, lon: pos.lon, sogKn: pos.sog, cog: pos.cog, heading: pos.hdg,
       navStatus: pos.nav, navText: pos.nav != null ? (NAV_STATUS[pos.nav] || '') : '',
@@ -388,6 +547,32 @@ function snapshot(entry) {
     trail: pe && pe.trail ? pe.trail : []
   };
 }
+
+// Reads the public vessel page and stores the parts AIS does not carry (destination text,
+// ETA, owner block). Called in the background after a vessel is added, never blocking.
+async function enrichFromWeb(scope, mmsi) {
+  try {
+    const list = await loadScope(scope);
+    const i = list.findIndex(v => String(v.mmsi) === mmsi);
+    if (i < 0) return;
+    let imo = String(list[i].imo || '').trim();
+    let d = null;
+    if (/^\d{7}$/.test(imo)) d = await vfDetails(imo);
+    if (!d) {
+      const g = searchLocal(mmsi)[0];
+      if (g && g.imo) { imo = g.imo; d = await vfDetails(imo); }
+    }
+    if (!d) return;
+    list[i].vf = d;
+    if (!list[i].imo && d.imo) list[i].imo = d.imo;
+    if (!list[i].name && d.name) list[i].name = d.name;
+    if (!list[i].line && d.owner) list[i].line = d.owner;
+    scopes.set(scope, list);
+    await saveScope(scope, list);
+    console.log('[VESSEL] 🔎 vessel page read: ' + d.name + (d.destination ? ' → ' + d.destination : ''));
+  } catch (e) { /* enrichment is best-effort */ }
+}
+
 
 // ---------- AI ----------
 async function geminiKey() {
@@ -413,7 +598,45 @@ function ruleSummary(snap) {
     parts.push(nm + ' was last heard ' + age + ' ago at ' + p.lat.toFixed(3) + ', ' + p.lon.toFixed(3) + (p.sogKn != null ? ', moving at ' + p.sogKn.toFixed(1) + ' kn' : '') + (p.navText ? ' (' + p.navText.toLowerCase() + ')' : '') + '.');
   }
   if (v.destination) parts.push('Declared destination: ' + v.destination + (v.etaMs ? ', ETA ' + new Date(v.etaMs).toUTCString().replace(':00 GMT', ' UTC') : '') + '.');
+  else if (snap.vf && snap.vf.destination) parts.push('Destination on the vessel page: ' + snap.vf.destination + (snap.vf.etaMs ? ', ETA ' + new Date(snap.vf.etaMs).toUTCString().replace(':00 GMT', ' UTC') : '') + '.');
   return { summary: parts.join(' '), destinationPort: null, destinationMatchesExpected: 'unclear', ai: false };
+}
+
+// "AI — pls find and fill": the AI reads the vessel name (and the parts of the public vessel
+// page we already have) and names the shipping line. It must answer "unknown" when unsure.
+async function aiDetectLine(name, imo) {
+  const ok = detectLine(name);
+  let vf = null;
+  if (/^\d{7}$/.test(String(imo || ''))) { try { vf = await vfDetails(imo); } catch (e) { vf = null; } }
+  const key = await geminiKey();
+  if (!key) return { line: ok || '', confidence: ok ? 'name-match' : 'unknown', source: ok ? 'ship-name' : 'none', note: ok ? '' : 'AI is not configured on the server.' };
+  const prompt = 'Identify the shipping line (the carrier company that operates/schedules the vessel). '
+    + 'Vessel name: ' + JSON.stringify(String(name || '')) + '. IMO: ' + JSON.stringify(String(imo || '')) + '. '
+    + 'Public vessel-database details (may be null): ' + JSON.stringify(vf ? { owner: vf.owner || null, manager: null, type: vf.type || null, flag: vf.flag || null, built: vf.built || null, destination: vf.destination || null } : null) + '. '
+    + 'Rules: many carriers brand their ships with a name prefix (MSC, MAERSK, CMA CGM, COSCO, EVERGREEN/EVER, HAPAG-LLOYD, ONE, YANG MING/YM, HMM, ZIM, WAN HAI, PIL, KMTC, SITC, SAFEEN). '
+    + 'If the ship is a chartered/feeder vessel and no carrier can be identified, answer unknown - never invent a company. '
+    + 'Reply with strict JSON only: {"line": "<full company name or empty string>", "confidence": "high|medium|low", "reason": "<max 15 words>"}';
+  for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+    try {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + key, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } }),
+        signal: AbortSignal.timeout(20000)
+      });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const txt = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '').trim();
+      const o = JSON.parse(txt.replace(/^```json|```$/g, '').trim());
+      const line = sstr(o && o.line, 80).trim();
+      const conf = ['high', 'medium', 'low'].includes(o && o.confidence) ? o.confidence : 'low';
+      if (!line) return { line: ok || '', confidence: ok ? 'name-match' : 'unknown', source: ok ? 'ship-name' : 'ai', note: sstr(o && o.reason, 120) };
+      // A low-confidence guess is only offered when the name itself already points at that line.
+      if (conf === 'low' && ok && norm(ok) !== norm(line)) return { line: ok, confidence: 'name-match', source: 'ship-name', note: 'Kept the line found in the ship name.' };
+      return { line, confidence: conf, source: 'ai', note: sstr(o && o.reason, 120) };
+    } catch (e) { /* try the next model */ }
+  }
+  return { line: ok || '', confidence: ok ? 'name-match' : 'unknown', source: ok ? 'ship-name' : 'none', note: '' };
 }
 
 async function aiSummary(snap) {
@@ -428,6 +651,9 @@ async function aiSummary(snap) {
     aisDestinationText: v.destination || null,
     aisEtaUtc: v.etaMs ? new Date(v.etaMs).toISOString() : null,
     draughtM: v.draught || null,
+    webDestination: (snap.vf && snap.vf.destination) || null,
+    webEtaUtc: (snap.vf && snap.vf.etaMs) ? new Date(snap.vf.etaMs).toISOString() : null,
+    ownerFromVesselPage: (snap.vf && snap.vf.owner) || null,
     userVoyage: t.voyage || null, userShippingLine: t.line || null, userExpectedPort: t.expectedPort || null
   };
   const prompt = 'You are a shipping operations analyst. Using ONLY the facts below (never invent data), reply with strict JSON: '
@@ -482,6 +708,31 @@ function status() {
 }
 
 // ---------- routes ----------
+export { probeKey as __probeKey };
+
+function probeKey(key) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok, msg) => { if (done) return; done = true; try { ws.terminate(); } catch (e) { /* ignore */ } resolve({ ok, message: msg }); };
+    let ws;
+    try { ws = new WebSocket(STREAM_URL, { perMessageDeflate: true, handshakeTimeout: 12000 }); }
+    catch (e) { return resolve({ ok: false, message: 'Could not connect: ' + sstr(e.message, 120) }); }
+    const timer = setTimeout(() => finish(false, 'No answer from the AIS service in 12 seconds. Check the key and try again.'), 12000);
+    ws.on('open', () => {
+      try { ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [[[24.0, 54.0], [26.5, 57.5]]], FilterMessageTypes: ['PositionReport'] })); } catch (e) { /* closed below */ }
+    });
+    ws.on('message', (d) => {
+      let m = null;
+      try { m = JSON.parse(d.toString()); } catch (e) { return; }
+      if (m && m.error) return finish(false, 'The AIS service rejected the key: ' + sstr(m.error, 160));
+      clearTimeout(timer);
+      finish(true, m && m.MessageType === 'SubscriptionConfirmation' ? 'Key accepted - the AIS service confirmed the subscription.' : 'Key accepted - live data is arriving.');
+    });
+    ws.on('error', (e) => { clearTimeout(timer); finish(false, 'Connection failed: ' + sstr((e && e.message) || e, 120)); });
+    ws.on('close', () => { clearTimeout(timer); if (!done) finish(false, 'The AIS service closed the connection - usually an invalid key.'); });
+  });
+}
+
 export function registerAlignVesselRoutes(app, opts) {
   const api = (opts && opts.api) || '/api/align';
   const requireStaff = opts && opts.requireStaff;
@@ -511,25 +762,41 @@ export function registerAlignVesselRoutes(app, opts) {
     res.json(Object.assign({ ok: true, canConfigure: await isAdmin(req) }, status()));
   });
 
+  // The key check is the module-level probeKey above (shared with the exported probe).
+
   app.post(api + '/vessel/config', requireStaff, async (req, res) => {
     try {
       if (!(await isAdmin(req))) return res.status(403).json({ ok: false, error: 'Only the main account owner can set the AIS key.' });
       const k = sstr(req.body && req.body.apiKey, 120).trim();
       if (k && !/^[A-Za-z0-9_-]{16,100}$/.test(k)) return res.status(400).json({ ok: false, error: 'That does not look like an AISStream API key.' });
+      let check = { ok: true, message: '' };
+      if (k) check = await probeKey(k);
+      if (k && !check.ok) return res.status(400).json({ ok: false, error: check.message });
       if (k) writeJson(KEY_FILE, { apiKey: k, savedAt: Date.now() }, 0o600);
       else { try { fs.unlinkSync(KEY_FILE); } catch (e) { /* none */ } }
       collector.stop(); tracker.stop();
       collector.st.lastError = ''; tracker.st.lastError = '';
       applyStreams();
-      res.json(Object.assign({ ok: true }, status()));
+      res.json(Object.assign({ ok: true, check: check.message }, status()));
     } catch (e) { fail(res, e); }
   });
 
-  app.get(api + '/vessel/search', requireStaff, (req, res) => {
+  app.get(api + '/vessel/search', requireStaff, async (req, res) => {
     try {
-      const results = search(req.query.q);
       const st = status();
-      res.json({ ok: true, results, directory: st.directory, configured: st.configured });
+      const { results, web } = await searchAll(req.query.q, true);
+      res.json({ ok: true, results, web, directory: st.directory, configured: st.configured });
+    } catch (e) { fail(res, e); }
+  });
+
+  // "AI — pls find and fill": returns the shipping line for a vessel name / IMO.
+  app.post(api + '/vessel/ai-line', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const name = sstr(b.name, 80).trim();
+      const imo = sstr(b.imo, 10).trim();
+      if (!name && !imo) return res.status(400).json({ ok: false, error: 'Type the vessel name first.' });
+      res.json(Object.assign({ ok: true }, await aiDetectLine(name, imo)));
     } catch (e) { fail(res, e); }
   });
 
@@ -543,23 +810,33 @@ export function registerAlignVesselRoutes(app, opts) {
   app.post(api + '/vessel/track', requireStaff, async (req, res) => {
     try {
       const b = req.body || {};
-      const mmsi = sstr(b.mmsi, 12).trim();
-      if (!/^\d{9}$/.test(mmsi)) return res.status(400).json({ ok: false, error: 'Choose a vessel from the list (it needs a 9-digit MMSI).' });
-      if (!getKey()) return res.status(503).json({ ok: false, error: 'Live tracking is not switched on yet - the owner must add the AIS key first.' });
+      let mmsi = sstr(b.mmsi, 12).trim();
+      let imo = sstr(b.imo, 10).trim();
+      let web = null;
+      // Picked from the public vessel database: the MMSI is read from that vessel's page.
+      if (!/^\d{9}$/.test(mmsi) && /^\d{7}$/.test(imo)) {
+        web = await vfDetails(imo);
+        if (web && /^\d{9}$/.test(web.mmsi)) mmsi = web.mmsi;
+      }
+      if (!/^\d{9}$/.test(mmsi)) return res.status(400).json({ ok: false, error: 'Could not find this vessel\'s MMSI. Pick it from the list, or type the 9-digit MMSI.' });
       const scope = scopeOf(req);
       const list = (await loadScope(scope)).slice();
       const rec = vessels.get(mmsi);
+      const nm = sstr(b.name || (rec && rec.n) || (web && web.name), 80).trim();
       const entry = {
         mmsi,
-        name: sstr(b.name || (rec && rec.n), 80),
-        imo: sstr(b.imo || (rec && rec.i), 10),
+        name: nm,
+        imo: sstr(imo || (rec && rec.i) || (web && web.imo), 10),
         voyage: sstr(b.voyage, 60).trim(),
-        line: sstr(b.line, 80).trim(),
+        // The line is detected from the ship name when the user leaves the field empty.
+        line: sstr(b.line, 80).trim() || detectLine(nm) || (web && web.owner ? sstr(web.owner, 80) : ''),
+        lineAuto: !sstr(b.line, 80).trim(),
         expectedPort: sstr(b.expectedPort, 80).trim(),
         note: sstr(b.note, 200).trim(),
         addedAt: Date.now(),
         addedBy: sstr(req.staff && req.staff.name, 60)
       };
+      if (web) entry.vf = web;
       const i = list.findIndex(v => String(v.mmsi) === mmsi);
       if (i >= 0) { entry.addedAt = list[i].addedAt || entry.addedAt; entry.addedBy = list[i].addedBy || entry.addedBy; list[i] = entry; }
       else {
@@ -567,6 +844,8 @@ export function registerAlignVesselRoutes(app, opts) {
         list.unshift(entry);
       }
       await saveScope(scope, list);
+      // Read that vessel's public page in the background (destination, ETA, owner block).
+      setTimeout(() => { enrichFromWeb(scope, mmsi); }, 300);
       res.json({ ok: true, vessel: snapshot(entry) });
     } catch (e) { fail(res, e); }
   });
@@ -599,3 +878,4 @@ export function registerAlignVesselRoutes(app, opts) {
     } catch (e) { fail(res, e); }
   });
 }
+

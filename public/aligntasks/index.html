@@ -1349,12 +1349,12 @@
                         <div class="text-sm font-bold text-gray-800">Which vessel?</div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div class="vsl-field sm:col-span-2"><label>Vessel name, IMO number or MMSI *</label><input id="vsl-q" placeholder="e.g. MSC GULSUN, IMO 9811000 or 538007000" autocomplete="off"></div>
-                            <div class="vsl-field"><label>Shipping line (optional)</label><input id="vsl-line" list="vsl-lines" placeholder="Maersk, MSC, CMA CGM…"><datalist id="vsl-lines"><option value="Maersk"><option value="MSC"><option value="CMA CGM"><option value="Hapag-Lloyd"><option value="ONE"><option value="Evergreen"><option value="COSCO"><option value="HMM"><option value="ZIM"><option value="Yang Ming"><option value="PIL"><option value="OOCL"></datalist></div>
+                            <div class="vsl-field"><label>Shipping line (leave empty and we fill it from the ship name)</label><input id="vsl-line" list="vsl-lines" placeholder="Maersk, MSC, CMA CGM… or use the AI option"><datalist id="vsl-lines"><option value="AI — pls find and fill"><option value="Maersk"><option value="MSC"><option value="CMA CGM"><option value="Hapag-Lloyd"><option value="ONE"><option value="Evergreen"><option value="COSCO"><option value="OOCL"><option value="HMM"><option value="ZIM"><option value="Yang Ming"><option value="Wan Hai"><option value="PIL"><option value="SITC"><option value="KMTC"><option value="Safeen (AD Ports)"><option value="Emirates Shipping Line"><option value="Bahri"><option value="Grimaldi Lines"><option value="X-Press Feeders"><option value="Others / unknown"></datalist></div>
                             <div class="vsl-field"><label>Voyage number (optional)</label><input id="vsl-voyage" placeholder="e.g. 612W"></div>
                             <div class="vsl-field"><label>Going to — port (optional, used to cross-check the ship's declared destination)</label><input id="vsl-port" placeholder="e.g. Jebel Ali"></div>
                             <div class="vsl-field"><label>Note (optional)</label><input id="vsl-note" placeholder="Booking / BL reference…"></div>
                         </div>
-                        <div class="flex gap-2"><button id="vsl-find" class="px-4 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold">Find vessel</button><button id="vsl-add-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600">Cancel</button></div>
+                        <div class="flex flex-wrap gap-2"><button id="vsl-find" class="px-4 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold">Find vessel</button><button id="vsl-ai-line" class="px-4 py-2 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-sm font-semibold text-[#6b5f45]" title="Let AI read the vessel name and fill the shipping line">AI — pls find and fill</button><button id="vsl-add-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600">Cancel</button></div>
                         <div id="vsl-add-msg" class="text-xs text-gray-500"></div>
                         <div id="vsl-results" class="space-y-2"></div>
                     </div>
@@ -8701,7 +8701,10 @@
         $('vsl-title').textContent = ve.name || t.name || ('MMSI ' + t.mmsi);
         $('vsl-sub').textContent = [ve.imo || t.imo ? 'IMO ' + (ve.imo || t.imo) : '', 'MMSI ' + t.mmsi, ve.type || '', t.line, t.voyage ? 'Voyage ' + t.voyage : ''].filter(Boolean).join(' · ');
         const fr = $('vsl-fresh');
-        if (!p) {
+        if (status && !status.configured) {
+            fr.className = 'text-sm rounded-lg px-3 py-2 border border-amber-200 bg-amber-50 text-amber-900';
+            fr.textContent = 'Live AIS is not switched on yet, so no position is shown. The vessel details below come from the public vessel database. Ask the owner to add the AIS key in this page (setup box).';
+        } else if (!p) {
             fr.className = 'text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700';
             fr.textContent = 'Waiting for the first AIS signal from this vessel… This can take a few minutes; a ship far from any receiver may stay silent for hours.';
         } else if (p.freshness === 'live') {
@@ -8725,8 +8728,11 @@
         }
         add('Declared destination (AIS)', ve.destination);
         if (ve.etaMs) add('ETA (declared)', new Date(ve.etaMs).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+        if (v.vf && v.vf.destination) add('Destination (vessel page)', v.vf.destination + (v.vf.etaMs ? ' · ETA ' + new Date(v.vf.etaMs).toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''));
         add('Expected port (yours)', t.expectedPort);
-        add('Shipping line', t.line);
+        add('Shipping line', t.line ? t.line + (t.lineSource === 'name' ? ' (from ship name)' : '') : '');
+        add('Owner / manager', (v.vf && v.vf.owner) || '');
+        add('Flag', (v.vf && v.vf.flag) || ve.flag);
         add('Voyage', t.voyage);
         add('Draught', ve.draught ? ve.draught.toFixed(1) + ' m' : '');
         add('Size', ve.length ? ve.length + ' × ' + ve.beam + ' m' : '');
@@ -8801,21 +8807,48 @@
         paintChips();
         paintView(false);
     }
-    const form = () => ({ line: $('vsl-line').value.trim(), voyage: $('vsl-voyage').value.trim(), expectedPort: $('vsl-port').value.trim(), note: $('vsl-note').value.trim() });
+    const form = () => {
+        let line = $('vsl-line').value.trim();
+        if (/^ai\b/i.test(line) && line.length < 40) line = '';   // the "AI — pls find and fill" entry is a command, not a line name
+        return { line, voyage: $('vsl-voyage').value.trim(), expectedPort: $('vsl-port').value.trim(), note: $('vsl-note').value.trim() };
+    };
 
     async function track(c) {
         const msg = $('vsl-add-msg');
         msg.className = 'text-xs text-gray-500';
         msg.textContent = 'Saving…';
         try {
-            const d = await call('/vessel/track', { method: 'POST', body: Object.assign({ mmsi: c.mmsi, name: c.name, imo: c.imo }, form()) });
-            sel = d.vessel.tracked.mmsi;
+            const body = Object.assign({ mmsi: c.mmsi || '', imo: c.imo || '', name: c.name || '' }, form());
+            const d = await call('/vessel/track', { method: 'POST', body });
+            const saved = d && d.vessel && d.vessel.tracked ? d.vessel.tracked : null;
+            sel = (saved && saved.mmsi) || c.mmsi || '';
             aiAt = 0;
             closeAdd();
             await loadTracked();
             pollT && clearTimeout(pollT);
             setTimeout(pollOnce, 6000);
         } catch (e) { msg.className = 'text-xs text-red-600'; msg.textContent = e.message || 'Could not track this vessel'; }
+    }
+
+    async function aiFindLine(nameArg, imoArg) {
+        const msg = $('vsl-add-msg');
+        const q = $('vsl-q').value.trim();
+        const nm = String(nameArg || q || '').trim();
+        const imo = String(imoArg || (/^\d{7}$/.test(q) ? q : '') || '').trim();
+        if (!nm && !imo) { msg.className = 'text-xs text-red-600'; msg.textContent = 'Type the vessel name first.'; return; }
+        msg.className = 'text-xs text-gray-500';
+        msg.textContent = 'AI is finding the shipping line for ' + (nm || ('IMO ' + imo)) + '…';
+        try {
+            const d = await call('/vessel/ai-line', { method: 'POST', body: { name: nm, imo } });
+            if (d.line) {
+                $('vsl-line').value = d.line;
+                msg.className = 'text-xs text-green-700';
+                msg.textContent = 'Shipping line filled: ' + d.line + (d.confidence === 'high' ? ' (high confidence)' : d.confidence === 'name-match' ? ' (found in the ship name)' : ' (' + d.confidence + ' confidence — check it)') + (d.note ? ' — ' + d.note : '');
+            } else {
+                msg.className = 'text-xs text-amber-700';
+                msg.textContent = 'AI could not identify the shipping line for this ship' + (d.note ? ' — ' + d.note : '') + '. Type it yourself if you know it.';
+            }
+        } catch (e) { msg.className = 'text-xs text-red-600'; msg.textContent = e.message || 'AI lookup failed'; }
     }
 
     async function find() {
@@ -8828,23 +8861,24 @@
         msg.textContent = 'Searching…';
         try {
             const d = await call('/vessel/search?q=' + encodeURIComponent(q));
-            if (!d.configured) { msg.className = 'text-xs text-red-600'; msg.textContent = 'Live tracking is not switched on yet — the owner must add the AIS key first.'; return; }
             const list = d.results || [];
             if (!list.length) {
                 const dir = d.directory || {};
                 msg.className = 'text-xs text-amber-700';
-                msg.textContent = dir.ready
-                    ? 'No ship with that name has sent an AIS signal in the last 7 days. Check the spelling, or search by IMO / MMSI number.'
-                    : 'The vessel directory is still being built (' + (dir.vessels || 0).toLocaleString() + ' ships so far). Try again in a few minutes, or enter the 9-digit MMSI.';
+                msg.textContent = d.configured
+                    ? 'No ship with that name was found (AIS + vessel database). Check the spelling, or search by IMO / MMSI number.'
+                    : 'No ship with that name was found in the vessel database. Check the spelling, or search by IMO / MMSI number. (Live AIS is not switched on yet, so only the public database is searched.)';
                 return;
             }
             msg.textContent = list.length === 1 ? 'One match — check it is the right ship, then tap Track.' : list.length + ' matches — pick the right one (check IMO, size and destination).';
             box.innerHTML = list.map((c, i) => '<div class="rounded-lg border border-gray-200 p-3 flex items-center justify-between gap-3">'
                 + '<div class="min-w-0 text-sm"><div class="font-bold text-gray-900 truncate">' + esc(c.name || ('MMSI ' + c.mmsi)) + '</div>'
-                + '<div class="text-xs text-gray-500">' + esc([c.imo ? 'IMO ' + c.imo : '', 'MMSI ' + c.mmsi, c.type, c.length ? c.length + ' m' : ''].filter(Boolean).join(' · ')) + '</div>'
-                + '<div class="text-xs text-gray-500">' + esc((c.destination ? 'Going to ' + c.destination + ' · ' : '') + (c.lastHeardMs ? 'AIS active ' + ago(c.lastHeardMs) : '')) + '</div></div>'
-                + '<button class="vsl-pick px-3 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold" data-i="' + i + '">Track</button></div>').join('');
-            box.querySelectorAll('.vsl-pick').forEach((b) => { b.onclick = () => track(list[Number(b.getAttribute('data-i'))]); });
+                + '<div class="text-xs text-gray-500">' + esc([c.imo ? 'IMO ' + c.imo : '', c.mmsi ? 'MMSI ' + c.mmsi : '', c.type, c.length ? c.length + ' m' : '', c.shippingLine ? 'Line: ' + c.shippingLine : ''].filter(Boolean).join(' · ')) + '</div>'
+                + '<div class="text-xs text-gray-500">' + esc((c.destination ? 'Going to ' + c.destination + ' · ' : '') + (c.lastHeardMs ? 'AIS active ' + ago(c.lastHeardMs) : '') + (c.source === 'vesselfinder' ? 'from the vessel database' : '')) + '</div></div>'
+                + '<div class="flex gap-2 shrink-0"><button class="vsl-ai px-2 py-2 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700" data-i="' + i + '" title="Let AI find the shipping line">AI line</button>'
+                + '<button class="vsl-pick px-3 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold" data-i="' + i + '">Track</button></div></div>').join('');
+            box.querySelectorAll('.vsl-pick').forEach((b) => { b.onclick = () => { const c = list[Number(b.getAttribute('data-i'))]; if (c && c.shippingLine && !$('vsl-line').value.trim()) $('vsl-line').value = c.shippingLine; track(c); }; });
+            box.querySelectorAll('.vsl-ai').forEach((b) => { b.onclick = () => { const c = list[Number(b.getAttribute('data-i'))]; if (c) aiFindLine(c.name, c.imo); }; });
         } catch (e) { msg.className = 'text-xs text-red-600'; msg.textContent = e.message || 'Search failed'; }
     }
 
@@ -8903,6 +8937,12 @@
     $('vsl-add-btn').addEventListener('click', () => openAdd(''));
     $('vsl-add-cancel').addEventListener('click', closeAdd);
     $('vsl-find').addEventListener('click', find);
+    $('vsl-ai-line').addEventListener('click', () => aiFindLine());
+    // Choosing the AI entry in the shipping-line list does the same thing.
+    $('vsl-line').addEventListener('input', () => {
+        const v = $('vsl-line').value.trim();
+        if (/^ai\b/i.test(v) && v.length < 40) aiFindLine();
+    });
     $('vsl-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } });
     $('vsl-edit').addEventListener('click', () => { const v = current(); if (v) openAdd(v.tracked.mmsi); });
     $('vsl-remove').addEventListener('click', removeCurrent);
