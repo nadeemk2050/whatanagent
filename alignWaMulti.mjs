@@ -314,21 +314,36 @@ async function pace() {
 // Used by the reminder scheduler and the "Send now" button.
 export async function sendFromAccount(uid, jid, text) {
   const id = safeId(uid);
-  if (!/^[0-9A-Za-z._:\-]+@(s\.whatsapp\.net|g\.us|lid)$/i.test(String(jid || ''))) {
-    throw new Error('Invalid WhatsApp destination (' + String(jid || 'empty').slice(0, 40) + ').');
+  const target = String(jid || '');
+  if (!/^[0-9A-Za-z._:\-]+@(s\.whatsapp\.net|g\.us|lid)$/i.test(target)) {
+    throw new Error('Invalid WhatsApp destination (' + target.slice(0, 40) + ').');
   }
+  const isGroup = /@g\.us$/i.test(target);
   const st = state(id);
   st.pending = (st.pending || 0) + 1;
   try {
-    const sock = await ensureSession(id);
-    if (!sock) throw new Error('This number is not connected right now.');
-    await pace();
-    await Promise.race([
-      sock.sendMessage(jid, { text: String(text || '').slice(0, 4000) }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
-    ]);
-    await saveAccount(id, { lastSendAt: Date.now() });
-    return true;
+    let lastErr = null;
+    // A freshly connected session can refuse the first group send while the group
+    // metadata is still syncing, so groups get one retry.
+    for (let attempt = 0; attempt < (isGroup ? 2 : 1); attempt++) {
+      try {
+        const sock = await ensureSession(id);
+        if (!sock) throw new Error('This number is not connected right now.');
+        await pace();
+        await Promise.race([
+          sock.sendMessage(target, { text: String(text || '').slice(0, 4000) }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
+        ]);
+        await saveAccount(id, { lastSendAt: Date.now(), lastSendTo: target, lastSendError: '' });
+        return true;
+      } catch (e) {
+        lastErr = e;
+        log('send failed (' + (isGroup ? 'group' : 'chat') + ' ' + target.slice(0, 34) + '): ' + ((e && e.message) || e));
+        if (attempt === 0 && isGroup) await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    await saveAccount(id, { lastSendAt: Date.now(), lastSendTo: target, lastSendError: String((lastErr && lastErr.message) || lastErr).slice(0, 300) });
+    throw lastErr || new Error('Send failed.');
   } finally {
     st.pending = Math.max(0, (st.pending || 1) - 1);
     touch(id);
@@ -359,7 +374,8 @@ export function registerAlignWaMultiRoutes(app, opts) {
         ...st,
         groups: Array.isArray(doc.groups) ? doc.groups.length : 0,
         linkedAt: doc.linkedAt || 0,
-        lastSendAt: doc.lastSendAt || 0
+        lastSendAt: doc.lastSendAt || 0,
+        lastSendError: doc.lastSendError || ''
       });
     } catch (e) {
       res.json({ ok: false, error: (e && e.message) || String(e), linked: false, status: 'error', cap: WA_MULTI_MAX });

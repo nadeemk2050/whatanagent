@@ -212,7 +212,7 @@
             body.ats-personal #section-nav-label { max-width: 96px; font-size: 10.5px; }
             body.ats-personal #ats-nav-block { gap: 4px; }
             /* the personal page has its own search + add form, so drop these tiles here */
-            body.ats-personal #task-search-toggle, body.ats-personal #task-add-toggle { display: none !important; }
+            body.ats-personal #task-search-toggle { display: none !important; }
         }
         @media (max-width: 350px) {
             .ats-mark { font-size: 17px !important; }
@@ -1224,6 +1224,7 @@
             </div>
             <div class="p-4 overflow-y-auto space-y-3">
                 <div id="wa-account-status" class="text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700">Checking…</div>
+                <div id="wa-account-lasterror" class="hidden text-xs rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700 break-words"></div>
                 <div id="wa-account-qr-box" class="hidden text-center space-y-2">
                     <p class="text-xs text-gray-500">WhatsApp → Settings → Linked devices → Link a device, then scan this code.</p>
                     <img id="wa-account-qr" alt="WhatsApp QR code" style="width:280px;height:280px;margin:0 auto;display:block;border:1px solid #e5e7eb;border-radius:12px;" />
@@ -3328,7 +3329,7 @@
                 openScheduledReminders({ type: b.getAttribute('data-scope-type'), projectId: b.getAttribute('data-scope-id') || '', name: b.getAttribute('data-scope-name') || '' });
             });
             // ===== Per-account WhatsApp number (QR link on this server, send-only) =====
-            let waAccount = { linked: false, uid: '', status: '', phone: '', name: '', cap: 4, groups: 0 };
+            let waAccount = { linked: false, uid: '', status: '', phone: '', name: '', cap: 4, groups: 0, lastSendError: '' };
             let waLinkPoll = null;
 
             function paintWaAccountUi() {
@@ -3356,6 +3357,11 @@
                     }
                 }
                 if (qrBox) qrBox.classList.toggle('hidden', waAccount.status !== 'qr_ready' || !waAccount.qr);
+                const errEl = document.getElementById('wa-account-lasterror');
+                if (errEl) {
+                    if (waAccount.lastSendError) { errEl.textContent = 'Last send error: ' + waAccount.lastSendError; errEl.classList.remove('hidden'); }
+                    else errEl.classList.add('hidden');
+                }
                 if (waAccount.qr) { const img = document.getElementById('wa-account-qr'); if (img) img.src = waAccount.qr; }
                 if (linkBtn) {
                     linkBtn.classList.toggle('hidden', waAccount.status === 'connected' || waAccount.status === 'qr_ready');
@@ -3386,7 +3392,8 @@
                             name: d.name || '',
                             qr: d.qr || '',
                             cap: d.cap || 4,
-                            groups: d.groups || 0
+                            groups: d.groups || 0,
+                            lastSendError: d.lastSendError || ''
                         };
                     }
                 } catch (e) { /* leave the previous state */ }
