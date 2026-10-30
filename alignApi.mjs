@@ -28,6 +28,7 @@ import {
   getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff, revealStaffPassword
 } from './alignAuth.mjs';
 import { registerAlignWaMultiRoutes } from './alignWaMulti.mjs';
+import { registerAlignVesselRoutes } from './alignVessel.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
 const bad = (res, msg, code = 400) => res.status(code).json({ ok: false, error: msg });
@@ -218,6 +219,11 @@ export function registerAlignRoutes(app) {
   // Per-account WhatsApp linking (QR scan on the customer's own number, send-only).
   try { registerAlignWaMultiRoutes(app, { api, requireStaff }); }
   catch (e) { console.warn('[ALIGN] WhatsApp multi-account routes unavailable: ' + ((e && e.message) || e)); }
+
+  // Vessel live tracking (AIS). Shared by everyone in the same team.
+  try {
+    registerAlignVesselRoutes(app, { api, requireStaff, scopeOf: (req) => (staffTeams(req)[0] || String((req.staff && req.staff.uid) || '')) });
+  } catch (e) { console.warn('[ALIGN] Vessel tracking routes unavailable: ' + ((e && e.message) || e)); }
 
   // ============================================================ status
   app.get(api + '/status', (req, res) => {

@@ -785,6 +785,7 @@
                                 <button id="menu-team-settings" class="ats-menu-item">Team Settings</button>
                                 <div class="ats-menu-sep"></div>
                                 <button id="menu-scheduled-reminders" class="ats-menu-item">Reminders</button>
+                                <button id="menu-vessels" class="ats-menu-item">Vessel &amp; Containers</button>
                                 <button id="menu-wa-account" class="ats-menu-item">WhatsApp number</button>
                                 <button id="menu-group-updates" class="ats-menu-item">Group Updates</button>
                                 <button id="menu-push-notify" class="ats-menu-item">Notifications</button>
@@ -1304,6 +1305,80 @@
             border-radius: 0 !important; border: 0 !important;
         }
     </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #vessel-modal { padding: 0 !important; align-items: stretch !important; }
+        #vessel-modal > div { max-width: none !important; width: 100% !important; height: 100% !important; max-height: none !important; border-radius: 0 !important; border: 0 !important; }
+        .vsl-tab { padding: 8px 14px; font-size: 13px; font-weight: 700; border-radius: 10px; border: 1px solid #d5cfc2; background: #fffdf8; color: #6b5f45; cursor: pointer; white-space: nowrap; }
+        .vsl-tab.active { background: #34373d; color: #f7ecd6; border-color: #34373d; }
+        .vsl-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid #d5cfc2; background: #fffdf8; font-size: 12px; font-weight: 700; color: #34373d; cursor: pointer; white-space: nowrap; }
+        .vsl-chip.active { background: #34373d; color: #f7ecd6; border-color: #34373d; }
+        .vsl-dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block; }
+        .vsl-dot.live { background: #16a34a; } .vsl-dot.recent { background: #f59e0b; } .vsl-dot.old { background: #dc2626; }
+        #vessel-map { height: 46vh; min-height: 280px; border-radius: 12px; border: 1px solid #e5e7eb; z-index: 0; }
+        .vsl-ship { width: 26px; height: 26px; }
+        .vsl-field label { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 2px; }
+        .vsl-field input { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+        .vsl-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+        .vsl-kv > div { background: #f9fafb; border: 1px solid #eef0f3; border-radius: 10px; padding: 8px 10px; }
+        .vsl-kv b { display: block; font-size: 11px; color: #6b7280; font-weight: 600; }
+        .vsl-kv span { font-size: 14px; font-weight: 700; color: #111827; word-break: break-word; }
+    </style>
+    <div id="vessel-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4" style="z-index:9996;">
+        <div class="bg-white shadow-2xl w-full flex flex-col">
+            <div class="p-3 border-b flex justify-between items-center gap-3">
+                <div class="min-w-0">
+                    <h3 class="text-lg font-bold text-gray-800 truncate">Vessel &amp; Containers — live tracking</h3>
+                    <p class="task-meta">Live AIS positions. Only current data is shown — every answer states how old the last signal is.</p>
+                </div>
+                <button id="vessel-close" class="text-gray-400 hover:text-gray-600 text-3xl" title="Close">&times;</button>
+            </div>
+            <div class="px-3 pt-3 flex gap-2 overflow-x-auto">
+                <button class="vsl-tab active" data-vtab="vessel">Track vessel live location</button>
+                <button class="vsl-tab" data-vtab="container">Track container</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 space-y-3" id="vessel-body">
+                <div id="vessel-pane-vessel" class="space-y-3">
+                    <div id="vsl-setup" class="hidden rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-sm p-3 space-y-2"></div>
+                    <div id="vsl-dirline" class="text-xs text-gray-500"></div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div id="vsl-chips" class="flex flex-wrap gap-2"></div>
+                        <button id="vsl-add-btn" class="vsl-tab" style="background:#f3ecdd;">＋ Track a vessel</button>
+                    </div>
+                    <div id="vsl-add" class="hidden rounded-xl border border-gray-200 p-3 space-y-3 bg-white">
+                        <div class="text-sm font-bold text-gray-800">Which vessel?</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="vsl-field sm:col-span-2"><label>Vessel name, IMO number or MMSI *</label><input id="vsl-q" placeholder="e.g. MSC GULSUN, IMO 9811000 or 538007000" autocomplete="off"></div>
+                            <div class="vsl-field"><label>Shipping line (optional)</label><input id="vsl-line" list="vsl-lines" placeholder="Maersk, MSC, CMA CGM…"><datalist id="vsl-lines"><option value="Maersk"><option value="MSC"><option value="CMA CGM"><option value="Hapag-Lloyd"><option value="ONE"><option value="Evergreen"><option value="COSCO"><option value="HMM"><option value="ZIM"><option value="Yang Ming"><option value="PIL"><option value="OOCL"></datalist></div>
+                            <div class="vsl-field"><label>Voyage number (optional)</label><input id="vsl-voyage" placeholder="e.g. 612W"></div>
+                            <div class="vsl-field"><label>Going to — port (optional, used to cross-check the ship's declared destination)</label><input id="vsl-port" placeholder="e.g. Jebel Ali"></div>
+                            <div class="vsl-field"><label>Note (optional)</label><input id="vsl-note" placeholder="Booking / BL reference…"></div>
+                        </div>
+                        <div class="flex gap-2"><button id="vsl-find" class="px-4 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold">Find vessel</button><button id="vsl-add-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-600">Cancel</button></div>
+                        <div id="vsl-add-msg" class="text-xs text-gray-500"></div>
+                        <div id="vsl-results" class="space-y-2"></div>
+                    </div>
+                    <div id="vsl-view" class="hidden space-y-3">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <div class="min-w-0"><div id="vsl-title" class="text-lg font-bold text-gray-900 break-words"></div><div id="vsl-sub" class="task-meta"></div></div>
+                            <div class="flex gap-2"><button id="vsl-refresh" class="vsl-tab">Refresh</button><button id="vsl-edit" class="vsl-tab">Edit details</button><button id="vsl-remove" class="vsl-tab" style="color:#b91c1c;">Remove</button></div>
+                        </div>
+                        <div id="vsl-fresh" class="text-sm rounded-lg px-3 py-2 border"></div>
+                        <div id="vessel-map"></div>
+                        <div id="vsl-ai" class="text-sm rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-900 px-3 py-2"></div>
+                        <div id="vsl-facts" class="vsl-kv"></div>
+                    </div>
+                    <div id="vsl-empty" class="text-sm text-gray-500 py-6 text-center">No vessel tracked yet — tap <b>＋ Track a vessel</b>.</div>
+                    <div class="text-[11px] text-gray-400">Positions come from AIS (the ship's own transmitter) received by coastal and satellite stations. In mid-ocean a vessel can go quiet for hours — the last-seen time is always shown, never a guess.</div>
+                </div>
+                <div id="vessel-pane-container" class="hidden py-16 text-center">
+                    <div class="text-5xl mb-3">📦</div>
+                    <div class="text-xl font-bold text-gray-800">Container tracking — coming soon</div>
+                    <p class="text-sm text-gray-500 mt-2 max-w-md mx-auto">Track a container by its number and shipping line (Maersk, CMA CGM, MSC and more). We are finishing vessel tracking first.</p>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center"><h3 id="completed-tasks-modal-title" class="text-xl font-bold text-gray-800">Completed Tasks</h3><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
@@ -7851,7 +7926,7 @@
             if (s) headers['x-align-session'] = s;
             // Management (masters / user details) is also allowed from the main email login:
             // send the Firebase ID token so the server can verify the owner/admin identity.
-            if (/^\/(team\/staff|team\/password|auth\/audit)/.test(path)) {
+            if (/^\/(team\/staff|team\/password|auth\/audit|vessel\/(config|status))/.test(path)) {
                 try {
                     const fu = (window.firebase && firebase.auth) ? firebase.auth().currentUser : null;
                     if (fu) headers['x-firebase-token'] = await fu.getIdToken();
@@ -8497,6 +8572,343 @@
             <button id="top-notice-close" class="text-gray-300 hover:text-white text-base leading-none" title="Dismiss">&times;</button>
         </div>
     </div>
+<script>
+// ===== Vessel & Containers — live vessel tracking (AIS through the server) =====
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const call = (p, o) => window.alignApi(p, o);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let tracked = [], sel = '', status = null, map = null, marker = null, trail = null, mapFor = '', leafletP = null;
+    let pollT = null, aiAt = 0, editing = '';
+
+    const ago = (ms) => {
+        if (!ms) return '—';
+        const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+        if (m < 1) return 'just now';
+        if (m < 60) return m + ' min ago';
+        if (m < 2880) return Math.round(m / 60) + ' h ago';
+        return Math.round(m / 1440) + ' days ago';
+    };
+    const fmtLat = (v) => Math.abs(v).toFixed(4) + '°' + (v >= 0 ? 'N' : 'S');
+    const fmtLon = (v) => Math.abs(v).toFixed(4) + '°' + (v >= 0 ? 'E' : 'W');
+
+    function loadLeaflet() {
+        if (window.L) return Promise.resolve();
+        if (leafletP) return leafletP;
+        leafletP = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+            s.onload = () => resolve();
+            s.onerror = () => { leafletP = null; reject(new Error('Map could not load (check the internet connection).')); };
+            document.head.appendChild(s);
+        });
+        return leafletP;
+    }
+
+    async function ensureMap() {
+        await loadLeaflet();
+        if (map) return;
+        map = L.map('vessel-map', { worldCopyJump: true }).setView([20, 60], 3);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+        L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 0.9 }).addTo(map);
+    }
+
+    function shipIcon(deg, live) {
+        const c = live ? '#16a34a' : '#d97706';
+        return L.divIcon({
+            className: '',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+            html: '<svg class="vsl-ship" viewBox="0 0 24 24" style="transform:rotate(' + (Number(deg) || 0) + 'deg)"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="' + c + '" stroke="#111827" stroke-width="1.4" stroke-linejoin="round"/></svg>'
+        });
+    }
+
+    // ---------- status / setup ----------
+    async function loadStatus() {
+        try {
+            status = await call('/vessel/status');
+        } catch (e) { status = null; }
+        paintStatus();
+    }
+    function paintStatus() {
+        const box = $('vsl-setup'), line = $('vsl-dirline');
+        if (!status) { box.classList.add('hidden'); line.textContent = ''; return; }
+        const showKey = !status.configured || box.getAttribute('data-force') === '1';
+        if (showKey && status.canConfigure) {
+            box.classList.remove('hidden');
+            box.innerHTML = '<div class="font-bold">' + (status.configured ? 'Replace the AIS key' : 'One-time setup: switch on live tracking') + '</div>'
+                + '<div class="text-xs">Create a free key at <b>aisstream.io</b> (sign in → API Keys) and paste it here. It is stored on the server only.</div>'
+                + '<div class="flex gap-2"><input id="vsl-key" class="flex-1 px-3 py-2 border border-amber-300 rounded-lg text-sm" placeholder="Paste AISStream API key" autocomplete="off"><button id="vsl-key-save" class="px-4 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold">Save</button></div><div id="vsl-key-msg" class="text-xs"></div>';
+            $('vsl-key-save').onclick = saveKey;
+        } else if (!status.configured) {
+            box.classList.remove('hidden');
+            box.innerHTML = 'Live vessel tracking is not switched on yet — the main account owner needs to add the AIS key (one-time).';
+        } else {
+            box.classList.add('hidden');
+        }
+        const d = status.directory || {};
+        const err = d.error || (status.tracker && status.tracker.error) || '';
+        let txt = '';
+        if (status.configured) {
+            txt = d.streaming ? ('Vessel directory: ' + (d.vessels || 0).toLocaleString() + ' ships' + (d.ready ? '' : ' so far — still being built, name search improves over the first 15–30 minutes')) : 'Connecting to the AIS network…';
+            if (err) txt += ' · ' + err;
+        }
+        line.innerHTML = esc(txt) + (status.canConfigure && status.configured ? ' · <a href="#" id="vsl-key-change" class="underline">change key</a>' : '');
+        line.className = 'text-xs ' + (err ? 'text-red-600' : 'text-gray-500');
+        const ch = $('vsl-key-change');
+        if (ch) ch.onclick = (e) => { e.preventDefault(); $('vsl-setup').setAttribute('data-force', '1'); paintStatus(); };
+    }
+    async function saveKey() {
+        const msg = $('vsl-key-msg');
+        const v = ($('vsl-key').value || '').trim();
+        msg.textContent = 'Saving…';
+        try {
+            await call('/vessel/config', { method: 'POST', body: { apiKey: v } });
+            $('vsl-setup').removeAttribute('data-force');
+            msg.textContent = 'Saved.';
+            await loadStatus();
+        } catch (e) { msg.textContent = e.message || 'Could not save'; msg.className = 'text-xs text-red-600'; }
+    }
+
+    // ---------- tracked list ----------
+    async function loadTracked() {
+        try {
+            const d = await call('/vessel/tracked');
+            tracked = d.vessels || [];
+            if (d.status) { status = Object.assign({}, status || {}, d.status); paintStatus(); }
+        } catch (e) { tracked = []; }
+        if (!tracked.some((v) => v.tracked.mmsi === sel)) sel = tracked.length ? tracked[0].tracked.mmsi : '';
+        paintChips();
+        paintView(true);
+    }
+    function paintChips() {
+        $('vsl-chips').innerHTML = tracked.map((v) => {
+            const f = v.position ? v.position.freshness : 'none';
+            const nm = v.vessel.name || v.tracked.name || ('MMSI ' + v.tracked.mmsi);
+            return '<button class="vsl-chip' + (v.tracked.mmsi === sel ? ' active' : '') + '" data-mmsi="' + esc(v.tracked.mmsi) + '"><span class="vsl-dot ' + f + '"></span>' + esc(nm) + '</button>';
+        }).join('');
+        $('vsl-empty').classList.toggle('hidden', tracked.length > 0);
+        $('vsl-view').classList.toggle('hidden', !tracked.length || !$('vsl-add').classList.contains('hidden'));
+    }
+
+    function current() { return tracked.find((v) => v.tracked.mmsi === sel) || null; }
+
+    async function paintView(selectionChanged) {
+        const v = current();
+        $('vsl-view').classList.toggle('hidden', !v || !$('vsl-add').classList.contains('hidden'));
+        if (!v) return;
+        const t = v.tracked, ve = v.vessel, p = v.position;
+        $('vsl-title').textContent = ve.name || t.name || ('MMSI ' + t.mmsi);
+        $('vsl-sub').textContent = [ve.imo || t.imo ? 'IMO ' + (ve.imo || t.imo) : '', 'MMSI ' + t.mmsi, ve.type || '', t.line, t.voyage ? 'Voyage ' + t.voyage : ''].filter(Boolean).join(' · ');
+        const fr = $('vsl-fresh');
+        if (!p) {
+            fr.className = 'text-sm rounded-lg px-3 py-2 border border-gray-200 bg-gray-50 text-gray-700';
+            fr.textContent = 'Waiting for the first AIS signal from this vessel… This can take a few minutes; a ship far from any receiver may stay silent for hours.';
+        } else if (p.freshness === 'live') {
+            fr.className = 'text-sm rounded-lg px-3 py-2 border border-green-200 bg-green-50 text-green-800';
+            fr.textContent = '● LIVE — last signal ' + ago(p.atMs);
+        } else if (p.freshness === 'recent') {
+            fr.className = 'text-sm rounded-lg px-3 py-2 border border-amber-200 bg-amber-50 text-amber-800';
+            fr.textContent = 'Last signal ' + ago(p.atMs) + ' — the vessel has moved since; the map shows where it was last heard.';
+        } else {
+            fr.className = 'text-sm rounded-lg px-3 py-2 border border-red-200 bg-red-50 text-red-700';
+            fr.textContent = 'Old signal — last heard ' + ago(p.atMs) + '. The vessel is probably out of AIS range; this is NOT its current position.';
+        }
+        const kv = [];
+        const add = (k, val) => { if (val !== '' && val != null) kv.push('<div><b>' + esc(k) + '</b><span>' + esc(val) + '</span></div>'); };
+        if (p) {
+            add('Position', fmtLat(p.lat) + ', ' + fmtLon(p.lon));
+            add('Speed', p.sogKn != null ? p.sogKn.toFixed(1) + ' kn' : '');
+            add('Course', p.cog != null ? Math.round(p.cog) + '°' : '');
+            add('Status', p.navText);
+            add('Last signal', new Date(p.atMs).toLocaleString() + ' (' + ago(p.atMs) + ')');
+        }
+        add('Declared destination (AIS)', ve.destination);
+        if (ve.etaMs) add('ETA (declared)', new Date(ve.etaMs).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+        add('Expected port (yours)', t.expectedPort);
+        add('Shipping line', t.line);
+        add('Voyage', t.voyage);
+        add('Draught', ve.draught ? ve.draught.toFixed(1) + ' m' : '');
+        add('Size', ve.length ? ve.length + ' × ' + ve.beam + ' m' : '');
+        add('Call sign', ve.callSign);
+        add('Note', t.note);
+        $('vsl-facts').innerHTML = kv.join('');
+        try {
+            await ensureMap();
+            const tab = document.querySelector('.vsl-tab[data-vtab="vessel"]');
+            if (tab && tab.classList.contains('active')) map.invalidateSize();
+            if (trail) { map.removeLayer(trail); trail = null; }
+            if (marker) { map.removeLayer(marker); marker = null; }
+            if (p) {
+                const pts = (v.trail || []).map((x) => [x[0], x[1]]);
+                if (pts.length > 1) trail = L.polyline(pts, { color: '#2563eb', weight: 3, opacity: 0.7, dashArray: '6 6' }).addTo(map);
+                marker = L.marker([p.lat, p.lon], { icon: shipIcon(p.cog != null ? p.cog : p.heading, p.freshness === 'live') }).addTo(map)
+                    .bindTooltip((ve.name || t.name || '') + ' · ' + ago(p.atMs));
+                if (selectionChanged || mapFor !== t.mmsi) { map.setView([p.lat, p.lon], 8); mapFor = t.mmsi; }
+            }
+        } catch (e) { $('vessel-map').innerHTML = '<div class="p-4 text-sm text-red-600">' + esc(e.message) + '</div>'; }
+        if (selectionChanged || Date.now() - aiAt > 5 * 60000) loadAi();
+    }
+
+    async function loadAi() {
+        const v = current();
+        const box = $('vsl-ai');
+        if (!v) return;
+        aiAt = Date.now();
+        box.textContent = 'Reading the voyage details…';
+        try {
+            const d = await call('/vessel/summary?mmsi=' + encodeURIComponent(v.tracked.mmsi));
+            let html = '<b>' + (d.ai ? 'AI summary' : 'Summary') + ':</b> ' + esc(d.summary);
+            if (d.destinationPort) html += '<div class="mt-1 text-xs">Declared destination means: <b>' + esc(d.destinationPort) + '</b></div>';
+            if (d.destinationMatchesExpected === 'no') html += '<div class="mt-1 text-xs text-red-700 font-semibold">⚠ The ship\'s declared destination does not match your expected port (' + esc(v.tracked.expectedPort) + ') — please confirm with the shipping line.</div>';
+            else if (d.destinationMatchesExpected === 'yes') html += '<div class="mt-1 text-xs text-green-700 font-semibold">✓ Declared destination matches your expected port.</div>';
+            box.innerHTML = html;
+        } catch (e) { box.textContent = ''; }
+    }
+
+    async function pollOnce() {
+        if ($('vessel-modal').classList.contains('hidden')) return;
+        const v = current();
+        if (!v) return;
+        try {
+            const d = await call('/vessel/position?mmsi=' + encodeURIComponent(v.tracked.mmsi));
+            const i = tracked.findIndex((x) => x.tracked.mmsi === v.tracked.mmsi);
+            if (i >= 0) tracked[i] = { tracked: d.tracked, vessel: d.vessel, position: d.position, trail: d.trail };
+            paintChips();
+            paintView(false);
+        } catch (e) { /* keep showing the last data */ }
+    }
+
+    // ---------- add / edit ----------
+    function openAdd(mmsi) {
+        editing = mmsi || '';
+        const v = editing ? tracked.find((x) => x.tracked.mmsi === editing) : null;
+        $('vsl-add').classList.remove('hidden');
+        $('vsl-view').classList.add('hidden');
+        $('vsl-results').innerHTML = '';
+        $('vsl-add-msg').textContent = '';
+        $('vsl-q').value = v ? (v.vessel.name || v.tracked.name || v.tracked.mmsi) : '';
+        $('vsl-q').disabled = !!v;
+        $('vsl-line').value = v ? v.tracked.line : '';
+        $('vsl-voyage').value = v ? v.tracked.voyage : '';
+        $('vsl-port').value = v ? v.tracked.expectedPort : '';
+        $('vsl-note').value = v ? v.tracked.note : '';
+        $('vsl-find').textContent = v ? 'Save details' : 'Find vessel';
+        $('vsl-q').focus();
+    }
+    function closeAdd() {
+        $('vsl-add').classList.add('hidden');
+        paintChips();
+        paintView(false);
+    }
+    const form = () => ({ line: $('vsl-line').value.trim(), voyage: $('vsl-voyage').value.trim(), expectedPort: $('vsl-port').value.trim(), note: $('vsl-note').value.trim() });
+
+    async function track(c) {
+        const msg = $('vsl-add-msg');
+        msg.className = 'text-xs text-gray-500';
+        msg.textContent = 'Saving…';
+        try {
+            const d = await call('/vessel/track', { method: 'POST', body: Object.assign({ mmsi: c.mmsi, name: c.name, imo: c.imo }, form()) });
+            sel = d.vessel.tracked.mmsi;
+            aiAt = 0;
+            closeAdd();
+            await loadTracked();
+            pollT && clearTimeout(pollT);
+            setTimeout(pollOnce, 6000);
+        } catch (e) { msg.className = 'text-xs text-red-600'; msg.textContent = e.message || 'Could not track this vessel'; }
+    }
+
+    async function find() {
+        if (editing) { const v = tracked.find((x) => x.tracked.mmsi === editing); if (v) await track({ mmsi: v.tracked.mmsi, name: v.vessel.name || v.tracked.name, imo: v.vessel.imo || v.tracked.imo }); return; }
+        const q = $('vsl-q').value.trim();
+        const msg = $('vsl-add-msg'), box = $('vsl-results');
+        box.innerHTML = '';
+        msg.className = 'text-xs text-gray-500';
+        if (q.length < 3) { msg.textContent = 'Type at least 3 characters of the vessel name, or an IMO / MMSI number.'; return; }
+        msg.textContent = 'Searching…';
+        try {
+            const d = await call('/vessel/search?q=' + encodeURIComponent(q));
+            if (!d.configured) { msg.className = 'text-xs text-red-600'; msg.textContent = 'Live tracking is not switched on yet — the owner must add the AIS key first.'; return; }
+            const list = d.results || [];
+            if (!list.length) {
+                const dir = d.directory || {};
+                msg.className = 'text-xs text-amber-700';
+                msg.textContent = dir.ready
+                    ? 'No ship with that name has sent an AIS signal in the last 7 days. Check the spelling, or search by IMO / MMSI number.'
+                    : 'The vessel directory is still being built (' + (dir.vessels || 0).toLocaleString() + ' ships so far). Try again in a few minutes, or enter the 9-digit MMSI.';
+                return;
+            }
+            msg.textContent = list.length === 1 ? 'One match — check it is the right ship, then tap Track.' : list.length + ' matches — pick the right one (check IMO, size and destination).';
+            box.innerHTML = list.map((c, i) => '<div class="rounded-lg border border-gray-200 p-3 flex items-center justify-between gap-3">'
+                + '<div class="min-w-0 text-sm"><div class="font-bold text-gray-900 truncate">' + esc(c.name || ('MMSI ' + c.mmsi)) + '</div>'
+                + '<div class="text-xs text-gray-500">' + esc([c.imo ? 'IMO ' + c.imo : '', 'MMSI ' + c.mmsi, c.type, c.length ? c.length + ' m' : ''].filter(Boolean).join(' · ')) + '</div>'
+                + '<div class="text-xs text-gray-500">' + esc((c.destination ? 'Going to ' + c.destination + ' · ' : '') + (c.lastHeardMs ? 'AIS active ' + ago(c.lastHeardMs) : '')) + '</div></div>'
+                + '<button class="vsl-pick px-3 py-2 rounded-lg bg-[#34373d] text-[#f7ecd6] text-sm font-semibold" data-i="' + i + '">Track</button></div>').join('');
+            box.querySelectorAll('.vsl-pick').forEach((b) => { b.onclick = () => track(list[Number(b.getAttribute('data-i'))]); });
+        } catch (e) { msg.className = 'text-xs text-red-600'; msg.textContent = e.message || 'Search failed'; }
+    }
+
+    async function removeCurrent() {
+        const v = current();
+        if (!v) return;
+        if (!confirm('Stop tracking ' + (v.vessel.name || v.tracked.name || v.tracked.mmsi) + '?')) return;
+        try { await call('/vessel/untrack', { method: 'POST', body: { mmsi: v.tracked.mmsi } }); } catch (e) { alert(e.message); return; }
+        sel = '';
+        await loadTracked();
+    }
+
+    // ---------- open / close / tabs ----------
+    function startPoll() {
+        stopPoll();
+        const tick = async () => { await pollOnce(); pollT = setTimeout(tick, 15000); };
+        pollT = setTimeout(tick, 15000);
+    }
+    function stopPoll() { if (pollT) { clearTimeout(pollT); pollT = null; } }
+
+    async function openVessel() {
+        const m = $('account-menu'); if (m) m.classList.add('hidden');
+        $('vessel-modal').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        $('vsl-add').classList.add('hidden');
+        await loadStatus();
+        await loadTracked();
+        startPoll();
+    }
+    function closeVessel() {
+        $('vessel-modal').classList.add('hidden');
+        document.body.style.overflow = '';
+        stopPoll();
+    }
+
+    document.addEventListener('click', (e) => {
+        const tabBtn = e.target.closest('.vsl-tab[data-vtab]');
+        if (tabBtn) {
+            document.querySelectorAll('.vsl-tab[data-vtab]').forEach((b) => b.classList.toggle('active', b === tabBtn));
+            const isV = tabBtn.getAttribute('data-vtab') === 'vessel';
+            $('vessel-pane-vessel').classList.toggle('hidden', !isV);
+            $('vessel-pane-container').classList.toggle('hidden', isV);
+            if (isV && map) setTimeout(() => map.invalidateSize(), 50);
+            return;
+        }
+        const chip = e.target.closest('.vsl-chip');
+        if (chip && $('vessel-modal').contains(chip)) {
+            sel = chip.getAttribute('data-mmsi');
+            $('vsl-add').classList.add('hidden');
+            paintChips();
+            paintView(true);
+        }
+    });
+    $('menu-vessels').addEventListener('click', openVessel);
+    $('vessel-close').addEventListener('click', closeVessel);
+    $('vsl-add-btn').addEventListener('click', () => openAdd(''));
+    $('vsl-add-cancel').addEventListener('click', closeAdd);
+    $('vsl-find').addEventListener('click', find);
+    $('vsl-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); find(); } });
+    $('vsl-edit').addEventListener('click', () => { const v = current(); if (v) openAdd(v.tracked.mmsi); });
+    $('vsl-remove').addEventListener('click', removeCurrent);
+    $('vsl-refresh').addEventListener('click', () => { aiAt = 0; pollOnce().then(loadAi); });
+})();
+</script>
 </body>
 </html>
 
