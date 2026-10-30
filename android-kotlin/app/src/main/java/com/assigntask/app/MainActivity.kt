@@ -421,6 +421,7 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                     "personalProjects" -> PersonalProjectsScreen(uid = user.uid)
                     "teamSettings" -> TeamSettingsScreen(vm = vm, user = user, profile = profile)
                     "scheduledReminders" -> ScheduledRemindersScreen()
+                    "whatsapp" -> WhatsAppAccountScreen()
                     "groupUpdates" -> GroupUpdatesScreen()
                     "notifications" -> SettingsPage(vm)
                     "completedTasks" -> CompletedTasksPage(vm, user, profile)

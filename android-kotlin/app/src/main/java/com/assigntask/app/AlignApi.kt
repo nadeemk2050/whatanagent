@@ -82,6 +82,35 @@ object AlignApi {
     fun waSend(ctx: Context, jid: String, message: String): JSONObject =
         TeamSession.post(ctx, "/wa/send", JSONObject().put("jid", jid).put("message", message).toString())
 
+    // ---- my own WhatsApp number (QR link on the server, send-only) ----------
+    fun waMultiStatus(ctx: Context): JSONObject = TeamSession.get(ctx, "/wa/multi/status")
+
+    fun waMultiLink(ctx: Context, teamId: String = "", name: String = ""): JSONObject =
+        TeamSession.post(
+            ctx, "/wa/multi/link",
+            JSONObject().put("teamId", teamId).put("name", name).toString()
+        )
+
+    fun waMultiLinkStatus(ctx: Context): JSONObject = TeamSession.get(ctx, "/wa/multi/link/status")
+
+    fun waMultiUnlink(ctx: Context): JSONObject = TeamSession.post(ctx, "/wa/multi/unlink", "{}")
+
+    fun waMultiGroups(ctx: Context, refresh: Boolean = false): List<WaTarget> =
+        list(TeamSession.get(ctx, "/wa/multi/groups" + if (refresh) "?refresh=1" else ""), "groups").map {
+            WaTarget(jid = it.str("id"), name = it.str("name").ifBlank { it.str("id") }, isGroup = true)
+        }
+
+    fun waMultiContacts(ctx: Context, refresh: Boolean = false): List<WaTarget> =
+        list(TeamSession.get(ctx, "/wa/multi/contacts" + if (refresh) "?refresh=1" else ""), "contacts").map {
+            WaTarget(jid = it.str("id"), name = it.str("name").ifBlank { it.str("phone") }, isGroup = false)
+        }
+
+    fun waMultiSend(ctx: Context, message: String, targets: JSONArray): JSONObject =
+        TeamSession.post(
+            ctx, "/wa/multi/send",
+            JSONObject().put("message", message).put("targets", targets).toString()
+        )
+
     // ---- ai --------------------------------------------------------------
     fun aiAgents(ctx: Context): JSONObject = TeamSession.get(ctx, "/ai/agents")
 

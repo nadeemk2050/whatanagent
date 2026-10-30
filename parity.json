@@ -11,6 +11,7 @@
     { "pwa": "#menu-add-subusers", "key": "teamMembers", "label": "Team Members" },
     { "pwa": "#menu-team-settings", "key": "teamSettings", "label": "Team Settings" },
     { "pwa": "#menu-scheduled-reminders", "key": "scheduledReminders", "label": "Reminders" },
+    { "pwa": "#menu-wa-account", "key": "whatsapp", "label": "WhatsApp Number" },
     { "pwa": "#menu-group-updates", "key": "groupUpdates", "label": "Group Updates" },
     { "pwa": "#menu-push-notify", "key": "notifications", "label": "Notifications" },
     { "pwa": "#menu-logout", "key": "logout", "label": "Logout" }

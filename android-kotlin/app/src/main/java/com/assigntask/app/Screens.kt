@@ -35,6 +35,7 @@ enum class MenuEntry(
     TEAM_MEMBERS("teamMembers", "Team Members", 1),
     TEAM_SETTINGS("teamSettings", "Team Settings", 1),
     REMINDERS("scheduledReminders", "Reminders", 2),
+    WHATSAPP("whatsapp", "WhatsApp Number", 2),
     GROUP_UPDATES("groupUpdates", "Group Updates", 2),
     NOTIFICATIONS("notifications", "Notifications", 2),
     PLANNER("planner", "Timetable Planner", 2),
@@ -47,7 +48,7 @@ enum class MenuEntry(
         val menu: List<MenuEntry> = listOf(
             PERSONAL_TASKS, COMPLETED,
             PROFILE, TEAM_MEMBERS, TEAM_SETTINGS,
-            REMINDERS, GROUP_UPDATES, NOTIFICATIONS, PLANNER, CALL_HISTORY,
+            REMINDERS, WHATSAPP, GROUP_UPDATES, NOTIFICATIONS, PLANNER, CALL_HISTORY,
             ADD_SUB_USER,
             LOGOUT
         )
