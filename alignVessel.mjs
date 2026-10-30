@@ -749,6 +749,7 @@ export function registerAlignVesselRoutes(app, opts) {
   const fail = (res, e, code) => res.status(code || 500).json({ ok: false, error: sstr((e && e.message) || e, 240) });
 
   async function isAdmin(req) {
+    if (typeof opts.isAdmin === 'function') { try { return await opts.isAdmin(req); } catch (e) { return false; } }
     if (!req.staff || req.staff.role !== 'owner') return false;
     const raw = String(req.headers['x-firebase-token'] || '').trim();
     if (!raw) return false;

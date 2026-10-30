@@ -29,6 +29,7 @@ import {
 } from './alignAuth.mjs';
 import { registerAlignWaMultiRoutes } from './alignWaMulti.mjs';
 import { registerAlignVesselRoutes } from './alignVessel.mjs';
+import { registerAlignContainerRoutes } from './alignContainer.mjs';
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
 const bad = (res, msg, code = 400) => res.status(code).json({ ok: false, error: msg });
@@ -221,9 +222,25 @@ export function registerAlignRoutes(app) {
   catch (e) { console.warn('[ALIGN] WhatsApp multi-account routes unavailable: ' + ((e && e.message) || e)); }
 
   // Vessel live tracking (AIS). Shared by everyone in the same team.
+  const vesselAdmin = async (req) => {
+    // The key itself is verified against the AIS service, so the identity check only has to
+    // prove this is the main account owner — a verified Firebase login with that email is
+    // enough (the team-login role is not required).
+    const allowed = String(process.env.VESSEL_ADMIN_EMAIL || 'nadeemalsaham@gmail.com').toLowerCase();
+    const raw = String(req.headers['x-firebase-token'] || '').trim();
+    if (!raw) return false;
+    try {
+      const d = await alignAuth().verifyIdToken(raw);
+      return String(d.email || '').toLowerCase() === allowed;
+    } catch (e) { return false; }
+  };
+  const teamScope = (req) => (staffTeams(req)[0] || String((req.staff && req.staff.uid) || ''));
   try {
-    registerAlignVesselRoutes(app, { api, requireStaff, scopeOf: (req) => (staffTeams(req)[0] || String((req.staff && req.staff.uid) || '')) });
+    registerAlignVesselRoutes(app, { api, requireStaff, scopeOf: teamScope, isAdmin: vesselAdmin });
   } catch (e) { console.warn('[ALIGN] Vessel tracking routes unavailable: ' + ((e && e.message) || e)); }
+  try {
+    registerAlignContainerRoutes(app, { api, requireStaff, scopeOf: teamScope, isAdmin: vesselAdmin });
+  } catch (e) { console.warn('[ALIGN] Container tracking routes unavailable: ' + ((e && e.message) || e)); }
 
   // ============================================================ status
   app.get(api + '/status', (req, res) => {
