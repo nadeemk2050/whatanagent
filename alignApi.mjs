@@ -28,6 +28,8 @@ import {
   getOwnProfile, updateOwnProfile, setStaffProfileFields, adminUpdateStaff, revealStaffPassword
 } from './alignAuth.mjs';
 import { registerAlignWaMultiRoutes } from './alignWaMulti.mjs';
+import { listContacts as waListContacts } from './alignWaMulti.mjs';
+import { registerAlignCrmRoutes } from './alignCrm.mjs';
 import { registerAlignVesselRoutes } from './alignVessel.mjs';
 import { registerAlignContainerRoutes } from './alignContainer.mjs';
 
@@ -241,6 +243,11 @@ export function registerAlignRoutes(app) {
   try {
     registerAlignContainerRoutes(app, { api, requireStaff, scopeOf: teamScope, isAdmin: vesselAdmin });
   } catch (e) { console.warn('[ALIGN] Container tracking routes unavailable: ' + ((e && e.message) || e)); }
+
+  // CRM: its own login, its own companies and its own team (independent of AlignTasks teams).
+  try {
+    registerAlignCrmRoutes(app, { api: '/api/crm', waListContacts });
+  } catch (e) { console.warn('[ALIGN] CRM routes unavailable: ' + ((e && e.message) || e)); }
 
   // ============================================================ status
   app.get(api + '/status', (req, res) => {
