@@ -123,6 +123,32 @@
         .task-swipe.swiping .proj-swipe-row { transition: none; }
         .swipe-hint { font-size: 10px; color: #a89a7c; margin-left: 4px; }
 
+        /* Auto-growing task text areas — long task text is never hidden while typing */
+        textarea.ats-autogrow {
+            width: 100%;
+            padding: 9px 12px;
+            background: #eef1f4;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 13.5px;
+            line-height: 1.45;
+            color: #1e293b;
+            box-sizing: border-box;
+            resize: none;
+            overflow-y: hidden;
+            min-height: 62px;
+            max-height: 46vh;
+            font-family: inherit;
+            transition: height 120ms ease, border-color 150ms ease, box-shadow 150ms ease;
+        }
+        textarea.ats-autogrow.is-scroll { overflow-y: auto; }
+        textarea.ats-autogrow:focus {
+            outline: none;
+            border-color: #b08d3f;
+            box-shadow: 0 0 0 3px rgba(176, 141, 63, 0.16);
+        }
+        textarea.ats-autogrow::placeholder { color: #94a3b8; }
+
         .text-blue-600, .text-blue-700 { color: #8a6d2f !important; }
         .bg-blue-50 { background-color: #f4ecdc !important; }
         .border-blue-200 { border-color: var(--ats-gold-soft) !important; }
@@ -1502,7 +1528,7 @@
                 <input type="hidden" id="edit-task-id"><input type="hidden" id="edit-task-type"><input type="hidden" id="edit-task-project-id">
                 <div>
                     <label class="text-sm font-medium text-gray-700">Description</label>
-                    <textarea id="edit-task-description" class="w-full mt-1 p-2 border border-gray-300 rounded-lg" rows="3" required></textarea>
+                    <textarea id="edit-task-description" class="w-full mt-1 p-2 border border-gray-300 rounded-lg ats-autogrow" rows="3" required></textarea>
                 </div>
                 <div id="edit-task-assignee-container" class="hidden">
                     <label class="text-sm font-medium text-gray-700">Assign to</label>
@@ -1639,7 +1665,7 @@
                 <input type="hidden" id="edit-personal-task-id">
                 <div>
                     <label class="text-sm font-semibold text-gray-700">Task Title / Description *</label>
-                    <textarea id="edit-personal-task-desc" class="w-full mt-1 p-2.5 border border-gray-300 rounded-xl text-sm" rows="3" required></textarea>
+                    <textarea id="edit-personal-task-desc" class="w-full mt-1 p-2.5 border border-gray-300 rounded-xl text-sm ats-autogrow" rows="3" required></textarea>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -2677,6 +2703,42 @@
                     </div>
                 `;
             }
+
+            // ===== Auto-growing task text areas =====
+            // A task can be a paragraph: the box grows line by line (capped at ~46% of the screen,
+            // then it scrolls) so nothing the person types is ever hidden.
+            function autoGrowField(ta) {
+                if (!ta || ta.tagName !== 'TEXTAREA') return;
+                const cap = Math.max(120, Math.round(window.innerHeight * 0.46));
+                ta.style.height = 'auto';
+                const needed = ta.scrollHeight + 2;
+                ta.style.height = Math.min(needed, cap) + 'px';
+                ta.classList.toggle('is-scroll', needed > cap);
+            }
+            window.alignAutoGrow = autoGrowField;
+            document.addEventListener('input', e => {
+                if (e.target && e.target.tagName === 'TEXTAREA' && e.target.classList.contains('ats-autogrow')) autoGrowField(e.target);
+            }, true);
+            document.addEventListener('focusin', e => {
+                if (e.target && e.target.tagName === 'TEXTAREA' && e.target.classList.contains('ats-autogrow')) autoGrowField(e.target);
+            }, true);
+            window.addEventListener('resize', () => {
+                document.querySelectorAll('textarea.ats-autogrow').forEach(autoGrowField);
+            });
+            // Enter adds the task (exactly like the old one-line field); Shift+Enter makes a new line.
+            document.addEventListener('keydown', e => {
+                if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+                const ta = e.target;
+                if (!ta || ta.tagName !== 'TEXTAREA' || !ta.classList.contains('ats-autogrow')) return;
+                const form = ta.closest('form');
+                if (!form) return;
+                e.preventDefault();
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else {
+                    const b = form.querySelector('button[type="submit"], button');
+                    if (b) b.click();
+                }
+            }, true);
 
             // ===== WhatsApp reminders + staff WhatsApp numbers (webapp side of the AlignTasks→WhatsApp bridge) =====
             function normalizeWaNumberClient(raw) {
@@ -5006,6 +5068,7 @@
                 document.getElementById('edit-task-type').value = taskType;
                 document.getElementById('edit-task-project-id').value = projectId || '';
                 document.getElementById('edit-task-description').value = task.description;
+            if (window.alignAutoGrow) window.alignAutoGrow(document.getElementById('edit-task-description'));
                 // AI follow-up section: team tasks only (the chaser runs on the server)
                 const aiSlot = document.getElementById('ai-slot-edit');
                 if (aiSlot) {
@@ -5146,7 +5209,7 @@
                 userSection.className = 'bg-white p-4 rounded-xl shadow-sm';
                 userSection.innerHTML = `
                     <form id="user-add-individual-task-form" class="space-y-4 pb-4 mb-4 border-b">
-                        <input type="text" id="user-individual-task-desc" placeholder="Add a new task for myself..." class="flex-grow p-2 border rounded-lg w-full" required />
+                        <textarea rows="2" id="user-individual-task-desc" placeholder="Add a new task for myself..." class="ats-autogrow" required></textarea>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <input type="datetime-local" id="user-individual-task-due" class="p-2 border rounded-lg w-full" />
                             <div class="flex items-end gap-2">
@@ -5367,6 +5430,7 @@
                 if (!task) return;
                 document.getElementById('edit-personal-task-id').value = taskId;
                 document.getElementById('edit-personal-task-desc').value = task.description || '';
+            if (window.alignAutoGrow) window.alignAutoGrow(document.getElementById('edit-personal-task-desc'));
                 document.getElementById('edit-personal-task-category').value = task.category || 'General';
                 document.getElementById('edit-personal-task-priority').value = task.priority || 'normal';
                 document.getElementById('edit-personal-task-duedate').value = task.dueDate || '';
@@ -5678,7 +5742,7 @@
                     if ([...sel.options].some(o => o.value === me)) sel.value = me;
                 }
                 const input = document.getElementById('project-task-desc');
-                if (input) input.focus();
+                if (input) { if (window.alignAutoGrow) window.alignAutoGrow(input); input.focus(); }
             }
 
             // ---------- personal projects ----------
@@ -6098,6 +6162,7 @@
                 document.getElementById('personal-project-task-id').value = editing ? task.id : '';
                 document.getElementById('personal-project-task-title').textContent = editing ? 'Edit Personal Task' : 'New Personal Task';
                 document.getElementById('personal-project-task-desc').value = editing ? (task.description || '') : '';
+                if (window.alignAutoGrow) window.alignAutoGrow(document.getElementById('personal-project-task-desc'));
                 document.getElementById('personal-project-task-due').value = editing ? (task.dueDate || '') : '';
                 const sub = document.getElementById('personal-project-task-sub');
                 if (sub) sub.textContent = project ? project.name : '';
@@ -7526,7 +7591,7 @@
                         initAiFollowUp('new');
                     }
                     const input = document.getElementById('new-task-for-all-description');
-                    if (input) input.focus();
+                    if (input) { if (window.alignAutoGrow) window.alignAutoGrow(input); input.focus(); }
                 }
             }
             function closeGeneralTaskForm(reset) {
@@ -7548,7 +7613,7 @@
                 if (modal) modal.style.display = show ? 'block' : 'none';
                 if (show) {
                     const input = document.getElementById('personal-task-desc');
-                    if (input) input.focus();
+                    if (input) { if (window.alignAutoGrow) window.alignAutoGrow(input); input.focus(); }
                 }
             }
             function closePersonalTaskForm(reset) {
@@ -8619,7 +8684,7 @@
             <form id="task-for-all-form" style="padding:18px;display:flex;flex-direction:column;gap:13px;">
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Task</label>
-                    <input type="text" id="new-task-for-all-description" placeholder="What needs to be done?" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required/>
+                    <textarea rows="2" id="new-task-for-all-description" placeholder="What needs to be done?" class="ats-autogrow" required></textarea>
                 </div>
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Assign to</label>
@@ -8667,7 +8732,7 @@
             <form id="add-personal-task-form" style="padding:18px;display:flex;flex-direction:column;gap:13px;">
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Task Title *</label>
-                    <input type="text" id="personal-task-desc" placeholder="e.g. Call broker about trade contract, verify customs payment…" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required />
+                    <textarea rows="2" id="personal-task-desc" placeholder="e.g. Call broker about trade contract, verify customs payment…" class="ats-autogrow" required></textarea>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <div style="flex:1;min-width:150px;">
@@ -8763,7 +8828,7 @@
                 <input type="hidden" id="project-task-project-id" />
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Task details *</label>
-                    <input type="text" id="project-task-desc" placeholder="What has to be done?" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required />
+                    <textarea rows="2" id="project-task-desc" placeholder="What has to be done?" class="ats-autogrow" required></textarea>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <div style="flex:1;min-width:170px;">
@@ -8827,7 +8892,7 @@
                 <input type="hidden" id="personal-project-task-id" />
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Task details *</label>
-                    <input type="text" id="personal-project-task-desc" placeholder="What has to be done?" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" required />
+                    <textarea rows="2" id="personal-project-task-desc" placeholder="What has to be done?" class="ats-autogrow" required></textarea>
                 </div>
                 <div>
                     <label style="display:block;font-size:11px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Due date &amp; time</label>
