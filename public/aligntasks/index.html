@@ -6507,7 +6507,7 @@
                     provider.setCustomParameters({ prompt: 'select_account' });
                     return provider;
                 };
-                gbtn.addEventListener('click', async () => {
+                gbtn.onclick = async () => {
                     authError.classList.add('hidden');
                     const provider = providerOf();
                     // Redirect first: a popup window can be blocked silently, a redirect never is.
@@ -6536,7 +6536,7 @@
                                 ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
                                 : (err2.message || 'Google sign-in failed.');
                     }
-                });
+                };
                 // The Google button only makes sense on the sign-in view (observe the form).
                 const sync = () => {
                     const formEl = document.getElementById('auth-form');
