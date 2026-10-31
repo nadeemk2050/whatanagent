@@ -1842,6 +1842,32 @@ function alignEmailByPhone(phone) {
   }
   return '';
 }
+// Per-person AI switches (AlignTasks → Scheduled Reminders → 🤖 AI Linked Tasks).
+// alignAiMute/<email>: { email, digest:false, reply:false } — a person who does not want the
+// daily plan or the automatic "DONE / OK" answer just has that automation silenced for them.
+let alignAiMuteCache = { at: 0, map: new Map() };
+async function alignAiMuteMap(force) {
+  if (!force && Date.now() - alignAiMuteCache.at < 60000) return alignAiMuteCache.map;
+  const map = new Map();
+  try {
+    const snap = await alignDb().collection('alignAiMute').limit(500).get();
+    snap.forEach(d => {
+      const v = d.data() || {};
+      map.set(String(v.email || d.id || '').toLowerCase(), v);
+    });
+  } catch (e) { /* collection optional */ }
+  alignAiMuteCache = { at: Date.now(), map };
+  return map;
+}
+async function alignAiMuted(email, kind) {
+  const e = String(email || '').toLowerCase();
+  if (!e) return false;
+  const v = (await alignAiMuteMap()).get(e);
+  if (!v) return false;
+  if (kind === 'digest') return v.digest === false;
+  if (kind === 'reply') return v.reply === false;
+  return false;
+}
 function alignPendingFor(email) {
   const e = String(email || '').toLowerCase();
   const rows = [];
@@ -1897,6 +1923,7 @@ async function maybeSendDailyDigest() {
     if (!stages.length) return;
     for (const [email, who] of alignStaffWaMap.entries()) {
       if (!who || !who.wa) continue;
+      if (await alignAiMuted(email, 'digest')) continue;   // silenced from the AI Linked Tasks page
       const items = alignPendingFor(email);
       if (!items.length) continue;
       const dg = await alignDigestRef(email).catch(() => null);
@@ -1949,6 +1976,9 @@ async function handleAlignStaffReply(msg) {
     let items = (dg && dg.data && Array.isArray(dg.data.items)) ? dg.data.items.slice() : [];
     if (!items.length) items = alignPendingFor(email);
     if (!items.length) {
+      // Silenced from the AI Linked Tasks page: swallow the ack instead of sending the
+      // repeated "nothing pending — all clear" line (the AI does not answer it either).
+      if (await alignAiMuted(email, 'reply')) return true;
       await sendWaWebMessage(jid, '✅ Nothing pending on your board right now — all clear.');
       return true;
     }

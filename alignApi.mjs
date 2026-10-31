@@ -1076,6 +1076,77 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // Who receives the AI's own WhatsApp automations (daily plan + the automatic DONE/OK answer)?
+  // Those two are what keeps writing "nothing pending — all clear" after a task is finished, so
+  // they are listed next to the per-task chasers and can be silenced one person at a time.
+  const ALIGN_TZ_DAY = (ms = Date.now()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+
+  app.get(api + '/ai/watch', requireStaff, async (req, res) => {
+    try {
+      const teamId = sstr(req.query.teamId, 80);
+      if (!teamId) return bad(res, 'A team is required.');
+      const day = ALIGN_TZ_DAY();
+      const staffSnap = await board('staff').where('teamId', '==', teamId).limit(300).get();
+      const muteSnap = await alignDb().collection('alignAiMute').limit(500).get().catch(() => null);
+      const mute = new Map();
+      if (muteSnap) muteSnap.forEach(d => { const v = d.data() || {}; mute.set(String(v.email || d.id || '').toLowerCase(), v); });
+      const people = [];
+      for (const d of staffSnap.docs) {
+        const v = d.data() || {};
+        const email = String(v.email || '').toLowerCase();
+        if (!email) continue;
+        const wa = String(v.whatsappNumber || '').replace(/[^0-9]/g, '');
+        const m = mute.get(email) || {};
+        let digestToday = null;
+        try {
+          const id = email.replace(/[^a-z0-9@._-]/g, '_').slice(0, 120) + '_' + day;
+          const dg = await alignDb().collection('alignDigestDaily').doc(id).get();
+          if (dg.exists) {
+            const g = dg.data() || {};
+            digestToday = { morningSentAt: Number(g.morningSentAt) || 0, eveningSentAt: Number(g.eveningSentAt) || 0, items: Array.isArray(g.items) ? g.items.length : 0 };
+          }
+        } catch (e) { digestToday = null; }
+        people.push({
+          email,
+          name: sstr(v.name || email.split('@')[0], 80),
+          wa,
+          digestOn: m.digest !== false,
+          replyOn: m.reply !== false,
+          digestToday
+        });
+      }
+      people.sort((a, b) => (Number(!!b.wa) - Number(!!a.wa)) || a.name.localeCompare(b.name));
+      res.json({ ok: true, day, people, silenced: people.filter(p => !p.digestOn || !p.replyOn).length });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      res.status(500).json({ ok: false, error: sstr(e.message, 200) });
+    }
+  });
+
+  app.post(api + '/ai/watch/action', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const teamId = sstr(b.teamId, 80);
+      const email = sstr(b.email, 160).toLowerCase();
+      const kind = sstr(b.kind, 20);
+      const on = b.on !== false;
+      if (!teamId || !email) return bad(res, 'A team and a person are required.');
+      if (!['digest', 'reply'].includes(kind)) return bad(res, 'Unknown automation.');
+      const staffSnap = await board('staff').where('teamId', '==', teamId).limit(300).get();
+      const mine = staffSnap.docs.some(d => String((d.data() || {}).email || '').toLowerCase() === email);
+      if (!mine) return bad(res, 'That person is not in this team.', 403);
+      const id = email.replace(/[^a-z0-9@._-]/g, '_').slice(0, 120);
+      const ref = alignDb().collection('alignAiMute').doc(id);
+      const patch = { email, updatedAt: Date.now(), updatedBy: (req.staff && req.staff.name) || '' };
+      patch[kind] = !!on;
+      await ref.set(patch, { merge: true });
+      res.json({ ok: true, email, kind, on: !!on });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, sstr(e.message, 200));
+    }
+  });
+
   // ============================================================ push notifications
   // Web Push: the phone/laptop gets a real notification even when the app is closed.
   let pushModCache = null;

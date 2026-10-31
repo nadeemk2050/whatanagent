@@ -1306,7 +1306,7 @@
                     <button id="sched-ai-refresh" class="btn-cal-nav" style="padding:4px 10px">↻ Refresh</button>
                     <button id="sched-ai-back" class="btn-cal-nav" style="padding:4px 10px">☰ Reminders</button>
                 </div>
-                <div class="px-3 pt-2"><p class="text-xs text-gray-500">These tasks are chased on WhatsApp by an AI staff member. A follow-up that is still running on a task you already finished keeps sending "nothing pending" style messages — pause or stop it here. Nothing is removed from the normal reminders list.</p></div>
+                <div class="px-3 pt-2"><p class="text-xs text-gray-500">Everything the AI does on WhatsApp for this team: its daily task plan and automatic “DONE / OK” answers per person, plus the per-task chasers. Anything left running on a finished task keeps sending lines like “nothing pending — all clear”; switch it off here. Nothing is removed from the normal reminders list.</p></div>
                 <div id="sched-ai-list" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 bg-white"></div>
             </div>
             <div id="sched-cal-pane" class="hidden flex-1 min-h-0 flex flex-col">
@@ -3653,9 +3653,45 @@
             // Shown as its own section of the reminders page. It is purely additive: nothing is
             // filtered out of the normal scheduled-reminders list and there is no calendar here.
             let aiFollowUpsCache = [];
-            function aiBtnLabel(active, done) {
-                const n = (active === undefined) ? null : active;
-                return '🤖 AI Linked Tasks' + (n ? (' (' + n + ')') : '');
+            let aiWatchCache = { people: [], day: '' };
+            function aiLinkCount() {
+                const chasers = aiFollowUpsCache.filter(r => r.status === 'active').length;
+                const people = (aiWatchCache.people || []).filter(p => p.digestOn || p.replyOn).length;
+                return chasers + people;
+            }
+            function aiBtnLabel(n) {
+                const count = (n === undefined) ? aiLinkCount() : n;
+                return '🤖 AI Linked Tasks' + (count ? (' (' + count + ')') : '');
+            }
+            // ---------- people: the AI's own daily plan + automatic DONE/OK answer ----------
+            function aiWatchCardHTML(p) {
+                const digest = p.digestToday;
+                const bits = [];
+                if (!p.wa) bits.push('<span class="text-amber-700">no WhatsApp number — cannot be messaged</span>');
+                else bits.push('WhatsApp +' + waEsc(p.wa));
+                if (digest) {
+                    const m = digest.morningSentAt ? ('morning plan ' + new Date(digest.morningSentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : 'no morning plan today';
+                    const e = digest.eveningSentAt ? ('evening ' + new Date(digest.eveningSentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : 'no evening plan yet';
+                    bits.push(m + ' · ' + e + (digest.items ? (' · ' + digest.items + ' listed') : ''));
+                } else {
+                    bits.push('no daily plan sent today');
+                }
+                const btn = (kind, on, label) => '<button class="text-xs px-2 py-1 rounded-lg border ' +
+                    (on ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-300') +
+                    '" data-ai-watch="' + kind + '" data-email="' + waEsc(p.email) + '" data-on="' + (on ? '1' : '0') + '" title="' +
+                    (on ? 'On — click to stop' : 'Off — click to start') + '">' + label + ': ' + (on ? 'On' : 'Off') + '</button>';
+                return '<div class="border border-gray-200 rounded-xl p-3 space-y-2' + ((!p.digestOn || !p.replyOn) ? ' bg-gray-50' : '') + '">' +
+                    '<div class="flex justify-between items-start gap-2 flex-wrap">' +
+                        '<div class="min-w-0">' +
+                            '<div class="text-sm font-semibold text-gray-800 break-words">' + waEsc(p.name) + '</div>' +
+                            '<div class="text-xs text-gray-600 break-words">' + bits.map(b => '<div>' + b + '</div>').join('') + '</div>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-2 flex-wrap">' +
+                            btn('digest', p.digestOn, '📅 Daily plan') +
+                            btn('reply', p.replyOn, '💬 Auto-answer DONE/OK') +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
             }
             function aiFollowUpChip(r) {
                 const st = String(r.status || 'active');
@@ -3699,24 +3735,35 @@
             function paintAiFollowUps() {
                 const box = document.getElementById('sched-ai-list');
                 if (!box) return;
-                if (!aiFollowUpsCache.length) {
-                    box.innerHTML = '<p class="text-sm text-gray-500 p-2">No task has an AI staff member assigned right now. Open a task → long-press → Edit → “Let an AI staff member follow this up on WhatsApp”.</p>';
-                    return;
-                }
-                box.innerHTML = aiFollowUpsCache.map(r => aiFollowUpCardHTML(r)).join('');
+                const people = aiWatchCache.people || [];
+                let html = '';
+                html += '<div class="text-xs font-bold uppercase tracking-wide text-gray-500">AI replies &amp; daily plan — per person</div>';
+                html += people.length
+                    ? people.map(aiWatchCardHTML).join('')
+                    : '<p class="text-sm text-gray-500 p-1">No team member with a WhatsApp number yet — add one in Settings → Team Members.</p>';
+                html += '<div class="text-xs font-bold uppercase tracking-wide text-gray-500 pt-2">Tasks with an AI follow-up</div>';
+                html += aiFollowUpsCache.length
+                    ? aiFollowUpsCache.map(r => aiFollowUpCardHTML(r)).join('')
+                    : '<p class="text-sm text-gray-500 p-1">No task has an AI staff member assigned right now. Open a task → long-press → Edit → “Let an AI staff member follow this up on WhatsApp”.</p>';
+                box.innerHTML = html;
             }
             async function loadAiFollowUps() {
                 const box = document.getElementById('sched-ai-list');
                 if (box && !document.getElementById('sched-ai-pane').classList.contains('hidden')) box.innerHTML = '<p class="text-sm text-gray-500 p-2">Loading…</p>';
+                const team = 'teamId=' + encodeURIComponent(teamCtx.teamId || '');
                 try {
-                    const d = await window.alignApi('/ai/followups?teamId=' + encodeURIComponent(teamCtx.teamId || ''));
-                    aiFollowUpsCache = Array.isArray(d.items) ? d.items : [];
+                    const [fu, watch] = await Promise.all([
+                        window.alignApi('/ai/followups?' + team),
+                        window.alignApi('/ai/watch?' + team).catch(() => ({ people: [] }))
+                    ]);
+                    aiFollowUpsCache = Array.isArray(fu.items) ? fu.items : [];
+                    aiWatchCache = { people: Array.isArray(watch.people) ? watch.people : [], day: watch.day || '' };
                     paintAiFollowUps();
                     const btn = document.getElementById('sched-ai-btn');
                     const pane = document.getElementById('sched-ai-pane');
-                    if (btn && pane && pane.classList.contains('hidden')) btn.textContent = aiBtnLabel(Number(d.active) || 0);
+                    if (btn && pane && pane.classList.contains('hidden')) btn.textContent = aiBtnLabel(aiLinkCount());
                 } catch (e) {
-                    if (box) box.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load AI follow-ups: ' + waEsc(e.message || e) + '</p>';
+                    if (box) box.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load AI links: ' + waEsc(e.message || e) + '</p>';
                 }
             }
             function showAiPane(on) {
@@ -3737,7 +3784,7 @@
                 } else {
                     if (list) list.classList.remove('hidden');
                     if (calBtn) calBtn.classList.remove('hidden');
-                    if (aiBtn) aiBtn.textContent = aiBtnLabel(aiFollowUpsCache.filter(r => r.status === 'active').length);
+                    if (aiBtn) aiBtn.textContent = aiBtnLabel();
                 }
             }
 
@@ -3955,6 +4002,25 @@
             document.getElementById('sched-ai-back').addEventListener('click', () => showAiPane(false));
             document.getElementById('sched-ai-refresh').addEventListener('click', loadAiFollowUps);
             document.getElementById('sched-ai-pane').addEventListener('click', async e => {
+                const w = e.target.closest('[data-ai-watch]');
+                if (w) {
+                    const kind = w.getAttribute('data-ai-watch');
+                    const email = w.getAttribute('data-email');
+                    const wasOn = w.getAttribute('data-on') === '1';
+                    if (!email) return;
+                    w.disabled = true;
+                    const label = w.textContent;
+                    w.textContent = '…';
+                    try {
+                        await window.alignApi('/ai/watch/action', { method: 'POST', body: { teamId: teamCtx.teamId, email: email, kind: kind, on: !wasOn } });
+                        await loadAiFollowUps();
+                    } catch (err) {
+                        alert('Could not change this AI automation: ' + ((err && err.message) || err));
+                        w.disabled = false;
+                        w.textContent = label;
+                    }
+                    return;
+                }
                 const btn = e.target.closest('[data-ai-action]');
                 if (!btn) return;
                 const action = btn.getAttribute('data-ai-action');
