@@ -13,6 +13,7 @@ import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor } from './ai
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
+import { tankPromptText } from './businessTank.mjs';
 
 const DISPATCH_BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
@@ -36,6 +37,8 @@ async function getAiSettings() {
   settingsCache = { at: Date.now(), data };
   return data;
 }
+
+export const getAiSettingsForTank = () => getAiSettings();
 
 const sstr = (v, n = 2000) => String(v == null ? '' : v).slice(0, n);
 const providerOf = (model) => {
@@ -115,6 +118,11 @@ export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '', 
 
   if (businessKbText && a.useBusinessKb) {
     s += '\n--- BUSINESS KNOWLEDGE BASE (facts you may rely on) ---\n' + sstr(businessKbText, 4000) + '\n';
+  }
+
+  if (a.useBusinessTank) {
+    const tank = tankPromptText();
+    if (tank) s += '\n--- BUSINESS DATA TANK (the owner\'s verified facts about this business) ---\n' + tank + '\n';
   }
 
   const knowledge = blocks.knowledge || [];

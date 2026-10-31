@@ -21,6 +21,7 @@ import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerWorkshopRoutes } from './workshopApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
+import { registerBusinessRoutes } from './businessTankApi.mjs';
 import { registerAlignRoutes } from './alignApi.mjs';
 import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceReport } from './bandwidthTracker.mjs';
 import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
@@ -168,6 +169,7 @@ registerOfficeRoutes(app, db);
 registerWorkshopRoutes(app, db);
 // 📖 Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
 registerRuleBookRoutes(app, db);
+registerBusinessRoutes(app, db);
 // 🎯 AlignTasks: name-based staff login, team unlock gate, stamped task writes
 registerAlignRoutes(app);
 app.use(express.static('public', {

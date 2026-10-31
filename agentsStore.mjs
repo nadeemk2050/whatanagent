@@ -91,6 +91,7 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   a.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'qwen3.8-flash';
   a.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'gemini-2.5-flash';
   a.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);
+  a.useBusinessTank = asBool(raw.useBusinessTank != null ? raw.useBusinessTank : existing.useBusinessTank, false);
   a.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);
   a.systemPrompt = sstr(raw.systemPrompt != null ? raw.systemPrompt : existing.systemPrompt, 12000);
   a.promptVersion = Number(raw.promptVersion != null ? raw.promptVersion : existing.promptVersion) || 1;

@@ -403,6 +403,7 @@ onAuthStateChanged(auth, (user) => {
 window.academyBoot = async function () {
   await loadMeta();
   await loadAgents();
+  if (location.hash === '#business') setTab('business');
 };
 
 async function loadMeta() {
@@ -454,10 +455,11 @@ function renderTabs() {
   $('tabs').innerHTML = rows.map(r =>
     '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('') +
     '<button class="tab ' + (S.tab === 'all' ? 'active' : '') + '" onclick="setTab(\'all\')" style="border-color:#0ea5e9;color:' + (S.tab === 'all' ? '#fff' : '#0369a1') + ';' + (S.tab === 'all' ? 'background:#0ea5e9;' : 'background:#f0f9ff;') + '">👥 All Staff (' + S.agents.length + ')</button>' +
-    '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">🏢 Offices of Staff</button>';
-}
+    '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">    🏢 Offices of Staff</button>' +
+        '<button class="tab ' + (S.tab === 'business' ? 'active' : '') + '" onclick="setTab(\'business\')" style="border-color:#0d9488;color:' + (S.tab === 'business' ? '#fff' : '#0f766e') + ';' + (S.tab === 'business' ? 'background:#0d9488;' : 'background:#f0fdfa;') + '">🧠 Business Data Tank</button>';
+    }
 
-function setTab(k) { S.tab = k; renderTabs(); renderCounters(); renderCards(); }
+    function setTab(k) { S.tab = k; renderTabs(); renderCounters(); renderCards(); }
 
 function renderCards() {
   const box0 = $('cards'), empty0 = $('cardsEmpty');
@@ -467,6 +469,14 @@ function renderCards() {
     box0.innerHTML = '<div class="x">Loading offices…</div>';
     empty0.classList.add('hidden');
     renderOffices();
+    return;
+  }
+
+  // 🧠 Business Data Tank
+  if (S.tab === 'business') {
+    empty0.classList.add('hidden');
+    if (typeof window.renderBusinessTank === 'function') window.renderBusinessTank();
+    else box0.innerHTML = '<div class="x">Business Data Tank script failed to load.</div>';
     return;
   }
 
@@ -1390,6 +1400,17 @@ const oSelect = (id, opts, val) => '<select id="' + id + '" style="width:100%;pa
   opts.map(o => '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</select>';
 const oArea = (id, val) => '<textarea id="' + id + '" rows="3" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;">' + esc(val == null ? '' : val) + '</textarea>';
 
+async function linkTank(id, el) {
+  const on = el.checked;
+  try {
+    await api('/api/business/link', { method: 'POST', body: JSON.stringify({ agentId: id, on }) });
+    if (O.cur && O.cur.agent) O.cur.agent.useBusinessTank = on;
+    const ag = (S.agents || []).find(x => x.id === id);
+    if (ag) ag.useBusinessTank = on;
+    toast(on ? '🧠 Linked — this staff now uses the Business Data Tank' : 'Unlinked from the Business Data Tank');
+  } catch (e) { el.checked = !on; toast('❌ ' + e.message); }
+}
+
 async function opost(path, body) {
   return api('/api/office/' + path, { method: 'POST', body: JSON.stringify(body || {}) });
 }
@@ -1404,8 +1425,13 @@ function renderOfficeTab() {
     b.innerHTML = oSect('Identity',
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px;">' +
       [['Name', a.name], ['Role', a.role], ['Status', STATUS_LABEL[a.status] || a.status], ['Category', a.category],
-       ['Model', a.model], ['Autonomy', d.office.autonomyLabel], ['Trained', d.office.progress.effective + '%'], ['Confidence', d.office.confidence + '%']]
+       ['Model', a.model], ['Autonomy', d.office.autonomyLabel], ['Trained', d.office.progress.effective + '%'], ['Confidence', ((d.office.confidence && d.office.confidence.score) || 0) + '%']]
         .map(x => '<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;"><div style="font-size:10px;color:#94a3b8;text-transform:uppercase;">' + esc(x[0]) + '</div><b style="font-size:12px;">' + esc(x[1] || '—') + '</b></div>').join('') + '</div>') +
+      oSect('🧠 Business Data Tank',
+        '<label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;cursor:pointer;">' +
+        '<input type="checkbox" id="oTank" ' + (a.useBusinessTank ? 'checked' : '') + ' onchange="linkTank(\'' + esc(id) + '\', this)" style="margin-top:2px;">' +
+        '<span><b>Link this staff to the Business Data Tank</b><br><span style="color:#64748b;">Gives them the owner\'s business facts — products, raw materials, prices, terms, FAQs — so they answer from real data. Recommended for Business Communicator Pro and sales / purchase staff.</span></span></label>' +
+        '<div style="margin-top:6px;"><a href="#business" onclick="closeOffice();setTab(\'business\');return false;" style="font-size:12px;color:#0f766e;font-weight:700;">Open the Business Data Tank →</a></div>') +
       oSect('Quick actions',
         '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
         '<button class="btn btn-ghost btn-sm" onclick="officeTab(\'desk\')">🪑 Desk</button>' +
@@ -1540,7 +1566,7 @@ function renderOfficeTab() {
       const q = pd.performance;
       b.innerHTML =
         '<div class="counters" style="margin-bottom:10px;">' +
-        [[q.progress.effective + '%', 'Trained'], [q.confidence + '%', 'Confidence'], [q.passRate == null ? '—' : q.passRate + '%', 'Scorecard'],
+        [[q.progress.effective + '%', 'Trained'], [((q.confidence && q.confidence.score) || 0) + '%', 'Confidence'], [q.passRate == null ? '—' : q.passRate + '%', 'Scorecard'],
          [q.guardrailRate == null ? '—' : q.guardrailRate + '%', 'Guardrails'], [q.clients, 'Chats'], [q.activeClients, 'Active 7d'],
          [q.fallbacks24h, 'Fallbacks 24h'], [q.openComplaints, 'Open complaints']]
           .map(x => '<div class="counter"><b>' + x[0] + '</b><span>' + x[1] + '</span></div>').join('') + '</div>' +
@@ -1924,6 +1950,7 @@ async function saveMeeting(mid, kind) {
   } catch (e) { toast('❌ ' + e.message); }
 }
 </script>
+<script src="/business-tank.js"></script>
 
 </body>
 </html>
