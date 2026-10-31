@@ -1324,8 +1324,8 @@
         .btn-cal-nav:hover { background: #f3ecdd; }
         .cal-mode { border: 1px solid #e3ded1; background: #fffdf8; color: #6b5f45; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
         .cal-mode.active { background: #34373d; color: #f7ecd6; border-color: #34373d; }
-        .cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 26px repeat(6, minmax(70px, 1fr)); border: 1px solid #e8e4d9; border-radius: 10px; overflow: hidden; }
-        .cal-dow { background: #faf7ef; color: #6b7280; font-size: 11px; font-weight: 800; text-align: center; padding: 6px 0; border-bottom: 1px solid #e8e4d9; }
+        .cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 26px repeat(6, minmax(70px, 1fr)); border: 1px solid #e8e4d9; border-radius: 10px; height: 100%; }
+        .cal-dow { background: #faf7ef; color: #6b7280; font-size: 11px; font-weight: 800; text-align: center; padding: 6px 0; border-bottom: 1px solid #e8e4d9; position: sticky; top: 0; z-index: 2; }
         .cal-cell { min-height: 70px; border-right: 1px solid #f0ece2; border-bottom: 1px solid #f0ece2; padding: 4px; font-size: 12px; background: #fff; overflow: hidden; }
         .cal-cell.other { background: #fcfbf7; color: #b6b1a4; }
         .cal-cell.today { background: #fff9e8; }
@@ -3617,8 +3617,8 @@
                         const inMonth = d.getMonth() === a.getMonth();
                         const isToday = sameDay(d, today);
                         const dayEvents = events.filter(e => sameDay(new Date(e.at), d));
-                        const shown = dayEvents.slice(0, 3).map(calChip).join('');
-                        const more = dayEvents.length > 3 ? '<div class="cal-more">+' + (dayEvents.length - 3) + ' more</div>' : '';
+                        const shown = dayEvents.slice(0, 2).map(calChip).join('');
+                        const more = dayEvents.length > 2 ? '<div class="cal-more">+' + (dayEvents.length - 2) + ' more</div>' : '';
                         html += '<div class="cal-cell' + (inMonth ? '' : ' other') + (isToday ? ' today' : '') + '">' +
                             '<span class="cal-num">' + d.getDate() + '</span>' + shown + more + '</div>';
                     }
