@@ -151,7 +151,11 @@
     <div class="drawer-panel">
         <div class="p-4 border-b flex items-start gap-3" style="border-color:var(--line)">
             <div class="min-w-0 flex-1">
-                <div id="dr-name" class="text-lg font-extrabold truncate"></div>
+                <div id="dr-name-row" class="flex items-center gap-2">
+                    <div id="dr-name" class="text-lg font-extrabold truncate"></div>
+                    <button id="dr-rename" class="btn btn-light shrink-0" style="padding:2px 7px;font-size:12px" title="Edit the customer name">✎ Name</button>
+                </div>
+                <div id="dr-rename-box" class="hide items-center gap-2"></div>
                 <div id="dr-sub" class="text-xs text-gray-500 truncate"></div>
             </div>
             <button class="btn btn-light" data-close="drawer">✕</button>
@@ -509,16 +513,21 @@
         const d = await api('/contacts/' + id);
         S.drawer = d; S.drawerTab = 'timeline';
         const c = d.contact;
+        // Always come back to the display state (the inline rename editor may have been open).
+        const rnBox = $('#dr-rename-box'), rnRow = $('#dr-name-row');
+        if (rnBox) { rnBox.classList.add('hide'); rnBox.classList.remove('flex'); rnBox.innerHTML = ''; }
+        if (rnRow) rnRow.classList.remove('hide');
         $('#dr-name').textContent = c.name || c.company;
         $('#dr-sub').textContent = [c.company, c.title, (c.emails || [])[0], (c.phones || [])[0], c.country].filter(Boolean).join(' · ');
         $('#dr-actions').innerHTML =
             '<button class="btn btn-dark" id="d-log">+ Log activity</button><button class="btn btn-light" id="d-deal">+ Deal</button>'
-            + '<button class="btn btn-light" id="d-task">+ Task</button><button class="btn btn-light" id="d-edit">Edit</button>'
+            + '<button class="btn btn-light" id="d-task">+ Task</button><button class="btn btn-light" id="d-edit" title="Company, emails, phones, tags, status, notes">✎ Edit details</button>'
             + ((canManage() || c.ownerId === S.member.id || c.createdBy === S.member.id) ? '<button class="btn btn-danger" id="d-del">Delete</button>' : '');
         $('#d-log').onclick = () => activityForm(c.id);
         $('#d-deal').onclick = () => dealForm(null, c.id);
         $('#d-task').onclick = () => taskForm(c.id);
         $('#d-edit').onclick = () => contactForm(c);
+        $('#dr-rename').onclick = renameInline;
         if ($('#d-del')) $('#d-del').onclick = async () => {
             if (!confirm('Delete this customer and their timeline?')) return;
             try { await api('/contacts/' + id, { method: 'DELETE' }); $('#drawer').classList.remove('open'); S.drawer = null; toast('Customer deleted'); render(); }
@@ -526,6 +535,42 @@
         };
         paintDrawerTabs();
         $('#drawer').classList.add('open');
+    }
+    // Rename straight from the customer window: click ✎ Name, type, Enter.
+    async function renameInline() {
+        const d = S.drawer;
+        if (!d || !d.contact) return;
+        const c = d.contact;
+        const row = $('#dr-name-row'), box = $('#dr-rename-box');
+        if (!box.classList.contains('hide')) { const i = $('#rn-inp'); if (i) i.focus(); return; }
+        box.innerHTML = '<input id="rn-inp" class="inp" style="max-width:230px;padding:5px 8px" placeholder="Customer name">'
+            + '<button id="rn-save" class="btn btn-dark" style="padding:4px 10px">Save</button>'
+            + '<button id="rn-cancel" class="btn btn-light" style="padding:4px 8px">✕</button>';
+        const inp = $('#rn-inp');
+        inp.value = c.name || '';
+        row.classList.add('hide');
+        box.classList.remove('hide');
+        box.classList.add('flex');
+        inp.focus(); inp.select();
+        const cancel = () => { box.classList.add('hide'); box.classList.remove('flex'); row.classList.remove('hide'); };
+        $('#rn-cancel').onclick = cancel;
+        const save = async () => {
+            const name = inp.value.trim();
+            if (!name) return toast('The name cannot be empty', true);
+            if (name === (c.name || '')) return cancel();
+            try {
+                await api('/contacts/' + c.id, { method: 'PATCH', body: { name } });
+                toast('Name updated');
+                await openContact(c.id);      // drawer shows the new name straight away
+                await loadAll(true);          // re-read so the list behind shows it too
+                await render(true);
+            } catch (e) { toast(e.message, true); }
+        };
+        $('#rn-save').onclick = save;
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); save(); }
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }   // Escape here must not close the whole window
+        });
     }
     function paintDrawerTabs() {
         const d = S.drawer, c = d.contact;
