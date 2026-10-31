@@ -723,6 +723,14 @@
                     </div>
                     <button id="auth-button" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sign In</button>
                 </form>
+                <div class="relative my-4 text-center">
+                    <span class="text-xs text-gray-400 bg-white px-2 relative z-10">or</span>
+                    <div class="absolute left-0 right-0 top-1/2 border-t border-gray-200"></div>
+                </div>
+                <button id="auth-google" type="button" class="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors">
+                    <svg viewBox="0 0 48 48" style="width:18px;height:18px"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2.5 24 .5 14.6.5 6.5 5.9 2.6 13.7l7.8 6.1C12.3 13.6 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-2.8-.4-4.1H24v8.1h12.7c-.3 2.1-1.7 5.3-4.9 7.4l7.6 5.9c4.5-4.2 7.1-10.3 7.1-17.3z"/><path fill="#FBBC05" d="M10.4 28.2A14.6 14.6 0 0 1 9.6 24c0-1.5.3-2.9.7-4.2l-7.8-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6.5z"/><path fill="#34A853" d="M24 47.5c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2 1.4-4.8 2.4-8.3 2.4-6.4 0-11.7-4.1-13.6-9.8l-7.8 6.5C6.5 42.1 14.6 47.5 24 47.5z"/></svg>
+                    Continue with Google
+                </button>
                 <div class="text-center mt-6"><button id="auth-toggle" class="text-sm text-blue-600 hover:underline">Need an account? Sign Up</button></div>
                 <div class="mt-4 pt-4 border-t border-gray-100 text-center">
                     <button id="auth-team-signin" type="button" class="text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 w-full">Team member? Sign in with your name</button>
@@ -6418,7 +6426,63 @@
                     }
                 }
                 const promise = isLogin ? auth.signInWithEmailAndPassword(email, password) : auth.createUserWithEmailAndPassword(email, password);
-                promise.catch(err => { authError.textContent = err.message; authError.classList.remove('hidden'); });
+                promise.catch(err => {
+                    const code = (err && err.code) || '';
+                    if (isLogin && (code === 'auth/invalid-login-credentials' || code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found')) {
+                        // A Google-only account has no password, so a password login can never work.
+                        // Say so plainly and point at the Google button instead of showing the raw code.
+                        auth.fetchSignInMethodsForEmail(email).then(methods => {
+                            const googleOnly = Array.isArray(methods) && methods.includes('google.com') && !methods.includes('password');
+                            authError.textContent = googleOnly
+                                ? 'This account uses Google sign-in (no password). Tap “Continue with Google” below.'
+                                : 'Wrong email or password. If you created this account with Google, use “Continue with Google” below.';
+                            authError.classList.remove('hidden');
+                            const g = document.getElementById('auth-google');
+                            if (g) g.classList.add('ring-2', 'ring-blue-400');
+                        }).catch(() => {
+                            authError.textContent = 'Wrong email or password. If you created this account with Google, use “Continue with Google” below.';
+                            authError.classList.remove('hidden');
+                        });
+                        return;
+                    }
+                    authError.textContent = err.message;
+                    authError.classList.remove('hidden');
+                });
+            });
+
+            // Google sign-in: the same Firebase identity, no password involved.
+            (function () {
+                const gbtn = document.getElementById('auth-google');
+                if (!gbtn) return;
+                gbtn.addEventListener('click', async () => {
+                    authError.classList.add('hidden');
+                    try {
+                        const provider = new firebase.auth.GoogleAuthProvider();
+                        provider.setCustomParameters({ prompt: 'select_account' });
+                        await auth.signInWithPopup(provider);
+                    } catch (err) {
+                        const code = (err && err.code) || '';
+                        authError.textContent = code === 'auth/popup-blocked'
+                            ? 'The Google sign-in window was blocked — allow pop-ups for this site and try again.'
+                            : code === 'auth/unauthorized-domain'
+                                ? 'This domain is not authorised for Google sign-in yet.'
+                                : code === 'auth/popup-closed-by-user'
+                                    ? 'Google sign-in was closed.'
+                                    : (err.message || 'Google sign-in failed.');
+                        authError.classList.remove('hidden');
+                    }
+                });
+                // The Google button only makes sense on the sign-in view.
+                const authToggleEl = document.getElementById('auth-toggle');
+                if (authToggleEl) {
+                    const sync = () => {
+                        const isLogin = document.getElementById('auth-form').dataset.view === 'login';
+                        gbtn.style.display = isLogin ? '' : 'none';
+                    };
+                    const origClick = authToggleEl.onclick;
+                    authToggleEl.addEventListener('click', () => setTimeout(sync, 0));
+                    sync();
+                }
             });
 
             authToggle.addEventListener('click', () => {
