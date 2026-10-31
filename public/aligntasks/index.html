@@ -1250,8 +1250,8 @@
             </div>
         </div>
     </div>
-    <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+    <div id="scheduled-reminders-modal" class="hidden fixed inset-0 bg-white z-50 flex flex-col">
+        <div class="bg-white w-full h-full flex flex-col">
             <div class="p-4 border-b flex justify-between items-center">
                 <h3 id="scheduled-reminders-title" class="text-xl font-bold text-gray-800">Scheduled Reminders</h3>
                 <div class="flex items-center gap-3">
@@ -1277,7 +1277,7 @@
                 </div>
                 <div id="cal-grid" class="flex-1 overflow-auto p-2 bg-white"></div>
             </div>
-            <div id="scheduled-reminders-list" class="p-4 overflow-y-auto space-y-3"></div>
+            <div id="scheduled-reminders-list" class="p-4 overflow-y-auto space-y-3 flex-1 min-h-0"></div>
         </div>
     </div>
     <div id="group-updates-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1324,7 +1324,7 @@
         .btn-cal-nav:hover { background: #f3ecdd; }
         .cal-mode { border: 1px solid #e3ded1; background: #fffdf8; color: #6b5f45; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
         .cal-mode.active { background: #34373d; color: #f7ecd6; border-color: #34373d; }
-        .cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid #e8e4d9; border-radius: 10px; overflow: hidden; }
+        .cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 26px repeat(6, minmax(96px, 1fr)); border: 1px solid #e8e4d9; border-radius: 10px; overflow: hidden; min-height: 100%; }
         .cal-dow { background: #faf7ef; color: #6b7280; font-size: 11px; font-weight: 800; text-align: center; padding: 6px 0; border-bottom: 1px solid #e8e4d9; }
         .cal-cell { min-height: 96px; border-right: 1px solid #f0ece2; border-bottom: 1px solid #f0ece2; padding: 4px; font-size: 12px; background: #fff; }
         .cal-cell.other { background: #fcfbf7; color: #b6b1a4; }
@@ -3610,7 +3610,7 @@
                     title.textContent = a.toLocaleDateString([], { month: 'long', year: 'numeric' });
                     const first = new Date(a.getFullYear(), a.getMonth(), 1);
                     const start = startOfWeek(first);
-                    let html = '<div class="cal-week" style="gap:0;border:1px solid #e8e4d9;border-radius:10px;overflow:hidden">' +
+                    let html = '<div class="cal-month">' +
                         ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => '<div class="cal-dow">' + d + '</div>').join('');
                     for (let i = 0; i < 42; i++) {
                         const d = addDays(start, i);
@@ -3704,6 +3704,7 @@
             });
 
             document.body.addEventListener('click', e => {
+                const b = e.target.closest && e.target.closest('.sched-scope-btn');
                 if (!b) return;
                 e.stopPropagation();
                 openScheduledReminders({ type: b.getAttribute('data-scope-type'), projectId: b.getAttribute('data-scope-id') || '', name: b.getAttribute('data-scope-name') || '' });
