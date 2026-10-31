@@ -6509,22 +6509,32 @@
                 };
                 gbtn.addEventListener('click', async () => {
                     authError.classList.add('hidden');
+                    const provider = providerOf();
+                    // Redirect first: a popup window can be blocked silently, a redirect never is.
                     try {
-                        await auth.signInWithPopup(providerOf());
+                        await auth.signInWithRedirect(provider);
+                        return;   // the page leaves for Google; onAuthStateChanged finishes the sign-in
                     } catch (err) {
                         const code = (err && err.code) || '';
-                        // A blocked popup would otherwise do nothing at all: fall back to a full-page redirect.
-                        if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
-                            try { await auth.signInWithRedirect(providerOf()); return; } catch (e2) { /* report below */ }
+                        if (code !== 'auth/operation-not-supported-in-this-environment' && code !== 'auth/popup-blocked') {
+                            authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
+                            authError.textContent = code === 'auth/unauthorized-domain'
+                                ? 'This website address is not authorised for Google sign-in in Firebase yet.'
+                                : (err.message || 'Google sign-in failed.');
+                            return;
                         }
+                    }
+                    // Some in-app browsers cannot redirect: try the popup there.
+                    try {
+                        await auth.signInWithPopup(provider);
+                    } catch (err2) {
+                        const code2 = (err2 && err2.code) || '';
                         authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
-                        authError.textContent = code === 'auth/unauthorized-domain'
-                            ? 'This website address is not authorised for Google sign-in in Firebase yet.'
-                            : code === 'auth/popup-closed-by-user'
+                        authError.textContent = code2 === 'auth/popup-blocked'
+                            ? 'Your browser blocked the Google window. Allow pop-ups for this site, or sign in with your email and password below.'
+                            : code2 === 'auth/popup-closed-by-user' || code2 === 'auth/cancelled-popup-request'
                                 ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
-                                : code === 'auth/cancelled-popup-request'
-                                    ? 'Another sign-in was already in progress.'
-                                    : (err.message || 'Google sign-in failed.');
+                                : (err2.message || 'Google sign-in failed.');
                     }
                 });
                 // The Google button only makes sense on the sign-in view (observe the form).
@@ -6544,7 +6554,19 @@
             });
             setAuthMode('login');
 
-            accountMenuButton.addEventListener('click', () => accountMenu.classList.toggle('hidden'));
+    // Catch a failed redirect sign-in (e.g. the user cancelled at Google) so the page never hangs.
+    auth.getRedirectResult().catch(err => {
+        const code = (err && err.code) || '';
+        if (!code || code === 'auth/no-auth-event') return;
+        const el = document.getElementById('auth-error');
+        if (!el) return;
+        el.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
+        el.textContent = code === 'auth/unauthorized-domain'
+            ? 'This website address is not authorised for Google sign-in in Firebase yet.'
+            : (err.message || 'Google sign-in failed.');
+    });
+
+    accountMenuButton.addEventListener('click', () => accountMenu.classList.toggle('hidden'));
             // Logging out always leaves the whole app: team session + Firebase identity, back to
             // the main email login screen (the board is never left half signed-in).
             menuLogout.addEventListener('click', () => {
