@@ -3583,6 +3583,13 @@
                 document.getElementById('scheduled-reminders-modal').classList.add('hidden');
                 if (scheduledRefreshTimer) { clearInterval(scheduledRefreshTimer); scheduledRefreshTimer = null; }
             }
+            // Cancelling or closing the editor returns to the reminders page it was opened from.
+            window.atsReturnToReminders = function () {
+                if (!waEditReopen) return;
+                const sc = waEditReturnScope;
+                waEditReopen = false;
+                openScheduledReminders(sc);
+            };
             async function loadScheduledReminders() {
                 const list = document.getElementById('scheduled-reminders-list');
                 if (!list) return;
@@ -6146,8 +6153,8 @@
                 const m = document.getElementById('edit-staff-msg'); m.textContent = ''; m.className = 'text-xs mb-2 hidden';
                 editStaffModal.classList.add('hidden');
             });
-            document.getElementById('wa-remind-modal-close').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
-            document.getElementById('wa-remind-cancel').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; });
+            document.getElementById('wa-remind-modal-close').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; if (window.atsReturnToReminders) window.atsReturnToReminders(); });
+            document.getElementById('wa-remind-cancel').addEventListener('click', () => { document.getElementById('wa-remind-modal').classList.add('hidden'); waRemindCtx = null; if (window.atsReturnToReminders) window.atsReturnToReminders(); });
             document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
             document.getElementById('scheduled-reminders-close').addEventListener('click', closeScheduledReminders);
             document.getElementById('scheduled-refresh').addEventListener('click', loadScheduledReminders);
