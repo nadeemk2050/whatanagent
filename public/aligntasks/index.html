@@ -1693,11 +1693,25 @@
                 }
                 // Only when the browser blocks the window: go through a full-page redirect.
                 try {
+                    sessionStorage.setItem('atsGooglePending', '1');
                     await auth.signInWithRedirect(provider);
                 } catch (err2) {
                     show((err2 && err2.message) || 'Google sign-in failed.');
                 }
             };
+
+            // If we come back from the Google redirect and no session was restored, say so
+            // instead of quietly dropping the person back on the login form.
+            if (sessionStorage.getItem('atsGooglePending') === '1') {
+                sessionStorage.removeItem('atsGooglePending');
+                setTimeout(() => {
+                    if (auth.currentUser) return;
+                    const box = document.getElementById('auth-error');
+                    if (!box || document.getElementById('auth-screen').classList.contains('hidden')) return;
+                    box.className = 'bg-amber-100 text-amber-900 p-3 rounded-lg mb-4 text-sm text-center';
+                    box.textContent = 'Google sign-in did not complete on this browser. Try again, or sign in with your email and password below.';
+                }, 6000);
+            }
             const db = firebase.firestore();
             // 2.0: local cache → instant reopen + fewer Firestore reads (falls back silently if
             // the browser blocks it, e.g. multiple tabs without synchronizeTabs support).
