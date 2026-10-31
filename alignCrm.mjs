@@ -24,7 +24,7 @@ const TOKEN_DAYS = 30;
 const C = {
   company: 'crmCompanies', member: 'crmMembers', contact: 'crmContacts',
   deal: 'crmDeals', act: 'crmActivities', task: 'crmTasks',
-  aiStaff: 'crmAiStaff', aiRoom: 'crmAiRoom'
+  aiStaff: 'crmAiStaff', aiRoom: 'crmAiRoom', aiWork: 'crmAiWork'
 };
 const DEFAULT_STAGES = [
   { id: 'new', name: 'New lead', probability: 10 },
@@ -131,6 +131,20 @@ async function list(kind, filter) {
   } catch (e) {
     if (!noAdmin(e)) throw e;
     return loadFile()[kind].filter((x) => x[key] === val);
+  }
+}
+
+// Every row of a kind (used by the AI office tick, which spans companies).
+async function listAll(kind) {
+  if (!USE_FIRESTORE) return loadFile()[kind].slice();
+  try {
+    const snap = await alignDb().collection(kind).get();
+    const out = [];
+    snap.forEach((d) => out.push(d.data()));
+    return out;
+  } catch (e) {
+    if (!noAdmin(e)) throw e;
+    return loadFile()[kind].slice();
   }
 }
 
@@ -889,6 +903,8 @@ export function registerAlignCrmRoutes(app, opts) {
     escalation: s.escalation || { name: 'Zaheer Ahmed', channel: 'whatsapp', phone: '' },
     auto: s.auto || { newLeads: true, followUps: true, whatsappReplies: false },
     status: s.status || 'working',
+    onDuty: (() => { try { return aiOnDuty(s, DUBAI_NOW()); } catch (e) { return null; } })(),
+    runtime: s.runtime || {},
     createdAt: s.createdAt || 0, createdByName: s.createdByName || ''
   });
 
@@ -1120,6 +1136,202 @@ export function registerAlignCrmRoutes(app, opts) {
       room.updatedAt = nowMs();
       await put(C.aiRoom, room);
       res.json({ ok: true, participants: room.participants });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ---------- the AI staff member actually working ----------
+  // No WhatsApp sending yet: the agent works INSIDE the CRM. He keeps his office hours, posts
+  // his stand-up and progress in his own office room, and takes the leads handed to him — turning
+  // each one into a real customer + pipeline deal and telling the room what he did.
+  const DUBAI_NOW = () => {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+    const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+    const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const hm = get('hour') + ':' + get('minute');
+    const mins = (Number(get('hour')) || 0) * 60 + (Number(get('minute')) || 0);
+    return { day: dayMap[get('weekday')] ?? new Date().getDay(), hm, mins, date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dubai' }).format(new Date()) };
+  };
+  const hmToMins = (hm) => { const [h, m] = String(hm || '0:0').split(':'); return (Number(h) || 0) * 60 + (Number(m) || 0); };
+  function aiOnDuty(staff, now) {
+    const h = staff.hours || {};
+    const days = Array.isArray(h.days) && h.days.length ? h.days : [0, 1, 2, 3, 4];
+    if (!days.includes(now.day)) return false;
+    return now.mins >= hmToMins(h.from || '09:00') && now.mins < hmToMins(h.to || '18:00');
+  }
+  async function roomPush(companyId, key, fromName, fromKind, text) {
+    let room = await get(C.aiRoom, key);
+    if (!room) return null;
+    room.messages = (room.messages || []).concat([{ id: uid(), at: nowMs(), fromId: 'ai', fromName, fromKind: fromKind || 'ai', text: sstr(text, 2000) }]).slice(-400);
+    room.updatedAt = nowMs();
+    await put(C.aiRoom, room);
+    return room;
+  }
+  const digitsTail = (v) => String(v || '').replace(/\D/g, '').slice(-9);
+  async function agentTakeLead(company, staff, item) {
+    const companyId = company.id;
+    const phone = sstr(item.phone, 40).trim();
+    const name = sstr(item.name, 120).trim() || ('Lead ' + (phone || ''));
+    const contacts = await list(C.contact, { companyId });
+    const tail = digitsTail(phone);
+    let contact = tail ? contacts.find((c) => (c.phones || []).some((p) => digitsTail(p) === tail)) : null;
+    let created = false;
+    if (!contact) {
+      const clean = normalizeContact({ name, phone, source: 'AI intake', tags: ['AI intake'], status: 'Lead' }, null);
+      clean.status = 'Lead';
+      clean.source = 'AI intake';
+      contact = Object.assign({}, clean, {
+        id: uid(), companyId, createdAt: nowMs(), updatedAt: nowMs(),
+        createdBy: 'ai:' + staff.id, createdByName: staff.agentName + ' (AI)',
+        ownerId: staff.office && staff.ownerId ? staff.ownerId : '', lastContactAt: 0
+      });
+      await put(C.contact, contact);
+      created = true;
+    } else if (phone && !(contact.phones || []).some((p) => digitsTail(p) === tail)) {
+      contact.phones = Array.from(new Set([...(contact.phones || []), phone]));
+      contact.updatedAt = nowMs();
+      await put(C.contact, contact);
+    }
+    // One open deal per customer for this intake (never duplicate the pipeline).
+    const deals = await list(C.deal, { companyId });
+    let deal = deals.find((d) => d.contactId === contact.id && d.stage !== 'won' && d.stage !== 'lost');
+    let dealCreated = false;
+    if (!deal) {
+      const stages = company.stages || DEFAULT_STAGES;
+      const stage = (stages[0] || { id: 'new' }).id;
+      deal = {
+        id: uid(), companyId, title: 'New lead — ' + name, contactId: contact.id,
+        contactName: contact.name || name, company: contact.company || '',
+        value: Number(item.value) || 0, currency: company.currency || 'USD', stage,
+        probability: (stages[0] || {}).probability || 0, expectedCloseDate: '',
+        ownerId: '', source: 'AI intake', notes: sstr(item.note, 2000), products: '', lostReason: '',
+        stageHistory: [{ stage, at: nowMs(), by: staff.agentName + ' (AI)' }],
+        createdAt: nowMs(), updatedAt: nowMs(), createdBy: 'ai:' + staff.id, createdByName: staff.agentName + ' (AI)'
+      };
+      await put(C.deal, deal);
+      dealCreated = true;
+    }
+    await put(C.act, {
+      id: uid(), companyId, type: 'system',
+      body: staff.agentName + ' (AI) received a new lead: ' + name + (phone ? (' · ' + phone) : '') + (item.note ? (' — ' + sstr(item.note, 160)) : ''),
+      contactId: contact.id, dealId: deal.id, memberId: 'ai:' + staff.id, memberName: staff.agentName + ' (AI)',
+      at: nowMs(), meta: { staffId: staff.id, workId: item.id }
+    });
+    return { contact, deal, created, dealCreated };
+  }
+  async function runOffice(company, staff, opts) {
+    const force = !!(opts && opts.force);
+    const now = DUBAI_NOW();
+    const onDuty = aiOnDuty(staff, now);
+    const out = { onDuty, actions: [] };
+    if (staff.status === 'paused') { out.skipped = 'paused'; return out; }
+    if (!onDuty && !force) { out.skipped = 'off-duty'; return out; }
+    staff.runtime = staff.runtime || {};
+    if (!force && staff.runtime.lastStandupDay !== now.date) {
+      staff.runtime.lastStandupDay = now.date;
+      await roomPush(company.id, 'office_' + staff.id, staff.agentName, 'ai',
+        'Good morning 👋 I am on duty (' + (staff.hours || {}).from + '–' + (staff.hours || {}).to + ').\n' +
+        'My roles: ' + ((staff.roles || []).join(' · ') || 'not set yet') + '.\n' +
+        'Escalation: ' + ((staff.escalation || {}).name || 'the boss') + '. Send me the new customers/leads and I will open them in the CRM.');
+      out.actions.push('standup');
+    }
+    const work = (await list(C.aiWork, { staffId: staff.id })).filter((w) => w.status === 'new').sort((a, b) => a.createdAt - b.createdAt);
+    for (const item of work.slice(0, 10)) {
+      try {
+        const r = await agentTakeLead(company, staff, item);
+        item.status = 'done';
+        item.takenAt = nowMs();
+        item.contactId = r.contact.id;
+        item.dealId = r.deal.id;
+        item.result = (r.created ? 'customer created' : 'existing customer updated') + ' · ' + (r.dealCreated ? 'deal opened' : 'open deal reused');
+        await put(C.aiWork, item);
+        await roomPush(company.id, 'office_' + staff.id, staff.agentName, 'ai',
+          (r.created ? '✅ New customer opened: ' : '✅ Existing customer updated: ') + (r.contact.name || '') +
+          (r.contact.phones && r.contact.phones[0] ? (' · ' + r.contact.phones[0]) : '') +
+          '\n💼 ' + (r.dealCreated ? 'Deal opened in the pipeline' : 'Deal already open — reused') + ': "' + r.deal.title + '"' +
+          (item.note ? ('\n📝 ' + sstr(item.note, 300)) : ''));
+        out.actions.push('lead:' + (r.contact.name || item.name));
+      } catch (e) {
+        item.status = 'failed';
+        item.error = sstr((e && e.message) || e, 200);
+        item.takenAt = nowMs();
+        await put(C.aiWork, item);
+        await roomPush(company.id, 'office_' + staff.id, staff.agentName, 'ai', '⚠️ I could not open the lead "' + (item.name || item.phone) + '": ' + item.error);
+        out.actions.push('failed');
+      }
+    }
+    if (force && !out.actions.length) {
+      await roomPush(company.id, 'office_' + staff.id, staff.agentName, 'ai', 'I checked my desk — nothing new to take right now. Still on duty: ' + staff.roles.join(' · '));
+      out.actions.push('check');
+    }
+    staff.runtime.lastRunAt = nowMs();
+    staff.runtime.onDuty = onDuty;
+    staff.updatedAt = staff.updatedAt || nowMs();
+    await put(C.aiStaff, staff);
+    return out;
+  }
+
+  // One tick for every office of every company (respects each agent's own hours).
+  async function aiOfficeTick() {
+    try {
+      const staffAll = await listAll(C.aiStaff);
+      for (const staff of staffAll) {
+        if (!staff || staff.status === 'paused') continue;
+        const company = await get(C.company, staff.companyId);
+        if (!company) continue;
+        try { await runOffice(company, staff, {}); } catch (e) { /* one office must not stop the rest */ }
+      }
+    } catch (e) { /* the store may be empty */ }
+  }
+  if (!globalThis.__crmAiTick) {
+    globalThis.__crmAiTick = setInterval(aiOfficeTick, 5 * 60 * 1000);
+    if (globalThis.__crmAiTick.unref) globalThis.__crmAiTick.unref();
+    console.log('[CRM] 🏢 AI staff office tick every 5 min (hours-aware, no WhatsApp sending)');
+  }
+
+  // Hand work to an agent: one or many leads (name, phone, note).
+  app.post(api + '/ai/work', auth, async (req, res) => {
+    try {
+      const b = req.crm.body;
+      const staff = await get(C.aiStaff, sstr(b.staffId, 40));
+      if (!staff || staff.companyId !== req.crm.company.id) return bad(res, 'Office not found.', 404);
+      const rows = Array.isArray(b.leads) ? b.leads : [];
+      if (!rows.length && (b.phone || b.name)) rows.push({ name: b.name, phone: b.phone, note: b.note });
+      if (!rows.length) return bad(res, 'Give the agent at least one customer: name and/or phone number.');
+      const made = [];
+      for (const r of rows.slice(0, 50)) {
+        const item = {
+          id: uid(), companyId: req.crm.company.id, staffId: staff.id, kind: 'lead',
+          name: sstr(r.name, 120).trim(), phone: sstr(r.phone, 40).trim(), note: sstr(r.note, 1000).trim(),
+          status: 'new', createdAt: nowMs(), createdBy: req.crm.member.id, createdByName: req.crm.member.name,
+          contactId: '', dealId: '', result: ''
+        };
+        if (!item.name && !item.phone) continue;
+        await put(C.aiWork, item);
+        made.push(item);
+      }
+      if (!made.length) return bad(res, 'Nothing to hand over — every line was empty.');
+      const company = req.crm.company;
+      const run = await runOffice(company, staff, { force: !!b.now });
+      res.json({ ok: true, created: made.length, run, work: made });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.get(api + '/ai/work', auth, async (req, res) => {
+    try {
+      const staffId = sstr(req.query.staffId, 40);
+      let rows = await list(C.aiWork, { companyId: req.crm.company.id });
+      if (staffId) rows = rows.filter((w) => w.staffId === staffId);
+      rows.sort((a, b) => b.createdAt - a.createdAt);
+      res.json({ ok: true, work: rows.slice(0, 200) });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.post(api + '/ai/work/run', auth, async (req, res) => {
+    try {
+      const staff = await get(C.aiStaff, sstr(req.crm.body.staffId, 40));
+      if (!staff || staff.companyId !== req.crm.company.id) return bad(res, 'Office not found.', 404);
+      const run = await runOffice(req.crm.company, staff, { force: true });
+      res.json({ ok: true, run });
     } catch (e) { fail(res, e); }
   });
 

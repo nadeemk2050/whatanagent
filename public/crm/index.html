@@ -886,9 +886,9 @@
         return (h.from || '09:00') + '–' + (h.to || '18:00') + ' · ' + days;
     }
     function aiStatusChip(s) {
-        return s.status === 'paused'
-            ? '<span class="chip" style="background:#fef3c7;color:#92400e">Paused</span>'
-            : '<span class="chip" style="background:#dcfce7;color:#15803d">Working</span>';
+        if (s.status === 'paused') return '<span class="chip" style="background:#fef3c7;color:#92400e">Paused</span>';
+        if (s.onDuty === false) return '<span class="chip" style="background:#eef2ff;color:#4338ca">Off duty</span>';
+        return '<span class="chip" style="background:#dcfce7;color:#15803d">On duty</span>';
     }
     async function renderAi(main) {
         let d;
@@ -909,6 +909,7 @@
             + '<div class="flex flex-wrap gap-1 mt-auto pt-1">'
             + '<button class="btn btn-dark" data-office="' + esc(s.id) + '">Open office</button>'
             + '<button class="btn btn-light" data-room="' + esc(s.id) + '">Office room</button>'
+            + '<button class="btn btn-light" data-lead="' + esc(s.id) + '">＋ New lead</button>'
             + '<button class="btn btn-light" data-pause="' + esc(s.id) + '" data-status="' + esc(s.status) + '">' + (s.status === 'paused' ? '▶ Resume' : '⏸ Pause') + '</button>'
             + (canManage() ? '<button class="btn btn-danger" data-fire="' + esc(s.id) + '">Fire</button>' : '')
             + '</div></div>';
@@ -936,6 +937,7 @@
         if ($('#ai-meet-2')) $('#ai-meet-2').onclick = () => meetingRoom();
         $$('[data-office]').forEach(b => b.onclick = () => officeModal((S.ai.staff || []).find(s => s.id === b.dataset.office)));
         $$('[data-room]').forEach(b => b.onclick = () => officeRoom(b.dataset.room));
+        $$('[data-lead]').forEach(b => b.onclick = () => handOverLead((S.ai.staff || []).find(s => s.id === b.dataset.lead)));
         $$('[data-pause]').forEach(b => b.onclick = async () => {
             try {
                 await api('/ai/offices/' + b.dataset.pause, { method: 'PATCH', body: { status: b.dataset.status === 'paused' ? 'working' : 'paused' } });
@@ -1035,6 +1037,43 @@
         step1();
     }
 
+    // Hand a lead (or a list of them) to the agent — the pre-WhatsApp step: the boss or
+    // Zaheer passes the numbers here, and the agent opens them in the CRM.
+    function handOverLead(s) {
+        if (!s) return;
+        const duty = s.onDuty === false ? '<div class="text-[11px] text-indigo-700 bg-indigo-50 rounded-lg px-2 py-1 mb-2">He is off duty now — the leads wait in his desk and he takes them when his shift starts (or tick “handle now”).</div>' : '';
+        openModal('Give ' + s.agentName + ' a new lead',
+            duty
+            + '<div class="text-[12px] text-gray-500 mb-2">One lead per line: <b>Name, phone, note</b> — or just a phone number. He creates the customer, opens the pipeline deal and reports it in his office room.</div>'
+            + '<textarea id="wl-rows" class="inp mb-2" rows="5" placeholder="Ahmed Khan, +971501234567, wants 2 containers from China&#10;+971559876543"></textarea>'
+            + '<label class="fl">Note for all of them (optional)</label><input id="wl-note" class="inp mb-2" placeholder="e.g. from Zaheer, new enquiry">'
+            + '<label class="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" id="wl-now"> Handle now, even outside working hours</label>',
+            '<button class="btn btn-light" data-close="modal">Cancel</button><button class="btn btn-dark" id="wl-go">Give to agent</button>');
+        $('#wl-go').onclick = async () => {
+            const note = $('#wl-note').value.trim();
+            const leads = ($('#wl-rows').value || '').split('\n').map(line => line.trim()).filter(Boolean).map(line => {
+                const parts = line.split(',').map(x => x.trim());
+                if (parts.length === 1) {
+                    const only = parts[0];
+                    return /^[+\d][\d\s()-]{5,}$/.test(only) ? { phone: only, note } : { name: only, note };
+                }
+                const phone = parts.find(p => /[+\d][\d\s()-]{5,}/.test(p)) || '';
+                const name = parts.filter(p => p !== phone)[0] || '';
+                const extra = parts.filter(p => p !== phone && p !== name).join(' ');
+                return { name, phone, note: [note, extra].filter(Boolean).join(' · ') };
+            });
+            if (!leads.length) return toast('Write at least one lead', true);
+            try {
+                const r = await api('/ai/work', { method: 'POST', body: { staffId: s.id, leads, now: $('#wl-now').checked } });
+                closeModal();
+                const ran = (r.run && r.run.actions) ? r.run.actions.filter(a => a !== 'standup' && a !== 'check').length : 0;
+                toast(r.created + ' lead' + (r.created === 1 ? '' : 's') + ' handed over' + (ran ? ' — agent handled ' + ran : ' — waiting for his shift'));
+                await render(true);
+                if (ran) officeRoom(s.id);
+            } catch (e) { toast(e.message, true); }
+        };
+    }
+
     function officeModal(s) {
         if (!s) return;
         const days = (s.hours || {}).days || [];
@@ -1055,10 +1094,36 @@
             + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-leads"' + ((s.auto || {}).newLeads !== false ? ' checked' : '') + '> Handle new customers &amp; leads automatically</label>'
             + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-fu"' + ((s.auto || {}).followUps !== false ? ' checked' : '') + '> Follow up on deals without movement</label>'
             + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-wa"' + ((s.auto || {}).whatsappReplies ? ' checked' : '') + '> Answer customers on WhatsApp</label>'
-            + '</div>',
+            + '</div>'
+            + '<div class="mt-3"><div class="font-bold text-sm mb-1">📥 Work handed to him</div><div id="of-work" class="text-[11px] text-gray-400">loading…</div></div>',
             '<button class="btn btn-light" data-close="modal">Close</button>'
+            + '<button class="btn btn-light" id="of-run">▶ Run now</button>'
+            + '<button class="btn btn-light" id="of-lead">＋ New lead</button>'
             + '<button class="btn btn-light" id="of-room">💬 Office room</button>'
             + '<button class="btn btn-dark" id="of-save">Save office</button>');
+        $('#of-lead').onclick = () => { closeModal(); handOverLead(s); };
+        $('#of-run').onclick = async () => {
+            const b = $('#of-run');
+            b.disabled = true; b.textContent = '…working';
+            try {
+                const r = await api('/ai/work/run', { method: 'POST', body: { staffId: s.id } });
+                const acts = (r.run && r.run.actions) || [];
+                toast(acts.length ? ('Agent: ' + acts.join(', ')) : 'Agent ran — nothing pending');
+                closeModal(); await render(true);
+                if (acts.some(a => a.startsWith('lead:') || a === 'standup' || a === 'check')) officeRoom(s.id);
+            } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = '▶ Run now'; }
+        };
+        api('/ai/work?staffId=' + encodeURIComponent(s.id)).then((r) => {
+            const rows = (r.work || []);
+            const box = $('#of-work');
+            if (!box) return;
+            box.innerHTML = rows.length
+                ? rows.slice(0, 12).map(w => '<div class="flex items-start gap-2 py-1 border-b" style="border-color:var(--line)">'
+                    + '<span class="chip" style="' + (w.status === 'done' ? 'background:#dcfce7;color:#15803d' : w.status === 'failed' ? 'background:#fee2e2;color:#b91c1c' : 'background:#fef3c7;color:#92400e') + '">' + esc(w.status) + '</span>'
+                    + '<div class="min-w-0 flex-1"><div class="text-xs font-semibold">' + esc(w.name || w.phone || 'lead') + (w.phone ? ' · ' + esc(w.phone) : '') + '</div>'
+                    + '<div class="text-[11px] text-gray-500">' + esc(w.result || w.error || 'waiting for his shift') + ' · ' + ago(w.createdAt) + '</div></div></div>').join('')
+                : '<div class="text-[11px] text-gray-400">Nothing handed over yet — use ＋ New lead.</div>';
+        }).catch(() => { const box = $('#of-work'); if (box) box.textContent = 'could not load the work list'; });
         $('#of-room').onclick = () => { closeModal(); officeRoom(s.id); };
         $('#of-save').onclick = async () => {
             try {
