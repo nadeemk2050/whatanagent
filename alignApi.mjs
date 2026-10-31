@@ -1090,6 +1090,16 @@ export function registerAlignRoutes(app) {
       const muteSnap = await alignDb().collection('alignAiMute').limit(500).get().catch(() => null);
       const mute = new Map();
       if (muteSnap) muteSnap.forEach(d => { const v = d.data() || {}; mute.set(String(v.email || d.id || '').toLowerCase(), v); });
+      // One query for today's digest docs (N single reads would take ~15s from this server).
+      const digestByEmail = new Map();
+      try {
+        const dgSnap = await alignDb().collection('alignDigestDaily').where('date', '==', day).limit(500).get();
+        dgSnap.forEach(d => {
+          const g = d.data() || {};
+          const e = String(g.email || '').toLowerCase();
+          if (e) digestByEmail.set(e, g);
+        });
+      } catch (e) { /* no digest docs today */ }
       const people = [];
       for (const d of staffSnap.docs) {
         const v = d.data() || {};
@@ -1097,22 +1107,14 @@ export function registerAlignRoutes(app) {
         if (!email) continue;
         const wa = String(v.whatsappNumber || '').replace(/[^0-9]/g, '');
         const m = mute.get(email) || {};
-        let digestToday = null;
-        try {
-          const id = email.replace(/[^a-z0-9@._-]/g, '_').slice(0, 120) + '_' + day;
-          const dg = await alignDb().collection('alignDigestDaily').doc(id).get();
-          if (dg.exists) {
-            const g = dg.data() || {};
-            digestToday = { morningSentAt: Number(g.morningSentAt) || 0, eveningSentAt: Number(g.eveningSentAt) || 0, items: Array.isArray(g.items) ? g.items.length : 0 };
-          }
-        } catch (e) { digestToday = null; }
+        const g = digestByEmail.get(email) || null;
         people.push({
           email,
           name: sstr(v.name || email.split('@')[0], 80),
           wa,
           digestOn: m.digest !== false,
           replyOn: m.reply !== false,
-          digestToday
+          digestToday: g ? { morningSentAt: Number(g.morningSentAt) || 0, eveningSentAt: Number(g.eveningSentAt) || 0, items: Array.isArray(g.items) ? g.items.length : 0 } : null
         });
       }
       people.sort((a, b) => (Number(!!b.wa) - Number(!!a.wa)) || a.name.localeCompare(b.name));
