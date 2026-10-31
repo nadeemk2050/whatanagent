@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 <meta name="theme-color" content="#34373d">
 <title>CRM · WhatAnAgent</title>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     :root { --ink:#34373d; --cream:#f7ecd6; --paper:#fffdf8; --line:#e3ded1; }
@@ -85,6 +87,12 @@
                 <label class="fl">Password</label>
                 <input id="si-pass" class="inp mb-4" type="password" placeholder="Your password" autocomplete="current-password">
                 <button id="si-go" class="btn btn-dark w-full">Sign in</button>
+                <div class="relative my-3 text-center"><span class="text-[11px] text-gray-400 bg-[#fffdf8] px-2 relative z-10">or</span><div class="absolute left-0 right-0 top-1/2 border-t" style="border-color:var(--line)"></div></div>
+                <button id="sso-go" class="btn btn-light w-full">Continue with WhatAnAgent</button>
+                <div id="sso-company" class="hide mt-3">
+                    <label class="fl">Company / team name (first time only)</label>
+                    <div class="flex gap-2"><input id="sso-company-name" class="inp" placeholder="e.g. Gulf Traders LLC"><button id="sso-create" class="btn btn-dark">Create</button></div>
+                </div>
                 <div id="si-msg" class="text-xs text-red-600 mt-3"></div>
                 <div class="text-[11px] text-gray-400 mt-3">Team members sign in with the company code from the owner, their name and password.</div>
             </div>
@@ -269,6 +277,57 @@
     $('#si-go').onclick = doLogin;
     $('#si-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
     $('#su-go').onclick = doSignup;
+
+    // ---------- Continue with WhatAnAgent (Firebase) ----------
+    // Uses the login you already have in AlignTasks, so the CRM needs no second password.
+    let ssoToken = '';
+    let ssoCompanyNeeded = false;
+    function ssoPost(body) { return api('/sso', { method: 'POST', body }); }
+    async function startSso() {
+        const msg = $('#si-msg');
+        msg.textContent = '';
+        if (!window.firebase || !firebase.auth) { msg.textContent = 'The WhatAnAgent sign-in library did not load. Check your connection, or use the password form.'; return; }
+        try {
+            const cfg = {
+                apiKey: 'AIzaSyDGhwmtpHazLrDWDXjK3WoGPh610mrJeaI',
+                authDomain: 'whatanagent-a1e59.firebaseapp.com',
+                projectId: 'whatanagent-a1e59',
+                storageBucket: 'whatanagent-a1e59.firebasestorage.app',
+                messagingSenderId: '410197132578',
+                appId: '1:410197132578:web:97cfc3ae33f39ed3df917b'
+            };
+            if (!firebase.apps.length) firebase.initializeApp(cfg);
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            const cred = await firebase.auth().signInWithPopup(provider);
+            ssoToken = await cred.user.getIdToken();
+            msg.className = 'text-xs text-gray-500 mt-3';
+            msg.textContent = 'Signed in as ' + (cred.user.email || '') + ' — opening your CRM…';
+            const d = await ssoPost({ idToken: ssoToken });
+            if (d.needsCompany) {
+                ssoCompanyNeeded = true;
+                $('#sso-company').classList.remove('hide');
+                msg.className = 'text-xs text-gray-600 mt-3';
+                msg.textContent = 'No CRM company is linked to ' + d.email + ' yet. Type a company name to create one.';
+                return;
+            }
+            finishAuth(d);
+        } catch (e) {
+            const code = (e && e.code) || '';
+            msg.className = 'text-xs text-red-600 mt-3';
+            if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') msg.textContent = 'Sign-in window closed.';
+            else if (code === 'auth/popup-blocked') msg.textContent = 'The sign-in window was blocked — allow pop-ups for this site and try again.';
+            else if (code === 'auth/unauthorized-domain') msg.textContent = 'This domain is not authorised in Firebase yet (add it in Firebase → Authentication → Settings → Authorized domains).';
+            else msg.textContent = (e && e.message) || 'WhatAnAgent sign-in failed.';
+        }
+    }
+    $('#sso-go').onclick = startSso;
+    $('#sso-create').onclick = async () => {
+        const name = $('#sso-company-name').value.trim();
+        if (!name) return toast('Type the company name', true);
+        try { finishAuth(await ssoPost({ idToken: ssoToken, company: name })); }
+        catch (e) { $('#si-msg').className = 'text-xs text-red-600 mt-3'; $('#si-msg').textContent = e.message; }
+    };
 
     function closeSide() {
         const s = $('#side');

@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { alignDb } from './alignAdmin.mjs';
+import { alignAuth } from './alignAdmin.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.ALIGN_CRM_DATA_DIR || path.join(__dirname, 'data', 'crm');
@@ -359,6 +360,47 @@ export function registerAlignCrmRoutes(app, opts) {
       await put(C.member, member);
       const token = sign({ mid: member.id, cid: company.id, exp: nowMs() + TOKEN_DAYS * 86400000 });
       res.json({ ok: true, token, member: publicMember(member), company: publicCompany(company) });
+    } catch (e) { fail(res, e); }
+  });
+
+  // Sign in with the existing WhatAnAgent (Firebase) login instead of a CRM password.
+  // Any verified email may use it: an existing company is opened, a new one is created on first use.
+  app.post(api + '/sso', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const idToken = String(b.idToken || '').trim();
+      if (!idToken) return bad(res, 'Missing WhatAnAgent sign-in token.');
+      let decoded = null;
+      try { decoded = await alignAuth().verifyIdToken(idToken); }
+      catch (e) {
+        if (e && e.code === 'align-no-admin') return bad(res, 'WhatAnAgent sign-in is not switched on for this server yet — use the email and password form.', 503);
+        return bad(res, 'That WhatAnAgent sign-in could not be verified. Please try again.', 401);
+      }
+      const email = String((decoded && decoded.email) || '').toLowerCase().trim();
+      if (!email || !(decoded.email_verified !== false)) return bad(res, 'That account has no verified email.', 401);
+      const guessName = String((decoded && decoded.name) || '').trim() || email.split('@')[0];
+      const existing = await list(C.company, { ownerEmail: email });
+      let company = existing[0] || null;
+      if (!company) {
+        const companyName = sstr(b.company, 120).trim();
+        if (!companyName) return res.json({ ok: true, needsCompany: true, email, name: guessName });
+        company = { id: uid(), name: companyName, code: code6(), ownerEmail: email, currency: 'USD', stages: DEFAULT_STAGES, customFields: [], linked: email === LINKED_EMAIL, createdAt: nowMs() };
+        await put(C.company, company);
+      }
+      const ms = await list(C.member, { companyId: company.id });
+      let member = ms.find((m) => m.role === 'owner' && m.email === email) || ms.find((m) => m.role === 'owner') || null;
+      if (!member) {
+        member = { id: uid(), companyId: company.id, name: guessName, handle: norm(guessName).replace(/\s+/g, ''), email, role: 'owner', saltHash: '', active: true, createdAt: nowMs(), lastLoginAt: nowMs(), via: 'sso' };
+        await put(C.member, member);
+        await log(company.id, member, 'system', 'CRM account created for ' + company.name + ' (signed in with WhatAnAgent).');
+      } else if (member.active === false) {
+        return bad(res, 'This account has been switched off.', 403);
+      } else {
+        member = Object.assign({}, member, { lastLoginAt: nowMs() });
+        await put(C.member, member);
+      }
+      const token = sign({ mid: member.id, cid: company.id, exp: nowMs() + TOKEN_DAYS * 86400000 });
+      res.json({ ok: true, token, member: publicMember(member), company: publicCompany(company), via: 'sso' });
     } catch (e) { fail(res, e); }
   });
 
