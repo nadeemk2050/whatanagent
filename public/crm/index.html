@@ -1114,12 +1114,30 @@
         $('#rm-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#rm-send').click(); });
         $('#rm-invite').onclick = () => {
             openModal('Invite to ' + (room.title || 'the room'),
-                '<label class="fl">Name</label><input id="iv-name" class="inp mb-2" placeholder="e.g. Zaheer Ahmed (boss assistant)">'
+                '<label class="fl">Name</label><input id="iv-name" class="inp mb-1" placeholder="e.g. Zaheer Ahmed (boss assistant)">'
+                + '<div id="iv-quick" class="flex flex-wrap gap-1 mb-2"></div>'
                 + '<label class="fl">Who is he?</label><select id="iv-kind" class="inp mb-2"><option value="guest">Guest (outside the CRM)</option>'
                 + '<option value="member">Team member</option><option value="ai">AI staff</option></select>'
                 + '<label class="fl">WhatsApp (optional)</label><input id="iv-phone" class="inp" placeholder="+97150…">'
                 + '<div class="text-[11px] text-gray-500 mt-2">Invites are for this room only — nobody gains CRM access.</div>',
                 '<button class="btn btn-light" data-close="modal">Cancel</button><button class="btn btn-dark" id="iv-go">Invite</button>');
+            // Quick picks: the CRM team, then the AI staff from the academy (Zaheer Ahmed included).
+            const quick = $('#iv-quick');
+            const pick = (name, kind) => '<button type="button" class="chip" data-iv-name="' + esc(name) + '" data-iv-kind="' + kind + '">' + esc(name) + (kind === 'ai' ? ' · AI' : '') + '</button>';
+            quick.innerHTML = (S.team || []).map(m => pick(m.name, 'member')).join('') || '';
+            api('/ai/agents').then(r => {
+                const agents = (r.agents || []);
+                if (!agents.length) return;
+                quick.innerHTML += agents.map(a => pick(a.name, 'ai')).join('');
+                $$('#iv-quick [data-iv-name]').forEach(b => b.onclick = () => {
+                    $('#iv-name').value = b.dataset.ivName;
+                    $('#iv-kind').value = b.dataset.ivKind;
+                });
+            }).catch(() => {});
+            $$('#iv-quick [data-iv-name]').forEach(b => b.onclick = () => {
+                $('#iv-name').value = b.dataset.ivName;
+                $('#iv-kind').value = b.dataset.ivKind;
+            });
             $('#iv-go').onclick = async () => {
                 try {
                     await api('/ai/room/participants', {
