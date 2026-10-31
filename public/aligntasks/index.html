@@ -1149,6 +1149,10 @@
                             <input type="checkbox" id="wa-remind-ai-rewrite" class="h-4 w-4" />
                             AI: change the wording every time (season / occasion aware)
                         </label>
+                        <label id="wa-remind-fresh-row" class="hidden items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" id="wa-remind-fresh" class="h-4 w-4" />
+                            Start fresh — reset the sent counter and history (use this to re-arm a finished reminder)
+                        </label>
                         <p class="text-xs text-gray-400">Times use this device's clock. The server sends automatically — WhatsApp app does not need to stay open. Track, edit or remove it in Menu → Scheduled Reminders.</p>
                     </div>
                 </div>
@@ -3143,11 +3147,40 @@
                         };
                         Object.keys(docData).forEach(k => { if (docData[k] === undefined) delete docData[k]; });
                         if (waScheduleEditId) {
-                            await db.collection('alignWaSchedules').doc(waScheduleEditId).set(Object.assign({}, docData, { nextAt: sched.startAt }), { merge: true });
+                            // Editing an existing schedule: wording, targets, time, repetition and AI
+                            // wording all come from the form. The rhythm is kept by anchoring startAt
+                            // so the new time counts as occurrence #(sentCount + 1).
+                            const prev = waEditDoc || {};
+                            const sentSoFar = Number(prev.sentCount) || 0;
+                            const every = Math.max(60000, Number(sched.repeatEveryMs) || 86400000);
+                            const freshBox = document.getElementById('wa-remind-fresh');
+                            const startFresh = !!(freshBox && freshBox.checked);
+                            const patch = Object.assign({}, docData, {
+                                startAt: sched.startAt,
+                                nextAt: sched.startAt,
+                                status: 'pending',
+                                pauseReason: '',
+                                lastError: ''
+                            });
+                            if (startFresh) {
+                                Object.assign(patch, { sentCount: 0, history: [], lastSentAt: 0, lastOk: 0, lastFailed: 0, lastMessage: '' });
+                            } else if (sentSoFar > 0) {
+                                if (sched.repeatMode === 'count' || sched.repeatMode === 'until') {
+                                    patch.startAt = sched.startAt - sentSoFar * every;
+                                }
+                                // A finished "N times" reminder that is only re-timed keeps going.
+                                if (sched.repeatMode === 'count' && Number(sched.repeatCount) <= sentSoFar) {
+                                    patch.repeatCount = sentSoFar + Math.max(1, Number(sched.repeatCount) || 1);
+                                }
+                            }
+                            await db.collection('alignWaSchedules').doc(waScheduleEditId).set(patch, { merge: true });
+                            const reopenScope = waEditReturnScope;
                             waScheduleEditId = null;
+                            waEditDoc = null;
                             document.getElementById('wa-remind-modal').classList.add('hidden');
                             waRemindCtx = null;
-                            alert('Scheduled reminder updated — first send: ' + whenStr + (sched.aiRewrite ? '\nAI will refresh the wording at every send.' : ''));
+                            alert('Scheduled reminder updated — next send: ' + whenStr + (sched.aiRewrite ? '\nAI will refresh the wording at every send.' : ''));
+                            if (reopenScope !== null && reopenScope !== undefined) openScheduledReminders(reopenScope);
                         } else {
                             await db.collection('alignWaSchedules').add(Object.assign({}, docData, { status: 'pending', sentCount: 0, nextAt: sched.startAt, history: [], createdAt: Date.now() }));
                             document.getElementById('wa-remind-modal').classList.add('hidden');
@@ -3241,6 +3274,8 @@
             });
             // ===== Scheduled reminders (date/time + repeat N times / until a date + optional AI wording refresh) =====
             let waScheduleEditId = null;
+            let waEditDoc = null;             // the schedule being edited (its sentCount decides the rhythm)
+            let waEditReturnScope = null;     // reminders page scope to reopen after saving an edit
             let scheduledRefreshTimer = null;
 
             function waEsc(s) {
@@ -3398,6 +3433,7 @@
 
             function resetWaScheduleFields() {
                 waScheduleEditId = null;
+                waEditDoc = null;
                 waCalDates = {};
                 waCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
                 document.getElementById('wa-remind-title').innerText = 'Send WhatsApp Reminder';
@@ -3411,6 +3447,14 @@
                 document.getElementById('wa-remind-count').value = '3';
                 document.getElementById('wa-remind-until').value = '';
                 document.getElementById('wa-remind-ai-rewrite').checked = false;
+                const freshRowEl = document.getElementById('wa-remind-fresh-row');
+                const freshBoxEl = document.getElementById('wa-remind-fresh');
+                if (freshRowEl) { freshRowEl.classList.add('hidden'); freshRowEl.classList.remove('flex'); }
+                if (freshBoxEl) freshBoxEl.checked = false;
+                const phEl = document.getElementById('wa-remind-custom-phone');
+                const nmEl = document.getElementById('wa-remind-custom-name');
+                if (phEl) phEl.value = '';
+                if (nmEl) nmEl.value = '';
                 updateWaScheduleRows();
             }
 
@@ -3457,7 +3501,8 @@
                 const snap = await db.collection('alignWaSchedules').doc(id).get();
                 if (!snap.exists) { alert('This scheduled reminder no longer exists.'); return; }
                 const d = snap.data() || {};
-                if ((Number(d.sentCount) || 0) > 0) { alert('Only not-yet-sent (pending) reminders can be edited.'); return; }
+                waEditDoc = d;
+                waEditReturnScope = scheduledScope;
                 closeScheduledReminders();
                 const staffSnap = await boardScope('staff').limit(50).get();
                 const members = [];
@@ -3486,7 +3531,11 @@
                 document.querySelectorAll('#wa-remind-groups .wa-remind-group-cb').forEach(cb => { if (targetGroupIds.has(String(cb.value))) cb.checked = true; });
                 document.getElementById('wa-remind-message').value = String(d.message || waScheduleDefaults());
                 waScheduleEditId = id;
-                const startMs = Number(d.startAt || d.nextAt || (Date.now() + 600000));
+                // Edit the real "next send": a repeating reminder that already fired has a startAt
+                // in the past, so the next occurrence is what the person expects to see and change.
+                const nextMs = Number(d.nextAt || 0);
+                let startMs = (nextMs > 0 && nextMs < 9999999999990) ? nextMs : Number(d.startAt || 0);
+                if (!startMs || startMs < Date.now() + 60000) startMs = Date.now() + 10 * 60 * 1000;
                 document.getElementById('wa-remind-date').value = localDateValue(startMs);
                 document.getElementById('wa-remind-time').value = localTimeValue(startMs);
                 document.getElementById('wa-remind-repeat').value = d.repeatMode || 'once';
@@ -3495,6 +3544,17 @@
                 document.getElementById('wa-remind-until').value = d.repeatUntil ? localDateTimeValue(Number(d.repeatUntil)) : '';
                 document.getElementById('wa-remind-ai-rewrite').checked = !!d.aiRewrite;
                 if (d.repeatMode === 'dates' && Array.isArray(d.repeatDates)) waCalLoadFromMs(d.repeatDates.map(Number).filter(Boolean));
+                // Direct WhatsApp number (type 'direct') is one input — restore it so saving does not drop it.
+                const directTgt = (Array.isArray(d.targets) ? d.targets : []).find(x => String(x.type) === 'direct');
+                const phoneEl = document.getElementById('wa-remind-custom-phone');
+                const nameEl = document.getElementById('wa-remind-custom-name');
+                if (phoneEl) phoneEl.value = directTgt ? ('+' + String(directTgt.id || '').replace(/^\+/, '')) : '';
+                if (nameEl) nameEl.value = directTgt ? String(directTgt.name || '') : '';
+                const sentSoFar = Number(d.sentCount) || 0;
+                const freshRow = document.getElementById('wa-remind-fresh-row');
+                const freshBox = document.getElementById('wa-remind-fresh');
+                if (freshRow) { freshRow.classList.toggle('hidden', !sentSoFar); freshRow.classList.toggle('flex', !!sentSoFar); }
+                if (freshBox) freshBox.checked = sentSoFar > 0 && String(d.status || '') === 'completed';
                 updateWaScheduleRows();
                 document.getElementById('wa-remind-schedule-toggle').checked = true;
                 document.getElementById('wa-remind-schedule-fields').classList.remove('hidden');
@@ -3862,7 +3922,9 @@
                 const lastStr = s.lastSentAt ? new Date(Number(s.lastSentAt)).toLocaleString() : '';
                 const total = Number(s.repeatCount) || 0;
                 const progress = (Number(s.sentCount) || 0) + (total ? ('/' + total) : '') + ' sent';
-                const canEdit = st === 'pending' && !(Number(s.sentCount) || 0);
+                // Any status can be edited: wording, times, repetitions and targets — a finished
+                // reminder is re-armed when a future time is saved.
+                const canEdit = true;
                 const hist = Array.isArray(s.history) ? s.history.slice(0, 5) : [];
                 return '<div class="border border-gray-200 rounded-xl p-3 space-y-2">' +
                     '<div class="flex justify-between items-start gap-2 flex-wrap">' +
@@ -3870,7 +3932,7 @@
                             '<div class="text-sm font-semibold text-gray-800 mt-1 break-words">' + waEsc(String(s.taskTitle || String(s.message || '').substring(0, 80))) + '</div>' +
                         '</div>' +
                         '<div class="flex items-center gap-2">' +
-                            (canEdit ? '<button class="wa-sched-edit text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200" data-id="' + s.id + '">Edit</button>' : '') +
+                            (canEdit ? '<button class="wa-sched-edit text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200" data-id="' + s.id + '">✎ Edit</button>' : '') +
                             '<button class="wa-sched-remove text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200" data-id="' + s.id + '">Remove</button>' +
                         '</div>' +
                     '</div>' +
