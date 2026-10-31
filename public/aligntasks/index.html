@@ -6487,14 +6487,14 @@
                         f.textContent = 'Forgot password?';
                     }
                 });
-                // Shown only on the sign-in view.
+                // Shown only on the sign-in view (observe the form so this always matches).
                 const syncForgot = () => {
                     const form = document.getElementById('auth-form');
                     const isLogin = form && form.dataset.view === 'login';
                     f.style.display = isLogin ? '' : 'none';
                 };
-                const t = document.getElementById('auth-toggle');
-                if (t) t.addEventListener('click', () => setTimeout(syncForgot, 0));
+                const formEl = document.getElementById('auth-form');
+                if (formEl && window.MutationObserver) new MutationObserver(syncForgot).observe(formEl, { attributes: true, attributeFilter: ['data-view'] });
                 syncForgot();
             })();
 
@@ -6527,16 +6527,15 @@
                                     : (err.message || 'Google sign-in failed.');
                     }
                 });
-                // The Google button only makes sense on the sign-in view.
-                const authToggleEl = document.getElementById('auth-toggle');
-                if (authToggleEl) {
-                    const sync = () => {
-                        const isLogin = document.getElementById('auth-form').dataset.view === 'login';
-                        gbtn.style.display = isLogin ? '' : 'none';
-                    };
-                    authToggleEl.addEventListener('click', () => setTimeout(sync, 0));
-                    sync();
-                }
+                // The Google button only makes sense on the sign-in view (observe the form).
+                const sync = () => {
+                    const formEl = document.getElementById('auth-form');
+                    const isLogin = formEl && formEl.dataset.view === 'login';
+                    gbtn.style.display = isLogin ? '' : 'none';
+                };
+                const formEl2 = document.getElementById('auth-form');
+                if (formEl2 && window.MutationObserver) new MutationObserver(sync).observe(formEl2, { attributes: true, attributeFilter: ['data-view'] });
+                sync();
             });
 
             authToggle.addEventListener('click', () => {
