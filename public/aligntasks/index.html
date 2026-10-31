@@ -733,9 +733,6 @@
                     Continue with Google
                 </button>
                 <div class="text-center mt-6"><button id="auth-toggle" class="text-sm text-blue-600 hover:underline">Need an account? Sign Up</button></div>
-                <div class="mt-4 pt-4 border-t border-gray-100 text-center">
-                    <button id="auth-team-signin" type="button" class="text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg px-3 py-2 w-full">Team member? Sign in with your name</button>
-                </div>
             </div>
         </div>
     </div>
@@ -8400,15 +8397,8 @@
             showGate('login');
         });
 
-        // Team members sign in with their name + password only — no email account needed.
-        const teamSignInLink = document.getElementById('auth-team-signin');
-        if (teamSignInLink) {
-            teamSignInLink.addEventListener('click', () => {
-                const err = document.getElementById('auth-error');
-                if (err) err.classList.add('hidden');
-                showGate(getSession() ? 'confirm' : 'login');
-            });
-        }
+        // Team members sign in with their name + password on the gate that appears AFTER the main
+        // email login. There is deliberately no shortcut from the main login screen.
 
         // ---------------------------------------------------------- expose helpers
         window.alignApi = api;
