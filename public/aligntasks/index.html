@@ -3508,6 +3508,7 @@
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
                 if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
+                showSchedCalendar(false);      // every open starts on the list; the calendar is one tap away
                 document.getElementById('scheduled-reminders-modal').classList.remove('hidden');
                 loadScheduledReminders();
                 if (scheduledRefreshTimer) clearInterval(scheduledRefreshTimer);
