@@ -6475,7 +6475,7 @@
                     f.textContent = 'Sending…';
                     try {
                         await auth.sendPasswordResetEmail(email);
-                        ok('Reset link sent to ' + email + '. Open it and choose a new password — then sign in here with email + password, or with Google.');
+                        ok('If an account exists for ' + email + ', a reset link is on its way. Check the inbox (and the spam folder), set a new password, then sign in with email + password or with Google.');
                     } catch (err) {
                         const code = (err && err.code) || '';
                         bad(code === 'auth/user-not-found'
