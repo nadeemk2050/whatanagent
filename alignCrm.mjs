@@ -42,18 +42,32 @@ const uid = () => crypto.randomBytes(9).toString('hex');
 const norm = (s) => sstr(s, 200).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // ---------------- storage ----------------
+// The CRM keeps its data in a local JSON store on the server by default: a Firestore round
+// trip from this VPS measured 250-1500 ms, while a local read is a memory lookup. Set
+// CRM_STORE=firestore to go back to Firestore.
+const USE_FIRESTORE = String(process.env.CRM_STORE || '').toLowerCase() === 'firestore';
+
 let fileDb = null;
+let saveTimer = null;
 function loadFile() {
   if (fileDb) return fileDb;
   try { fileDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) || {}; } catch (e) { fileDb = {}; }
   for (const k of Object.values(C)) if (!Array.isArray(fileDb[k])) fileDb[k] = [];
   return fileDb;
 }
-function saveFile() {
+function saveNow() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(DB_FILE, JSON.stringify(fileDb || {}));
+    const tmp = DB_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(fileDb || {}));
+    fs.renameSync(tmp, DB_FILE);      // atomic: a crash mid-write can never corrupt the store
   } catch (e) { console.warn('[CRM] could not write ' + DB_FILE + ': ' + sstr(e && e.message, 120)); }
+}
+// Batch writes: many small edits in a row cost one disk write, and still flush quickly.
+function saveFile() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 250);
 }
 function secret() {
   const env = process.env.CRM_SECRET;
@@ -65,18 +79,29 @@ function secret() {
 }
 let SECRET = '';
 
+function filePut(kind, doc) {
+  const db = loadFile();
+  const i = db[kind].findIndex((x) => x.id === doc.id);
+  if (i >= 0) db[kind][i] = doc; else db[kind].push(doc);
+  saveFile();
+  return doc;
+}
+function fileDel(kind, id) {
+  const db = loadFile();
+  db[kind] = db[kind].filter((x) => x.id !== id);
+  saveFile();
+}
+
 async function put(kind, doc) {
+  if (!USE_FIRESTORE) return filePut(kind, doc);
   try { await alignDb().collection(kind).doc(doc.id).set(doc); return doc; }
   catch (e) {
     if (!noAdmin(e)) throw e;
-    const db = loadFile();
-    const i = db[kind].findIndex((x) => x.id === doc.id);
-    if (i >= 0) db[kind][i] = doc; else db[kind].push(doc);
-    saveFile();
-    return doc;
+    return filePut(kind, doc);
   }
 }
 async function get(kind, id) {
+  if (!USE_FIRESTORE) return loadFile()[kind].find((x) => x.id === id) || null;
   try {
     const s = await alignDb().collection(kind).doc(String(id)).get();
     return s.exists ? s.data() : null;
@@ -86,17 +111,17 @@ async function get(kind, id) {
   }
 }
 async function del(kind, id) {
+  if (!USE_FIRESTORE) { fileDel(kind, id); return; }
   try { await alignDb().collection(kind).doc(String(id)).delete(); return; }
   catch (e) {
     if (!noAdmin(e)) throw e;
-    const db = loadFile();
-    db[kind] = db[kind].filter((x) => x.id !== id);
-    saveFile();
+    fileDel(kind, id);
   }
 }
 async function list(kind, filter) {
   const key = Object.keys(filter)[0];
   const val = filter[key];
+  if (!USE_FIRESTORE) return loadFile()[kind].filter((x) => x[key] === val);
   try {
     const snap = await alignDb().collection(kind).where(key, '==', val).get();
     const out = [];
@@ -106,6 +131,24 @@ async function list(kind, filter) {
     if (!noAdmin(e)) throw e;
     return loadFile()[kind].filter((x) => x[key] === val);
   }
+}
+
+// One-time copy of whatever the CRM already stored in Firestore into the local store.
+async function migrateFromFirestore() {
+  if (USE_FIRESTORE) return;
+  const db = loadFile();
+  if (db.crmCompanies.length) return;
+  try {
+    const probe = await alignDb().collection(C.company).limit(1).get();
+    if (probe.empty) return;
+    let n = 0;
+    for (const kind of Object.values(C)) {
+      const all = await alignDb().collection(kind).get();
+      all.forEach((d) => { const v = d.data(); if (v && v.id && !db[kind].some((x) => x.id === v.id)) { db[kind].push(v); n++; } });
+    }
+    saveNow();
+    console.log('[CRM] migrated ' + n + ' records from Firestore to the local store');
+  } catch (e) { /* no admin SDK or empty Firebase project: nothing to migrate */ }
 }
 
 // ---------------- passwords + tokens ----------------
@@ -273,10 +316,41 @@ async function pageText(url) {
 }
 
 // ---------------- module ----------------
+function dashboardOf(company, contacts, deals, acts, tasks, members) {
+  const stages = company.stages || DEFAULT_STAGES;
+  const byStage = stages.map((s) => ({ id: s.id, name: s.name, count: deals.filter((d) => d.stage === s.id).length, value: deals.filter((d) => d.stage === s.id).reduce((n, d) => n + (Number(d.value) || 0), 0) }));
+  const won = deals.filter((d) => d.stage === 'won');
+  const open = deals.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    contacts: contacts.length,
+    contactsByStatus: ['Lead', 'Prospect', 'Active', 'VIP', 'Inactive'].map((s) => ({ status: s, count: contacts.filter((c) => c.status === s).length })),
+    deals: {
+      total: deals.length, open: open.length,
+      openValue: open.reduce((n, d) => n + (Number(d.value) || 0), 0),
+      won: won.length, wonValue: won.reduce((n, d) => n + (Number(d.value) || 0), 0),
+      wonThisMonth: won.filter((d) => (d.wonAt || 0) >= monthStart.getTime()).length
+    },
+    byStage,
+    tasks: { open: tasks.filter((t) => !t.done).length, overdue: tasks.filter((t) => !t.done && t.dueDate && t.dueDate < today).length },
+    team: members.length,
+    recent: acts.slice().sort((a, b) => b.at - a.at).slice(0, 12),
+    topContacts: contacts.filter((c) => (c.value || 0) > 0).sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 5).map((c) => ({ id: c.id, name: c.name || c.company, value: c.value, status: c.status })),
+    currency: company.currency || 'USD'
+  };
+}
+
 export function registerAlignCrmRoutes(app, opts) {
   const api = (opts && opts.api) || '/api/crm';
   const waListContacts = opts && opts.waListContacts;   // WhatsApp contact capture
   SECRET = secret();
+  loadFile();                                            // warm the store (also creates the file lazily)
+  migrateFromFirestore();                                // one-time copy of any existing Firestore data
+  const flush = () => saveNow();
+  process.on('SIGTERM', flush);
+  process.on('SIGINT', flush);
+  process.on('beforeExit', flush);
 
   const fail = (res, e, code) => res.status(code || 500).json({ ok: false, error: sstr((e && e.message) || e, 240) });
   const bad = (res, msg, code) => res.status(code || 400).json({ ok: false, error: msg });
@@ -846,6 +920,27 @@ export function registerAlignCrmRoutes(app, opts) {
     } catch (e) { fail(res, e); }
   });
 
+  // Everything the app needs after login, in ONE round trip (was 5 separate requests).
+  app.get(api + '/bootstrap', auth, async (req, res) => {
+    try {
+      const companyId = req.crm.company.id;
+      const [contacts, deals, acts, tasks, members] = await Promise.all([
+        list(C.contact, { companyId }), list(C.deal, { companyId }),
+        list(C.act, { companyId }), list(C.task, { companyId }), list(C.member, { companyId })
+      ]);
+      res.json({
+        ok: true,
+        member: publicMember(req.crm.member),
+        company: publicCompany(req.crm.company),
+        contacts: contacts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
+        deals: deals.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
+        tasks: tasks.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || String(a.dueDate || '').localeCompare(String(b.dueDate || ''))),
+        members: members.map(publicMember).sort((a, b) => (a.role === 'owner' ? -1 : 1)),
+        dashboard: dashboardOf(req.crm.company, contacts, deals, acts, tasks, members)
+      });
+    } catch (e) { fail(res, e); }
+  });
+
   app.get(api + '/dashboard', auth, async (req, res) => {
     try {
       const companyId = req.crm.company.id;
@@ -853,26 +948,9 @@ export function registerAlignCrmRoutes(app, opts) {
         list(C.contact, { companyId }), list(C.deal, { companyId }),
         list(C.act, { companyId }), list(C.task, { companyId }), list(C.member, { companyId })
       ]);
-      const stages = req.crm.company.stages || DEFAULT_STAGES;
-      const byStage = stages.map((s) => ({ id: s.id, name: s.name, count: deals.filter((d) => d.stage === s.id).length, value: deals.filter((d) => d.stage === s.id).reduce((n, d) => n + (Number(d.value) || 0), 0) }));
-      const won = deals.filter((d) => d.stage === 'won');
-      const open = deals.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
-      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-      const today = new Date().toISOString().slice(0, 10);
-      res.json({
-        ok: true,
-        currency: req.crm.company.currency || 'USD',
-        contacts: contacts.length,
-        contactsByStatus: ['Lead', 'Prospect', 'Active', 'VIP', 'Inactive'].map((s) => ({ status: s, count: contacts.filter((c) => c.status === s).length })),
-        deals: { total: deals.length, open: open.length, openValue: open.reduce((n, d) => n + (Number(d.value) || 0), 0), won: won.length, wonValue: won.reduce((n, d) => n + (Number(d.value) || 0), 0), wonThisMonth: won.filter((d) => (d.wonAt || 0) >= monthStart.getTime()).length },
-        byStage,
-        tasks: { open: tasks.filter((t) => !t.done).length, overdue: tasks.filter((t) => !t.done && t.dueDate && t.dueDate < today).length },
-        team: members.length,
-        recent: acts.sort((a, b) => b.at - a.at).slice(0, 12),
-        topContacts: contacts.filter((c) => (c.value || 0) > 0).sort((a, b) => (b.value || 0) - (a.value || 0)).slice(0, 5).map((c) => ({ id: c.id, name: c.name || c.company, value: c.value, status: c.status }))
-      });
+      res.json(Object.assign({ ok: true, currency: req.crm.company.currency || 'USD' }, dashboardOf(req.crm.company, contacts, deals, acts, tasks, members)));
     } catch (e) { fail(res, e); }
   });
 
-  console.log('[CRM] 🏢 CRM routes registered at ' + api + ' (linked owner: ' + LINKED_EMAIL + ')');
+  console.log('[CRM] 🏢 CRM routes registered at ' + api + ' (' + (USE_FIRESTORE ? 'Firestore' : 'local file store: ' + DB_FILE) + ', linked owner: ' + LINKED_EMAIL + ')');
 }

@@ -345,7 +345,7 @@
         $('#me-name').textContent = S.member ? S.member.name : '';
         $('#me-role').textContent = S.member ? (S.member.role === 'owner' ? 'Account owner' : 'Team member') : '';
     }
-    function go(view) { S.view = view; paintNav(); render(); }
+    function go(view) { S.view = view; paintNav(); render(true); refreshSoon(); }
     $('#logout').onclick = () => signOut();
     $('#burger').onclick = () => { const s = $('#side'); s.classList.toggle('hidden'); s.classList.toggle('flex'); };
     $('#qa-add').onclick = () => {
@@ -372,23 +372,61 @@
     }
     const closeModal = () => $('#modal').classList.remove('open');
 
-    async function loadAll() {
-        const [c, d, t, tm] = await Promise.all([api('/contacts'), api('/deals'), api('/tasks'), api('/team')]);
-        S.contacts = c.contacts; S.deals = d.deals; S.tasks = t.tasks; S.team = tm.members;
-    }
-    async function boot() {
+    // ---------- load (cache first, then sync) ----------
+    // The last snapshot is kept in localStorage and painted immediately on open, so the app
+    // never sits on a spinner. A background sync then replaces it with fresh data.
+    const CACHE_KEY = () => 'crmCache:' + (S.company ? S.company.id : 'anon');
+    function saveCache() {
         try {
-            const me = await api('/me');
-            S.member = me.member; S.company = me.company;
-            showApp(); paintNav(); await render();
-        } catch (e) { showAuth(); }
+            localStorage.setItem(CACHE_KEY(), JSON.stringify({
+                at: Date.now(), member: S.member, company: S.company,
+                contacts: S.contacts, deals: S.deals, tasks: S.tasks, team: S.team, dash: S.dash
+            }));
+        } catch (e) { /* storage full or blocked: caching is optional */ }
+    }
+    function readCache() {
+        try {
+            const raw = localStorage.getItem(CACHE_KEY());
+            if (!raw) return false;
+            const c = JSON.parse(raw);
+            if (!c || !c.company) return false;
+            S.member = c.member || S.member; S.company = c.company;
+            S.contacts = c.contacts || []; S.deals = c.deals || []; S.tasks = c.tasks || []; S.team = c.team || []; S.dash = c.dash || null;
+            return true;
+        } catch (e) { return false; }
     }
 
-    async function render() {
-        const main = $('#main');
-        main.innerHTML = '<div class="text-sm text-gray-400 p-6">Loading…</div>';
+    // One request gives contacts, deals, tasks, team, member/company and the dashboard.
+    async function syncAll() {
+        const d = await api('/bootstrap');
+        S.member = d.member; S.company = d.company;
+        S.contacts = d.contacts; S.deals = d.deals; S.tasks = d.tasks; S.team = d.members; S.dash = d.dashboard;
+        saveCache();
+        return d;
+    }
+    async function loadAll(force) {
+        const age = Date.now() - (S.syncedAt || 0);
+        if (!force && S.syncedAt && age < 15000 && S.contacts) return;   // fresh enough: no refetch
+        await syncAll();
+        S.syncedAt = Date.now();
+    }
+    const invalidate = () => { S.syncedAt = 0; };
+
+    async function boot() {
+        // Paint from cache instantly if this company was opened before on this device.
+        if (readCache()) { showApp(); paintNav(); await render(true); }
         try {
-            await loadAll();
+            await syncAll();
+            S.syncedAt = Date.now();
+            showApp(); paintNav(); await render(true);
+        } catch (e) { if (!S.contacts || !S.contacts.length) showAuth(); }
+    }
+
+    async function render(fromCache) {
+        const main = $('#main');
+        if (!fromCache) main.innerHTML = '<div class="text-sm text-gray-400 p-6">Loading…</div>';
+        try {
+            if (!fromCache) await loadAll(true);   // called after a save: always re-read
             if (S.view === 'dashboard') await renderDashboard(main);
             else if (S.view === 'contacts') renderContacts(main);
             else if (S.view === 'pipeline') renderPipeline(main);
@@ -399,6 +437,10 @@
             main.innerHTML = '<div class="card p-4 text-sm text-red-600">' + esc(e.message) + '</div>';
         }
     }
+    // Switching tabs paints from memory instantly; the network is only touched if the data is stale.
+    async function refreshSoon() {
+        try { await loadAll(); await render(true); } catch (e) { /* keep what is on screen */ }
+    }
 
     function tlItem(a) {
         const icon = { call: '📞', email: '✉️', whatsapp: '💬', meeting: '📅', note: '📝', deal: '💼', stage: '➡️', system: '⚙️', import: '📥', update: '✏️', task: '✅', message: '💬' }[a.type] || '•';
@@ -408,7 +450,9 @@
     }
 
     async function renderDashboard(main) {
-        const d = await api('/dashboard');
+        // The dashboard numbers already arrive with the bootstrap payload — no extra request.
+        const d = S.dash || await api('/dashboard');
+        S.dash = d;
         const kpi = (label, value, sub) => '<div class="card p-4"><div class="text-[11px] font-bold text-gray-500 uppercase tracking-wide">' + label + '</div><div class="kpi mt-1">' + value + '</div><div class="text-xs text-gray-500 mt-0.5">' + (sub || '') + '</div></div>';
         const maxStage = Math.max(1, ...d.byStage.map(s => s.value));
         main.innerHTML =
