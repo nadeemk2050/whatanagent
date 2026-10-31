@@ -23,7 +23,8 @@ const TOKEN_DAYS = 30;
 
 const C = {
   company: 'crmCompanies', member: 'crmMembers', contact: 'crmContacts',
-  deal: 'crmDeals', act: 'crmActivities', task: 'crmTasks'
+  deal: 'crmDeals', act: 'crmActivities', task: 'crmTasks',
+  aiStaff: 'crmAiStaff', aiRoom: 'crmAiRoom'
 };
 const DEFAULT_STAGES = [
   { id: 'new', name: 'New lead', probability: 10 },
@@ -871,6 +872,254 @@ export function registerAlignCrmRoutes(app, opts) {
       if (!t || t.companyId !== req.crm.company.id) return bad(res, 'Task not found.', 404);
       await del(C.task, t.id);
       res.json({ ok: true });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ---------- AI staff offices (hired from the WhatAnAgent AI Staff Academy) ----------
+  // Each hired agent gets his own office here plus a room (office chat). One shared meeting
+  // room per company hosts the boss, the team and, when invited, the boss assistant.
+  const AI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const publicAiStaff = (s) => ({
+    id: s.id, agentId: s.agentId, agentName: s.agentName, agentEmoji: s.agentEmoji || '🧑‍💼',
+    agentRole: s.agentRole || '', agentStatus: s.agentStatus || '', agentModel: s.agentModel || '',
+    office: s.office || { name: s.agentName || 'Office', desk: '', floor: '' },
+    roles: Array.isArray(s.roles) ? s.roles : [],
+    instructions: s.instructions || '',
+    hours: s.hours || { from: '09:00', to: '18:00', days: [1, 2, 3, 4, 5] },
+    escalation: s.escalation || { name: 'Zaheer Ahmed', channel: 'whatsapp', phone: '' },
+    auto: s.auto || { newLeads: true, followUps: true, whatsappReplies: false },
+    status: s.status || 'working',
+    createdAt: s.createdAt || 0, createdByName: s.createdByName || ''
+  });
+
+  app.get(api + '/ai/agents', auth, async (req, res) => {
+    try {
+      let rows = [];
+      try {
+        const snap = await alignDb().collection('agents').limit(300).get();
+        snap.forEach((d) => {
+          const v = d.data() || {};
+          if (String(v.status || '') === 'archived') return;
+          rows.push({
+            id: d.id, name: sstr(v.name || d.id, 60), emoji: sstr(v.emoji || '🧑‍💼', 8),
+            role: sstr(v.role, 80), category: sstr(v.category, 20), status: sstr(v.status, 20),
+            model: sstr(v.model, 60), jobDescription: sstr(v.jobDescription, 400),
+            workingHours: sstr(v.workingHours, 120),
+            escalation: Array.isArray((v.guardrails || {}).escalation) ? v.guardrails.escalation.slice(0, 3) : [],
+            tools: Array.isArray(v.allowedTools) ? v.allowedTools.slice(0, 12) : []
+          });
+        });
+      } catch (e) { rows = []; }
+      rows.sort((a, b) => a.name.localeCompare(b.name));
+      res.json({ ok: true, agents: rows });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.get(api + '/ai/offices', auth, async (req, res) => {
+    try {
+      const companyId = req.crm.company.id;
+      const staff = (await list(C.aiStaff, { companyId })).map(publicAiStaff);
+      const rooms = await list(C.aiRoom, { companyId });
+      const roomByKey = new Map(rooms.map((r) => [r.id, r]));
+      staff.forEach((s) => {
+        const r = roomByKey.get('office_' + s.id);
+        s.lastMessage = r && r.messages && r.messages.length ? r.messages[r.messages.length - 1] : null;
+        s.messages = r && r.messages ? r.messages.length : 0;
+      });
+      const meet = roomByKey.get('meeting_' + companyId) || null;
+      res.json({
+        ok: true,
+        staff,
+        meeting: meet ? { id: meet.id, participants: meet.participants || [], messages: (meet.messages || []).length, last: (meet.messages || []).slice(-1)[0] || null } : { id: 'meeting_' + companyId, participants: [], messages: 0, last: null }
+      });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.post(api + '/ai/offices', auth, async (req, res) => {
+    try {
+      const b = req.crm.body;
+      const agentId = sstr(b.agentId, 60).trim();
+      const agentName = sstr(b.agentName, 60).trim();
+      if (!agentName) return bad(res, 'Pick an agent from the AI Staff Academy first.');
+      const companyId = req.crm.company.id;
+      const existing = await list(C.aiStaff, { companyId });
+      if (agentId && existing.some((s) => s.agentId === agentId)) return bad(res, agentName + ' already has an office in this CRM — open it to change his roles.', 409);
+      const days = Array.isArray(b.hours && b.hours.days) ? b.hours.days.map(Number).filter((n) => n >= 0 && n <= 6) : [1, 2, 3, 4, 5];
+      const st = {
+        id: uid(), companyId,
+        agentId, agentName,
+        agentEmoji: sstr(b.agentEmoji || '🧑‍💼', 8),
+        agentRole: sstr(b.agentRole, 80),
+        agentStatus: sstr(b.agentStatus, 20),
+        agentModel: sstr(b.agentModel, 60),
+        office: {
+          name: sstr(b.officeName, 80).trim() || (agentName + ' — CRM Office'),
+          desk: sstr(b.desk, 40).trim() || ('Desk ' + (existing.length + 1)),
+          floor: sstr(b.floor, 40).trim() || 'CRM Floor 1'
+        },
+        roles: (Array.isArray(b.roles) ? b.roles : String(b.roles || '').split('\n')).map((r) => sstr(r, 120).trim()).filter(Boolean).slice(0, 20),
+        instructions: sstr(b.instructions, 4000),
+        hours: { from: sstr((b.hours && b.hours.from) || '09:00', 5), to: sstr((b.hours && b.hours.to) || '18:00', 5), days },
+        escalation: {
+          name: sstr((b.escalation && b.escalation.name) || 'Zaheer Ahmed', 80),
+          channel: sstr((b.escalation && b.escalation.channel) || 'whatsapp', 20),
+          phone: sstr((b.escalation && b.escalation.phone) || '', 40)
+        },
+        auto: {
+          newLeads: !(b.auto && b.auto.newLeads === false),
+          followUps: !(b.auto && b.auto.followUps === false),
+          whatsappReplies: !!(b.auto && b.auto.whatsappReplies)
+        },
+        status: 'working',
+        createdAt: nowMs(), createdBy: req.crm.member.id, createdByName: req.crm.member.name, updatedAt: nowMs()
+      };
+      await put(C.aiStaff, st);
+      // The office room is created automatically, with the boss already inside.
+      await put(C.aiRoom, {
+        id: 'office_' + st.id, companyId, kind: 'office', staffId: st.id,
+        title: st.office.name,
+        participants: [
+          { id: req.crm.member.id, name: req.crm.member.name, kind: req.crm.member.role === 'owner' ? 'boss' : 'member' },
+          { id: 'ai_' + st.id, name: agentName, kind: 'ai' }
+        ],
+        messages: [{ id: uid(), at: nowMs(), fromId: 'system', fromName: 'CRM', fromKind: 'system', text: agentName + ' joined the CRM and his office is ready. Roles: ' + (st.roles.join(', ') || 'not set yet') + '.' }],
+        createdAt: nowMs(), updatedAt: nowMs()
+      });
+      res.json({ ok: true, staff: publicAiStaff(st) });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.patch(api + '/ai/offices/:id', auth, async (req, res) => {
+    try {
+      const s = await get(C.aiStaff, req.params.id);
+      if (!s || s.companyId !== req.crm.company.id) return bad(res, 'Office not found.', 404);
+      const b = req.crm.body;
+      if (b.roles != null) s.roles = (Array.isArray(b.roles) ? b.roles : String(b.roles).split('\n')).map((r) => sstr(r, 120).trim()).filter(Boolean).slice(0, 20);
+      if (b.instructions != null) s.instructions = sstr(b.instructions, 4000);
+      if (b.hours && typeof b.hours === 'object') {
+        s.hours = {
+          from: sstr(b.hours.from || (s.hours || {}).from || '09:00', 5),
+          to: sstr(b.hours.to || (s.hours || {}).to || '18:00', 5),
+          days: Array.isArray(b.hours.days) ? b.hours.days.map(Number).filter((n) => n >= 0 && n <= 6) : ((s.hours || {}).days || [1, 2, 3, 4, 5])
+        };
+      }
+      if (b.escalation && typeof b.escalation === 'object') {
+        s.escalation = {
+          name: sstr(b.escalation.name || (s.escalation || {}).name || '', 80),
+          channel: sstr(b.escalation.channel || (s.escalation || {}).channel || 'whatsapp', 20),
+          phone: sstr(b.escalation.phone || (s.escalation || {}).phone || '', 40)
+        };
+      }
+      if (b.auto && typeof b.auto === 'object') {
+        s.auto = {
+          newLeads: b.auto.newLeads !== false,
+          followUps: b.auto.followUps !== false,
+          whatsappReplies: !!b.auto.whatsappReplies
+        };
+      }
+      if (b.officeName != null) s.office = Object.assign({}, s.office || {}, { name: sstr(b.officeName, 80) || (s.agentName + ' — CRM Office') });
+      if (b.status === 'working' || b.status === 'paused') s.status = b.status;
+      s.updatedAt = nowMs();
+      await put(C.aiStaff, s);
+      res.json({ ok: true, staff: publicAiStaff(s) });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.delete(api + '/ai/offices/:id', auth, async (req, res) => {
+    try {
+      const s = await get(C.aiStaff, req.params.id);
+      if (!s || s.companyId !== req.crm.company.id) return bad(res, 'Office not found.', 404);
+      await del(C.aiStaff, s.id);
+      await del(C.aiRoom, 'office_' + s.id);
+      res.json({ ok: true });
+    } catch (e) { fail(res, e); }
+  });
+
+  // ---------- office & meeting rooms ----------
+  async function roomFor(req, key) {
+    const companyId = req.crm.company.id;
+    let room = await get(C.aiRoom, key);
+    if (room && room.companyId !== companyId) return null;
+    if (!room) {
+      room = {
+        id: key, companyId,
+        kind: key.startsWith('meeting_') ? 'meeting' : 'office',
+        staffId: key.startsWith('office_') ? key.slice(7) : '',
+        title: key.startsWith('meeting_') ? 'CRM Meeting Room' : 'Office room',
+        participants: [{ id: req.crm.member.id, name: req.crm.member.name, kind: req.crm.member.role === 'owner' ? 'boss' : 'member' }],
+        messages: [], createdAt: nowMs(), updatedAt: nowMs()
+      };
+      await put(C.aiRoom, room);
+    }
+    return room;
+  }
+
+  app.get(api + '/ai/room', auth, async (req, res) => {
+    try {
+      const staffId = sstr(req.query.staffId, 40);
+      const key = staffId ? ('office_' + staffId) : ('meeting_' + req.crm.company.id);
+      if (staffId) {
+        const s = await get(C.aiStaff, staffId);
+        if (!s || s.companyId !== req.crm.company.id) return bad(res, 'Office not found.', 404);
+      }
+      const room = await roomFor(req, key);
+      if (!room) return bad(res, 'Room not found.', 404);
+      if (staffId) {
+        const s = await get(C.aiStaff, staffId);
+        const aiMember = { id: 'ai_' + staffId, name: (s && s.agentName) || 'AI', kind: 'ai' };
+        if (!room.participants.some((p) => p.id === aiMember.id)) room.participants.push(aiMember);
+        const boss = { id: req.crm.member.id, name: req.crm.member.name, kind: req.crm.member.role === 'owner' ? 'boss' : 'member' };
+        if (!room.participants.some((p) => p.id === boss.id)) room.participants.push(boss);
+        if (room.title === 'Office room' && s) room.title = (s.office || {}).name || s.agentName;
+        await put(C.aiRoom, room);
+      }
+      res.json({ ok: true, room: { id: room.id, kind: room.kind, title: room.title, staffId: room.staffId || '', participants: room.participants || [], messages: (room.messages || []).slice(-300) } });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.post(api + '/ai/room', auth, async (req, res) => {
+    try {
+      const b = req.crm.body;
+      const staffId = sstr(b.staffId, 40);
+      const key = staffId ? ('office_' + staffId) : ('meeting_' + req.crm.company.id);
+      const text = sstr(b.text, 4000).trim();
+      if (!text) return bad(res, 'Write a message first.');
+      const room = await roomFor(req, key);
+      if (!room) return bad(res, 'Room not found.', 404);
+      const msg = {
+        id: uid(), at: nowMs(),
+        fromId: req.crm.member.id, fromName: req.crm.member.name,
+        fromKind: req.crm.member.role === 'owner' ? 'boss' : 'member',
+        text
+      };
+      room.messages = (room.messages || []).concat([msg]).slice(-400);
+      room.updatedAt = nowMs();
+      await put(C.aiRoom, room);
+      res.json({ ok: true, message: msg });
+    } catch (e) { fail(res, e); }
+  });
+
+  app.post(api + '/ai/room/participants', auth, async (req, res) => {
+    try {
+      const b = req.crm.body;
+      const staffId = sstr(b.staffId, 40);
+      const key = staffId ? ('office_' + staffId) : ('meeting_' + req.crm.company.id);
+      const action = sstr(b.action, 12) || 'add';
+      const room = await roomFor(req, key);
+      if (!room) return bad(res, 'Room not found.', 404);
+      const person = {
+        id: sstr(b.personId, 60) || uid(),
+        name: sstr(b.name, 80).trim(),
+        kind: ['boss', 'member', 'ai', 'guest'].includes(b.kind) ? b.kind : 'guest',
+        phone: sstr(b.phone, 40)
+      };
+      if (!person.name) return bad(res, 'Who should join? Give a name.');
+      room.participants = Array.isArray(room.participants) ? room.participants : [];
+      if (action === 'remove') room.participants = room.participants.filter((p) => p.id !== person.id && p.name !== person.name);
+      else if (!room.participants.some((p) => p.id === person.id || p.name === person.name)) room.participants.push(person);
+      room.updatedAt = nowMs();
+      await put(C.aiRoom, room);
+      res.json({ ok: true, participants: room.participants });
     } catch (e) { fail(res, e); }
   });
 

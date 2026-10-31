@@ -200,6 +200,7 @@
         { id: 'dashboard', label: 'Dashboard', icon: SV('<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>') },
         { id: 'contacts', label: 'Customers', icon: SV('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>') },
         { id: 'pipeline', label: 'Deals & pipeline', icon: SV('<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>') },
+        { id: 'ai', label: 'AI Staff Offices', icon: SV('<path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01"/>') },
         { id: 'tasks', label: 'Tasks', icon: SV('<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>') },
         { id: 'team', label: 'Team', icon: SV('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>') },
         { id: 'settings', label: 'Settings', icon: SV('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a7.9 7.9 0 0 0 0-6l2-1.6-2-3.4-2.4 1a8 8 0 0 0-1.7-1L15 4h-4l-.3 2.6a8 8 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 9a7.9 7.9 0 0 0 0 6l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 1.7 1L11 20h4l.3-2.6a8 8 0 0 0 1.7-1l2.4 1 2-3.4z"/>') }
@@ -369,6 +370,7 @@
     $('#qa-add').onclick = () => {
         if (S.view === 'pipeline') return dealForm(null);
         if (S.view === 'tasks') return taskForm();
+        if (S.view === 'ai') return hireAi();
         if (S.view === 'team') return canManage() ? memberForm() : toast('Only the owner can add team members', true);
         return contactForm(null);
     };
@@ -379,6 +381,14 @@
         paintNav(); render();
     });
     $$('[data-close]').forEach(b => b.onclick = () => {
+        if (b.dataset.close === 'drawer') { $('#drawer').classList.remove('open'); S.drawer = null; }
+        else $('#modal').classList.remove('open');
+    });
+    // Buttons inside modals are created on the fly, so the same job is done by one delegated
+    // listener (otherwise a freshly rendered Cancel/Close button does nothing).
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest && e.target.closest('[data-close]');
+        if (!b) return;
         if (b.dataset.close === 'drawer') { $('#drawer').classList.remove('open'); S.drawer = null; }
         else $('#modal').classList.remove('open');
     });
@@ -448,6 +458,7 @@
             if (S.view === 'dashboard') await renderDashboard(main);
             else if (S.view === 'contacts') renderContacts(main);
             else if (S.view === 'pipeline') renderPipeline(main);
+            else if (S.view === 'ai') await renderAi(main);
             else if (S.view === 'tasks') renderTasks(main);
             else if (S.view === 'team') renderTeam(main);
             else if (S.view === 'settings') renderSettings(main);
@@ -867,8 +878,273 @@
         };
     }
 
-    function renderSettings(main) {
-        const st = S.company.stages || [];
+    // ---------- 🏢 AI Staff Offices (hired from the AI Staff Academy) ----------
+    const AI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    function aiHoursText(h) {
+        if (!h) return 'hours not set';
+        const days = (h.days && h.days.length) ? h.days.map(d => AI_DAYS[d]).join(' ') : 'every day';
+        return (h.from || '09:00') + '–' + (h.to || '18:00') + ' · ' + days;
+    }
+    function aiStatusChip(s) {
+        return s.status === 'paused'
+            ? '<span class="chip" style="background:#fef3c7;color:#92400e">Paused</span>'
+            : '<span class="chip" style="background:#dcfce7;color:#15803d">Working</span>';
+    }
+    async function renderAi(main) {
+        let d;
+        try { d = await api('/ai/offices'); } catch (e) { main.innerHTML = '<div class="card p-4 text-sm text-red-600">' + esc(e.message) + '</div>'; return; }
+        S.ai = d;
+        const staff = d.staff || [];
+        const meet = d.meeting || { participants: [], messages: 0 };
+        const officeCard = (s) => '<div class="card p-4 flex flex-col gap-2">'
+            + '<div class="flex items-start justify-between gap-2">'
+            + '<div class="flex items-center gap-2 min-w-0">'
+            + '<div class="w-10 h-10 rounded-full flex items-center justify-center text-xl" style="background:#f3ecdd;flex:0 0 auto">' + esc(s.agentEmoji || '🧑‍💼') + '</div>'
+            + '<div class="min-w-0"><div class="font-bold text-sm truncate">' + esc(s.agentName) + '</div>'
+            + '<div class="text-[11px] text-gray-500 truncate">' + esc(s.office.name) + ' · ' + esc(s.office.desk || '') + '</div></div></div>'
+            + aiStatusChip(s) + '</div>'
+            + '<div class="flex flex-wrap gap-1">' + ((s.roles || []).length ? s.roles.slice(0, 4).map(r => '<span class="chip" style="background:#eef2ff;color:#4338ca">' + esc(r) + '</span>').join('') : '<span class="text-[11px] text-gray-400">no roles set yet</span>') + '</div>'
+            + '<div class="text-[11px] text-gray-500">🕘 ' + esc(aiHoursText(s.hours)) + ' · ↗ ' + esc((s.escalation || {}).name || '—') + '</div>'
+            + '<div class="text-[11px] text-gray-400 truncate">' + (s.lastMessage ? '💬 ' + esc(String(s.lastMessage.text || '').slice(0, 70)) : 'no messages in the office room yet') + '</div>'
+            + '<div class="flex flex-wrap gap-1 mt-auto pt-1">'
+            + '<button class="btn btn-dark" data-office="' + esc(s.id) + '">Open office</button>'
+            + '<button class="btn btn-light" data-room="' + esc(s.id) + '">Office room</button>'
+            + '<button class="btn btn-light" data-pause="' + esc(s.id) + '" data-status="' + esc(s.status) + '">' + (s.status === 'paused' ? '▶ Resume' : '⏸ Pause') + '</button>'
+            + (canManage() ? '<button class="btn btn-danger" data-fire="' + esc(s.id) + '">Fire</button>' : '')
+            + '</div></div>';
+        main.innerHTML = '<div class="flex flex-wrap items-center gap-2 mb-3">'
+            + '<div><div class="font-bold text-base">🏢 AI Staff Offices of CRM</div><div class="text-[11px] text-gray-500">Hire AI staff from the academy, give each one his office, roles, rules and working hours.</div></div>'
+            + '<div class="flex-1"></div>'
+            + '<button class="btn btn-light" id="ai-meet">🗓️ Meeting room' + (meet.messages ? ' (' + meet.messages + ')' : '') + '</button>'
+            + '<button class="btn btn-dark" id="ai-hire">＋ Hire AI staff</button></div>'
+            + '<div class="card p-4 mb-3" style="background:linear-gradient(135deg,#f8f4ea,#fffdf8)">'
+            + '<div class="flex items-start justify-between gap-2 flex-wrap">'
+            + '<div><div class="font-bold text-sm">🗓️ CRM Meeting Room</div>'
+            + '<div class="text-[11px] text-gray-500">Boss, workers and — when invited — ' + esc(((staff[0] || {}).escalation || {}).name || 'Zaheer Ahmed') + ', for talking about new customers, leads and the plan to win them.</div></div>'
+            + '<button class="btn btn-light" id="ai-meet-2">Enter room</button></div>'
+            + '<div class="flex flex-wrap gap-1 mt-2">' + ((meet.participants || []).length ? meet.participants.map(p => '<span class="chip">' + esc(p.name) + (p.kind === 'guest' ? ' · guest' : p.kind === 'ai' ? ' · AI' : '') + '</span>').join('') : '<span class="text-[11px] text-gray-400">nobody invited yet</span>') + '</div>'
+            + (meet.last ? '<div class="text-[11px] text-gray-500 mt-2">💬 ' + esc(meet.last.fromName || '') + ': ' + esc(String(meet.last.text || '').slice(0, 90)) + '</div>' : '')
+            + '</div>'
+            + (staff.length
+                ? '<div class="grid md:grid-cols-2 xl:grid-cols-3 gap-3">' + staff.map(officeCard).join('') + '</div>'
+                : '<div class="card p-6 text-center"><div class="text-3xl mb-2">🏢</div><div class="font-bold mb-1">No AI staff working in this CRM yet</div>'
+                + '<div class="text-sm text-gray-500 mb-3">Hire your first agent from the 🎓 AI Staff Academy — his office is created automatically.</div>'
+                + '<button class="btn btn-dark" id="ai-hire-empty">＋ Hire AI staff</button></div>');
+        if ($('#ai-hire')) $('#ai-hire').onclick = () => hireAi();
+        if ($('#ai-hire-empty')) $('#ai-hire-empty').onclick = () => hireAi();
+        if ($('#ai-meet')) $('#ai-meet').onclick = () => meetingRoom();
+        if ($('#ai-meet-2')) $('#ai-meet-2').onclick = () => meetingRoom();
+        $$('[data-office]').forEach(b => b.onclick = () => officeModal((S.ai.staff || []).find(s => s.id === b.dataset.office)));
+        $$('[data-room]').forEach(b => b.onclick = () => officeRoom(b.dataset.room));
+        $$('[data-pause]').forEach(b => b.onclick = async () => {
+            try {
+                await api('/ai/offices/' + b.dataset.pause, { method: 'PATCH', body: { status: b.dataset.status === 'paused' ? 'working' : 'paused' } });
+                toast(b.dataset.status === 'paused' ? 'Resumed' : 'Paused'); await render(true);
+            } catch (e) { toast(e.message, true); }
+        });
+        $$('[data-fire]').forEach(b => b.onclick = async () => {
+            if (!confirm('Fire this AI staff member? His office and room are removed.')) return;
+            try { await api('/ai/offices/' + b.dataset.fire, { method: 'DELETE' }); toast('Fired'); await render(true); }
+            catch (e) { toast(e.message, true); }
+        });
+    }
+
+    async function hireAi() {
+        openModal('Hire AI staff', '<div class="text-sm text-gray-500">Reading the AI Staff Academy…</div>', '<button class="btn btn-light" data-close="modal">Close</button>');
+        let agents = [];
+        try { const r = await api('/ai/agents'); agents = r.agents || []; } catch (e) { agents = []; }
+        const step1 = () => {
+            openModal('Hire AI staff — choose from the academy',
+                '<div class="text-[12px] text-gray-500 mb-2">These are the trained agents in 🎓 AI Staff Academy. Pick one; you can give him his own office, roles, rules and timings in the next step.</div>'
+                + '<input id="ha-q" class="inp mb-2" placeholder="Search name or role…">'
+                + '<div id="ha-list" style="max-height:52vh;overflow:auto">'
+                + (agents.length ? agents.map(a => '<button class="card p-3 w-full text-left mb-2 flex items-center gap-3" data-pick="' + esc(a.id) + '">'
+                    + '<div class="w-9 h-9 rounded-full flex items-center justify-center text-lg" style="background:#f3ecdd;flex:0 0 auto">' + esc(a.emoji || '🧑‍💼') + '</div>'
+                    + '<div class="min-w-0 flex-1"><div class="font-bold text-sm">' + esc(a.name) + ' <span class="text-[10px] text-gray-400">' + esc(a.status || '') + '</span></div>'
+                    + '<div class="text-[11px] text-gray-500 truncate">' + esc(a.role || a.category || '') + (a.model ? ' · ' + esc(a.model) : '') + '</div></div>'
+                    + '<span class="btn btn-light" style="padding:6px 10px">Select</span></button>').join('')
+                    : '<div class="text-sm text-gray-500 p-3">The academy has no agents yet. Open 🎓 AI Staff Academy first and create/train an agent, then come back.</div>')
+                + '</div>',
+                '<button class="btn btn-light" data-close="modal">Cancel</button>'
+                + '<button class="btn btn-light" id="ha-manual">Hire without academy</button>');
+            const filter = () => {
+                const q = ($('#ha-q').value || '').toLowerCase();
+                $$('#ha-list [data-pick]').forEach(b => {
+                    const a = agents.find(x => x.id === b.dataset.pick) || {};
+                    const hit = !q || [a.name, a.role, a.category].join(' ').toLowerCase().includes(q);
+                    b.style.display = hit ? '' : 'none';
+                });
+            };
+            $('#ha-q').oninput = filter;
+            $$('#ha-list [data-pick]').forEach(b => b.onclick = () => {
+                const a = agents.find(x => x.id === b.dataset.pick);
+                step2(a);
+            });
+            $('#ha-manual').onclick = () => step2({ id: '', name: '', role: '', emoji: '🧑‍💼', jobDescription: '', workingHours: '' });
+        };
+        const step2 = (a) => {
+            const roleGuess = (a.role || '').trim();
+            openModal('Give ' + (a.name || 'the agent') + ' his CRM office',
+                '<div class="flex items-center gap-2 mb-2">'
+                + '<div class="w-9 h-9 rounded-full flex items-center justify-center text-lg" style="background:#f3ecdd">' + esc(a.emoji || '🧑‍💼') + '</div>'
+                + '<div><div class="font-bold text-sm">' + esc(a.name || 'New AI staff') + '</div><div class="text-[11px] text-gray-500">' + esc(roleGuess || 'roles below drive what he does in the CRM') + '</div></div></div>'
+                + '<label class="fl">Name in this CRM</label><input id="ha-name" class="inp mb-2" value="' + esc(a.name || '') + '" placeholder="e.g. Bilal — Sales AI">'
+                + '<div class="grid grid-cols-2 gap-2"><div><label class="fl">Office name</label><input id="ha-office" class="inp mb-2" value="' + esc((a.name || 'AI') + ' — CRM Office') + '"></div>'
+                + '<div><label class="fl">Desk / floor</label><input id="ha-desk" class="inp mb-2" value="CRM Floor 1" placeholder="Desk 1 · CRM Floor 1"></div></div>'
+                + '<label class="fl">Roles (one per line)</label><textarea id="ha-roles" class="inp mb-2" rows="3">' + esc([roleGuess, 'Take new customer & lead data from boss assistant Zaheer Ahmed', 'Welcome the new customer and open his record', 'Follow up until the deal is won or lost'].filter(Boolean).join('\n')) + '</textarea>'
+                + '<label class="fl">Rules & instructions</label><textarea id="ha-rules" class="inp mb-2" rows="4">' + esc((a.jobDescription ? a.jobDescription + '\n\n' : '') + 'Work only inside this CRM. Whenever Zaheer Ahmed (boss assistant) sends a new customer or lead, create/update the customer record, add it to the pipeline and reply to him with what you did. Never promise prices without the boss. Escalate anything unclear to the escalation person below.') + '</textarea>'
+                + '<div class="grid grid-cols-2 gap-2"><div><label class="fl">Working from</label><input id="ha-from" type="time" class="inp mb-2" value="' + esc(a.workingHours && /\d\d:\d\d/.test(a.workingHours) ? a.workingHours.match(/\d\d:\d\d/)[0] : '09:00') + '"></div>'
+                + '<div><label class="fl">until</label><input id="ha-to" type="time" class="inp mb-2" value="18:00"></div></div>'
+                + '<label class="fl">Working days</label><div class="flex flex-wrap gap-2 mb-2">' + AI_DAYS.map((d, i) => '<label class="text-xs flex items-center gap-1"><input type="checkbox" class="ha-day" value="' + i + '"' + ([0, 1, 2, 3, 4].includes(i) ? ' checked' : '') + '>' + d + '</label>').join('') + '</div>'
+                + '<div class="grid grid-cols-2 gap-2"><div><label class="fl">Escalate to</label><input id="ha-esc" class="inp mb-2" value="Zaheer Ahmed"></div>'
+                + '<div><label class="fl">His WhatsApp (optional)</label><input id="ha-esc-wa" class="inp mb-2" placeholder="+97150…"></div></div>'
+                + '<div class="text-xs text-gray-600 space-y-1 mt-1">'
+                + '<label class="flex items-center gap-2"><input type="checkbox" id="ha-auto-leads" checked> Handle new customers &amp; leads automatically</label>'
+                + '<label class="flex items-center gap-2"><input type="checkbox" id="ha-auto-fu" checked> Follow up on deals without movement</label>'
+                + '<label class="flex items-center gap-2"><input type="checkbox" id="ha-auto-wa"> Answer customers on WhatsApp (needs a linked number)</label>'
+                + '</div>',
+                '<button class="btn btn-light" id="ha-back">← Back</button><button class="btn btn-dark" id="ha-go">Hire &amp; create office</button>');
+            $('#ha-back').onclick = step1;
+            $('#ha-go').onclick = async () => {
+                const body = {
+                    agentId: a.id || '',
+                    agentName: $('#ha-name').value.trim() || a.name || 'AI staff',
+                    agentEmoji: a.emoji || '🧑‍💼',
+                    agentRole: roleGuess,
+                    agentStatus: a.status || '',
+                    agentModel: a.model || '',
+                    officeName: $('#ha-office').value.trim(),
+                    desk: $('#ha-desk').value.trim(),
+                    roles: $('#ha-roles').value,
+                    instructions: $('#ha-rules').value,
+                    hours: {
+                        from: $('#ha-from').value || '09:00',
+                        to: $('#ha-to').value || '18:00',
+                        days: $$('.ha-day').filter(c => c.checked).map(c => Number(c.value))
+                    },
+                    escalation: { name: $('#ha-esc').value.trim(), channel: 'whatsapp', phone: $('#ha-esc-wa').value.trim() },
+                    auto: { newLeads: $('#ha-auto-leads').checked, followUps: $('#ha-auto-fu').checked, whatsappReplies: $('#ha-auto-wa').checked }
+                };
+                try {
+                    await api('/ai/offices', { method: 'POST', body });
+                    closeModal(); toast('Hired — his office is ready');
+                    S.view = 'ai'; paintNav(); await render(true);
+                } catch (e) { toast(e.message, true); }
+            };
+        };
+        step1();
+    }
+
+    function officeModal(s) {
+        if (!s) return;
+        const days = (s.hours || {}).days || [];
+        openModal('🏢 ' + (s.office.name || s.agentName),
+            '<div class="flex items-center gap-2 mb-3">'
+            + '<div class="w-10 h-10 rounded-full flex items-center justify-center text-xl" style="background:#f3ecdd">' + esc(s.agentEmoji || '🧑‍💼') + '</div>'
+            + '<div><div class="font-bold">' + esc(s.agentName) + ' ' + aiStatusChip(s) + '</div>'
+            + '<div class="text-[11px] text-gray-500">' + esc(s.agentRole || 'CRM AI staff') + (s.agentModel ? ' · ' + esc(s.agentModel) : '') + '</div></div></div>'
+            + '<label class="fl">Office name</label><input id="of-name" class="inp mb-2" value="' + esc(s.office.name || '') + '">'
+            + '<label class="fl">Roles (one per line)</label><textarea id="of-roles" class="inp mb-2" rows="3">' + esc((s.roles || []).join('\n')) + '</textarea>'
+            + '<label class="fl">Rules &amp; instructions</label><textarea id="of-rules" class="inp mb-2" rows="5">' + esc(s.instructions || '') + '</textarea>'
+            + '<div class="grid grid-cols-2 gap-2"><div><label class="fl">Working from</label><input id="of-from" type="time" class="inp mb-2" value="' + esc((s.hours || {}).from || '09:00') + '"></div>'
+            + '<div><label class="fl">until</label><input id="of-to" type="time" class="inp mb-2" value="' + esc((s.hours || {}).to || '18:00') + '"></div></div>'
+            + '<label class="fl">Working days</label><div class="flex flex-wrap gap-2 mb-2">' + AI_DAYS.map((d, i) => '<label class="text-xs flex items-center gap-1"><input type="checkbox" class="of-day" value="' + i + '"' + (days.includes(i) ? ' checked' : '') + '>' + d + '</label>').join('') + '</div>'
+            + '<div class="grid grid-cols-2 gap-2"><div><label class="fl">Escalate to</label><input id="of-esc" class="inp mb-2" value="' + esc((s.escalation || {}).name || '') + '"></div>'
+            + '<div><label class="fl">His WhatsApp</label><input id="of-esc-wa" class="inp mb-2" value="' + esc((s.escalation || {}).phone || '') + '"></div></div>'
+            + '<div class="text-xs text-gray-600 space-y-1">'
+            + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-leads"' + ((s.auto || {}).newLeads !== false ? ' checked' : '') + '> Handle new customers &amp; leads automatically</label>'
+            + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-fu"' + ((s.auto || {}).followUps !== false ? ' checked' : '') + '> Follow up on deals without movement</label>'
+            + '<label class="flex items-center gap-2"><input type="checkbox" id="of-auto-wa"' + ((s.auto || {}).whatsappReplies ? ' checked' : '') + '> Answer customers on WhatsApp</label>'
+            + '</div>',
+            '<button class="btn btn-light" data-close="modal">Close</button>'
+            + '<button class="btn btn-light" id="of-room">💬 Office room</button>'
+            + '<button class="btn btn-dark" id="of-save">Save office</button>');
+        $('#of-room').onclick = () => { closeModal(); officeRoom(s.id); };
+        $('#of-save').onclick = async () => {
+            try {
+                await api('/ai/offices/' + s.id, {
+                    method: 'PATCH', body: {
+                        officeName: $('#of-name').value.trim(),
+                        roles: $('#of-roles').value,
+                        instructions: $('#of-rules').value,
+                        hours: { from: $('#of-from').value, to: $('#of-to').value, days: $$('.of-day').filter(c => c.checked).map(c => Number(c.value)) },
+                        escalation: { name: $('#of-esc').value.trim(), channel: 'whatsapp', phone: $('#of-esc-wa').value.trim() },
+                        auto: { newLeads: $('#of-auto-leads').checked, followUps: $('#of-auto-fu').checked, whatsappReplies: $('#of-auto-wa').checked }
+                    }
+                });
+                closeModal(); toast('Office updated'); await render(true);
+            } catch (e) { toast(e.message, true); }
+        };
+    }
+
+    function roomBody(room) {
+        const kindLabel = { boss: 'boss', member: 'team', ai: 'AI', guest: 'guest', system: 'system' };
+        return '<div class="flex flex-wrap gap-1 mb-2">'
+            + (room.participants || []).map(p => '<span class="chip">' + esc(p.name) + (p.kind && p.kind !== 'member' ? ' · ' + (kindLabel[p.kind] || p.kind) : '') + '</span>').join('')
+            + '</div>'
+            + '<div id="rm-msgs" style="max-height:44vh;overflow:auto;background:#faf8f2;border:1px solid var(--line);border-radius:10px;padding:10px">'
+            + ((room.messages || []).length ? room.messages.map(m => '<div class="mb-2">'
+                + '<div class="text-[11px] text-gray-500">' + esc(m.fromName || '') + (m.fromKind === 'ai' ? ' · AI' : m.fromKind === 'boss' ? ' · boss' : '') + ' · ' + ago(m.at) + '</div>'
+                + '<div class="text-sm whitespace-pre-wrap">' + esc(m.text || '') + '</div></div>').join('')
+                : '<div class="text-sm text-gray-400">No messages yet — say hello.</div>')
+            + '</div>'
+            + '<textarea id="rm-text" class="inp mt-2" rows="3" placeholder="Write to the room…"></textarea>';
+    }
+
+    async function openRoom(staffId, title) {
+        const q = staffId ? ('?staffId=' + encodeURIComponent(staffId)) : '';
+        let r;
+        try { r = await api('/ai/room' + q); } catch (e) { toast(e.message, true); return; }
+        const room = r.room;
+        openModal('💬 ' + (room.title || title || 'Room'), roomBody(room),
+            '<button class="btn btn-light" id="rm-invite">＋ Invite</button>'
+            + '<button class="btn btn-light" data-close="modal">Close</button>'
+            + '<button class="btn btn-dark" id="rm-send">Send</button>');
+        const msgs = $('#rm-msgs');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        $('#rm-send').onclick = async () => {
+            const text = ($('#rm-text').value || '').trim();
+            if (!text) return;
+            try {
+                await api('/ai/room', { method: 'POST', body: { staffId: staffId || '', text } });
+                await openRoom(staffId, title);
+                refreshSoon();          // refresh the office cards / meeting summary behind the modal
+            } catch (e) { toast(e.message, true); }
+        };
+        $('#rm-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#rm-send').click(); });
+        $('#rm-invite').onclick = () => {
+            openModal('Invite to ' + (room.title || 'the room'),
+                '<label class="fl">Name</label><input id="iv-name" class="inp mb-2" placeholder="e.g. Zaheer Ahmed (boss assistant)">'
+                + '<label class="fl">Who is he?</label><select id="iv-kind" class="inp mb-2"><option value="guest">Guest (outside the CRM)</option>'
+                + '<option value="member">Team member</option><option value="ai">AI staff</option></select>'
+                + '<label class="fl">WhatsApp (optional)</label><input id="iv-phone" class="inp" placeholder="+97150…">'
+                + '<div class="text-[11px] text-gray-500 mt-2">Invites are for this room only — nobody gains CRM access.</div>',
+                '<button class="btn btn-light" data-close="modal">Cancel</button><button class="btn btn-dark" id="iv-go">Invite</button>');
+            $('#iv-go').onclick = async () => {
+                try {
+                    await api('/ai/room/participants', {
+                        method: 'POST', body: {
+                            staffId: staffId || '',
+                            action: 'add',
+                            name: $('#iv-name').value.trim(),
+                            kind: $('#iv-kind').value,
+                            phone: $('#iv-phone').value.trim()
+                        }
+                    });
+                    toast('Invited'); await openRoom(staffId, title); refreshSoon();
+                } catch (e) { toast(e.message, true); }
+            };
+        };
+    }
+    function officeRoom(staffId) {
+        const s = ((S.ai && S.ai.staff) || []).find(x => x.id === staffId);
+        openRoom(staffId, (s && s.office && s.office.name) || 'Office room');
+    }
+    function meetingRoom() {
+        openRoom('', 'CRM Meeting Room');
+    }
+
+    function renderSettings(main) {        const st = S.company.stages || [];
         main.innerHTML = '<div class="grid lg:grid-cols-2 gap-3">'
             + '<div class="card p-4"><div class="font-bold mb-3">Company</div><label class="fl">Name</label><input id="se-name" class="inp mb-3" value="' + esc(S.company.name) + '">'
             + '<label class="fl">Currency</label><input id="se-cur" class="inp mb-3" value="' + esc(S.company.currency) + '"><button class="btn btn-dark" id="se-save">Save</button></div>'
