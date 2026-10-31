@@ -988,6 +988,94 @@ export function registerAlignRoutes(app) {
     }
   });
 
+  // ============================================================ AI follow-ups (AI-linked tasks)
+  // A task can have an AI staff member chasing it on WhatsApp. Those chasers live in
+  // `conditionalTasks` (one doc per task: task_<id>). The Scheduled Reminders page lists them
+  // separately so a chaser left running on an already-completed task can be paused or stopped.
+  const AI_FU_TASK_COLLECTIONS = { shared: 'tasks_for_all', assigned: 'tasks' };
+  async function aiFollowUpRows(teamId) {
+    const snap = await alignDb().collection('conditionalTasks').limit(300).get();
+    const rows = [];
+    for (const d of snap.docs) {
+      const v = d.data() || {};
+      if (!v.taskId) continue;                                  // dashboard-only chasers have no task
+      const col = AI_FU_TASK_COLLECTIONS[v.taskKind === 'assigned' ? 'assigned' : 'shared'];
+      let task = null;
+      try {
+        const t = await board(col).doc(String(v.taskId)).get();
+        task = t.exists ? (t.data() || {}) : null;
+      } catch (e) { task = null; }
+      // Team scope: a chaser is only shown to the team that owns its task.
+      if (!task || String(task.teamId || '') !== String(teamId)) continue;
+      const history = Array.isArray(v.history) ? v.history.slice(-3) : [];
+      rows.push({
+        id: d.id,
+        taskId: String(v.taskId),
+        taskKind: v.taskKind === 'assigned' ? 'assigned' : 'shared',
+        taskTitle: sstr(task.description || v.title, 300),
+        taskStatus: sstr(task.status, 40),
+        taskDone: String(task.status || '') === 'Done',
+        taskDue: task.dueDate || null,
+        status: sstr(v.status, 20) || 'active',
+        stage: sstr(v.stage, 40),
+        nextActionAt: Number(v.nextActionAt) || 0,
+        attempts: Number(v.attempts) || 0,
+        maxRetries: Number(v.maxRetries) || 0,
+        target: sstr(v.target, 120),
+        targetType: sstr(v.targetType, 20),
+        agentName: sstr(v.agentName, 80),
+        lastSentAt: Number(v.lastSentAt) || 0,
+        lastReply: sstr(v.lastReply, 200),
+        lastReplyAt: Number(v.lastReplyAt) || 0,
+        history
+      });
+    }
+    // A stopped chaser on a finished task is what the boss wants to see first.
+    rows.sort((a, b) => (Number(b.taskDone) - Number(a.taskDone)) || ((b.status === 'active') - (a.status === 'active')) || (a.nextActionAt - b.nextActionAt));
+    return rows;
+  }
+
+  app.get(api + '/ai/followups', requireStaff, async (req, res) => {
+    try {
+      const teamId = sstr(req.query.teamId, 80);
+      if (!teamId) return bad(res, 'A team is required.');
+      const rows = await aiFollowUpRows(teamId);
+      res.json({ ok: true, items: rows, active: rows.filter(r => r.status === 'active').length, done: rows.filter(r => r.taskDone).length });
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      res.status(500).json({ ok: false, error: sstr(e.message, 200) });
+    }
+  });
+
+  app.post(api + '/ai/followups/action', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const teamId = sstr(b.teamId, 80);
+      const id = sstr(b.id, 120);
+      const action = sstr(b.action, 20);
+      if (!teamId || !id) return bad(res, 'A team and a follow-up id are required.');
+      const ref = alignDb().collection('conditionalTasks').doc(id);
+      const cur = await ref.get();
+      if (!cur.exists) return bad(res, 'This AI follow-up no longer exists.', 404);
+      const v = cur.data() || {};
+      const col = AI_FU_TASK_COLLECTIONS[v.taskKind === 'assigned' ? 'assigned' : 'shared'];
+      const t = v.taskId ? await board(col).doc(String(v.taskId)).get() : null;
+      if (!t || !t.exists || String((t.data() || {}).teamId || '') !== teamId) return bad(res, 'This AI follow-up belongs to another team.', 403);
+      if (action === 'pause') { await ref.set({ status: 'paused', pausedAt: Date.now(), pausedBy: (req.staff && req.staff.name) || '' }, { merge: true }); return res.json({ ok: true, status: 'paused' }); }
+      if (action === 'resume') { await ref.set({ status: 'active', stage: 'pending_send', nextActionAt: Date.now() + 20000 }, { merge: true }); return res.json({ ok: true, status: 'active' }); }
+      if (action === 'stop') { await ref.set({ status: 'stopped', stage: 'done', stoppedAt: Date.now(), stoppedBy: (req.staff && req.staff.name) || '' }, { merge: true }); return res.json({ ok: true, status: 'stopped' }); }
+      if (action === 'delete') {
+        await ref.delete();
+        await board(col).doc(String(v.taskId)).set({ aiFollowUp: { enabled: false } }, { merge: true }).catch(() => {});
+        return res.json({ ok: true, deleted: true });
+      }
+      return bad(res, 'Unknown action.');
+    } catch (e) {
+      if (e.code === 'align-no-admin') return noAdmin(res);
+      bad(res, sstr(e.message, 200));
+    }
+  });
+
   // ============================================================ push notifications
   // Web Push: the phone/laptop gets a real notification even when the app is closed.
   let pushModCache = null;

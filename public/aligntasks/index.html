@@ -113,6 +113,14 @@
         .task-swipe.swiping .personal-task-card { transition: none; }
         #personal-tasks-list .task-swipe { border-bottom: none; margin-bottom: 10px; border-radius: 12px; }
         #personal-tasks-list .task-swipe-actions { padding-left: 10px; }
+        /* swipe a project name (left or right) to reveal its PDF / Excel downloads */
+        .task-swipe.proj-swipe { border-bottom: none; border-radius: 12px; }
+        .task-swipe .proj-swipe-row {
+            position: relative; background: #fff; border-radius: 12px;
+            transition: transform .18s cubic-bezier(.2,.8,.2,1);
+            touch-action: pan-y; will-change: transform;
+        }
+        .task-swipe.swiping .proj-swipe-row { transition: none; }
         .swipe-hint { font-size: 10px; color: #a89a7c; margin-left: 4px; }
 
         .text-blue-600, .text-blue-700 { color: #8a6d2f !important; }
@@ -1259,10 +1267,21 @@
             <div class="p-4 border-b flex justify-between items-center">
                 <h3 id="scheduled-reminders-title" class="text-xl font-bold text-gray-800">Scheduled Reminders</h3>
                 <div class="flex items-center gap-3">
+                    <button id="sched-ai-btn" class="text-sm font-semibold px-2.5 py-1 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-[#6b5f45]">🤖 AI Linked Tasks</button>
                     <button id="scheduled-calendar-btn" class="text-sm font-semibold px-2.5 py-1 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-[#6b5f45]">📅 Calendar</button>
                     <button id="scheduled-refresh" class="text-sm text-blue-600 font-semibold">↻ Refresh</button>
                     <button id="scheduled-reminders-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
                 </div>
+            </div>
+            <div id="sched-ai-pane" class="hidden flex-1 min-h-0 flex-col">
+                <div class="px-3 py-2 flex items-center gap-2 flex-wrap border-b bg-white">
+                    <div class="text-sm font-bold text-gray-800">🤖 Tasks with an AI follow-up linked</div>
+                    <div class="flex-1"></div>
+                    <button id="sched-ai-refresh" class="btn-cal-nav" style="padding:4px 10px">↻ Refresh</button>
+                    <button id="sched-ai-back" class="btn-cal-nav" style="padding:4px 10px">☰ Reminders</button>
+                </div>
+                <div class="px-3 pt-2"><p class="text-xs text-gray-500">These tasks are chased on WhatsApp by an AI staff member. A follow-up that is still running on a task you already finished keeps sending "nothing pending" style messages — pause or stop it here. Nothing is removed from the normal reminders list.</p></div>
+                <div id="sched-ai-list" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 bg-white"></div>
             </div>
             <div id="sched-cal-pane" class="hidden flex-1 min-h-0 flex flex-col">
                 <div class="px-3 py-2 flex items-center gap-2 flex-wrap border-b bg-white">
@@ -3568,14 +3587,108 @@
                 document.getElementById('wa-remind-modal').classList.remove('hidden');
             }
 
+            // ===== AI-linked tasks (tasks an AI staff member is chasing on WhatsApp) =====
+            // Shown as its own section of the reminders page. It is purely additive: nothing is
+            // filtered out of the normal scheduled-reminders list and there is no calendar here.
+            let aiFollowUpsCache = [];
+            function aiBtnLabel(active, done) {
+                const n = (active === undefined) ? null : active;
+                return '🤖 AI Linked Tasks' + (n ? (' (' + n + ')') : '');
+            }
+            function aiFollowUpChip(r) {
+                const st = String(r.status || 'active');
+                const map = {
+                    active: '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">AI chasing</span>',
+                    paused: '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Paused</span>'
+                };
+                return map[st] || '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">' + waEsc(st === 'stopped' ? 'Stopped' : (st === 'done' ? 'Finished' : st)) + '</span>';
+            }
+            function aiFollowUpCardHTML(r) {
+                const active = String(r.status || '') === 'active';
+                const nextAt = Number(r.nextActionAt) || 0;
+                const bits = [];
+                if (r.agentName) bits.push('AI agent: <b>' + waEsc(r.agentName) + '</b>');
+                if (r.target) bits.push('talks to: ' + waEsc(r.target) + (r.targetType === 'group' ? ' (group)' : ''));
+                bits.push('task state: <b>' + waEsc(r.taskStatus || '—') + '</b>');
+                if (active && nextAt) bits.push('next action: <b>' + new Date(nextAt).toLocaleString() + '</b>');
+                if (r.attempts) bits.push('chased ' + r.attempts + ' time' + (r.attempts === 1 ? '' : 's') + (r.maxRetries ? (' of ' + r.maxRetries) : ''));
+                if (r.lastSentAt) bits.push('last message: ' + new Date(Number(r.lastSentAt)).toLocaleString());
+                if (r.lastReply) bits.push('last reply: "' + waEsc(String(r.lastReply).substring(0, 120)) + '"');
+                const btns = [
+                    active ? '<button class="text-xs px-2 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200" data-ai-action="pause" data-ai-id="' + waEsc(r.id) + '">⏸ Pause</button>'
+                           : '<button class="text-xs px-2 py-1 rounded-lg bg-green-50 text-green-700 border border-green-200" data-ai-action="resume" data-ai-id="' + waEsc(r.id) + '">▶ Resume</button>',
+                    '<button class="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-600 border border-red-200" data-ai-action="stop" data-ai-id="' + waEsc(r.id) + '">⏹ Stop</button>',
+                    '<button class="text-xs px-2 py-1 rounded-lg bg-white text-gray-600 border border-gray-300" data-ai-action="delete" data-ai-id="' + waEsc(r.id) + '">🗑 Remove</button>'
+                ].join('');
+                return '<div class="border border-gray-200 rounded-xl p-3 space-y-2' + (r.taskDone ? ' bg-amber-50' : '') + '">' +
+                    '<div class="flex justify-between items-start gap-2 flex-wrap">' +
+                        '<div class="min-w-0">' +
+                            '<div class="flex items-center gap-2 flex-wrap">' + aiFollowUpChip(r) +
+                                (r.taskDone ? '<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">⚠ task already done</span>' : '') +
+                            '</div>' +
+                            '<div class="text-sm font-semibold text-gray-800 mt-1 break-words">' + waEsc(r.taskTitle || '(task removed)') + '</div>' +
+                        '</div>' +
+                        '<div class="flex items-center gap-2 flex-wrap">' + btns + '</div>' +
+                    '</div>' +
+                    '<div class="text-xs text-gray-600 space-y-0.5">' + bits.map(b => '<div>' + b + '</div>').join('') + '</div>' +
+                    (r.taskDone && active ? '<div class="text-xs text-amber-800">This task is finished but the AI is still chasing it — that is what can send “nothing pending” style messages. Pause or stop it here.</div>' : '') +
+                '</div>';
+            }
+            function paintAiFollowUps() {
+                const box = document.getElementById('sched-ai-list');
+                if (!box) return;
+                if (!aiFollowUpsCache.length) {
+                    box.innerHTML = '<p class="text-sm text-gray-500 p-2">No task has an AI staff member assigned right now. Open a task → long-press → Edit → “Let an AI staff member follow this up on WhatsApp”.</p>';
+                    return;
+                }
+                box.innerHTML = aiFollowUpsCache.map(r => aiFollowUpCardHTML(r)).join('');
+            }
+            async function loadAiFollowUps() {
+                const box = document.getElementById('sched-ai-list');
+                if (box && !document.getElementById('sched-ai-pane').classList.contains('hidden')) box.innerHTML = '<p class="text-sm text-gray-500 p-2">Loading…</p>';
+                try {
+                    const d = await window.alignApi('/ai/followups?teamId=' + encodeURIComponent(teamCtx.teamId || ''));
+                    aiFollowUpsCache = Array.isArray(d.items) ? d.items : [];
+                    paintAiFollowUps();
+                    const btn = document.getElementById('sched-ai-btn');
+                    const pane = document.getElementById('sched-ai-pane');
+                    if (btn && pane && pane.classList.contains('hidden')) btn.textContent = aiBtnLabel(Number(d.active) || 0);
+                } catch (e) {
+                    if (box) box.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load AI follow-ups: ' + waEsc(e.message || e) + '</p>';
+                }
+            }
+            function showAiPane(on) {
+                const pane = document.getElementById('sched-ai-pane');
+                const list = document.getElementById('scheduled-reminders-list');
+                const calPane = document.getElementById('sched-cal-pane');
+                const calBtn = document.getElementById('scheduled-calendar-btn');
+                const aiBtn = document.getElementById('sched-ai-btn');
+                if (!pane) return;
+                pane.classList.toggle('hidden', !on);
+                pane.classList.toggle('flex', on);
+                if (on) {
+                    if (calPane) { calPane.classList.add('hidden'); calPane.classList.remove('flex'); }
+                    if (list) list.classList.add('hidden');
+                    if (calBtn) calBtn.classList.add('hidden');
+                    if (aiBtn) aiBtn.textContent = '☰ Reminders';
+                    loadAiFollowUps();
+                } else {
+                    if (list) list.classList.remove('hidden');
+                    if (calBtn) calBtn.classList.remove('hidden');
+                    if (aiBtn) aiBtn.textContent = aiBtnLabel(aiFollowUpsCache.filter(r => r.status === 'active').length);
+                }
+            }
+
             let scheduledScope = null;
             async function openScheduledReminders(scope) {
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
                 if (h) h.textContent = scheduledScope ? ('Reminders — ' + (scheduledScope.name || 'this section')) : 'Scheduled Reminders';
                 showSchedCalendar(false);      // every open starts on the list; the calendar is one tap away
+                showAiPane(false);
                 document.getElementById('scheduled-reminders-modal').classList.remove('hidden');
                 loadScheduledReminders();
+                loadAiFollowUps();             // fills the 🤖 badge without touching the reminders list
                 if (scheduledRefreshTimer) clearInterval(scheduledRefreshTimer);
                 scheduledRefreshTimer = setInterval(() => { if (!document.getElementById('scheduled-reminders-modal').classList.contains('hidden')) loadScheduledReminders(); }, 30000);
             }
@@ -3773,6 +3886,30 @@
                 showSchedCalendar(pane.classList.contains('hidden'));
             });
             document.getElementById('sched-list-btn').addEventListener('click', () => showSchedCalendar(false));
+            document.getElementById('sched-ai-btn').addEventListener('click', () => {
+                const pane = document.getElementById('sched-ai-pane');
+                showAiPane(pane.classList.contains('hidden'));
+            });
+            document.getElementById('sched-ai-back').addEventListener('click', () => showAiPane(false));
+            document.getElementById('sched-ai-refresh').addEventListener('click', loadAiFollowUps);
+            document.getElementById('sched-ai-pane').addEventListener('click', async e => {
+                const btn = e.target.closest('[data-ai-action]');
+                if (!btn) return;
+                const action = btn.getAttribute('data-ai-action');
+                const id = btn.getAttribute('data-ai-id');
+                if (!id) return;
+                if (action === 'delete' && !confirm('Remove this AI follow-up completely? The AI stops chasing this task.')) return;
+                if (action === 'stop' && !confirm('Stop the AI from chasing this task? It will not message about it again.')) return;
+                const label = btn.textContent;
+                btn.textContent = '…';
+                try {
+                    await window.alignApi('/ai/followups/action', { method: 'POST', body: { teamId: teamCtx.teamId, id: id, action: action } });
+                    await loadAiFollowUps();
+                } catch (err) {
+                    alert('Could not ' + action + ' this AI follow-up: ' + ((err && err.message) || err));
+                    btn.textContent = label;
+                }
+            });
             document.getElementById('cal-prev').addEventListener('click', () => calShift(-1));
             document.getElementById('cal-next').addEventListener('click', () => calShift(1));
             document.getElementById('cal-today').addEventListener('click', () => { schedCalAnchor = new Date(); renderCal(); });
@@ -4204,7 +4341,7 @@
                 wrapper.classList.remove('swiping');
                 wrapper.setAttribute('data-open', open ? '1' : '0');
                 const dir = wrapper.getAttribute('data-dir') === 'left' ? -1 : 1;
-                const row = wrapper.querySelector('.task-list-item, .personal-task-card');
+                const row = wrapper.querySelector('.task-list-item, .personal-task-card, .proj-swipe-row');
                 if (row) row.style.transform = open ? 'translateX(' + (dir * SWIPE_OPEN_PX) + 'px)' : 'translateX(0)';
             }
 
@@ -4222,6 +4359,13 @@
                 const pproj = el.closest('.pp-open-editor');
                 if (pproj) return { kind: 'pproject', el: pproj };
                 if (el.closest('button, input, a, label, select, textarea, .task-info-wrap')) return null;
+                // Anywhere else on a project card behaves like its name: tap = open/close,
+                // long-press = edit, slide = PDF / Excel.
+                const projRow = el.closest('.proj-swipe-row');
+                if (projRow) {
+                    const nameBtn = projRow.querySelector('.pp-open-editor, .project-open-editor');
+                    if (nameBtn) return { kind: nameBtn.classList.contains('pp-open-editor') ? 'pproject' : 'project', el: nameBtn };
+                }
                 const row = el.closest('.task-list-item, .personal-task-card, .done-row');
                 if (row && row.getAttribute('data-task-id')) return { kind: 'task', el: row };
                 return null;
@@ -4265,12 +4409,12 @@
             }
 
             function fireShortPress(target) {
+                const wrap = target.el.closest('.task-swipe');
+                if (wrap && wrap.getAttribute('data-open') === '1') {   // first tap just closes the swipe
+                    setSwipeOpen(wrap, false);
+                    return;
+                }
                 if (target.kind === 'task') {
-                    const wrap = target.el.closest('.task-swipe');
-                    if (wrap && wrap.getAttribute('data-open') === '1') {   // first tap just closes the swipe
-                        setSwipeOpen(wrap, false);
-                        return;
-                    }
                     openTaskZoom(target.el);
                 } else if (target.kind === 'pproject') {
                     toggleProjectOpen('pproject', target.el.getAttribute('data-pp-id'));
@@ -4294,13 +4438,15 @@
                     startOffset: 0,
                     timer: null
                 };
-                if (target.kind === 'task') {
+                if (target.kind === 'task' || target.kind === 'project' || target.kind === 'pproject') {
                     const wrap = target.el.closest('.task-swipe');
                     if (wrap) {
                         st.wrapper = wrap;
                         const wasOpen = wrap.getAttribute('data-open') === '1';
                         const wasDir = wrap.getAttribute('data-dir') === 'left' ? -1 : 1;
                         st.startOffset = wasOpen ? wasDir * SWIPE_OPEN_PX : 0;
+                        // Project rows slide as a whole block; task rows slide the row itself.
+                        st.mover = (target.kind === 'task') ? target.el : (target.el.closest('.proj-swipe-row') || target.el);
                     }
                 }
                 st.timer = setTimeout(() => {
@@ -4334,7 +4480,8 @@
                     const next = st.dir === 'left'
                         ? Math.max(Math.min(0, raw), -SWIPE_OPEN_PX)
                         : Math.min(Math.max(0, raw), SWIPE_OPEN_PX);
-                    st.el.style.transform = 'translateX(' + next + 'px)';
+                    const mover = st.mover || st.el;
+                    mover.style.transform = 'translateX(' + next + 'px)';
                 } else if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
                     cancelPress();
                 }
@@ -5367,8 +5514,13 @@
                     const canManage = isOwner() || String(p.createdBy || '') === String((currentUser && currentUser.email) || '');
                     return `
                         <div class="bg-white rounded-xl shadow-sm" data-project-id="${p.id}">
-                            <div class="flex items-center gap-2 p-3">
-                                <button class="project-open-editor flex-1 min-w-0 text-left" data-project-id="${p.id}" title="Tap to open/close tasks · long-press to edit">
+                          <div class="task-swipe proj-swipe">
+                            <div class="task-swipe-actions">
+                                <button type="button" class="proj-export-btn text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-kind="project" data-id="${p.id}" data-fmt="pdf" title="Download every task of this project as a PDF">📄 PDF</button>
+                                <button type="button" class="proj-export-btn text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-kind="project" data-id="${p.id}" data-fmt="xlsx" title="Download every task of this project as an Excel file">📊 Excel</button>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 proj-swipe-row">
+                                <button class="project-open-editor flex-1 min-w-0 text-left" data-project-id="${p.id}" title="Tap to open/close tasks · long-press to edit · slide for PDF/Excel">
                                     <div class="font-bold text-gray-800 truncate">${waEsc(p.name)}</div>
                                     <div class="task-meta">${waEsc(members || '—')}${due ? ' · ' + due : ''}</div>
                                 </button>
@@ -5377,6 +5529,7 @@
                                 <button class="sched-scope-btn" data-scope-type="project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #d5cfc2;background:#f3ecdd;color:#6b5f45;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
                             </div>
+                          </div>
                             <div id="project-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
                                 <div id="project-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
                             </div>
@@ -5546,8 +5699,13 @@
                     const due = p.dueDate ? 'Due: ' + formatTaskTimestamp(p.dueDate) : '';
                     return `
                         <div class="bg-white rounded-xl shadow-sm" data-pp-id="${p.id}">
-                            <div class="flex items-center gap-2 p-3">
-                                <button class="pp-toggle pp-open-editor flex-1 min-w-0 text-left" data-pp-id="${p.id}" title="Tap to open/close tasks · long-press to edit">
+                          <div class="task-swipe proj-swipe">
+                            <div class="task-swipe-actions">
+                                <button type="button" class="proj-export-btn text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-kind="personal" data-id="${p.id}" data-fmt="pdf" title="Download every task of this project as a PDF">📄 PDF</button>
+                                <button type="button" class="proj-export-btn text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-kind="personal" data-id="${p.id}" data-fmt="xlsx" title="Download every task of this project as an Excel file">📊 Excel</button>
+                            </div>
+                            <div class="flex items-center gap-2 p-3 proj-swipe-row">
+                                <button class="pp-toggle pp-open-editor flex-1 min-w-0 text-left" data-pp-id="${p.id}" title="Tap to open/close tasks · long-press to edit · slide for PDF/Excel">
                                     <div class="font-bold text-gray-800 truncate">${waEsc(p.name)}</div>
                                     <div class="task-meta">Private${due ? ' · ' + due : ''}</div>
                                 </button>
@@ -5556,6 +5714,7 @@
                                 <button class="sched-scope-btn" data-scope-type="personal_project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="pp-add-task" data-pp-id="${p.id}" title="Add a task" style="width:26px;height:26px;border-radius:8px;border:1px solid #ddd6fe;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
                             </div>
+                          </div>
                             <div id="pp-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
                                 <div id="pp-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
                             </div>
@@ -5563,6 +5722,289 @@
                 }).join('');
                 personalProjectsCache.forEach(p => { watchPersonalProjectTasks(p); paintPersonalProjectTasks(p.id); });
             }
+
+            // ===== Project export (PDF / Excel) — revealed by sliding a project name =====
+            const XLSX_CRC = (() => {
+                const t = new Uint32Array(256);
+                for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[i] = c >>> 0; }
+                return t;
+            })();
+            function xlsxCrc32(bytes) {
+                let c = 0xFFFFFFFF;
+                for (let i = 0; i < bytes.length; i++) c = XLSX_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+                return (c ^ 0xFFFFFFFF) >>> 0;
+            }
+            function zipStore(files) {
+                const enc = new TextEncoder();
+                const parts = [], central = [];
+                let offset = 0;
+                files.forEach(f => {
+                    const data = enc.encode(f.text);
+                    const name = enc.encode(f.name);
+                    const crc = xlsxCrc32(data);
+                    const local = new Uint8Array(30 + name.length);
+                    const lv = new DataView(local.buffer);
+                    lv.setUint32(0, 0x04034b50, true);
+                    lv.setUint16(4, 20, true);
+                    lv.setUint32(14, crc, true);
+                    lv.setUint32(18, data.length, true);
+                    lv.setUint32(22, data.length, true);
+                    lv.setUint16(26, name.length, true);
+                    local.set(name, 30);
+                    parts.push(local, data);
+                    const cd = new Uint8Array(46 + name.length);
+                    const cv = new DataView(cd.buffer);
+                    cv.setUint32(0, 0x02014b50, true);
+                    cv.setUint16(4, 20, true);
+                    cv.setUint16(6, 20, true);
+                    cv.setUint32(16, crc, true);
+                    cv.setUint32(20, data.length, true);
+                    cv.setUint32(24, data.length, true);
+                    cv.setUint16(28, name.length, true);
+                    cv.setUint32(42, offset, true);
+                    cd.set(name, 46);
+                    central.push(cd);
+                    offset += local.length + data.length;
+                });
+                const centralSize = central.reduce((a, b) => a + b.length, 0);
+                const end = new Uint8Array(22);
+                const ev = new DataView(end.buffer);
+                ev.setUint32(0, 0x06054b50, true);
+                ev.setUint16(8, files.length, true);
+                ev.setUint16(10, files.length, true);
+                ev.setUint32(12, centralSize, true);
+                ev.setUint32(16, offset, true);
+                const all = parts.concat(central, [end]);
+                const out = new Uint8Array(all.reduce((a, b) => a + b.length, 0));
+                let p = 0;
+                all.forEach(a => { out.set(a, p); p += a.length; });
+                return out;
+            }
+            const xmlEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+            function xlsxCell(ref, value, header) {
+                if (typeof value === 'number' && isFinite(value)) return '<c r="' + ref + '"' + (header ? ' s="1"' : '') + '><v>' + value + '</v></c>';
+                return '<c r="' + ref + '" t="inlineStr"' + (header ? ' s="1"' : '') + '><is><t xml:space="preserve">' + xmlEsc(value) + '</t></is></c>';
+            }
+            function buildXlsx(rows, titleNote) {
+                const heads = ['#', 'Task', 'Status', 'Assignee', 'Due', 'Created', 'Completed'];
+                const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+                const body = [];
+                body.push('<row r="1"><c r="A1" t="inlineStr" s="1"><is><t>' + xmlEsc(titleNote) + '</t></is></c></row>');
+                body.push('<row r="2"></row>');
+                body.push('<row r="3">' + heads.map((h, i) => xlsxCell(letters[i] + '3', h, true)).join('') + '</row>');
+                rows.forEach((r, i) => {
+                    const n = i + 4;
+                    const vals = [r.no, r.task, r.status, r.assignee, r.due, r.created, r.completed];
+                    body.push('<row r="' + n + '">' + vals.map((v, c) => xlsxCell(letters[c] + n, v, false)).join('') + '</row>');
+                });
+                const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+                    '<cols><col min="1" max="1" width="6"/><col min="2" max="2" width="70"/><col min="3" max="3" width="12"/>' +
+                    '<col min="4" max="4" width="22"/><col min="5" max="7" width="20"/></cols>' +
+                    '<sheetData>' + body.join('') + '</sheetData></worksheet>';
+                const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+                    '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+                    '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+                    '<borders count="1"><border/></borders>' +
+                    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+                    '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+                    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>' +
+                    '</styleSheet>';
+                return zipStore([
+                    {
+                        name: '[Content_Types].xml',
+                        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+                            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+                            '<Default Extension="xml" ContentType="application/xml"/>' +
+                            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+                            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+                            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+                            '</Types>'
+                    },
+                    {
+                        name: '_rels/.rels',
+                        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+                            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+                            '</Relationships>'
+                    },
+                    {
+                        name: 'xl/workbook.xml',
+                        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+                            '<sheets><sheet name="Tasks" sheetId="1" r:id="rId1"/></sheets></workbook>'
+                    },
+                    {
+                        name: 'xl/_rels/workbook.xml.rels',
+                        text: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+                            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+                            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+                            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+                            '</Relationships>'
+                    },
+                    { name: 'xl/styles.xml', text: styles },
+                    { name: 'xl/worksheets/sheet1.xml', text: sheet }
+                ]);
+            }
+            // Minimal PDF writer (A4 landscape, Helvetica) — no libraries, no print dialog.
+            const pdfTxt = (s) => String(s == null ? '' : s)
+                .replace(/[\\]/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+                .replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+            const pdfWidth = (s, size) => String(s || '').length * size * 0.5;
+            function pdfWrap(text, size, maxWidth) {
+                const words = String(text || '').replace(/\s+/g, ' ').trim().split(' ');
+                const lines = [];
+                let line = '';
+                words.forEach(w => {
+                    const next = line ? (line + ' ' + w) : w;
+                    if (pdfWidth(next, size) > maxWidth && line) { lines.push(line); line = w; }
+                    else line = next;
+                });
+                if (line) lines.push(line);
+                return lines.length ? lines : [''];
+            }
+            function buildPdf(rows, title, subtitle) {
+                const W = 842, H = 595, M = 40, LINE = 13;
+                const cols = [
+                    { x: M, w: 26, key: 'no' },
+                    { x: M + 30, w: 400, key: 'task' },
+                    { x: M + 438, w: 70, key: 'status' },
+                    { x: M + 512, w: 100, key: 'assignee' },
+                    { x: M + 618, w: 80, key: 'due' },
+                    { x: M + 704, w: 60, key: 'completed' }
+                ];
+                const pages = [];
+                let content = [], y = H - M;
+                const op = (s) => content.push(s);
+                const text = (x, yy, size, str, bold) => op('BT /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf 1 0 0 1 ' + x.toFixed(1) + ' ' + yy.toFixed(1) + ' Tm (' + pdfTxt(str) + ') Tj ET');
+                op('0.83 0.80 0.72 rg 0 ' + (y - 6) + ' ' + W + ' 24 re f 0 0 0 rg');
+                text(M, y, 13, title, true);
+                y -= 20;
+                text(M, y, 9, subtitle, false);
+                y -= 18;
+                const headLabel = { no: '#', task: 'Task', status: 'Status', assignee: 'Assignee', due: 'Due', completed: 'Completed' };
+                cols.forEach(c => text(c.x, y, 8.5, headLabel[c.key], true));
+                op('0.85 0.85 0.85 RG 0.6 w ' + M + ' ' + (y - 5) + ' m ' + (W - M) + ' ' + (y - 5) + ' l S 0 0 0 RG');
+                y -= 16;
+                rows.forEach(r => {
+                    const taskLines = pdfWrap(r.task, 9, cols[1].w);
+                    const rowH = Math.max(1, taskLines.length) * LINE + 4;
+                    if (y - rowH < M + 20) {
+                        pages.push(content.join('\n'));
+                        content = [];
+                        y = H - M;
+                        text(M, y, 13, title + ' (cont.)', true);
+                        y -= 20;
+                        cols.forEach(c => text(c.x, y, 8.5, headLabel[c.key], true));
+                        op('0.85 0.85 0.85 RG 0.6 w ' + M + ' ' + (y - 5) + ' m ' + (W - M) + ' ' + (y - 5) + ' l S 0 0 0 RG');
+                        y -= 16;
+                    }
+                    text(cols[0].x, y, 9, String(r.no), false);
+                    taskLines.forEach((ln, i) => text(cols[1].x, y - i * LINE, 9, ln, false));
+                    text(cols[2].x, y, 9, String(r.status || '').substring(0, 16), false);
+                    text(cols[3].x, y, 9, String(r.assignee || '').substring(0, 22), false);
+                    text(cols[4].x, y, 9, String(r.due || ''), false);
+                    text(cols[5].x, y, 9, String(r.completed || ''), false);
+                    y -= rowH;
+                });
+                pages.push(content.join('\n'));
+                // --- assemble objects
+                const objs = [];
+                objs.push('<< /Type /Catalog /Pages 2 0 R >>');
+                const pageObjIds = pages.map((_, i) => 5 + i * 2);
+                objs.push('<< /Type /Pages /Kids [' + pageObjIds.map(id => id + ' 0 R').join(' ') + '] /Count ' + pages.length + ' >>');
+                objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+                objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+                pages.forEach((body, i) => {
+                    objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (pageObjIds[i] + 1) + ' 0 R >>');
+                    objs.push('<< /Length ' + body.length + ' >>\nstream\n' + body + '\nendstream');
+                });
+                let out = '%PDF-1.4\n';
+                const offsets = [];
+                objs.forEach((o, i) => {
+                    offsets.push(out.length);
+                    out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n';
+                });
+                const xrefAt = out.length;
+                out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+                offsets.forEach(off => { out += String(off).padStart(10, '0') + ' 00000 n \n'; });
+                out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xrefAt + '\n%%EOF';
+                const bytes = new Uint8Array(out.length);
+                for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xFF;
+                return bytes;
+            }
+            function downloadBytes(bytes, filename, mime) {
+                const blob = new Blob([bytes], { type: mime });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+            }
+            function exportStamp(v) {
+                if (!v) return '';
+                let ms = 0;
+                if (typeof v === 'number') ms = v;
+                else if (typeof v.toMillis === 'function') { try { ms = v.toMillis(); } catch (e) { ms = 0; } }
+                else if (typeof v.seconds === 'number') ms = v.seconds * 1000;
+                else ms = new Date(v).getTime();
+                if (!ms || isNaN(ms)) return '';
+                const d = new Date(ms);
+                return d.getFullYear() + '-' + twoDigit(d.getMonth() + 1) + '-' + twoDigit(d.getDate()) + ' ' + twoDigit(d.getHours()) + ':' + twoDigit(d.getMinutes());
+            }
+            async function exportProjectTasks(kind, projectId, fmt) {
+                const isPersonal = kind === 'personal';
+                const project = (isPersonal ? personalProjectsCache : projectsCache).find(p => p.id === projectId);
+                const name = (project && project.name) || 'Project';
+                let tasks = isPersonal ? (ppTasksCache[projectId] || []) : (projectTasksCache[projectId] || []);
+                try {
+                    const snap = isPersonal
+                        ? await personalProjectsCol().doc(projectId).collection('tasks').get()
+                        : await projectTasksCol(projectId).where('teamId', '==', teamCtx.teamId).get();
+                    tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) { /* fall back to what the screen already loaded */ }
+                if (!tasks.length) { alert('This project has no tasks to export yet.'); return; }
+                tasks = tasks.slice().sort((a, b) => {
+                    const am = tsMsLocal(a.createdAt) || 0, bm = tsMsLocal(b.createdAt) || 0;
+                    return am - bm;
+                });
+                const rows = tasks.map((t, i) => ({
+                    no: i + 1,
+                    task: String(t.description || ''),
+                    status: String(t.status || ''),
+                    assignee: String(t.assigneeName || (t.assigneeEmail ? personNameByEmail(t.assigneeEmail) : '') || ''),
+                    due: exportStamp(t.dueDate),
+                    created: exportStamp(t.createdAt),
+                    completed: exportStamp(t.completedAt || (t.status === 'Done' ? t.updatedAt : 0))
+                }));
+                const done = rows.filter(r => r.status === 'Done').length;
+                const stamp = exportStamp(Date.now()).replace(/[: ]/g, '-');
+                const safe = String(name).replace(/[\\/:*?"<>|]+/g, '_').substring(0, 60).trim() || 'Project';
+                const header = name + ' — ' + rows.length + ' task' + (rows.length === 1 ? '' : 's') + ' (' + done + ' done, ' + (rows.length - done) + ' pending)';
+                const sub = (isPersonal ? 'Private project' : 'Project') + ' · exported ' + exportStamp(Date.now());
+                if (fmt === 'xlsx') {
+                    downloadBytes(buildXlsx(rows, header), safe + ' - tasks ' + stamp + '.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                } else {
+                    downloadBytes(buildPdf(rows, name, sub + ' · ' + rows.length + ' tasks (' + done + ' done)'), safe + ' - tasks ' + stamp + '.pdf', 'application/pdf');
+                }
+            }
+            document.addEventListener('click', e => {
+                const btn = e.target.closest && e.target.closest('.proj-export-btn');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const wrap = btn.closest('.task-swipe');
+                if (wrap) setSwipeOpen(wrap, false);
+                const label = btn.textContent;
+                btn.textContent = '…';
+                exportProjectTasks(btn.getAttribute('data-kind'), btn.getAttribute('data-id'), btn.getAttribute('data-fmt'))
+                    .catch(err => alert('Could not export this project: ' + ((err && err.message) || err)))
+                    .finally(() => { btn.textContent = label; });
+            }, true);
 
             const ppTasksCache = {};
             function paintPersonalProjectTasks(projectId) {
