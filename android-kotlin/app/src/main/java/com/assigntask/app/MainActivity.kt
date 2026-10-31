@@ -73,6 +73,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.absoluteValue
@@ -404,7 +405,10 @@ fun MainAppScreen(vm: AppViewModel, user: FirebaseUser, profile: UserProfile, in
                         if (entry == MenuEntry.LOGOUT) vm.signOut() else currentPage = entry.key
                     },
                     onSearch = { currentPage = BoardSection.TASKS_FOR_ALL.key },
-                    showViewPill = currentPage in BoardSection.entries.map { it.key }
+                    showViewPill = currentPage in BoardSection.entries.map { it.key },
+                    // The board pages have their own pill + add + search row; showing the same
+                    // pill here made "Tasks for All" appear twice.
+                    showSectionPill = currentPage !in BoardSection.entries.map { it.key }
                 )
             },
             modifier = Modifier.fillMaxSize()
@@ -1719,13 +1723,14 @@ fun ProjectCard(
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                // Short press on the name edits the project, long press opens Edit / Delete.
+                // Short press opens/closes this project's tasks; long press opens the editor —
+                // the same gestures as the web app.
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .combinedClickable(
-                            onClick = { showEditProject = true },
-                            onLongClick = { showProjectMenu = true }
+                            onClick = { onExpandChange(project.id) },
+                            onLongClick = { showEditProject = true }
                         )
                 ) {
                     Text(project.name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
@@ -1737,12 +1742,6 @@ fun ProjectCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
-                    )
-                }
-                IconButton(onClick = { onExpandChange(project.id) }) {
-                    Icon(
-                        if (expandedProjectId == project.id) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        "Open / close"
                     )
                 }
             }
@@ -1847,7 +1846,7 @@ fun ProjectCard(
     }
 
     if (showEditProject) {
-        EditProjectDialog(project, staff, user, vm) { showEditProject = false }
+        EditProjectDialog(project, staff, user, vm, onDelete = { showDeleteProject = true }) { showEditProject = false }
     }
 
     if (showDeleteProject) {
@@ -1861,6 +1860,7 @@ fun EditProjectDialog(
     staff: List<Staff>,
     user: FirebaseUser,
     vm: AppViewModel,
+    onDelete: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var name by remember(project.id) { mutableStateOf(project.name) }
@@ -1961,7 +1961,16 @@ fun EditProjectDialog(
                 }
             ) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            Row {
+                if (onDelete != null) {
+                    TextButton(onClick = { onDismiss(); onDelete() }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
     )
 }
 
@@ -4521,6 +4530,43 @@ fun AuthScreen(vm: AppViewModel) {
             }
         }, modifier = Modifier.fillMaxWidth()) {
             Text(if (isSignUp) "Create Admin Account" else "Sign In")
+        }
+
+        if (!isSignUp) {
+            // Same recovery route as the web login page.
+            var resetMsg by remember { mutableStateOf<String?>(null) }
+            val resetScope = rememberCoroutineScope()
+            var resetBusy by remember { mutableStateOf(false) }
+            TextButton(
+                enabled = !resetBusy,
+                onClick = {
+                    val addr = email.trim()
+                    if (addr.isBlank() || !addr.contains("@")) {
+                        resetMsg = "Type your email address above first."
+                        return@TextButton
+                    }
+                    resetBusy = true
+                    resetMsg = null
+                    resetScope.launch {
+                        resetMsg = try {
+                            FirebaseAuth.getInstance().sendPasswordResetEmail(addr).await()
+                            "If an account exists for $addr, a reset link is on its way. Check your inbox and spam folder."
+                        } catch (e: Exception) {
+                            e.message ?: "Could not send the reset email."
+                        }
+                        resetBusy = false
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) { Text(if (resetBusy) "Sending…" else "Forgot password?") }
+            resetMsg?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(0.7f),
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
         }
 
         TextButton(onClick = { isSignUp = !isSignUp; errorMsg = null }, modifier = Modifier.align(Alignment.CenterHorizontally)) {

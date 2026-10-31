@@ -14,7 +14,7 @@ val keystoreProps = Properties().apply {
 }
 
 // Release notes published into downloads/version.json by CI (release build only).
-val releaseNotes = "4.0.2 - adds the WhatsApp Number screen: link your own number by QR, refresh its groups and send reminders from it (send-only). The + (add) button is back in My Personal Tasks, and the app reloads itself when a new version is published."
+val releaseNotes = "4.0.3 - matches the web app: one header instead of two duplicate tabs, tap a project name to open/close its tasks, long-press to edit it, the corner arrow is gone, and the login has Forgot password?."
 val releaseMandatory = false  // force every device onto this build (CI writes it into version.json)
 
 android {
@@ -36,8 +36,8 @@ android {
         applicationId = "com.assigntask.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 27
-        versionName = "4.0.2"
+        versionCode = 28
+        versionName = "4.0.3"
     }
 
     // Shown in the in-app updater (published into downloads/version.json by CI).

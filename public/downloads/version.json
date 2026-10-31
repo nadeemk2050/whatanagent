@@ -1,8 +1,8 @@
 {
-  "versionCode": 27,
-  "versionName": "4.0.2",
-  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-4.0.2.apk",
-  "notes": "4.0.2 - adds the WhatsApp Number screen: link your own number by QR, refresh its groups and send reminders from it (send-only). The + (add) button is back in My Personal Tasks, and the app reloads itself when a new version is published.",
+  "versionCode": 28,
+  "versionName": "4.0.3",
+  "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-4.0.3.apk",
+  "notes": "4.0.3 - matches the web app: one header instead of two duplicate tabs, tap a project name to open/close its tasks, long-press to edit it, the corner arrow is gone, and the login has Forgot password?.",
   "mandatory": false,
-  "publishedAt": "2026-10-30"
+  "publishedAt": "2026-10-31"
 }

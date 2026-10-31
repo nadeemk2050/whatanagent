@@ -28,24 +28,30 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.firestore.FieldValue
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import com.google.firebase.firestore.FirebaseFirestore
 
 /**
@@ -61,6 +67,9 @@ fun PersonalProjectsScreen(uid: String) {
     var showAdd by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var taskCounts by remember { mutableStateOf<Map<String, Pair<Int, Int>>>(emptyMap()) }
+    var editingProject by remember { mutableStateOf<PersonalProject?>(null) }
+    var editName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
 
     val root = remember(uid) { db.collection("$BOARD_BASE_PATH/users/$uid/personal_projects") }
 
@@ -98,7 +107,8 @@ fun PersonalProjectsScreen(uid: String) {
                 AtsCard(
                     modifier = Modifier.combinedClickable(
                         onClick = { openProject = p },
-                        onLongClick = { root.document(p.id).delete() }
+                        // Long press edits the project (rename / delete) — the same gesture as the web app.
+                        onLongClick = { editingProject = p; editName = p.name }
                     )
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -146,6 +156,46 @@ fun PersonalProjectsScreen(uid: String) {
                 label = { Text("Project name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
             )
         }
+    }
+
+    // Long press on a project -> edit it (rename or delete).
+    editingProject?.let { proj ->
+        AlertDialog(
+            onDismissRequest = { editingProject = null },
+            title = { Text("Edit personal project") },
+            text = {
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Project name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (editName.isNotBlank()) {
+                        root.document(proj.id).update("name", editName.trim())
+                        editingProject = null
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        scope.launch {
+                            runCatching {
+                                val snap = root.document(proj.id).collection("tasks").get().await()
+                                snap.documents.forEach { it.reference.delete().await() }
+                                root.document(proj.id).delete().await()
+                            }
+                            editingProject = null
+                        }
+                    }) { Text("Delete", color = Color(0xFFB91C1C)) }
+                    TextButton(onClick = { editingProject = null }) { Text("Cancel") }
+                }
+            }
+        )
     }
 }
 

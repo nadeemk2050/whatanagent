@@ -67,7 +67,9 @@ fun AtsTopBar(
     onView: (TaskView) -> Unit,
     onAccount: (MenuEntry) -> Unit,
     onSearch: (() -> Unit)? = null,
-    showViewPill: Boolean = true
+    showViewPill: Boolean = true,
+    // Board pages draw their own header, so the section pill + search here would duplicate it.
+    showSectionPill: Boolean = true
 ) {
     var sectionOpen by remember { mutableStateOf(false) }
     var viewOpen by remember { mutableStateOf(false) }
@@ -81,7 +83,7 @@ fun AtsTopBar(
             IconButton(onClick = onMenu) { Icon(Icons.Default.Menu, "Menu", tint = Ats.ink) }
 
             // ---- section pill (charcoal, white text) --------------------------
-            Box {
+            if (showSectionPill) Box {
                 Row(
                     modifier = Modifier
                         .background(Ats.chipBg, RoundedCornerShape(11.dp))
