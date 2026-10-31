@@ -3175,12 +3175,14 @@
                             }
                             await db.collection('alignWaSchedules').doc(waScheduleEditId).set(patch, { merge: true });
                             const reopenScope = waEditReturnScope;
+                            const reopen = waEditReopen;
                             waScheduleEditId = null;
                             waEditDoc = null;
+                            waEditReopen = false;
                             document.getElementById('wa-remind-modal').classList.add('hidden');
                             waRemindCtx = null;
                             alert('Scheduled reminder updated — next send: ' + whenStr + (sched.aiRewrite ? '\nAI will refresh the wording at every send.' : ''));
-                            if (reopenScope !== null && reopenScope !== undefined) openScheduledReminders(reopenScope);
+                            if (reopen) openScheduledReminders(reopenScope);
                         } else {
                             await db.collection('alignWaSchedules').add(Object.assign({}, docData, { status: 'pending', sentCount: 0, nextAt: sched.startAt, history: [], createdAt: Date.now() }));
                             document.getElementById('wa-remind-modal').classList.add('hidden');
@@ -3276,6 +3278,7 @@
             let waScheduleEditId = null;
             let waEditDoc = null;             // the schedule being edited (its sentCount decides the rhythm)
             let waEditReturnScope = null;     // reminders page scope to reopen after saving an edit
+            let waEditReopen = false;         // true when the editor was opened from the reminders page
             let scheduledRefreshTimer = null;
 
             function waEsc(s) {
@@ -3434,6 +3437,7 @@
             function resetWaScheduleFields() {
                 waScheduleEditId = null;
                 waEditDoc = null;
+                waEditReopen = false;
                 waCalDates = {};
                 waCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
                 document.getElementById('wa-remind-title').innerText = 'Send WhatsApp Reminder';
@@ -3502,7 +3506,8 @@
                 if (!snap.exists) { alert('This scheduled reminder no longer exists.'); return; }
                 const d = snap.data() || {};
                 waEditDoc = d;
-                waEditReturnScope = scheduledScope;
+                waEditReturnScope = scheduledScope || null;
+                waEditReopen = true;
                 closeScheduledReminders();
                 const staffSnap = await boardScope('staff').limit(50).get();
                 const members = [];
