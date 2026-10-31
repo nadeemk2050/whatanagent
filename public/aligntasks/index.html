@@ -1675,28 +1675,27 @@
                 if (box) box.classList.add('hidden');
                 const provider = new firebase.auth.GoogleAuthProvider();
                 provider.setCustomParameters({ prompt: 'select_account' });
+                // Popup first: the result comes straight back to this page, so no redirect-return
+                // state has to survive Chrome's third-party storage blocking.
                 try {
-                    // Redirect first: browsers block popups silently, a redirect cannot be blocked.
-                    await auth.signInWithRedirect(provider);
+                    await auth.signInWithPopup(provider);
                     return;
                 } catch (err) {
                     const code = (err && err.code) || '';
-                    if (code !== 'auth/operation-not-supported-in-this-environment' && code !== 'auth/popup-blocked') {
+                    if (code !== 'auth/popup-blocked' && code !== 'auth/operation-not-supported-in-this-environment') {
                         show(code === 'auth/unauthorized-domain'
                             ? 'This website address is not authorised for Google sign-in in Firebase yet.'
-                            : (err.message || 'Google sign-in failed.'));
+                            : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+                                ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
+                                : (err.message || 'Google sign-in failed.'));
                         return;
                     }
                 }
+                // Only when the browser blocks the window: go through a full-page redirect.
                 try {
-                    await auth.signInWithPopup(provider);
+                    await auth.signInWithRedirect(provider);
                 } catch (err2) {
-                    const c2 = (err2 && err2.code) || '';
-                    show(c2 === 'auth/popup-blocked'
-                        ? 'Your browser blocked the Google window. Allow pop-ups for this site, or sign in with your email and password below.'
-                        : c2 === 'auth/popup-closed-by-user' || c2 === 'auth/cancelled-popup-request'
-                            ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
-                            : (err2.message || 'Google sign-in failed.'));
+                    show((err2 && err2.message) || 'Google sign-in failed.');
                 }
             };
             const db = firebase.firestore();
