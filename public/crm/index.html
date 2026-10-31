@@ -85,7 +85,8 @@
                     <input id="si-name" class="inp mb-3" placeholder="e.g. Ahmed Khan" autocomplete="username">
                 </div>
                 <label class="fl">Password</label>
-                <input id="si-pass" class="inp mb-4" type="password" placeholder="Your password" autocomplete="current-password">
+                <input id="si-pass" class="inp mb-3" type="password" placeholder="Your password" autocomplete="current-password">
+                <div class="text-right mb-3"><a id="si-forgot" class="text-xs text-[#6b5f45] underline cursor-pointer">Forgot password?</a></div>
                 <button id="si-go" class="btn btn-dark w-full">Sign in</button>
                 <div class="relative my-3 text-center"><span class="text-[11px] text-gray-400 bg-[#fffdf8] px-2 relative z-10">or</span><div class="absolute left-0 right-0 top-1/2 border-t" style="border-color:var(--line)"></div></div>
                 <button id="sso-go" class="btn btn-light w-full">Continue with WhatAnAgent</button>
@@ -278,9 +279,22 @@
         localStorage.setItem('crmToken', d.token);
         boot();
     }
+    async function setPassword(current, next) {
+        return api('/password', { method: 'POST', body: { current: current || '', next } });
+    }
+
     $('#si-go').onclick = doLogin;
     $('#si-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
     $('#su-go').onclick = doSignup;
+    $('#si-forgot').onclick = () => {
+        openModal('Forgot your password?',
+            '<div class="text-sm text-gray-600 space-y-3">'
+            + '<div><b>Account owner:</b> if this email also has a WhatAnAgent account, tap <b>Continue with WhatAnAgent</b> on the sign-in screen. You will be signed in, and you can then set a new password in <b>Settings → My password</b>.</div>'
+            + '<div><b>Team member:</b> ask your account owner to reset it for you — Team → Reset password. They do not need to know your old password.</div>'
+            + '<div class="text-xs text-gray-400">We do not email passwords: the CRM stores data on our own server, and this app has no mail service connected yet.</div>'
+            + '</div>',
+            '<button class="btn btn-dark" data-close="modal">Got it</button>');
+    };
 
     // ---------- Continue with WhatAnAgent (Firebase) ----------
     // Uses the login you already have in AlignTasks, so the CRM needs no second password.
@@ -862,6 +876,11 @@
             + '<div id="st-list" class="space-y-2"></div><button class="btn btn-light mt-2" id="st-add">+ Add stage</button><button class="btn btn-dark mt-2 ml-2" id="st-save">Save stages</button></div>'
             + '<div class="card p-4"><div class="font-bold mb-1">Custom fields</div><div class="text-xs text-gray-500 mb-3">Extra fields for your customer records.</div>'
             + '<div id="cf-list" class="space-y-2"></div><button class="btn btn-light mt-2" id="cf-add">+ Add field</button><button class="btn btn-dark mt-2 ml-2" id="cf-save">Save fields</button></div>'
+            + '<div class="card p-4"><div class="font-bold mb-1">My password</div><div class="text-xs text-gray-500 mb-3">Use this to sign in with your email instead of Google. Minimum 6 characters.</div>'
+            + '<label class="fl">Current password (leave empty if you signed in with Google)</label><input id="pw-cur" class="inp mb-2" type="password" placeholder="Current password">'
+            + '<label class="fl">New password</label><input id="pw-new" class="inp mb-2" type="password" placeholder="New password">'
+            + '<label class="fl">Repeat new password</label><input id="pw-new2" class="inp mb-3" type="password" placeholder="Repeat it">'
+            + '<button class="btn btn-dark" id="pw-save">Save password</button><div id="pw-msg" class="text-xs mt-2"></div></div>'
             + '<div class="card p-4"><div class="font-bold mb-1">WhatsApp capture</div><div class="text-xs text-gray-500 mb-3">Pull the contacts from your linked WhatsApp number into this CRM. Numbers already known are merged, never doubled.</div>'
             + '<label class="fl">WhatsApp account id (optional)</label><input id="se-wa" class="inp mb-3" placeholder="default: your login email">'
             + '<button class="btn btn-dark" id="wa-go">Capture WhatsApp contacts</button><div id="wa-msg" class="text-xs mt-2"></div></div></div>';
@@ -895,8 +914,23 @@
             try { const r = await api('/settings', { method: 'PATCH', body: { customFields: out } }); S.company = r.company; toast('Fields saved'); render(); }
             catch (e) { toast(e.message, true); }
         };
-        $('#wa-go').onclick = async () => {
-            const msg = $('#wa-msg');
+        $('#pw-save').onclick = async () => {
+            const msg = $('#pw-msg');
+            const cur = $('#pw-cur').value;
+            const n1 = $('#pw-new').value;
+            const n2 = $('#pw-new2').value;
+            if (n1.length < 6) { msg.className = 'text-xs mt-2 text-red-600'; msg.textContent = 'The new password must be at least 6 characters.'; return; }
+            if (n1 !== n2) { msg.className = 'text-xs mt-2 text-red-600'; msg.textContent = 'The two new passwords do not match.'; return; }
+            msg.className = 'text-xs mt-2 text-gray-500';
+            msg.textContent = 'Saving…';
+            try {
+                await api('/password', { method: 'POST', body: { current: cur, next: n1 } });
+                msg.className = 'text-xs mt-2 text-green-700';
+                msg.textContent = 'Password saved. You can now sign in with your email and this password.';
+                $('#pw-cur').value = ''; $('#pw-new').value = ''; $('#pw-new2').value = '';
+            } catch (e) { msg.className = 'text-xs mt-2 text-red-600'; msg.textContent = e.message; }
+        };
+        $('#wa-go').onclick = async () => {            const msg = $('#wa-msg');
             msg.className = 'text-xs mt-2 text-gray-500';
             msg.textContent = 'Asking WhatsApp for the contacts…';
             try {

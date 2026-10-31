@@ -722,6 +722,7 @@
                         <p class="text-xs text-gray-500 mt-1">Used with that name at the team sign-in step.</p>
                     </div>
                     <button id="auth-button" type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition-colors">Sign In</button>
+                    <div class="text-center"><a id="auth-forgot" class="text-sm text-blue-600 hover:underline cursor-pointer">Forgot password?</a></div>
                 </form>
                 <div class="relative my-4 text-center">
                     <span class="text-xs text-gray-400 bg-white px-2 relative z-10">or</span>
@@ -6433,43 +6434,97 @@
                         // Say so plainly and point at the Google button instead of showing the raw code.
                         auth.fetchSignInMethodsForEmail(email).then(methods => {
                             const googleOnly = Array.isArray(methods) && methods.includes('google.com') && !methods.includes('password');
+                            authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
                             authError.textContent = googleOnly
-                                ? 'This account uses Google sign-in (no password). Tap “Continue with Google” below.'
-                                : 'Wrong email or password. If you created this account with Google, use “Continue with Google” below.';
-                            authError.classList.remove('hidden');
+                                ? 'This account uses Google sign-in (no password). Tap “Continue with Google” below, or use Forgot password? to set one.'
+                                : 'Wrong email or password. If you created this account with Google, use “Continue with Google” below — or tap Forgot password?.';
                             const g = document.getElementById('auth-google');
                             if (g) g.classList.add('ring-2', 'ring-blue-400');
                         }).catch(() => {
-                            authError.textContent = 'Wrong email or password. If you created this account with Google, use “Continue with Google” below.';
-                            authError.classList.remove('hidden');
+                            authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
+                            authError.textContent = 'Wrong email or password. If you created this account with Google, use “Continue with Google” below — or tap Forgot password?.';
                         });
                         return;
                     }
+                    authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
                     authError.textContent = err.message;
-                    authError.classList.remove('hidden');
                 });
             });
+
+            // Forgot password: Firebase emails a reset link to the account.
+            (function () {
+                const f = document.getElementById('auth-forgot');
+                if (!f) return;
+                const ok = (msg) => {
+                    authError.className = 'bg-green-100 text-green-800 p-3 rounded-lg mb-4 text-sm text-center';
+                    authError.textContent = msg;
+                };
+                const bad = (msg) => {
+                    authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
+                    authError.textContent = msg;
+                };
+                f.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    const el = document.getElementById('email');
+                    const email = ((el && el.value) || '').trim();
+                    if (!email) {
+                        bad('Type your email address above first, then tap Forgot password?');
+                        el && el.focus();
+                        return;
+                    }
+                    f.textContent = 'Sending…';
+                    try {
+                        await auth.sendPasswordResetEmail(email);
+                        ok('Reset link sent to ' + email + '. Open it and choose a new password — then sign in here with email + password, or with Google.');
+                    } catch (err) {
+                        const code = (err && err.code) || '';
+                        bad(code === 'auth/user-not-found'
+                            ? 'No account uses that email. Check the address, or create an account.'
+                            : code === 'auth/invalid-email'
+                                ? 'That email address is not valid.'
+                                : (err.message || 'Could not send the reset email.'));
+                    } finally {
+                        f.textContent = 'Forgot password?';
+                    }
+                });
+                // Shown only on the sign-in view.
+                const syncForgot = () => {
+                    const form = document.getElementById('auth-form');
+                    const isLogin = form && form.dataset.view === 'login';
+                    f.style.display = isLogin ? '' : 'none';
+                };
+                const t = document.getElementById('auth-toggle');
+                if (t) t.addEventListener('click', () => setTimeout(syncForgot, 0));
+                syncForgot();
+            })();
 
             // Google sign-in: the same Firebase identity, no password involved.
             (function () {
                 const gbtn = document.getElementById('auth-google');
                 if (!gbtn) return;
+                const providerOf = () => {
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    provider.setCustomParameters({ prompt: 'select_account' });
+                    return provider;
+                };
                 gbtn.addEventListener('click', async () => {
                     authError.classList.add('hidden');
                     try {
-                        const provider = new firebase.auth.GoogleAuthProvider();
-                        provider.setCustomParameters({ prompt: 'select_account' });
-                        await auth.signInWithPopup(provider);
+                        await auth.signInWithPopup(providerOf());
                     } catch (err) {
                         const code = (err && err.code) || '';
-                        authError.textContent = code === 'auth/popup-blocked'
-                            ? 'The Google sign-in window was blocked — allow pop-ups for this site and try again.'
-                            : code === 'auth/unauthorized-domain'
-                                ? 'This domain is not authorised for Google sign-in yet.'
-                                : code === 'auth/popup-closed-by-user'
-                                    ? 'Google sign-in was closed.'
+                        // A blocked popup would otherwise do nothing at all: fall back to a full-page redirect.
+                        if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+                            try { await auth.signInWithRedirect(providerOf()); return; } catch (e2) { /* report below */ }
+                        }
+                        authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
+                        authError.textContent = code === 'auth/unauthorized-domain'
+                            ? 'This website address is not authorised for Google sign-in in Firebase yet.'
+                            : code === 'auth/popup-closed-by-user'
+                                ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
+                                : code === 'auth/cancelled-popup-request'
+                                    ? 'Another sign-in was already in progress.'
                                     : (err.message || 'Google sign-in failed.');
-                        authError.classList.remove('hidden');
                     }
                 });
                 // The Google button only makes sense on the sign-in view.
@@ -6479,7 +6534,6 @@
                         const isLogin = document.getElementById('auth-form').dataset.view === 'login';
                         gbtn.style.display = isLogin ? '' : 'none';
                     };
-                    const origClick = authToggleEl.onclick;
                     authToggleEl.addEventListener('click', () => setTimeout(sync, 0));
                     sync();
                 }

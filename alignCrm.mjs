@@ -479,7 +479,24 @@ export function registerAlignCrmRoutes(app, opts) {
   });
 
   app.get(api + '/me', auth, (req, res) => {
-    res.json({ ok: true, member: publicMember(req.crm.member), company: publicCompany(req.crm.company), linkedEmail: LINKED_EMAIL });
+    res.json({ ok: true, member: publicMember(req.crm.member), company: publicCompany(req.crm.company), linkedEmail: LINKED_EMAIL, hasPassword: !!req.crm.member.saltHash });
+  });
+
+  // Change (or first set) your own password. Accounts created through Google sign-in have no
+  // password yet, so they may set one without typing an old password.
+  app.post(api + '/password', auth, async (req, res) => {
+    try {
+      const b = req.crm.body;
+      const next = String(b.next || '');
+      if (next.length < 6) return bad(res, 'The new password must be at least 6 characters.');
+      const m = req.crm.member;
+      if (m.saltHash && !checkPassword(String(b.current || ''), m.saltHash)) return bad(res, 'Your current password is not correct.', 401);
+      m.saltHash = hashPassword(next);
+      m.passwordChangedAt = nowMs();
+      await put(C.member, m);
+      await log(req.crm.company.id, m, 'system', m.name + ' changed their password.');
+      res.json({ ok: true });
+    } catch (e) { fail(res, e); }
   });
 
   // ---------- team ----------
