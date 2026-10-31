@@ -1530,9 +1530,12 @@
                     <div id="edit-project-members" style="max-height:200px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:6px;margin-top:4px;"></div>
                 </div>
                 <p id="edit-project-msg" class="hidden text-sm"></p>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" id="edit-project-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Cancel</button>
-                    <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button>
+                <div class="flex justify-between items-center gap-2 pt-2">
+                    <button type="button" id="edit-project-delete" class="px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm">Delete</button>
+                    <div class="flex gap-2">
+                        <button type="button" id="edit-project-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Cancel</button>
+                        <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save Changes</button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -3940,14 +3943,40 @@
                 return null;
             }
 
+            // Short press on a project name opens / closes its task list.
+            function toggleProjectOpen(kind, id) {
+                const isPersonal = kind === 'pproject';
+                const content = document.getElementById((isPersonal ? 'pp-content-' : 'project-content-') + id);
+                if (!content) return;
+                const willOpen = content.style.display === 'none';
+                content.style.display = willOpen ? '' : 'none';
+                if (isPersonal) {
+                    if (willOpen) expandedPersonalProjects.add(id); else expandedPersonalProjects.delete(id);
+                } else {
+                    if (willOpen) expandedProjects.add(id); else expandedProjects.delete(id);
+                }
+                if (!willOpen) return;
+                try {
+                    if (isPersonal) {
+                        const p = personalProjectsCache.find(x => x.id === id);
+                        if (p) { if (typeof watchPersonalProjectTasks === 'function') watchPersonalProjectTasks(p); if (typeof paintPersonalProjectTasks === 'function') paintPersonalProjectTasks(id); }
+                    } else {
+                        const p = projectsCache.find(x => x.id === id);
+                        if (p) { if (typeof watchProjectTasks === 'function') watchProjectTasks(p); if (typeof paintProjectTasks === 'function') paintProjectTasks(id); }
+                    }
+                } catch (e) { /* the list simply stays hidden */ }
+            }
+
             function fireLongPress(target, x, y) {
                 lastLongPressAt = Date.now();   // the click that ends the press must not close the menu
                 if (target.kind === 'task') {
                     openTaskActionMenu({ clientX: x, clientY: y }, target.el);
                 } else if (target.kind === 'pproject') {
-                    openPersonalProjectActionMenu(x, y, target.el.getAttribute('data-pp-id'));
+                    // Long press on a project name opens its editor.
+                    const p = personalProjectsCache.find(x => x.id === target.el.getAttribute('data-pp-id'));
+                    if (p) openEditPersonalProjectModal(p);
                 } else {
-                    openProjectActionMenu(x, y, target.el.getAttribute('data-project-id'));
+                    openEditProjectModal(target.el.getAttribute('data-project-id'));
                 }
             }
 
@@ -3960,12 +3989,9 @@
                     }
                     openTaskZoom(target.el);
                 } else if (target.kind === 'pproject') {
-                    // Short press on a private project name opens its editor, same as a team project.
-                    const id = target.el.getAttribute('data-pp-id');
-                    const p = personalProjectsCache.find(x => x.id === id);
-                    if (p) openEditPersonalProjectModal(p);
+                    toggleProjectOpen('pproject', target.el.getAttribute('data-pp-id'));
                 } else {
-                    openEditProjectModal(target.el.getAttribute('data-project-id'));
+                    toggleProjectOpen('project', target.el.getAttribute('data-project-id'));
                 }
             }
 
@@ -4631,6 +4657,19 @@
                 }
                 const msg = document.getElementById('edit-project-msg');
                 if (msg) { msg.textContent = ''; msg.classList.add('hidden'); }
+                // Delete is offered here because the project name's long press now opens this form.
+                const delBtn = document.getElementById('edit-project-delete');
+                if (delBtn) delBtn.onclick = async () => {
+                    if (!projectId) return;
+                    if (!confirm('Delete the project "' + (project.name || '') + '" and its tasks?')) return;
+                    try {
+                        const ok = await promptForAdminPassword('Delete Project');
+                        if (!ok) return;
+                        await db.collection(`/artifacts/${appId}/public/data/projects`).doc(projectId).delete();
+                        editProjectModal.classList.add('hidden');
+                        showTopNotice('🗑️ Project deleted');
+                    } catch (err) { alert('Could not delete the project: ' + (err.message || err)); }
+                };
                 editProjectModal.classList.remove('hidden');
             }
              document.getElementById('edit-project-modal-close').addEventListener('click', () => editProjectModal.classList.add('hidden'));
@@ -5045,7 +5084,7 @@
                     return `
                         <div class="bg-white rounded-xl shadow-sm" data-project-id="${p.id}">
                             <div class="flex items-center gap-2 p-3">
-                                <button class="project-open-editor flex-1 min-w-0 text-left" data-project-id="${p.id}" title="Tap to edit · long-press for Edit / Delete">
+                                <button class="project-open-editor flex-1 min-w-0 text-left" data-project-id="${p.id}" title="Tap to open/close tasks · long-press to edit">
                                     <div class="font-bold text-gray-800 truncate">${waEsc(p.name)}</div>
                                     <div class="task-meta">${waEsc(members || '—')}${due ? ' · ' + due : ''}</div>
                                 </button>
@@ -5053,8 +5092,6 @@
                                 <button class="project-done-btn" data-project-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
                                 <button class="sched-scope-btn" data-scope-type="project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="project-add-task" data-project-id="${p.id}" title="Add a task to this project" style="width:26px;height:26px;border-radius:8px;border:1px solid #d5cfc2;background:#f3ecdd;color:#6b5f45;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
-                                ${''}
-                                <button class="project-toggle text-gray-400 text-xs px-1" data-project-id="${p.id}" title="Open / close">${open ? '▲' : '▼'}</button>
                             </div>
                             <div id="project-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
                                 <div id="project-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
@@ -5226,7 +5263,7 @@
                     return `
                         <div class="bg-white rounded-xl shadow-sm" data-pp-id="${p.id}">
                             <div class="flex items-center gap-2 p-3">
-                                <button class="pp-toggle pp-open-editor flex-1 min-w-0 text-left" data-pp-id="${p.id}" title="Tap to open · long-press for Edit / Share / Delete">
+                                <button class="pp-toggle pp-open-editor flex-1 min-w-0 text-left" data-pp-id="${p.id}" title="Tap to open/close tasks · long-press to edit">
                                     <div class="font-bold text-gray-800 truncate">${waEsc(p.name)}</div>
                                     <div class="task-meta">Private${due ? ' · ' + due : ''}</div>
                                 </button>
@@ -5234,8 +5271,6 @@
                                 <button class="pp-done-btn" data-pp-id="${p.id}" title="View this project's completed tasks" style="border:1px solid #d5cfc2;background:#fffdf8;color:#6b5f45;border-radius:8px;height:26px;padding:0 7px;font-size:11px;font-weight:800;cursor:pointer;">&#10003;</button>
                                 <button class="sched-scope-btn" data-scope-type="personal_project" data-scope-id="${p.id}" data-scope-name="${waEsc(p.name || 'Project')}" title="Scheduled reminders of this project">🔔</button>
                                 <button class="pp-add-task" data-pp-id="${p.id}" title="Add a task" style="width:26px;height:26px;border-radius:8px;border:1px solid #ddd6fe;background:#f5f3ff;color:#6d28d9;font-weight:800;font-size:15px;line-height:1;cursor:pointer;">＋</button>
-                                ${''}
-                                <button class="pp-toggle text-gray-400 text-xs px-1" data-pp-id="${p.id}">${open ? '▲' : '▼'}</button>
                             </div>
                             <div id="pp-content-${p.id}" style="${open ? '' : 'display:none;'}padding:0 12px 12px;">
                                 <div id="pp-tasks-${p.id}" class="text-sm text-gray-500">Loading tasks…</div>
@@ -5309,7 +5344,24 @@
                 if (nameEl) nameEl.focus();
             }
             function openEditPersonalProjectModal(project) {
-                if (project) showPersonalProjectModal(true, project);
+                if (!project) return;
+                showPersonalProjectModal(true, project);
+                // Delete lives in this form now that a long press opens it.
+                const delBtn = document.getElementById('personal-project-delete');
+                if (delBtn) delBtn.onclick = async () => {
+                    if (!confirm('Delete the personal project "' + (project.name || '') + '" and all its tasks?')) return;
+                    try {
+                        const snap = await personalProjectsCol().doc(project.id).collection('tasks').get();
+                        await Promise.all(snap.docs.map(d => d.ref.delete()));
+                        await personalProjectsCol().doc(project.id).delete();
+                        const u = ppTaskUnsubs.get(project.id); if (u) u();
+                        ppTaskUnsubs.delete(project.id);
+                        expandedPersonalProjects.delete(project.id);
+                        delete ppTasksCache[project.id];
+                        document.getElementById('personal-project-modal').style.display = 'none';
+                        showTopNotice('🗑️ Project deleted');
+                    } catch (err) { alert('Could not delete the project: ' + (err.message || err)); }
+                };
             }
             function showPersonalProjectTaskModal(show, project, task) {
                 const m = document.getElementById('personal-project-task-modal');
@@ -8026,6 +8078,7 @@
                     <input type="datetime-local" id="personal-project-due" style="width:100%;padding:9px 12px;background:#eef1f4;border:1px solid #cbd5e1;border-radius:8px;font-size:13.5px;color:#1e293b;box-sizing:border-box;" />
                 </div>
                 <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button type="button" id="personal-project-delete" style="padding:10px 14px;background:#fff1f1;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">Delete</button>
                     <button type="submit" style="flex:1;padding:10px 16px;background:linear-gradient(180deg,#4c4f57 0%,#34373d 100%);color:#f7ecd6;border:1px solid #282a2e;border-radius:8px;font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:0 1px 0 rgba(255,255,255,.15) inset,0 2px 4px rgba(0,0,0,.15);">Create Project</button>
                     <button type="button" id="cancel-personal-project-modal-2" style="padding:10px 16px;background:#eef1f4;color:#475569;border:1px solid #cbd5e1;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">Cancel</button>
                 </div>
