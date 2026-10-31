@@ -11,6 +11,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "devall": "nodemon index.js",
+    "dev:crm": "node scripts/crm-dev.mjs",
     "parity:android": "node scripts/android-parity.mjs",
     "build": "echo 'No build step required - plain JavaScript project'"
   },
