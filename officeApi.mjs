@@ -109,11 +109,11 @@ export function registerOfficeRoutes(app, db) {
   console.log('[OFFICE] 🏢 Offices of Staff API registered' + (process.env.ADMIN_TOKEN ? '' : ' — ADMIN_TOKEN MISSING, routes will return 503'));
 
   // ---------------------------------------------------------------- shared loaders
-  async function officeRow(a) {
+  async function officeRow(a, sharedFallbacks) {
     const [clients, runs, fallbacks, complaints] = await Promise.all([
       listClients(a.id),
       listTestRuns(a.id).catch(() => []),
-      listFallbacks(300).catch(() => []),
+      sharedFallbacks ? Promise.resolve(sharedFallbacks) : listFallbacks(300).catch(() => []),
       listAgentSub(a.id, 'complaints', 50).catch(() => [])
     ]);
     const openComplaints = complaints.filter(c => c.status !== 'resolved').length;
@@ -139,8 +139,8 @@ export function registerOfficeRoutes(app, db) {
   app.get(api + '/offices', async (req, res) => {
     try {
       const agents = await listAgents({ fresh: req.query.fresh === '1' });
-      const rows = [];
-      for (const a of agents) rows.push(await officeRow(a));
+      const fbAll = await listFallbacks(300).catch(() => []);
+      const rows = await Promise.all(agents.map(a => officeRow(a, fbAll)));
       // Zaheer's office always first.
       rows.sort((x, y) => (y.isDefault ? 1 : 0) - (x.isDefault ? 1 : 0) || String(x.name).localeCompare(String(y.name)));
       res.json({ ok: true, offices: rows, autonomyLabels: AUTONOMY_LABELS });
@@ -150,9 +150,9 @@ export function registerOfficeRoutes(app, db) {
   app.get(api + '/dashboard', async (req, res) => {
     try {
       const agents = await listAgents({ fresh: true });
-      const rows = [];
-      for (const a of agents) rows.push(await officeRow(a));
-      const fallbacks = await listFallbacks(200).catch(() => []);
+      const fbAll = await listFallbacks(300).catch(() => []);
+      const rows = await Promise.all(agents.map(a => officeRow(a, fbAll)));
+      const fallbacks = fbAll.slice(0, 200);
       res.json({
         ok: true,
         totals: {
