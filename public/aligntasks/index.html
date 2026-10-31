@@ -728,7 +728,7 @@
                     <span class="text-xs text-gray-400 bg-white px-2 relative z-10">or</span>
                     <div class="absolute left-0 right-0 top-1/2 border-t border-gray-200"></div>
                 </div>
-                <button id="auth-google" type="button" class="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors">
+                <button id="auth-google" type="button" onclick="window.atsGoogleSignIn && window.atsGoogleSignIn(event)" class="w-full flex items-center justify-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors">
                     <svg viewBox="0 0 48 48" style="width:18px;height:18px"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2.5 24 .5 14.6.5 6.5 5.9 2.6 13.7l7.8 6.1C12.3 13.6 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-2.8-.4-4.1H24v8.1h12.7c-.3 2.1-1.7 5.3-4.9 7.4l7.6 5.9c4.5-4.2 7.1-10.3 7.1-17.3z"/><path fill="#FBBC05" d="M10.4 28.2A14.6 14.6 0 0 1 9.6 24c0-1.5.3-2.9.7-4.2l-7.8-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6.5z"/><path fill="#34A853" d="M24 47.5c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2 1.4-4.8 2.4-8.3 2.4-6.4 0-11.7-4.1-13.6-9.8l-7.8 6.5C6.5 42.1 14.6 47.5 24 47.5z"/></svg>
                     Continue with Google
                 </button>
@@ -1664,6 +1664,44 @@
 
             firebase.initializeApp(firebaseConfig);
             const auth = firebase.auth();
+
+            // Google sign-in, defined next to the auth object so it is always available to the
+            // button in the markup (no dependency on later script order).
+            window.atsGoogleSignIn = async function (ev) {
+                if (ev && ev.preventDefault) ev.preventDefault();
+                const box = document.getElementById('auth-error');
+                const show = (msg, colour) => {
+                    if (!box) { window.alert(msg); return; }
+                    box.className = (colour === 'ok' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700') + ' p-3 rounded-lg mb-4 text-sm text-center';
+                    box.textContent = msg;
+                };
+                if (box) box.classList.add('hidden');
+                const provider = new firebase.auth.GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                try {
+                    // Redirect first: browsers block popups silently, a redirect cannot be blocked.
+                    await auth.signInWithRedirect(provider);
+                    return;
+                } catch (err) {
+                    const code = (err && err.code) || '';
+                    if (code !== 'auth/operation-not-supported-in-this-environment' && code !== 'auth/popup-blocked') {
+                        show(code === 'auth/unauthorized-domain'
+                            ? 'This website address is not authorised for Google sign-in in Firebase yet.'
+                            : (err.message || 'Google sign-in failed.'));
+                        return;
+                    }
+                }
+                try {
+                    await auth.signInWithPopup(provider);
+                } catch (err2) {
+                    const c2 = (err2 && err2.code) || '';
+                    show(c2 === 'auth/popup-blocked'
+                        ? 'Your browser blocked the Google window. Allow pop-ups for this site, or sign in with your email and password below.'
+                        : c2 === 'auth/popup-closed-by-user' || c2 === 'auth/cancelled-popup-request'
+                            ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
+                            : (err2.message || 'Google sign-in failed.'));
+                }
+            };
             const db = firebase.firestore();
             // 2.0: local cache → instant reopen + fewer Firestore reads (falls back silently if
             // the browser blocks it, e.g. multiple tabs without synchronizeTabs support).
@@ -6498,46 +6536,11 @@
                 syncForgot();
             })();
 
-            // Google sign-in: the same Firebase identity, no password involved.
+            // Google button visibility: only on the sign-in view (the click handler lives on the
+            // element itself, see window.atsGoogleSignIn above).
             (function () {
                 const gbtn = document.getElementById('auth-google');
                 if (!gbtn) return;
-                const providerOf = () => {
-                    const provider = new firebase.auth.GoogleAuthProvider();
-                    provider.setCustomParameters({ prompt: 'select_account' });
-                    return provider;
-                };
-                gbtn.onclick = async () => {
-                    authError.classList.add('hidden');
-                    const provider = providerOf();
-                    // Redirect first: a popup window can be blocked silently, a redirect never is.
-                    try {
-                        await auth.signInWithRedirect(provider);
-                        return;   // the page leaves for Google; onAuthStateChanged finishes the sign-in
-                    } catch (err) {
-                        const code = (err && err.code) || '';
-                        if (code !== 'auth/operation-not-supported-in-this-environment' && code !== 'auth/popup-blocked') {
-                            authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
-                            authError.textContent = code === 'auth/unauthorized-domain'
-                                ? 'This website address is not authorised for Google sign-in in Firebase yet.'
-                                : (err.message || 'Google sign-in failed.');
-                            return;
-                        }
-                    }
-                    // Some in-app browsers cannot redirect: try the popup there.
-                    try {
-                        await auth.signInWithPopup(provider);
-                    } catch (err2) {
-                        const code2 = (err2 && err2.code) || '';
-                        authError.className = 'bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm text-center';
-                        authError.textContent = code2 === 'auth/popup-blocked'
-                            ? 'Your browser blocked the Google window. Allow pop-ups for this site, or sign in with your email and password below.'
-                            : code2 === 'auth/popup-closed-by-user' || code2 === 'auth/cancelled-popup-request'
-                                ? 'Google sign-in was closed. Try again, or sign in with your email and password below.'
-                                : (err2.message || 'Google sign-in failed.');
-                    }
-                };
-                // The Google button only makes sense on the sign-in view (observe the form).
                 const sync = () => {
                     const formEl = document.getElementById('auth-form');
                     const isLogin = formEl && formEl.dataset.view === 'login';
