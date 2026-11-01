@@ -23,6 +23,7 @@ import { attachLearningDb, listChatCandidates, learnFromSource, learnFromAllSour
 import { makeAdminGuard } from './adminGuard.mjs';
 import { getAiActivityLog } from './aiTracker.mjs';
 import { getWaWebKnowledgeBase } from './waWebClient.js';
+import { generateCvDraft } from './cvMaker.mjs';
 
 const sstr = (v, n = 500) => String(v == null ? '' : v).slice(0, n);
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
@@ -144,6 +145,14 @@ export function registerAgentsRoutes(app, db) {
       }
       res.json({ ok: true, cvs });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post(api + '/cvs/generate', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const out = await generateCvDraft({ name: b.name, role: b.role, gender: b.gender, category: b.category, brief: b.brief, model: b.model });
+      res.json({ ok: true, ...out });
+    } catch (e) { res.status(/required/i.test(e.message) ? 400 : 500).json({ ok: false, error: e.message }); }
   });
 
   app.post(api + '/cvs/sync', async (req, res) => {

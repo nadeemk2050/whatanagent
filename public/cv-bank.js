@@ -1,4 +1,4 @@
-/* 📄 Ready-to-Insert CV bank for the AI Staff Academy.
+﻿/* 📄 Ready-to-Insert CV bank for the AI Staff Academy.
    Saved CVs live on the server (/api/agents/cvs). They fill the "Hire New Staff" form in one click. */
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -85,7 +85,8 @@
       '<b style="font-size:15px;">📄 Ready-to-Insert CVs</b>' +
       '<input class="f" id="cvSearchBox" placeholder="Search CVs…" value="' + esc(cvSearch) + '" oninput="cvSearchChanged(this.value)" style="max-width:240px;margin:0;">' +
       '<span style="flex:1;"></span>' +
-      '<button class="btn btn-sm btn-primary" onclick="openCvForm()">➕ New CV</button>' +
+      '<button class="btn btn-sm btn-primary" onclick="openAiCv()">🤖 Make CV with AI</button>' +
+      '<button class="btn btn-sm btn-ghost" onclick="openCvForm()">➕ New CV</button>' +
       '<button class="btn btn-sm btn-ghost" onclick="syncCvsFromStaff()" title="Add a CV for every hired staff member that does not have one yet">🔄 Import from hired staff</button></div>' +
       '<div style="grid-column:1/-1;font-size:12px;color:#64748b;margin-top:-4px;">Save a CV once, then pick it in <b>Hire New Staff</b> to fill the whole form instantly.</div>';
     box.innerHTML = bar + (list.length ? list.map(cvCard).join('') :
@@ -115,6 +116,57 @@
     $('hireTitle').textContent = id ? '✏️ Edit CV' : '📄 New CV';
     $('hireSaveBtn').textContent = '💾 Save CV';
     if (id) { const cv = findCv(id); if (cv) fillHireForm(cv); }
+  };
+
+  // ---------- 🤖 AI CV maker ----------
+  window.openAiCv = async function () {
+    if (!S.meta) { try { await loadMeta(); } catch (e) { toast('❌ ' + e.message); return; } }
+    let ov = $('aiCvOverlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'aiCvOverlay';
+      ov.className = 'overlay';
+      document.body.appendChild(ov);
+    }
+    const models = (S.meta && S.meta.models) || [];
+    const defModel = (models.find(m => m.id === 'deepseek-v4.1-flash') || models[0] || {}).id;
+    ov.innerHTML = '<div class="sheet" style="max-width:560px;"><div class="sheet-head"><b>🤖 Make a CV with AI</b>' +
+      '<button class="btn btn-sm btn-ghost" onclick="closeAiCv()">✖</button></div>' +
+      '<div class="sheet-body"><div class="sect">' +
+      '<label class="f">Role / Speciality *</label><input class="f" id="aiCvRole" placeholder="e.g. Shipping &amp; Logistics Coordinator">' +
+      '<div class="row2"><div><label class="f">Gender</label><select class="f" id="aiCvGender"><option value="male">Male</option><option value="female">Female</option><option value="neutral">Neutral</option></select></div>' +
+      '<div><label class="f">Category</label><select class="f" id="aiCvCat"><option value="business">Business (customers / sales)</option><option value="knowledge">Knowledge (research / information)</option><option value="personal">Personal (private helper)</option></select></div></div>' +
+      '<label class="f">What do you want from this person? (best qualities, duties, style, do / don\'t)</label>' +
+      '<textarea class="f" id="aiCvBrief" rows="6" placeholder="Describe the ideal person in your own words…"></textarea>' +
+      '<label class="f">Name (optional — leave empty and the AI will choose)</label><input class="f" id="aiCvName">' +
+      '<label class="f">AI model</label><select class="f" id="aiCvModel">' + models.map(m => '<option value="' + esc(m.id) + '"' + (m.id === defModel ? ' selected' : '') + '>' + esc(m.label || m.id) + '</option>').join('') + '</select>' +
+      '</div><div id="aiCvMsg" style="font-size:12px;color:#64748b;margin:6px 0;"></div>' +
+      '<button class="btn btn-primary" id="aiCvGo" onclick="runAiCv()" style="width:100%;">🎩 Mr. Zaheer (AI staff), please make the best CV</button></div></div>';
+    ov.classList.add('open');
+  };
+
+  window.closeAiCv = function () { const ov = $('aiCvOverlay'); if (ov) ov.classList.remove('open'); };
+
+  window.runAiCv = async function () {
+    const role = $('aiCvRole').value.trim();
+    if (!role) { toast('❌ Role / Speciality is required'); return; }
+    const btn = $('aiCvGo'), msg = $('aiCvMsg');
+    btn.disabled = true; btn.textContent = '🧠 Mr. Zaheer is thinking… (up to a minute)';
+    msg.textContent = 'Writing the CV and guardrails — please keep this window open.';
+    try {
+      const d = await api('/api/agents/cvs/generate', { method: 'POST', body: JSON.stringify({
+        role, gender: $('aiCvGender').value, category: $('aiCvCat').value, brief: $('aiCvBrief').value,
+        name: $('aiCvName').value.trim(), model: $('aiCvModel').value }) });
+      const saved = await api('/api/agents/cvs', { method: 'POST', body: JSON.stringify(d.cv) });
+      await window.loadCvs(true);
+      closeAiCv();
+      toast('✅ CV ready: ' + saved.cv.title + ' (made by ' + d.usedModel + ')');
+      renderTabs(); window.renderCvBank();
+      window.openCvForm(saved.cv.id);
+    } catch (e) {
+      msg.textContent = '❌ ' + e.message;
+      btn.disabled = false; btn.textContent = '🎩 Mr. Zaheer (AI staff), please make the best CV';
+    }
   };
 
   window.hireFromCv = async function (id) {
