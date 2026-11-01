@@ -1445,6 +1445,9 @@ async function processScheduleOccurrence(ref, d) {
       if (rw) { usedMsg = rw; console.log('[ALIGN SCHED] 🤖 Occurrence #' + occurrenceNo + ' wording refreshed by AI'); }
     }
     usedMsg = await ensureNoDevanagari(usedMsg);
+    // Name of the team member who created the reminder, so the receiver knows who is responsible.
+    const senderName = String(d.createdByName || String(d.createdBy || '').split('@')[0] || '').trim().substring(0, 60);
+    const signLine = senderName ? ('\n\n🔔 Reminder sent by: ' + senderName) : '';
     const targets = Array.isArray(d.targets) ? d.targets.slice(0, 25) : [];
     let okCount = 0, failCount = 0;
     for (const tg of targets) {
@@ -1463,10 +1466,10 @@ async function processScheduleOccurrence(ref, d) {
       try {
         if (viaAccount) {
           const mod = await import('./alignWaMulti.mjs');
-          await mod.sendFromAccount(viaAccount, toJid, usedMsg + extraLine);
+          await mod.sendFromAccount(viaAccount, toJid, usedMsg + extraLine + signLine);
         } else {
           await Promise.race([
-            sendWaWebMessage(toJid, usedMsg + extraLine),
+            sendWaWebMessage(toJid, usedMsg + extraLine + signLine),
             new Promise((_, rej) => setTimeout(() => rej(new Error('send-timeout-25s')), 25000))
           ]);
         }

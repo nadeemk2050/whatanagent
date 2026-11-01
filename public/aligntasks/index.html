@@ -96,7 +96,10 @@
         }
         .task-swipe-actions button { white-space: nowrap; font-size: 11px !important; padding: 6px 9px !important; }
         /* dragged the other way: the same actions mirror to the right edge */
-        .task-swipe.from-right .task-swipe-actions { left: auto; right: 0; }
+        .task-swipe .task-swipe-alt { display: none; left: auto; right: 0; }
+        .task-swipe.from-right .task-swipe-alt { display: flex; }
+        .task-swipe.from-right .task-swipe-actions:not(.task-swipe-alt) { display: none; }
+        .task-swipe.proj-swipe.from-right .task-swipe-actions { display: flex; left: auto; right: 0; }
         .task-swipe .task-list-item {
             position: relative; background: var(--ats-card);
             border-bottom: none !important;
@@ -1987,6 +1990,22 @@
                     (task.dueDate ? `\nDue: ${formatTaskTimestamp(new Date(task.dueDate))}` : '') +
                     `\nTeam: ${teamCtx.teamName}`;
             }
+            // Plain task text used by the swipe "Share" / "Copy" actions.
+            function taskShareText(task) {
+                let due = '';
+                if (task.dueDate) {
+                    const raw = (task.dueDate && typeof task.dueDate.toDate === 'function') ? task.dueDate.toDate() : new Date(task.dueDate);
+                    if (!isNaN(raw.getTime())) due = formatTaskTimestamp(raw);
+                }
+                return `Task: ${String(task.description || '').trim()}` + (due ? `\nDue: ${due}` : '') + (task.assigneeEmail ? `\nAssigned to: ${(staffByEmail(task.assigneeEmail) || {}).name || task.assigneeEmail}` : '');
+            }
+            // Panel revealed by swiping a task row to the left (the right-swipe panel keeps Reminder / Quick send).
+            function swipeAltHTML(taskId) {
+                return `<div class="task-swipe-actions task-swipe-alt">
+                            <button type="button" class="task-share-wa text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-task-id="${taskId}" title="Share this task text on WhatsApp">Share on WhatsApp</button>
+                            <button type="button" class="task-copy-text text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-id="${taskId}" title="Copy the task text">Copy text</button>
+                        </div>`;
+            }
             function waDialogs() { return document.getElementById('wa-handoff-modal'); }
             function waHandoffShow(title, items, messageText) {
                 const modal = waDialogs();
@@ -2787,7 +2806,8 @@
                             <button class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''} title="Send a WhatsApp reminder">Reminder</button>
                             <button class="task-wa-button text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">Quick send</button>
                         </div>
-                    <div class="task-list-item" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>
+                                                    ${swipeAltHTML(task.id)}
+                                                <div class="task-list-item" data-task-type="${type}" data-task-id="${task.id}" ${identifiers.projectId ? `data-project-id="${identifiers.projectId}"` : ''}>
                         <span class="task-status-dot ${isDone ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
                              <p class="text-sm break-words flex-1 min-w-[10rem] ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${repeatIcon}${alarmIcon}${taskInfoHTML(task)}${dueDate && isOverdue ? '<span class="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">' + formatTaskTimestamp(dueDate) + '</span>' : ''}</p>
@@ -3238,6 +3258,13 @@
             window.renderWaGroupManager = renderWaGroupManager;
             window.renderWaContactManager = renderWaContactManager;
 
+            function reminderSenderName() {
+                return String((currentUserProfile && (currentUserProfile.name || currentUserProfile.handle)) || (currentUser && currentUser.email ? String(currentUser.email).split('@')[0] : '') || '').trim();
+            }
+            function reminderSignature() {
+                const n = reminderSenderName();
+                return n ? ('\n\n🔔 Reminder sent by: ' + n) : '';
+            }
             async function submitWaRemind() {
                 if (!waRemindCtx) return;
                 const memberBoxes = Array.from(document.querySelectorAll('#wa-remind-members .wa-remind-member-cb:checked'));
@@ -3273,7 +3300,7 @@
                     for (const cb of contactBoxes) items.push({ name: (cb.getAttribute('data-name') || 'contact'), phone: normalizeWaNumberClient(cb.value) });
                     if (customPhone) items.push({ name: customName, phone: customPhone });
                     document.getElementById('wa-remind-modal').classList.add('hidden');
-                    waHandoffShow('Send now from your own WhatsApp', items, baseMessage);
+                    waHandoffShow('Send now from your own WhatsApp', items, baseMessage + reminderSignature());
                     return;
                 }
                 try {
@@ -3322,6 +3349,7 @@
                             source: 'aligntasks-web',
                             createdBy: (currentUser && currentUser.email) || '',
                             createdByUid: (currentUser && currentUser.uid) || '',
+                            createdByName: reminderSenderName(),
                             viaAccount: useAccount ? (waAccount.uid || (currentUser && currentUser.uid) || '') : undefined,
                             updatedAt: Date.now()
                         };
@@ -3380,7 +3408,7 @@
                             name: String(tg.name || '')
                         }));
                         try {
-                            const res = await window.alignApi('/wa/multi/send', { method: 'POST', body: { message: baseMessage, targets: pay } });
+                            const res = await window.alignApi('/wa/multi/send', { method: 'POST', body: { message: baseMessage + reminderSignature(), targets: pay } });
                             document.getElementById('wa-remind-modal').classList.add('hidden');
                             waRemindCtx = null;
                             alert('Sent from your WhatsApp: ' + (res.sent || 0) + ' of ' + pay.length + ' destination' + (pay.length === 1 ? '' : 's') + ' done' + ((res.failed || 0) ? ('\n' + res.failed + ' failed: ' + (res.results || []).filter(r => !r.ok).map(r => r.name + ' — ' + (r.error || 'failed')).join(', ')) : '') + '.');
@@ -3399,7 +3427,7 @@
                     if (bridge.connected) {
                         const res = await window.alignApi('/wa/send', {
                             method: 'POST',
-                            body: { message: baseMessage, targets: targets.map(tg => ({ type: tg.type, id: tg.id, name: tg.name })) }
+                            body: { message: baseMessage + reminderSignature(), targets: targets.map(tg => ({ type: tg.type, id: tg.id, name: tg.name })) }
                         });
                         sent = Number(res && res.sent) || 0;
                         failed = Number(res && res.failed) || 0;
@@ -3408,7 +3436,7 @@
                     } else {
                         // WhatsApp is offline: leave it in the queue, the server flushes it on reconnect.
                         for (const tg of targets) {
-                            const msg = baseMessage + (tg.type === 'group' ? '\nGroup reminder' : ('\nFor: ' + tg.name));
+                            const msg = baseMessage + (tg.type === 'group' ? '\nGroup reminder' : ('\nFor: ' + tg.name)) + reminderSignature();
                             await db.collection('alignWaQueue').add({
                                 target: tg.id, targetType: tg.type, message: msg,
                                 taskId: waRemindCtx.taskId, taskTitle: String(t.description || '').substring(0, 80),
@@ -4452,7 +4480,8 @@
                            <button class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="tasks_for_all" data-task-id="${task.id}" title="Send a WhatsApp reminder">Reminder</button>
                            <button class="task-wa-button text-xs px-2.5 py-1.5 rounded-lg bg-[#34373d] text-[#f7ecd6] font-semibold" data-task-id="${task.id}" title="Open your own WhatsApp with this task ready to send">Quick send</button>
                        </div>
-                    <div class="task-list-item" data-task-type="tasks_for_all" data-task-id="${task.id}">
+                                                  ${swipeAltHTML(task.id)}
+                                               <div class="task-list-item" data-task-type="tasks_for_all" data-task-id="${task.id}">
                         <span class="task-status-dot ${isCompleted ? 'done' : ''}"></span>
                        <div class="flex-grow ml-3 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
                            <p class="text-sm break-words flex-1 min-w-[10rem] ${isCompleted ? 'line-through text-gray-400' : 'text-gray-800'}">${task.description}${taskInfoHTML(task)}</p>
@@ -5601,7 +5630,8 @@
                             <div class="task-swipe-actions">
                                 <button class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="personal_tasks" data-task-id="${t.id}" title="Send this task through WhatsApp">Reminder</button>
                             </div>
-                        <div class="personal-task-card bg-white rounded-xl shadow-sm border ${isDone ? 'border-gray-200 opacity-75' : (isOverdue ? 'border-red-200' : 'border-gray-200')} p-4 transition-all hover:shadow-md"
+                                                            ${swipeAltHTML(t.id)}
+                                                        <div class="personal-task-card bg-white rounded-xl shadow-sm border ${isDone ? 'border-gray-200 opacity-75' : (isOverdue ? 'border-red-200' : 'border-gray-200')} p-4 transition-all hover:shadow-md"
                              data-task-type="personal_tasks" data-task-id="${t.id}">
                             <div class="flex items-start gap-3">
                                 <span class="task-status-dot ${isDone ? 'done' : ''}" style="margin-top:6px"></span>
@@ -6342,7 +6372,8 @@
                            <button type="button" class="wa-remind-button text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-[#6b5f45] font-semibold" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}" title="Send a WhatsApp reminder">Reminder</button>
                            <button type="button" class="pp-task-del-action text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#d5cfc2] text-red-600 font-semibold" data-pp-id="${projectId}" data-task-id="${task.id}" title="Delete this task">Delete</button>
                        </div>
-                    <div class="task-list-item" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}">
+                                                  ${swipeAltHTML(task.id)}
+                                               <div class="task-list-item" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}">
                         <span class="task-status-dot ${done ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0">
                             <p class="text-sm break-words ${done ? 'line-through text-gray-400' : 'text-gray-800'}">${waEsc(task.description)} ${ppTaskInfoHTML(task)}</p>
@@ -7026,6 +7057,28 @@
                 }
                 const memberRemoveBtn = e.target.closest('.member-remove-btn');
                 if (memberRemoveBtn) { memberRemove(memberRemoveBtn.getAttribute('data-email')); return; }
+                const shareBtn = e.target.closest('.task-share-wa, .task-copy-text');
+                if (shareBtn) {
+                    const sTask = (window.taskRowCacheRef && window.taskRowCacheRef[shareBtn.getAttribute('data-task-id')]) || boardTasksCache[shareBtn.getAttribute('data-task-id')] || null;
+                    if (!sTask) { showTopNotice('Task text not available yet — try again.'); return; }
+                    const text = taskShareText(sTask);
+                    if (shareBtn.classList.contains('task-share-wa')) {
+                        openWaHandoff('', text);
+                    } else {
+                        let ok = copyToClipboard(text);
+                        if (!ok) {
+                            try {
+                                const ta = document.createElement('textarea');
+                                ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                                document.body.appendChild(ta); ta.select();
+                                ok = document.execCommand('copy');
+                                ta.remove();
+                            } catch (err) { ok = false; }
+                        }
+                        showTopNotice(ok ? 'Task text copied' : 'Could not copy the text');
+                    }
+                    return;
+                }
                 const waBtn = e.target.closest('.task-wa-button');
                 if (waBtn) {
                     const task = boardTasksCache[waBtn.getAttribute('data-task-id')] || {};
