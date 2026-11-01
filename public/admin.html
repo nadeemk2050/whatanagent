@@ -5512,11 +5512,14 @@
         }
 
         async function zaheerBatchFill() {
-            if (!confirm('Mr. Zaheer will read the stored chats of up to 5 contacts and fill their missing company / country / city / email / buyer-seller data.\n\nThis uses AI credits. Continue?')) return;
-            toastMsg('🎩 Zaheer is reading chats… this can take a minute', 8000);
+            const n = parseInt(prompt('How many contacts should Mr. Zaheer work on now?\n\nHe reads each chat and fills the missing company / country / city / address / website / email / buyer-seller data.\n\nEnter 1 - 15 (each contact = 1 AI call):', '10'), 10);
+            if (!n || n < 1) return;
+            const limit = Math.min(15, n);
+            toastMsg('🎩 Zaheer is reading ' + limit + ' chats… this can take a minute or two', 9000);
             try {
-                const d = await adminSend('POST', 'api/contactbook/zaheer-batch', { limit: 5 });
-                toastMsg('🎩 Done — ' + d.filledContacts + ' contact(s) improved, ' + d.fieldsFilled + ' field(s) filled. ' + (d.remaining ? d.remaining + ' still need data — press again.' : 'Book is complete!'), 7000);
+                const d = await adminSend('POST', 'api/contactbook/zaheer-batch', { limit: limit });
+                toastMsg('🎩 Done — ' + d.filledContacts + ' contact(s) improved, ' + d.fieldsFilled + ' field(s) filled. ' +
+                    (d.remaining ? d.remaining + ' still need data — press again.' : 'Book is complete!'), 8000);
                 await loadContactBook();
                 renderLeadsBook();
             } catch(e) { toastMsg('❌ ' + e.message, 5000); }
