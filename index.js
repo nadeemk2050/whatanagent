@@ -197,6 +197,26 @@ app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'whatanagent', role: NODE_ROLE, staging: STAGING_MODE, dryRun: DRY_RUN, schedulers: schedulerState, uptimeSec: Math.round(process.uptime()) });
 });
 
+app.get('/api/server/stats', (req, res, next) => (adminOk(req) ? next() : res.status(401).json({ error: 'Admin token required' })), async (req, res) => {
+  try {
+    const s = await import('./sysStats.mjs');
+    res.set('Cache-Control', 'no-store');
+    res.json(await s.getSummary());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/server/stats/details', (req, res, next) => (adminOk(req) ? next() : res.status(401).json({ error: 'Admin token required' })), async (req, res) => {
+  try {
+    const s = await import('./sysStats.mjs');
+    const [disk, procs] = await Promise.all([
+      s.getDiskBreakdown(req.query.dir || '/', req.query.fresh === '1'),
+      s.getTopProcesses()
+    ]);
+    res.set('Cache-Control', 'no-store');
+    res.json({ disk, procs });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 📡 Diagnostics — what plan am I on, what is eating the bandwidth, is the session persistent?
 // Admin-guarded (fail-closed): no ADMIN_TOKEN on the server -> 503.
 const diagGuard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'diagnostics' });

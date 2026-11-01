@@ -678,6 +678,7 @@
                 <h2 style="margin: 0; font-size: 1.2rem;">AI Admin Dashboard</h2>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
+                <span id="serverMonitorPill" style="font-size: 12px; font-weight: 600; color: #37474f; background: #f0f2f5; border: 1px solid var(--border); padding: 6px 12px; border-radius: 16px; white-space: nowrap; cursor: pointer; display: flex; gap: 8px; align-items: center;">🖥️ loading…</span>
                 <span style="font-size: 13px; font-weight: bold; color: #546e7a; background: #f0f2f5; border: 1px solid var(--border); padding: 6px 12px; border-radius: 16px; white-space: nowrap;">WhatAnAgent v1.3</span>
                 <button class="btn-pwa-install" onclick="installPWA()">📲 Install App</button>
             </div>
@@ -12522,6 +12523,7 @@
     <!-- 🔴 Live Interactive Discussion / Meeting Board Engine -->
     <script src="/liveMeetingClient.js"></script>
     <script src="/wa-manager.js"></script>
+    <script src="/server-monitor.js"></script>
     <script src="/liveMeetingSessionsClient.js"></script>
 <script>
 /* ===================== ATS AI IDE WORKSPACE (client only, no build step) =====================
