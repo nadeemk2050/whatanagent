@@ -281,7 +281,7 @@
         .task-info-btn { font-size: 12px; line-height: 1; color: #9ca3af; cursor: help; user-select: none; }
         .task-info-wrap:hover .task-info-btn, .task-info-wrap:focus-within .task-info-btn { color: #34373d; }
         .task-info-pop { display: none; position: absolute; left: 0; top: 100%; margin-top: 3px; z-index: 70; background: #111827; color: #f9fafb; font-size: 11px; line-height: 1.45; padding: 6px 9px; border-radius: 8px; width: max-content; max-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,.28); text-align: left; white-space: normal; font-weight: 400; }
-        .task-info-wrap:hover .task-info-pop, .task-info-wrap:focus-within .task-info-pop { display: block; }
+        .task-info-wrap:hover .task-info-pop, .task-info-wrap:focus-within .task-info-pop { display: none !important; }
         .task-row-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
         /* Comments: full-page chat view */
         .comment-chat-scroll { overflow-y: auto; }
@@ -2665,9 +2665,38 @@
                 if (comments) lines.push(comments + ' comment' + (comments === 1 ? '' : 's'));
                 return lines;
             }
+            function taskStampRows(task) {
+                const rows = [];
+                const who = (n, id) => n || (id ? String(id).split('@')[0] : '');
+                const add = (label, at, by) => {
+                    if (!at) return;
+                    const t = formatTaskTimestamp(at);
+                    if (t) rows.push({ label, text: t + (by ? ' · ' + by : '') });
+                };
+                add('Created', task.createdAt, who(task.createdByName, task.createdBy));
+                const done = task.status === 'Done';
+                let editedAt = task.editedAt;
+                // Older personal-project tasks only kept lastUpdatedAt; completing also sets it, so only trust it while the task is still open.
+                if (!editedAt && !done && task.lastUpdatedAt && task.createdAt) {
+                    const a = (task.lastUpdatedAt.toDate ? task.lastUpdatedAt.toDate() : new Date(task.lastUpdatedAt)).getTime();
+                    const c = (task.createdAt.toDate ? task.createdAt.toDate() : new Date(task.createdAt)).getTime();
+                    if (a - c > 60000) editedAt = task.lastUpdatedAt;
+                }
+                add('Modified', editedAt, who(task.editedByName, task.editedBy));
+                if (done) add('Completed', task.completedAt, who(task.completedByName, task.completedBy));
+                return rows;
+            }
+            function ppTaskInfoHTML(task) {
+                const lines = taskStampRows(task).map(r => r.label + ': ' + r.text);
+                if (!lines.length) lines.push('No timestamps recorded for this task');
+                return `<span class="task-info-wrap" tabindex="0">` +
+                    `<span class="task-info-btn" aria-label="Task remarks">ⓘ</span>` +
+                    `<span class="task-info-pop">${lines.map(l => `<span class="block">${waEsc(l)}</span>`).join('')}</span>` +
+                    `</span>`;
+            }
             function taskInfoHTML(task) {
                 const lines = taskInfoLines(task);
-                return `<span class="task-info-wrap" tabindex="0" title="${waEsc(lines.join('\\n'))}">` +
+                return `<span class="task-info-wrap" tabindex="0">` +
                     `<span class="task-info-btn" aria-label="Task details">ⓘ</span>` +
                     `<span class="task-info-pop">${lines.map(l => `<span class="block">${waEsc(l)}</span>`).join('')}</span>` +
                     `</span>`;
@@ -4648,6 +4677,50 @@
                 fireLongPress(target, e.clientX, e.clientY);
             });
 
+            // ===== Floating remarks tooltip: rendered on <body> so no row (overflow:hidden / transform) can clip it =====
+            (function () {
+                let tip = null, owner = null;
+                function ensure() {
+                    if (tip) return tip;
+                    tip = document.createElement('div');
+                    tip.id = 'task-info-floating';
+                    tip.style.cssText = 'position:fixed;z-index:2147483000;display:none;background:#111827;color:#f9fafb;font-size:12px;line-height:1.5;padding:8px 11px;border-radius:9px;max-width:min(320px,calc(100vw - 16px));box-shadow:0 12px 34px rgba(0,0,0,.4);pointer-events:none;white-space:normal;text-align:left;';
+                    document.body.appendChild(tip);
+                    return tip;
+                }
+                function hide() { if (tip) tip.style.display = 'none'; owner = null; }
+                function show(wrap) {
+                    const pop = wrap.querySelector('.task-info-pop');
+                    if (!pop) return;
+                    const t = ensure();
+                    t.innerHTML = pop.innerHTML.replace(/class="block"/g, 'style="display:block"');
+                    t.style.display = 'block';
+                    owner = wrap;
+                    const r = wrap.getBoundingClientRect();
+                    const w = t.offsetWidth, h = t.offsetHeight;
+                    let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+                    let top = r.bottom + 6;
+                    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+                    t.style.left = left + 'px';
+                    t.style.top = top + 'px';
+                }
+                document.addEventListener('mouseover', e => {
+                    const w = e.target.closest && e.target.closest('.task-info-wrap');
+                    if (w) show(w); else if (owner) hide();
+                });
+                document.addEventListener('focusin', e => {
+                    const w = e.target.closest && e.target.closest('.task-info-wrap');
+                    if (w) show(w);
+                });
+                document.addEventListener('click', e => {
+                    const w = e.target.closest && e.target.closest('.task-info-wrap');
+                    if (w) { if (owner === w && tip && tip.style.display === 'block') hide(); else show(w); }
+                    else hide();
+                }, true);
+                document.addEventListener('scroll', hide, true);
+                window.addEventListener('resize', hide);
+            })();
+
             // ===== Zoomed single-task view (short press) =====
             const taskRowCache = {};
             window.taskRowCacheRef = taskRowCache;
@@ -4683,8 +4756,13 @@
                         waEsc(task.description || '') + '</p>' +
                     (meta.length ? '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">' +
                         meta.map(m => '<span style="font-size:12px;font-weight:600;background:#f1f5f9;color:#475569;border-radius:999px;padding:4px 10px;">' + m + '</span>').join('') +
-                        '</div>' : '');
-                document.getElementById('task-zoom-modal').classList.remove('hidden');
+                        '</div>' : '') +
+                    (function () {
+                        const st = taskStampRows(task);
+                        if (!st.length) return '';
+                        return '<div style="margin-top:14px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.7;">' +
+                            st.map(r => '<div><span style="font-weight:700;color:#475569;">' + waEsc(r.label) + ':</span> ' + waEsc(r.text) + '</div>').join('') + '</div>';
+                    })();
             }
             (function () {
                 const close = document.getElementById('task-zoom-close');
@@ -6194,7 +6272,7 @@
                     <div class="task-list-item" data-task-type="personal_project" data-task-id="${task.id}" data-project-id="${projectId}">
                         <span class="task-status-dot ${done ? 'done' : ''}"></span>
                         <div class="flex-grow ml-3 min-w-0">
-                            <p class="text-sm break-words ${done ? 'line-through text-gray-400' : 'text-gray-800'}">${waEsc(task.description)}</p>
+                            <p class="text-sm break-words ${done ? 'line-through text-gray-400' : 'text-gray-800'}">${waEsc(task.description)} ${ppTaskInfoHTML(task)}</p>
                             <div class="task-meta">${task.dueDate ? 'Due: ' + formatTaskTimestamp(task.dueDate) : 'No due date'}${done ? ' · completed' : ''}</div>
                         </div>
                     </div>
