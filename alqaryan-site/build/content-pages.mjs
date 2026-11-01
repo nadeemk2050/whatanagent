@@ -131,6 +131,46 @@ export const PAGES = [
       <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gAbs" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b6f7a"/><stop offset="1" stop-color="#123f47"/></linearGradient></defs><rect width="200" height="76" fill="url(#gAbs)"/><g fill="rgba(255,255,255,.18)"><polygon points="34,20 46,27 46,41 34,48 22,41 22,27"/><polygon points="96,26 108,33 108,47 96,54 84,47 84,33"/><polygon points="156,18 168,25 168,39 156,46 144,39 144,25"/></g></svg></div>
       <b>ABS &amp; PS</b><span>Electronics, appliance housings → moulding</span>
     </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#157a5c"/><g fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3"><path d="M-10 64 Q 40 34 90 58 T 210 46"/><path d="M-10 48 Q 40 18 90 42 T 210 30"/><path d="M-10 32 Q 40 4 90 26 T 210 16"/></g></svg></div>
+      <b>LLDPE</b><span>Stretch film, liners, flexible packaging, rotomoulding powder</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#1b7f63"/><g fill="rgba(255,255,255,.18)"><rect x="26" y="18" width="30" height="13" rx="3"/><rect x="74" y="40" width="34" height="13" rx="3"/><rect x="128" y="20" width="30" height="13" rx="3"/><rect x="52" y="60" width="28" height="10" rx="3"/></g></svg></div>
+      <b>PPRC</b><span>Random copolymer for clear food packaging and thermoforming</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#2b6f7a"/><g fill="rgba(255,255,255,.18)"><polygon points="40,22 52,29 52,43 40,50 28,43 28,29"/><polygon points="100,28 112,35 112,49 100,56 88,49 88,35"/><polygon points="158,20 170,27 170,41 158,48 146,41 146,27"/></g></svg></div>
+      <b>Engineering Plastics</b><span>PC, PMMA and technical grades for demanding applications</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#3f5f8a"/><g fill="rgba(255,255,255,.22)"><circle cx="34" cy="26" r="6"/><circle cx="62" cy="50" r="6"/><circle cx="92" cy="24" r="6"/><circle cx="122" cy="50" r="6"/><circle cx="152" cy="26" r="6"/><circle cx="178" cy="50" r="6"/></g></svg></div>
+      <b>Masterbatch</b><span>Colour, white, black, UV stabilisers and additive packs</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#6b7280"/><g stroke="rgba(255,255,255,.25)" stroke-width="4"><line x1="0" y1="24" x2="200" y2="24"/><line x1="0" y1="52" x2="200" y2="52"/></g><g fill="rgba(255,255,255,.3)"><rect x="24" y="18" width="60" height="12" rx="2"/><rect x="110" y="46" width="66" height="12" rx="2"/></g></svg></div>
+      <b>Off-Spec</b><span>Off-specification lots for cost-sensitive production</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#4b6b5f"/><g fill="rgba(255,255,255,.2)"><rect x="18" y="20" width="40" height="16" rx="3"/><rect x="70" y="42" width="46" height="16" rx="3"/><rect x="128" y="18" width="44" height="16" rx="3"/></g></svg></div>
+      <b>Off-Grade</b><span>Alternative resin grades in bulk, subject to specification</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#0d7a54"/><g fill="none" stroke="rgba(255,255,255,.3)" stroke-width="3"><circle cx="52" cy="38" r="18"/><path d="M52 20 v10 M52 46 v10 M34 38 h10 M60 38 h10"/></g><g fill="rgba(255,255,255,.18)"><circle cx="132" cy="28" r="8"/><circle cx="158" cy="48" r="10"/></g></svg></div>
+      <b>Recycled Plastics</b><span>Post-industrial and post-consumer HDPE, PP and PET</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#116b52"/><g fill="rgba(255,255,255,.22)"><path d="M26 52 l10-16 10 16z"/><path d="M62 44 l12-20 12 20z"/><path d="M104 52 l9-15 9 15z"/><path d="M140 42 l12-19 12 19z"/></g></svg></div>
+      <b>Regrind &amp; Flakes</b><span>Regrind and washed flake, single polymer or mixed</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#5a6b46"/><g fill="rgba(255,255,255,.2)"><path d="M30 56 q 14-26 30-6 q 14-22 28 4 z"/><path d="M112 58 q 12-22 26-4 q 12-18 26 6 z"/></g></svg></div>
+      <b>Purges &amp; Plant Recovery</b><span>Purges, lumps and floor sweep from processing plants</span>
+    </a>
+    <a class="q-mtile" href="/materials/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><rect width="200" height="76" fill="#1d7d63"/><g fill="rgba(255,255,255,.22)"><rect x="20" y="22" width="46" height="32" rx="4"/><rect x="76" y="22" width="46" height="32" rx="4"/><rect x="132" y="22" width="46" height="32" rx="4"/></g></svg></div>
+      <b>Bales, Rolls &amp; Powder</b><span>LDPE bales, stocklot rolls and rotomoulding powder</span>
+    </a>
   </div>
 </div>
 

@@ -31,7 +31,7 @@ export const DEFAULT_READY_THRESHOLD = 80;
 export const AVAILABLE_MODELS = [
   { id: 'qwen3.8-flash', label: 'Qwen3.8-Flash (fast, multilingual, cheapest)' },
   { id: 'qwen3.8-omni-flash', label: 'Qwen3.8-Omni-Flash (text + image + audio)' },
-  { id: 'deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash (strict JSON, strong reasoning)' },
+  { id: 'deepseek-flash', label: 'DeepSeek V4.1 Flash (strict JSON, strong reasoning)' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (PDF + documents)' },
   { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
   { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' }

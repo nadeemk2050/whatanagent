@@ -590,3 +590,61 @@ body.admin-bar .q-site-head { top: 0; }
   .q-gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .6rem; }
 }
 
+/* ==========================================================================
+   Floating contact stack — every page, no plugin, no image files
+   ========================================================================== */
+.q-fab {
+  position: fixed;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 9990;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: qFabIn .6s ease both;
+}
+.q-fab__btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .22);
+  text-decoration: none !important;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.q-fab__btn svg { width: 23px; height: 23px; display: block; }
+.q-fab__btn:hover { transform: scale(1.09); box-shadow: 0 10px 24px rgba(15, 23, 42, .3); }
+.q-fab__btn:focus-visible { outline: 3px solid #0b6e4f; outline-offset: 2px; }
+.q-fab__btn--wa { background: #25d366; animation: qFabPulse 3.2s ease-in-out infinite; }
+.q-fab__btn--call { background: #f59e0b; }
+.q-fab__btn--mail { background: #2563eb; }
+
+@keyframes qFabIn {
+  from { opacity: 0; transform: translate(20px, -50%); }
+  to   { opacity: 1; transform: translate(0, -50%); }
+}
+@keyframes qFabPulse {
+  0%, 72%, 100% { box-shadow: 0 6px 18px rgba(15, 23, 42, .22); }
+  80% { box-shadow: 0 0 0 0 rgba(37, 211, 102, .55); }
+  92% { box-shadow: 0 0 0 14px rgba(37, 211, 102, 0); }
+}
+
+@media (max-width: 900px) {
+  .q-fab { right: 9px; gap: 8px; }
+  .q-fab__btn { width: 42px; height: 42px; }
+  .q-fab__btn svg { width: 21px; height: 21px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .q-fab, .q-fab__btn--wa { animation: none !important; }
+}
+
+@media print {
+  .q-fab { display: none !important; }
+}
+
+
