@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PAGES, MENU, SITE } from './content-pages.mjs';
+import { wrapContent } from './chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, '..', 'dist');
@@ -25,7 +26,7 @@ function meta(key, value) {
 }
 
 function pageItem(p) {
-  const content = '<!-- wp:html -->\n' + p.html.trim() + '\n<!-- /wp:html -->';
+  const content = wrapContent(p.html);
   const metas = [];
   if (p.seoTitle) metas.push(meta('rank_math_title', p.seoTitle));
   if (p.seoDesc) metas.push(meta('rank_math_description', p.seoDesc));

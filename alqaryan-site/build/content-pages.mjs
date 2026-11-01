@@ -51,8 +51,8 @@ export const PAGES = [
     html: `
 <div class="q-hero">
   <p class="q-kicker">Karachi, Pakistan · established 2007 · 500 tons per month</p>
-  <h1>Plastic recycling, polymer trading and PVC pipes</h1>
-  <p class="q-lead">Al Qaryan Industries LLC recycles plastic scrap into clean regrind and pellets, and manufactures and supplies PVC pipes. We import raw material from Japan, USA, Canada, Malaysia, the UAE, Saudi Arabia and Indonesia, process it at our Shershah Industrial Area facility, and supply manufacturers across Pakistan.</p>
+  <h1>We import and trade all types of plastic</h1>
+  <p class="q-lead">Al Qaryan Industries LLC is a Karachi-based plastic trading and recycling house, established 2007. We import virgin and recycled polymers from Japan, the USA, Canada, Malaysia, the UAE, Saudi Arabia and Indonesia, process what we buy at our own Shershah Industrial Area facility, and supply manufacturers across Pakistan — regrind, flakes, pellets, off-grade material, bales and purges, plus PVC pipes.</p>
   <div class="q-cta-row">
     <a class="q-btn q-btn--primary" href="/contact/">Request a quote</a>
     <a class="q-btn q-btn--ghost" href="/we-buy/">Sell us your scrap</a>
@@ -67,7 +67,23 @@ export const PAGES = [
 </div>
 
 <div class="q-section">
-  <h2>Three things we do</h2>
+  <h2>Two ways to trade with us</h2>
+  <div class="q-funnels">
+    <div class="q-funnel">
+      <h3>📥 We buy — from you</h3>
+      <p>Bales, purges, off-grade lots, plant recovery, regrind, flakes and scrap — single polymer or mixed. Local truckloads and container lots from the UAE, Saudi Arabia, the USA, Canada, Malaysia, Japan and Indonesia.</p>
+      <a class="q-btn q-btn--primary" href="/we-buy/">Sell us your material</a>
+    </div>
+    <div class="q-funnel q-funnel--alt">
+      <h3>📤 We supply — to you</h3>
+      <p>Regrind, washed flake, pellets and off-grade resin for film, pipe, moulding and raffia producers. PVC and UPVC pipes from our own two extrusion lines. Grades agreed per lot, documented per batch.</p>
+      <a class="q-btn q-btn--primary" href="/materials/">See the materials</a>
+    </div>
+  </div>
+</div>
+
+<div class="q-section">
+  <h2>What we do</h2>
   <div class="q-grid q-grid--3">
     <div class="q-card">
       <h3>Plastic recycling</h3>
@@ -89,14 +105,32 @@ export const PAGES = [
 
 <div class="q-section">
   <h2>Materials we supply</h2>
-  <p>Every material is available as regrind or pellets, subject to the grade and colour you need. Tell us the application and we will tell you which grade fits.</p>
-  <div class="q-chips">
-    <a class="q-chip" href="/materials/hdpe/">HDPE</a>
-    <a class="q-chip" href="/materials/ldpe/">LDPE</a>
-    <a class="q-chip" href="/materials/pp/">PP</a>
-    <a class="q-chip" href="/materials/pet/">PET</a>
-    <a class="q-chip" href="/materials/pvc/">PVC</a>
-    <a class="q-chip" href="/materials/abs-ps/">ABS &amp; PS</a>
+  <p>Every material is available as regrind, washed flake or pellets, subject to the grade and colour you need. Tell us the application and we will tell you which grade fits.</p>
+  <div class="q-mgrid">
+    <a class="q-mtile" href="/materials/hdpe/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gHdpe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b6e4f"/><stop offset="1" stop-color="#0a4d38"/></linearGradient></defs><rect width="200" height="76" fill="url(#gHdpe)"/><g fill="rgba(255,255,255,.18)"><circle cx="26" cy="22" r="7"/><circle cx="52" cy="42" r="5"/><circle cx="80" cy="20" r="6"/><circle cx="108" cy="46" r="7"/><circle cx="138" cy="24" r="5"/><circle cx="166" cy="48" r="6"/><circle cx="40" cy="62" r="4"/><circle cx="120" cy="66" r="4"/></g></svg></div>
+      <b>HDPE</b><span>Bottles, crates, caps → film, pipe, injection</span>
+    </a>
+    <a class="q-mtile" href="/materials/ldpe/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gLdpe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#13896a"/><stop offset="1" stop-color="#0b5c47"/></linearGradient></defs><rect width="200" height="76" fill="url(#gLdpe)"/><g fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3"><path d="M-10 62 Q 40 30 90 56 T 210 44"/><path d="M-10 46 Q 40 14 90 40 T 210 28"/></g></svg></div>
+      <b>LDPE</b><span>Film, bags, liners → film and sheet</span>
+    </a>
+    <a class="q-mtile" href="/materials/pp/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gPp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c7e5c"/><stop offset="1" stop-color="#0d4a34"/></linearGradient></defs><rect width="200" height="76" fill="url(#gPp)"/><g fill="rgba(255,255,255,.16)"><rect x="18" y="18" width="26" height="12" rx="3"/><rect x="60" y="38" width="30" height="12" rx="3"/><rect x="104" y="16" width="24" height="12" rx="3"/><rect x="140" y="40" width="30" height="12" rx="3"/><rect x="40" y="58" width="26" height="10" rx="3"/><rect x="120" y="62" width="26" height="10" rx="3"/></g></svg></div>
+      <b>PP</b><span>Woven sacks, containers → raffia, injection</span>
+    </a>
+    <a class="q-mtile" href="/materials/pet/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gPet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f9e8a"/><stop offset="1" stop-color="#0f5f56"/></linearGradient></defs><rect width="200" height="76" fill="url(#gPet)"/><g fill="rgba(255,255,255,.20)"><path d="M26 50 l10-16 10 16z"/><path d="M62 44 l12-20 12 20z"/><path d="M104 52 l9-15 9 15z"/><path d="M140 42 l12-19 12 19z"/></g></svg></div>
+      <b>PET</b><span>Bottles, preforms → washed flake</span>
+    </a>
+    <a class="q-mtile" href="/materials/pvc/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gPvc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f766e"/><stop offset="1" stop-color="#0a4a44"/></linearGradient></defs><rect width="200" height="76" fill="url(#gPvc)"/><g stroke="rgba(255,255,255,.22)" stroke-width="7" stroke-linecap="round"><line x1="20" y1="52" x2="60" y2="24"/><line x1="70" y1="52" x2="110" y2="24"/><line x1="120" y1="52" x2="160" y2="24"/></g></svg></div>
+      <b>PVC</b><span>Pipe, profile, window → regrind &amp; compound</span>
+    </a>
+    <a class="q-mtile" href="/materials/abs-ps/">
+      <div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gAbs" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b6f7a"/><stop offset="1" stop-color="#123f47"/></linearGradient></defs><rect width="200" height="76" fill="url(#gAbs)"/><g fill="rgba(255,255,255,.18)"><polygon points="34,20 46,27 46,41 34,48 22,41 22,27"/><polygon points="96,26 108,33 108,47 96,54 84,47 84,33"/><polygon points="156,18 168,25 168,39 156,46 144,39 144,25"/></g></svg></div>
+      <b>ABS &amp; PS</b><span>Electronics, appliance housings → moulding</span>
+    </a>
   </div>
 </div>
 
@@ -115,6 +149,15 @@ export const PAGES = [
   <h2>Where we operate</h2>
   <p>Our entire operation is in Karachi: recycling and pipe production at Shershah Industrial Area, and supply to manufacturers across Pakistan — Sindh, Punjab, Balochistan and Khyber Pakhtunkhwa.</p>
   <p><a class="q-link" href="/facility/">See the facility</a> · <a class="q-link" href="/quality/">Quality and certifications</a></p>
+</div>
+
+<div class="q-section">
+  <h2>Inside our Karachi facility</h2>
+  <figure class="q-photo q-photo--small">
+    <img src="{{IMG_PLANT}}" srcset="{{IMG_PLANT}} 374w, {{IMG_PLANT_SM}} 240w" sizes="(max-width: 640px) 92vw, 460px" alt="Shredding and washing line at the Al Qaryan Industries plastics facility, Shershah Industrial Area, Karachi" width="374" height="320" loading="lazy" decoding="async">
+    <figcaption>Shredding and washing line, Shershah Industrial Area, Karachi — 500 tons processed every month.</figcaption>
+  </figure>
+  <p><a class="q-link" href="/gallery/">See the full gallery</a></p>
 </div>
 
 ${CTA}
@@ -1164,6 +1207,46 @@ ${CTA}`
   <h2>Contact</h2>
   <p>Al Qaryan Industries LLC, Shershah Industrial Area, Karachi · ${TEL} · <a href="mailto:info@alqaryangroup.com">info@alqaryangroup.com</a></p>
 </div>`
+  },
+
+  {
+    id: 1038,
+    slug: 'gallery',
+    title: 'Gallery',
+    seoTitle: 'Our Facility &amp; Materials Gallery | Al Qaryan Industries Karachi',
+    seoDesc: 'Photos of the Al Qaryan Industries plastics facility in Karachi: shredding and washing line, pelletiser, PVC pipe extrusion and the materials we trade.',
+    focus: 'plastic recycling facility Karachi photos',
+    html: `
+<div class="q-hero q-hero--compact">
+  <p class="q-kicker">Gallery</p>
+  <h1>Inside our plant</h1>
+  <p class="q-lead">Real photographs of the equipment and materials at our Shershah Industrial Area facility in Karachi — no stock imagery.</p>
+</div>
+
+<div class="q-section">
+  <h2>Recycling line</h2>
+  <div class="q-gallery">
+    <figure>
+      <img src="{{IMG_PLANT}}" alt="Shredding and washing line with conveyor at the Al Qaryan Industries facility, Karachi" width="374" height="320" loading="lazy" decoding="async">
+      <figcaption>Shredding and washing line — size reduction and washing before pelletising.</figcaption>
+    </figure>
+  </div>
+  <p class="q-muted">More photographs of the pelletiser, PVC pipe extrusion lines, warehouse and material grades are added here as they are taken. If you need a specific view before then — for example a loading photo or a close-up of a grade — ask and we will send it.</p>
+</div>
+
+<div class="q-section">
+  <h2>What we trade</h2>
+  <div class="q-mgrid">
+    <a class="q-mtile" href="/materials/hdpe/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGHdpe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b6e4f"/><stop offset="1" stop-color="#0a4d38"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGHdpe)"/><g fill="rgba(255,255,255,.18)"><circle cx="30" cy="24" r="7"/><circle cx="60" cy="46" r="5"/><circle cx="92" cy="22" r="6"/><circle cx="126" cy="48" r="7"/><circle cx="160" cy="26" r="5"/></g></svg></div><b>HDPE</b><span>Regrind, flake, pellets</span></a>
+    <a class="q-mtile" href="/materials/ldpe/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGLdpe" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#13896a"/><stop offset="1" stop-color="#0b5c47"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGLdpe)"/><g fill="none" stroke="rgba(255,255,255,.22)" stroke-width="3"><path d="M-10 62 Q 40 30 90 56 T 210 44"/><path d="M-10 46 Q 40 14 90 40 T 210 28"/></g></svg></div><b>LDPE</b><span>Film and liner grades</span></a>
+    <a class="q-mtile" href="/materials/pp/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGPp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c7e5c"/><stop offset="1" stop-color="#0d4a34"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGPp)"/><g fill="rgba(255,255,255,.16)"><rect x="22" y="20" width="28" height="12" rx="3"/><rect x="70" y="40" width="30" height="12" rx="3"/><rect x="120" y="18" width="26" height="12" rx="3"/></g></svg></div><b>PP</b><span>Raffia and injection</span></a>
+    <a class="q-mtile" href="/materials/pet/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGPet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f9e8a"/><stop offset="1" stop-color="#0f5f56"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGPet)"/><g fill="rgba(255,255,255,.20)"><path d="M30 52 l10-16 10 16z"/><path d="M72 46 l12-20 12 20z"/><path d="M118 54 l9-15 9 15z"/><path d="M156 44 l12-19 12 19z"/></g></svg></div><b>PET</b><span>Washed bottle flake</span></a>
+    <a class="q-mtile" href="/materials/pvc/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGPvc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f766e"/><stop offset="1" stop-color="#0a4a44"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGPvc)"/><g stroke="rgba(255,255,255,.22)" stroke-width="7" stroke-linecap="round"><line x1="26" y1="52" x2="66" y2="24"/><line x1="82" y1="52" x2="122" y2="24"/><line x1="138" y1="52" x2="178" y2="24"/></g></svg></div><b>PVC</b><span>Regrind and compound</span></a>
+    <a class="q-mtile" href="/materials/abs-ps/"><div class="q-mtile__art"><svg viewBox="0 0 200 76" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="gGAbs" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b6f7a"/><stop offset="1" stop-color="#123f47"/></linearGradient></defs><rect width="200" height="76" fill="url(#gGAbs)"/><g fill="rgba(255,255,255,.18)"><polygon points="40,22 52,29 52,43 40,50 28,43 28,29"/><polygon points="100,28 112,35 112,49 100,56 88,49 88,35"/><polygon points="158,20 170,27 170,41 158,48 146,41 146,27"/></g></svg></div><b>ABS &amp; PS</b><span>Housings and moulding</span></a>
+  </div>
+</div>
+
+${CTA}`
   },
 ];
 
