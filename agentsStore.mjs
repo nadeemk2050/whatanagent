@@ -563,3 +563,158 @@ export async function logToolCall(id, entry) {
   }
   return saved;
 }
+
+
+// ============================================================================
+// 📄 READY TO INSERT CV COLLECTION
+// ============================================================================
+export const CVS = 'agentCvs';
+const cvCache = new Map();          // cvId -> { cv, at }
+const cvListCache = { at: 0, items: null };
+
+export function sanitizeCv(raw = {}, existing = {}) {
+  const c = {};
+  c.id = sstr(raw.id || existing.id, 80) || ('cv-' + slug(raw.name || 'cv') + '-' + Math.random().toString(36).slice(2, 6));
+  c.title = sstr(raw.title || existing.title || (raw.name ? (raw.name + (raw.role ? ' — ' + raw.role : '')) : 'AI Staff CV'), 140);
+  c.name = sstr(raw.name != null ? raw.name : existing.name, 60);
+  c.role = sstr(raw.role != null ? raw.role : existing.role, 140);
+  c.gender = ['male', 'female', 'neutral'].includes(raw.gender || existing.gender) ? (raw.gender || existing.gender) : 'neutral';
+  c.category = ['business', 'knowledge', 'personal'].includes(raw.category || existing.category) ? (raw.category || existing.category) : 'business';
+  c.emoji = sstr(raw.emoji != null ? raw.emoji : existing.emoji, 8) || '🧑‍💼';
+  c.avatarUrl = sstr(raw.avatarUrl != null ? raw.avatarUrl : existing.avatarUrl, 500);
+  c.agePersona = sstr(raw.agePersona != null ? raw.agePersona : existing.agePersona, 40);
+  c.languages = arr(raw.languages != null ? raw.languages : existing.languages, 30, 12);
+  if (!c.languages.length) c.languages = ['English', 'Roman Urdu', 'Urdu'];
+  c.defaultLanguage = sstr(raw.defaultLanguage != null ? raw.defaultLanguage : existing.defaultLanguage, 40) || 'Roman Urdu';
+  c.jobDescription = sstr(raw.jobDescription != null ? raw.jobDescription : existing.jobDescription, 6000);
+  c.tone = sstr(raw.tone != null ? raw.tone : existing.tone, 400);
+  c.workingHours = sstr(raw.workingHours != null ? raw.workingHours : existing.workingHours, 120);
+  c.traits = arr(raw.traits != null ? raw.traits : existing.traits, 60, 20);
+  c.signaturePhrases = arr(raw.signaturePhrases != null ? raw.signaturePhrases : existing.signaturePhrases, 120, 15);
+  c.emojiHabit = sstr(raw.emojiHabit != null ? raw.emojiHabit : existing.emojiHabit, 160);
+  c.backstory = sstr(raw.backstory != null ? raw.backstory : existing.backstory, 1200);
+
+  const rg = raw.guardrails || {};
+  const eg = existing.guardrails || {};
+  c.guardrails = {
+    always: arr(rg.always != null ? rg.always : eg.always, 300, 25),
+    never: arr(rg.never != null ? rg.never : eg.never, 300, 25),
+    escalation: arr(rg.escalation != null ? rg.escalation : eg.escalation, 300, 20),
+    disclaimers: arr(rg.disclaimers != null ? rg.disclaimers : eg.disclaimers, 300, 10)
+  };
+
+  c.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'qwen3.8-flash';
+  c.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'gemini-2.5-flash';
+  c.readyThreshold = clamp(raw.readyThreshold != null ? raw.readyThreshold : existing.readyThreshold, 0, 100) || 80;
+  c.dailyBudgetUsd = Number(raw.dailyBudgetUsd != null ? raw.dailyBudgetUsd : existing.dailyBudgetUsd) || 0.5;
+  c.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);
+  c.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);
+  c.systemPrompt = sstr(raw.systemPrompt != null ? raw.systemPrompt : existing.systemPrompt, 16000);
+  c.sourceAgentId = sstr(raw.sourceAgentId != null ? raw.sourceAgentId : existing.sourceAgentId, 80);
+  c.isDefaultAgent = asBool(raw.isDefaultAgent != null ? raw.isDefaultAgent : existing.isDefaultAgent, false);
+  c.createdAt = existing.createdAt || raw.createdAt || Date.now();
+  c.updatedAt = Date.now();
+  return c;
+}
+
+export function agentToCv(agent) {
+  if (!agent) return null;
+  const cvId = 'cv-' + slug(agent.name || 'agent') + (agent.id ? '-' + agent.id.replace(/^zaheer$/, 'default') : '');
+  return sanitizeCv({
+    id: cvId,
+    title: agent.name + (agent.role ? ' — ' + agent.role : ''),
+    name: agent.name,
+    role: agent.role,
+    gender: agent.gender,
+    category: agent.category,
+    emoji: agent.emoji,
+    avatarUrl: agent.avatarUrl,
+    agePersona: agent.agePersona,
+    languages: agent.languages,
+    defaultLanguage: agent.defaultLanguage,
+    jobDescription: agent.jobDescription,
+    tone: agent.tone,
+    workingHours: agent.workingHours,
+    traits: agent.traits,
+    signaturePhrases: agent.signaturePhrases,
+    emojiHabit: agent.emojiHabit,
+    backstory: agent.backstory,
+    guardrails: agent.guardrails,
+    model: agent.model,
+    fallbackModel: agent.fallbackModel,
+    readyThreshold: agent.readyThreshold,
+    dailyBudgetUsd: agent.dailyBudgetUsd,
+    useBusinessKb: agent.useBusinessKb,
+    allowedTools: agent.allowedTools,
+    systemPrompt: agent.systemPrompt,
+    sourceAgentId: agent.id,
+    isDefaultAgent: !!(agent.isDefault || agent.isProtected),
+    createdAt: agent.createdAt || Date.now()
+  });
+}
+
+export async function getCv(id, { fresh = false } = {}) {
+  if (!agentsDb || !id) return null;
+  const hit = cvCache.get(id);
+  if (!fresh && hit && (Date.now() - hit.at) < CACHE_TTL_MS) return hit.cv;
+  try {
+    const snap = await getDoc(doc(agentsDb, CVS, id));
+    const cv = snap.exists() ? { id, ...snap.data() } : null;
+    if (cv) cvCache.set(id, { cv, at: Date.now() });
+    return cv;
+  } catch (e) {
+    console.warn('[AGENTS] CV read failed for ' + id + ':', e.message);
+    return hit ? hit.cv : null;
+  }
+}
+
+export async function listCvs({ fresh = false } = {}) {
+  if (!agentsDb) return [];
+  if (!fresh && cvListCache.items && (Date.now() - cvListCache.at) < CACHE_TTL_MS) return cvListCache.items;
+  try {
+    const snap = await getDocs(collection(agentsDb, CVS));
+    const out = [];
+    snap.forEach(d => out.push({ id: d.id, ...d.data() }));
+    // Zaheer / default assistant first, then recently updated
+    out.sort((a, b) => (Number(!!b.isDefaultAgent) - Number(!!a.isDefaultAgent)) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
+    for (const c of out) cvCache.set(c.id, { cv: c, at: Date.now() });
+    cvListCache.items = out;
+    cvListCache.at = Date.now();
+    return out;
+  } catch (e) {
+    console.warn('[AGENTS] CV list failed:', e.message);
+    return cvListCache.items || [];
+  }
+}
+
+export async function saveCv(id, raw = {}) {
+  if (!agentsDb) throw new Error('Agent storage unavailable');
+  const cvId = id || raw.id || ('cv-' + slug(raw.name || 'cv') + '-' + Math.random().toString(36).slice(2, 6));
+  const snap = await getDoc(doc(agentsDb, CVS, cvId));
+  const existing = snap.exists() ? (snap.data() || {}) : {};
+  const cv = sanitizeCv({ ...raw, id: cvId }, existing);
+  await setDoc(doc(agentsDb, CVS, cvId), cv, { merge: true });
+  cvCache.set(cvId, { cv, at: Date.now() });
+  cvListCache.items = null;
+  return cv;
+}
+
+export async function deleteCv(id) {
+  if (!agentsDb) throw new Error('Agent storage unavailable');
+  await deleteDoc(doc(agentsDb, CVS, id));
+  cvCache.delete(id);
+  cvListCache.items = null;
+  return true;
+}
+
+// Copies hired staff into the CV bank. Existing CVs are kept untouched unless overwrite is set,
+// so CVs the owner refined by hand are never clobbered by an import.
+export async function syncCvsFromAgents({ overwrite = false } = {}) {
+  const agents = await listAgents({ fresh: true });
+  const have = new Set((await listCvs({ fresh: true })).map(c => c.id));
+  for (const agent of agents) {
+    const cvObj = agentToCv(agent);
+    if (cvObj && (overwrite || !have.has(cvObj.id))) await saveCv(cvObj.id, cvObj);
+  }
+  return listCvs({ fresh: true });
+}

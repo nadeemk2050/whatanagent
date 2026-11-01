@@ -139,6 +139,14 @@
       <button class="btn btn-ghost btn-sm" onclick="closeHire()">✖ Close</button>
     </div>
     <div class="sheet-body">
+      <div class="sect" id="hCvPickWrap" style="background:#f0fdfa;border-color:#99f6e4;">
+        <h4>📄 Start from a saved CV</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <select class="f" id="hCvPick" onchange="cvPicked(this.value)" style="flex:1;min-width:240px;"></select>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="closeHire();setTab('cvs');">Manage CVs →</button>
+        </div>
+        <div id="hCvNote" style="font-size:11.5px;color:#0f766e;margin-top:6px;">Pick a CV and every field below is filled in for you — adjust anything, then press Hire.</div>
+      </div>
       <div class="sect">
         <h4>1. Identity</h4>
         <div class="row2">
@@ -210,6 +218,7 @@
 
       <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="closeHire()">Cancel</button>
+        <button class="btn btn-ghost" id="hireSaveCvBtn" type="button" onclick="saveFormAsCv()" title="Keep this form in the CV bank for future hiring">📄 Save as CV</button>
         <button class="btn btn-primary" id="hireSaveBtn" onclick="saveHire()">💾 Hire</button>
       </div>
     </div>
@@ -404,6 +413,8 @@ window.academyBoot = async function () {
   await loadMeta();
   await loadAgents();
   if (location.hash === '#business') setTab('business');
+  if (location.hash === '#cvs') setTab('cvs');
+  if (typeof window.loadCvs === 'function') window.loadCvs().then(() => renderTabs()).catch(() => {});
 };
 
 async function loadMeta() {
@@ -456,7 +467,8 @@ function renderTabs() {
     '<button class="tab ' + (S.tab === r.k ? 'active' : '') + '" onclick="setTab(\'' + r.k + '\')">' + r.label + ' (' + countBy(r.k) + ')</button>').join('') +
     '<button class="tab ' + (S.tab === 'all' ? 'active' : '') + '" onclick="setTab(\'all\')" style="border-color:#0ea5e9;color:' + (S.tab === 'all' ? '#fff' : '#0369a1') + ';' + (S.tab === 'all' ? 'background:#0ea5e9;' : 'background:#f0f9ff;') + '">👥 All Staff (' + S.agents.length + ')</button>' +
     '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">    🏢 Offices of Staff</button>' +
-        '<button class="tab ' + (S.tab === 'business' ? 'active' : '') + '" onclick="setTab(\'business\')" style="border-color:#0d9488;color:' + (S.tab === 'business' ? '#fff' : '#0f766e') + ';' + (S.tab === 'business' ? 'background:#0d9488;' : 'background:#f0fdfa;') + '">🧠 Business Data Tank</button>';
+        '<button class="tab ' + (S.tab === 'business' ? 'active' : '') + '" onclick="setTab(\'business\')" style="border-color:#0d9488;color:' + (S.tab === 'business' ? '#fff' : '#0f766e') + ';' + (S.tab === 'business' ? 'background:#0d9488;' : 'background:#f0fdfa;') + '">🧠 Business Data Tank</button>' +
+        '<button class="tab ' + (S.tab === 'cvs' ? 'active' : '') + '" onclick="setTab(\'cvs\')" style="border-color:#d97706;color:' + (S.tab === 'cvs' ? '#fff' : '#b45309') + ';' + (S.tab === 'cvs' ? 'background:#d97706;' : 'background:#fffbeb;') + '">📄 Ready-to-Insert CVs' + (S.cvs ? ' (' + S.cvs.length + ')' : '') + '</button>';
     }
 
     function setTab(k) { S.tab = k; renderTabs(); renderCounters(); renderCards(); }
@@ -469,6 +481,14 @@ function renderCards() {
     box0.innerHTML = '<div class="x">Loading offices…</div>';
     empty0.classList.add('hidden');
     renderOffices();
+    return;
+  }
+
+  // 📄 Ready-to-Insert CV bank
+  if (S.tab === 'cvs') {
+    empty0.classList.add('hidden');
+    if (typeof window.renderCvBank === 'function') window.renderCvBank();
+    else box0.innerHTML = '<div class="x">CV bank script failed to load.</div>';
     return;
   }
 
@@ -636,9 +656,12 @@ async function changeStatus(id, to) {
 async function openHire() {
   if (!S.meta) await loadMeta();
   if (!S.meta) { toast('❌ Could not load the hire form — check the admin token'); return; }
-  S.editId = null;
+  S.editId = null; S.cvMode = false; S.cvEditId = null; S.cvPickId = '';
+  $('hCvNote').textContent = 'Pick a CV and every field below is filled in for you — adjust anything, then press Hire.';
   $('hireTitle').textContent = '➕ Hire New Staff';
   $('hireSaveBtn').textContent = '💾 Hire';
+  $('hireSaveCvBtn').classList.remove('hidden');
+  $('hCvPickWrap').classList.remove('hidden');
   ['hName','hRole','hJobDescription','hTone','hWorkingHours','hTraits','hSignaturePhrases','hEmojiHabit','hBackstory','hAlways','hNever','hEscalation','hDisclaimers','hSystemPrompt','hAvatarUrl','hAgePersona'].forEach(id => { const el = $(id); if (el) el.value = ''; });
   $('hEmoji').value = '🧑‍💼';
   $('hLanguages').value = 'English, Roman Urdu, Urdu';
@@ -647,18 +670,36 @@ async function openHire() {
   $('hReadyThreshold').value = 80; $('hDailyBudgetUsd').value = 0.5; $('hUseBusinessKb').checked = true;
   $('hModel').value = 'qwen3.8-flash'; $('hFallbackModel').value = 'gemini-2.5-flash';
   document.querySelectorAll('.toolChk').forEach(c => c.checked = false);
+  if (typeof window.refreshCvPicker === 'function') window.refreshCvPicker();
   $('hireOverlay').classList.add('open');
 }
 function closeHire() { $('hireOverlay').classList.remove('open'); }
 
 function toolsSelected() { return Array.from(document.querySelectorAll('.toolChk')).filter(c => c.checked).map(c => c.value); }
 
-async function saveHire() {
-  const name = $('hName').value.trim();
-  if (!name) { toast('❌ Name is required'); return; }
-  const btn = $('hireSaveBtn'); btn.disabled = true;
-  const payload = {
-    name,
+// Fills the hire / edit / CV form from a staff record or a CV (same field names).
+function fillHireForm(a) {
+  const set = (id2, v) => { const el = $(id2); if (el) el.value = v == null ? '' : v; };
+  set('hName', a.name); set('hRole', a.role); set('hGender', a.gender || 'neutral'); set('hCategory', a.category || 'business');
+  set('hEmoji', a.emoji || '🧑‍💼'); set('hAvatarUrl', a.avatarUrl); set('hAgePersona', a.agePersona);
+  set('hLanguages', (a.languages || []).join(', ')); set('hDefaultLanguage', a.defaultLanguage);
+  set('hJobDescription', a.jobDescription); set('hTone', a.tone); set('hWorkingHours', a.workingHours);
+  set('hTraits', (a.traits || []).join(', ')); set('hSignaturePhrases', (a.signaturePhrases || []).join(', '));
+  set('hEmojiHabit', a.emojiHabit); set('hBackstory', a.backstory);
+  const g = a.guardrails || {};
+  set('hAlways', (g.always || []).join('\n')); set('hNever', (g.never || []).join('\n'));
+  set('hEscalation', (g.escalation || []).join('\n')); set('hDisclaimers', (g.disclaimers || []).join('\n'));
+  if (a.model) set('hModel', a.model);
+  if (a.fallbackModel) set('hFallbackModel', a.fallbackModel);
+  set('hReadyThreshold', a.readyThreshold == null ? 80 : a.readyThreshold); set('hDailyBudgetUsd', a.dailyBudgetUsd == null ? 0.5 : a.dailyBudgetUsd);
+  $('hUseBusinessKb').checked = a.useBusinessKb !== false;
+  set('hSystemPrompt', a.systemPrompt);
+  document.querySelectorAll('.toolChk').forEach(c => { c.checked = (a.allowedTools || []).includes(c.value); });
+}
+
+function hirePayload() {
+  return {
+    name: $('hName').value.trim(),
     role: $('hRole').value.trim(),
     gender: $('hGender').value,
     category: $('hCategory').value,
@@ -688,6 +729,14 @@ async function saveHire() {
     allowedTools: toolsSelected(),
     systemPrompt: $('hSystemPrompt').value
   };
+}
+
+async function saveHire() {
+  if (S.cvMode) return saveFormAsCv();
+  const name = $('hName').value.trim();
+  if (!name) { toast('❌ Name is required'); return; }
+  const btn = $('hireSaveBtn'); btn.disabled = true;
+  const payload = hirePayload();
   try {
     if (S.editId) await api('/api/agents/' + encodeURIComponent(S.editId), { method: 'POST', body: JSON.stringify(payload) });
     else await api('/api/agents', { method: 'POST', body: JSON.stringify(payload) });
@@ -795,21 +844,8 @@ async function editStaff(id) {
   S.editId = id;
   $('hireTitle').textContent = '✏️ Edit ' + a.name;
   $('hireSaveBtn').textContent = '💾 Save Card';
-  const set = (id2, v) => { const el = $(id2); if (el) el.value = v == null ? '' : v; };
-  set('hName', a.name); set('hRole', a.role); set('hGender', a.gender); set('hCategory', a.category);
-  set('hEmoji', a.emoji); set('hAvatarUrl', a.avatarUrl); set('hAgePersona', a.agePersona);
-  set('hLanguages', (a.languages || []).join(', ')); set('hDefaultLanguage', a.defaultLanguage);
-  set('hJobDescription', a.jobDescription); set('hTone', a.tone); set('hWorkingHours', a.workingHours);
-  set('hTraits', (a.traits || []).join(', ')); set('hSignaturePhrases', (a.signaturePhrases || []).join(', '));
-  set('hEmojiHabit', a.emojiHabit); set('hBackstory', a.backstory);
-  const g = a.guardrails || {};
-  set('hAlways', (g.always || []).join('\n')); set('hNever', (g.never || []).join('\n'));
-  set('hEscalation', (g.escalation || []).join('\n')); set('hDisclaimers', (g.disclaimers || []).join('\n'));
-  set('hModel', a.model); set('hFallbackModel', a.fallbackModel);
-  set('hReadyThreshold', a.readyThreshold); set('hDailyBudgetUsd', a.dailyBudgetUsd);
-  $('hUseBusinessKb').checked = a.useBusinessKb !== false;
-  set('hSystemPrompt', a.systemPrompt);
-  document.querySelectorAll('.toolChk').forEach(c => { c.checked = (a.allowedTools || []).includes(c.value); });
+  $('hCvPickWrap').classList.add('hidden');
+  fillHireForm(a);
 }
 
 async function deleteStaff(id) {
@@ -1951,6 +1987,7 @@ async function saveMeeting(mid, kind) {
 }
 </script>
 <script src="/business-tank.js"></script>
+<script src="/cv-bank.js"></script>
 
 </body>
 </html>

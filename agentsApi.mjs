@@ -13,7 +13,8 @@ import {
   listLessons, addLesson, updateLesson, deleteLesson,
   listTests, addTest, deleteTest, listTestRuns, saveTestRun,
   listPromptVersions, addPromptVersion,
-  listToolLogs
+  listToolLogs,
+  listCvs, getCv, saveCv, deleteCv, syncCvsFromAgents
 } from './agentsStore.mjs';
 import { AGENT_TEMPLATES, templateById, DEFAULT_AGENT, DEFAULT_AGENT_ID, LEGACY_DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 import { runAgent, judgeAnswer, buildAgentSystemPrompt, getCompiledBlocks, clearAgentBlocksCache, attachRunnerDb } from './agentRunner.mjs';
@@ -118,8 +119,9 @@ export function registerAgentsRoutes(app, db) {
   const api = '/api/agents';
   app.use(api, guard);
 
-  // ---------------------------------------------------------------- meta
-  app.get(api + '/meta', (req, res) => {
+    // ---------------------------------------------------------------- meta
+  app.get(api + '/meta', async (req, res) => {
+    const cvs = await listCvs().catch(() => []);
     res.json({
       ok: true,
       templates: AGENT_TEMPLATES,
@@ -128,9 +130,61 @@ export function registerAgentsRoutes(app, db) {
       models: AVAILABLE_MODELS,
       statuses: STATUSES.map(s => ({ id: s, label: STATUS_LABELS[s] })),
       weights: DEFAULT_WEIGHTS,
-      tools: listTools()
+      tools: listTools(),
+      cvs
     });
   });
+
+  // ---------------------------------------------------------------- Ready to Insert CV Bank
+  app.get(api + '/cvs', async (req, res) => {
+    try {
+      let cvs = await listCvs({ fresh: req.query.fresh === '1' });
+      if (!cvs.length) {
+        cvs = await syncCvsFromAgents().catch(() => []);
+      }
+      res.json({ ok: true, cvs });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post(api + '/cvs/sync', async (req, res) => {
+    try {
+      const before = (await listCvs({ fresh: true })).length;
+      const cvs = await syncCvsFromAgents({ overwrite: req.query.overwrite === '1' });
+      res.json({ ok: true, count: cvs.length, added: Math.max(0, cvs.length - before), cvs });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.get(api + '/cvs/:cvId', async (req, res) => {
+    try {
+      const cv = await getCv(req.params.cvId, { fresh: true });
+      if (!cv) return res.status(404).json({ ok: false, error: 'CV not found' });
+      res.json({ ok: true, cv });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post(api + '/cvs', async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (!body.name && !body.title) return badRequest(res, 'Name or role title is required for a CV');
+      const cv = await saveCv(body.id, body);
+      res.json({ ok: true, cv });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.post(api + '/cvs/:cvId', async (req, res) => {
+    try {
+      const cv = await saveCv(req.params.cvId, req.body || {});
+      res.json({ ok: true, cv });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
+  app.delete(api + '/cvs/:cvId', async (req, res) => {
+    try {
+      await deleteCv(req.params.cvId);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+
 
   app.get(api + '/tools', (req, res) => res.json({ ok: true, tools: listTools() }));
 
