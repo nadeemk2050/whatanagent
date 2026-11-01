@@ -1539,6 +1539,10 @@
                                     <span id="waWebChatAiPauseIcon">🤖</span>
                                     <span id="waWebChatAiPauseText">AI: Active</span>
                                 </button>
+                                <button id="waWebGroupAiBtn" onclick="toggleGroupAiAllow()" title="Let the AI read, understand and reply inside this group" style="display:none; background:#1e293b; border:1px solid #64748b; color:#cbd5e1; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:800; cursor:pointer; align-items:center; gap:4px;">
+                                    <span id="waWebGroupAiIcon">👥</span>
+                                    <span id="waWebGroupAiText">AI in this Group: Not allowed</span>
+                                </button>
                                 <button onclick="markCurrentChatAsBoss()" title="Mark this chat as The Boss (+966 55 268 3250)" style="background:linear-gradient(135deg, #f59e0b, #d97706); border:none; color:#111827; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(245,158,11,0.35);">
                                     <span>👑 Mark as Boss</span>
                                 </button>
@@ -9063,6 +9067,7 @@
                                     ${lastMsgSnippet}
                                 </div>
                                 ${c.aiStatus && c.aiStatus !== 'active' ? `<span title="AI ${c.aiStatus}" style="font-size:10px; margin-left:6px; flex-shrink:0;">${c.aiStatus === 'off' ? '⛔' : '⏸️'}</span>` : ''}
+                                ${c.isGroup && c.aiStatus === 'active' && c.aiSource === 'explicit' ? `<span title="AI allowed in this group" style="font-size:10px; margin-left:6px; flex-shrink:0;">🤖</span>` : ''}
                                 ${c.unreadCount > 0 ? `<span style="background:#25d366; color:#111b21; font-weight:bold; font-size:10px; padding:2px 6px; border-radius:10px; flex-shrink:0;">${c.unreadCount}</span>` : ''}
                             </div>
                         </div>
@@ -9188,8 +9193,72 @@
             }
         }
 
-        async function toggleCurrentChatAiPause() {
-            if (!waWebCurrentJid) return;
+        // ---- 👥 GROUP AI: "AI allowed in this group" ----
+        // Groups stay silent by default. This button gives ONE group explicit permission, so the
+        // AI reads the chat, understands who said what and replies like a normal member.
+        function waGroupAiAllowed(jid) {
+            const cached = (waWebCachedChats || []).find(x => x.id === jid);
+            return !!(cached && cached.aiStatus === 'active' && cached.aiSource === 'explicit');
+        }
+
+        function updateGroupAiButton(jid) {
+            const btn = document.getElementById('waWebGroupAiBtn');
+            const icon = document.getElementById('waWebGroupAiIcon');
+            const text = document.getElementById('waWebGroupAiText');
+            if (!btn) return;
+            if (!jid || !String(jid).endsWith('@g.us')) { btn.style.display = 'none'; return; }
+            btn.style.display = 'flex';
+            const allowed = waGroupAiAllowed(jid);
+            if (allowed) {
+                btn.style.borderColor = '#22c55e';
+                btn.style.color = '#22c55e';
+                btn.style.background = '#0f2f1f';
+                if (icon) icon.innerText = '✅';
+                if (text) text.innerText = 'AI in this Group: ALLOWED';
+                btn.title = 'The AI is reading, understanding and replying in this group. Click to switch it off.';
+            } else {
+                btn.style.borderColor = '#64748b';
+                btn.style.color = '#cbd5e1';
+                btn.style.background = '#1e293b';
+                if (icon) icon.innerText = '👥';
+                if (text) text.innerText = 'AI in this Group: Not allowed';
+                btn.title = 'Click to allow the AI to chat inside this group';
+            }
+        }
+
+        async function toggleGroupAiAllow() {
+            const jid = waWebCurrentJid;
+            if (!jid || !String(jid).endsWith('@g.us')) return;
+            const cached = (waWebCachedChats || []).find(x => x.id === jid);
+            const gname = (cached && cached.name) || 'this group';
+            const allowed = waGroupAiAllowed(jid);
+            const ok = allowed
+                ? confirm('Switch AI OFF for "' + gname + '"?\n\nThe AI will stop reading and replying in this group. Messages stay as plain WhatsApp.')
+                : confirm('Allow AI in "' + gname + '"?\n\nMr. Zaheer will now READ, UNDERSTAND and REPLY in this group like a normal member:\n• short, natural replies to the latest message\n• stays silent when the message is not for you\n• never speaks for other members or shares private 1-to-1 info\n\nYou can switch it off anytime.');
+            if (!ok) return;
+            const status = allowed ? 'off' : 'active';
+            const btn = document.getElementById('waWebGroupAiBtn');
+            if (btn) btn.style.opacity = '0.5';
+            try {
+                const res = await fetch('/api/wa-web/contact/toggle-ai', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jid: jid, status: status })
+                });
+                if (!res.ok) { alert('Failed to change the AI setting for this group'); return; }
+                if (cached) { cached.aiStatus = status; cached.aiSource = 'explicit'; }
+                updateGroupAiButton(jid);
+                updateWaWebChatAiPauseButton(jid);
+                renderWaWebChatList(waWebCachedChats);
+                toastMsg(allowed ? '⛔ AI switched OFF for this group' : '✅ AI allowed in this group — it will now chat and understand', 5000);
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            } finally {
+                if (btn) btn.style.opacity = '1';
+            }
+        }
+
+        async function toggleCurrentChatAiPause() {            if (!waWebCurrentJid) return;
             const isPaused = isPausedContact(waWebCurrentJid);
             const targetPaused = !isPaused;
 
@@ -9230,6 +9299,7 @@
             document.getElementById('waWebChatPhone').innerText = phone ? `+${phone}` : '📱 Phone number hidden by contact (LID chat)';
             document.getElementById('waWebChatAvatar').innerText = (name || 'U').charAt(0).toUpperCase();
             updateWaWebChatAiPauseButton(jid);
+            updateGroupAiButton(jid);
 
             renderWaWebChatList(waWebCachedChats);
             await loadWaWebMessages(jid, true);
