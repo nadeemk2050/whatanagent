@@ -900,7 +900,7 @@
                     </div>
                     <div>
                         <div class="bg-white rounded-xl shadow-sm p-4">
-                            <div class="flex justify-end mb-2"><button type="button" class="sched-scope-btn" data-scope-type="tasks_for_all" data-scope-name="Tasks for All" title="Ongoing &amp; past scheduled reminders of Tasks for All">🔔 Tasks for All reminders</button></div>
+                            <div class="flex justify-end items-center gap-2 mb-2"><span data-sort-slot="forAll"></span><button type="button" class="sched-scope-btn" data-scope-type="tasks_for_all" data-scope-name="Tasks for All" title="Ongoing &amp; past scheduled reminders of Tasks for All">🔔 Tasks for All reminders</button></div>
                             <div id="tasks-for-all-todo-list"></div>
                             <button id="tasks-for-all-toggle-completed" class="text-sm text-blue-500 mt-2 hidden">Show 0 Completed</button>
                             <div id="tasks-for-all-done-list" class="hidden"></div>
@@ -1016,7 +1016,7 @@
                     </div>
 
                     <!-- Personal Tasks List -->
-                    <div class="flex justify-end"><button type="button" class="sched-scope-btn" data-scope-type="personal_tasks" data-scope-name="My Personal Tasks" title="Ongoing &amp; past scheduled reminders of my personal tasks">🔔 My Personal Tasks reminders</button></div>
+                    <div class="flex justify-end items-center gap-2"><span data-sort-slot="personal"></span><button type="button" class="sched-scope-btn" data-scope-type="personal_tasks" data-scope-name="My Personal Tasks" title="Ongoing &amp; past scheduled reminders of my personal tasks">🔔 My Personal Tasks reminders</button></div>
                     <div id="personal-tasks-list" class="space-y-3">
                         <div class="bg-white p-8 rounded-2xl text-center text-gray-400 border border-gray-200">
                             Loading your personal tasks...
@@ -1505,7 +1505,8 @@
     </div>
     <div id="completed-tasks-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div class="p-4 border-b flex justify-between items-center"><h3 id="completed-tasks-modal-title" class="text-xl font-bold text-gray-800">Completed Tasks</h3><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
+            <div class="p-4 border-b flex justify-between items-center gap-2"><h3 id="completed-tasks-modal-title" class="text-xl font-bold text-gray-800 flex-1">Completed Tasks</h3><button id="completed-tasks-search-toggle" type="button" title="Search completed tasks" aria-label="Search completed tasks" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #d5cfc2;background:#fffdf8;color:#34373d;border-radius:8px;cursor:pointer;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button><span data-sort-slot="completed"></span><button id="completed-tasks-modal-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button></div>
+            <div id="completed-tasks-filter-bar" class="px-4 py-2 border-b" style="display:none;background:#fffdf8;"><input id="completed-tasks-search" type="text" placeholder="Search completed tasks (text, member, date)…" class="w-full p-2 border border-gray-300 rounded-lg text-sm" /></div>
             <div id="completed-tasks-list" class="p-4 overflow-y-auto space-y-2"></div>
         </div>
     </div>
@@ -1876,6 +1877,73 @@
                 const tb = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (new Date(b.createdAt || 0).getTime() || 0);
                 return tb - ta;
             }
+            // ===== Sorting (Tasks for All / My Personal Tasks / Completed Tasks) =====
+            const SORT_MODES = [
+                ['added-desc', 'Added date · newest first'],
+                ['added-asc', 'Added date · oldest first'],
+                ['done-desc', 'Completed date · newest first'],
+                ['done-asc', 'Completed date · oldest first']
+            ];
+            const sortDefaults = { forAll: 'added-desc', personal: 'added-desc', completed: 'done-desc' };
+            const sortModes = {};
+            Object.keys(sortDefaults).forEach(k => {
+                const saved = localStorage.getItem('alignSort_' + k);
+                sortModes[k] = SORT_MODES.some(m => m[0] === saved) ? saved : sortDefaults[k];
+            });
+            function stampMs(v) {
+                if (!v) return 0;
+                if (v.toDate) return v.toDate().getTime() || 0;
+                if (typeof v === 'object' && v.seconds != null) return v.seconds * 1000;
+                return new Date(v).getTime() || 0;
+            }
+            function taskAddedMs(t) { return stampMs(t.createdAt); }
+            // Older tasks may lack completedAt; fall back to the last update, then the creation time.
+            function taskDoneMs(t) { return stampMs(t.completedAt) || stampMs(t.updatedAt) || stampMs(t.lastUpdatedAt) || stampMs(t.createdAt); }
+            function sortTasksByMode(list, scope) {
+                const mode = sortModes[scope] || sortDefaults[scope];
+                const key = mode.indexOf('done') === 0 ? taskDoneMs : taskAddedMs;
+                const dir = /-asc$/.test(mode) ? 1 : -1;
+                return list.slice().sort((a, b) => (key(a) - key(b)) * dir);
+            }
+            const sortRerender = {};
+            document.querySelectorAll('[data-sort-slot]').forEach(s => { s.outerHTML = sortButtonHTML(s.getAttribute('data-sort-slot')); });
+            function sortButtonHTML(scope) {
+                return '<button type="button" class="ats-sort-btn" data-sort-scope="' + scope + '" title="Sort tasks" aria-label="Sort tasks" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #d5cfc2;background:#fffdf8;color:#34373d;border-radius:8px;cursor:pointer;">' +
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h13"/><path d="M3 12h9"/><path d="M3 18h5"/><path d="M17 8v12"/><path d="m14 17 3 3 3-3"/></svg></button>';
+            }
+            (function () {
+                let menu = null;
+                function close() { if (menu) menu.style.display = 'none'; }
+                document.addEventListener('click', e => {
+                    const btn = e.target.closest && e.target.closest('.ats-sort-btn');
+                    const opt = e.target.closest && e.target.closest('.ats-sort-opt');
+                    if (opt && menu) {
+                        const scope = menu.getAttribute('data-scope');
+                        sortModes[scope] = opt.getAttribute('data-mode');
+                        localStorage.setItem('alignSort_' + scope, sortModes[scope]);
+                        close();
+                        if (sortRerender[scope]) sortRerender[scope]();
+                        return;
+                    }
+                    if (!btn) { if (!(menu && menu.contains(e.target))) close(); return; }
+                    const scope = btn.getAttribute('data-sort-scope');
+                    if (!menu) {
+                        menu = document.createElement('div');
+                        menu.style.cssText = 'position:fixed;z-index:2147483100;background:#fffdf8;border:1px solid #d5cfc2;border-radius:10px;box-shadow:0 16px 40px rgba(15,23,42,.25);overflow:hidden;min-width:220px;';
+                        document.body.appendChild(menu);
+                    }
+                    if (menu.style.display === 'block' && menu.getAttribute('data-scope') === scope) { close(); return; }
+                    menu.setAttribute('data-scope', scope);
+                    menu.innerHTML = '<div style="padding:7px 12px;font-size:10px;font-weight:800;letter-spacing:.04em;color:#8b7f63;text-transform:uppercase;border-bottom:1px solid #eee7d6;">Sort by</div>' +
+                        SORT_MODES.map(m => '<button type="button" class="ats-sort-opt" data-mode="' + m[0] + '" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 12px;border:none;background:' + (sortModes[scope] === m[0] ? '#34373d' : 'transparent') + ';color:' + (sortModes[scope] === m[0] ? '#f7ecd6' : '#374151') + ';font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">' + (sortModes[scope] === m[0] ? '✓' : '<span style="display:inline-block;width:10px;"></span>') + ' ' + m[1] + '</button>').join('');
+                    menu.style.display = 'block';
+                    const r = btn.getBoundingClientRect();
+                    const w = menu.offsetWidth, h = menu.offsetHeight;
+                    menu.style.left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8) + 'px';
+                    menu.style.top = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+                }, true);
+                document.addEventListener('scroll', close, true);
+            })();
             function makeInviteCode() {
                 const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
                 let out = '';
@@ -5476,6 +5544,7 @@
                         return desc.includes(searchVal) || cat.includes(searchVal) || notes.includes(searchVal);
                     });
                 }
+                filtered = sortTasksByMode(filtered, 'personal');
 
                 if (filtered.length === 0) {
                     listEl.innerHTML = `
@@ -6336,8 +6405,8 @@
                 const doneList = document.getElementById('tasks-for-all-done-list');
                 const toggleButton = document.getElementById('tasks-for-all-toggle-completed');
                 
-                const todoTasks = tasks.filter(t => t.status !== 'Done');
-                const doneTasks = tasks.filter(t => t.status === 'Done');
+                const todoTasks = sortTasksByMode(tasks.filter(t => t.status !== 'Done'), 'forAll');
+                const doneTasks = sortTasksByMode(tasks.filter(t => t.status === 'Done'), 'forAll');
 
                 // In the "Completed" filter the finished tasks are listed right here.
                 if (taskView === 'done') {
@@ -6360,6 +6429,41 @@
                 const el = document.getElementById('completed-tasks-count');
                 if (el) el.textContent = String(completedCounts.forAll + completedCounts.team);
             }
+            let completedModalData = [];
+            function completedHaystack(t) {
+                return [t.description, t.assigneeName, t.assigneeEmail, t.createdByName, t.createdBy, t.completedByName, t.completedBy,
+                    formatTaskTimestamp(t.createdAt), formatTaskTimestamp(t.completedAt), t.dueDate ? formatTaskTimestamp(new Date(t.dueDate)) : ''
+                ].map(x => String(x || '')).join(' ').toLowerCase();
+            }
+            function renderCompletedTasksList() {
+                const listEl = document.getElementById('completed-tasks-list');
+                const q = ((document.getElementById('completed-tasks-search') || {}).value || '').trim().toLowerCase();
+                let rows = completedModalData;
+                if (q) rows = rows.filter(t => completedHaystack(t).includes(q));
+                rows = sortTasksByMode(rows, 'completed');
+                const title = document.getElementById('completed-tasks-modal-title');
+                if (title) title.textContent = 'Completed Tasks (' + (q ? rows.length + ' of ' : '') + completedModalData.length + ')';
+                listEl.innerHTML = rows.length
+                    ? rows.map(createTaskForAllListItemHTML).join('')
+                    : (completedModalData.length
+                        ? '<p class="text-gray-500 text-sm text-center py-6">No completed tasks match your search.</p>'
+                        : '<p class="text-gray-500 text-sm text-center py-6">No completed tasks yet. Tap a task and choose “Task completed”.</p>');
+            }
+            sortRerender.completed = renderCompletedTasksList;
+            sortRerender.forAll = () => applyTaskFilters();
+            sortRerender.personal = () => renderPersonalTasks();
+            (function () {
+                const btn = document.getElementById('completed-tasks-search-toggle');
+                const bar = document.getElementById('completed-tasks-filter-bar');
+                const input = document.getElementById('completed-tasks-search');
+                if (btn && bar) btn.addEventListener('click', () => {
+                    const open = bar.style.display !== 'block';
+                    bar.style.display = open ? 'block' : 'none';
+                    if (open && input) input.focus();
+                    else if (input) { input.value = ''; renderCompletedTasksList(); }
+                });
+                if (input) input.addEventListener('input', renderCompletedTasksList);
+            })();
             async function openCompletedTasksModal() {
                 const listEl = document.getElementById('completed-tasks-list');
                 document.getElementById('completed-tasks-modal').classList.remove('hidden');
@@ -6367,19 +6471,12 @@
                 try {
                     const base = `/artifacts/${appId}/public/data/`;
                     const tid = teamCtx.teamId;
-                    // "Tasks for All" completed list, newest first.
                     const forAllSnap = await db.collection(base + 'tasks_for_all').where('teamId', '==', tid).where('status', '==', 'Done').get();
-                    const forAllDone = forAllSnap.docs
-                        .map(d => ({ id: d.id, ...d.data() }))
-                        .sort(sortByCreatedDesc);
-                    completedCounts.forAll = forAllDone.length;
+                    completedModalData = forAllSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    completedCounts.forAll = completedModalData.length;
                     completedCounts.team = 0;
                     updateCompletedBadge();
-                    const title = document.getElementById('completed-tasks-modal-title');
-                    if (title) title.textContent = 'Completed Tasks (' + forAllDone.length + ')';
-                    listEl.innerHTML = forAllDone.length
-                        ? forAllDone.map(createTaskForAllListItemHTML).join('')
-                        : '<p class="text-gray-500 text-sm text-center py-6">No completed tasks yet. Tap a task and choose “Task completed”.</p>';
+                    renderCompletedTasksList();
                 } catch (err) {
                     listEl.innerHTML = '<p class="text-red-500 text-sm text-center py-6">' + (err.message || 'Could not load completed tasks') + '</p>';
                 }
