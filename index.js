@@ -19,6 +19,7 @@ import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
+import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerWorkshopRoutes } from './workshopApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
@@ -164,6 +165,9 @@ const brainEngine = registerBrainRoutes(app, db);
 registerTradeAccountsRoutes(app, db);
 // 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
+// 📇 Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
+// Firestore is only the one-time migration source / fallback.
+try { const info = initContactStore(db); console.log('[CONTACT-DB] mode=' + info.mode + (info.path ? ' file=' + info.path : '')); } catch (e) { console.warn('[CONTACT-DB] init failed:', e.message); }
 registerContactIntelRoutes(app, db);
 // 🏢 Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
 registerOfficeRoutes(app, db);
@@ -1649,7 +1653,7 @@ async function processBossSendTags(replyText, settings, bossCfg) {
     for (const t of sent) {
       if (phoneMatch(t, bossCfg.number)) continue;
       let inBook = false;
-      try { const s = await getDoc(doc(db, "contactBook", t)); inBook = s.exists(); } catch (e) {}
+      try { inBook = !!(await getContact(t)); } catch (e) {}
       const inChat = priorChatKeys.some(k => phoneMatch(k, t));
       if (!inBook && !inChat) newNumbers.push(t);
     }
@@ -1676,8 +1680,7 @@ async function processBossSaveTags(replyText, bossCfg) {
     if (!/^\d{8,15}$/.test(phone) || !name) { failed.push(name || phoneRaw || '?'); continue; }
 
     try {
-      const ref = doc(db, "contactBook", phone);
-      const existing = await getDoc(ref);
+      const existing = await getContact(phone);
       const data = sanitizeContactInput({
         phone: phone, phoneRaw: phoneRaw, name: name,
         company: parts[2] || '', email: parts[3] || '', website: parts[4] || '',
@@ -1690,8 +1693,8 @@ async function processBossSaveTags(replyText, bossCfg) {
       });
       data.phone = phone;
       data.name = name;
-      data.createdAt = existing.exists() ? (existing.data().createdAt || Date.now()) : Date.now();
-      await setDoc(ref, data, { merge: true });
+      data.createdAt = (existing && existing.createdAt) || Date.now();
+      await setContact(phone, data, { merge: true });
       saved.push({ phone, name });
       console.log(`[BOSS SAVECONTACT] Saved ${name} (${phone}) to Contact Book`);
     } catch (e) { failed.push(name || phone); }
@@ -1758,9 +1761,9 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
       // If the number is brand new, offer to save it to the Contact Book
       let addSuggest = '';
       try {
-        const bookSnap = await getDoc(doc(db, "contactBook", targetNumber));
+        const bookRec = await getContact(targetNumber);
         const inChat = Object.keys(contacts).some(k => phoneMatch(k, targetNumber));
-        if (!bookSnap.exists() && !inChat) {
+        if (!bookRec && !inChat) {
           addSuggest = `\n\n➕ +${targetNumber} is not in your Contact Book. Should I add it? Send me the name (required) and any details you want (company, email, city...) and I will save it.`;
         }
       } catch (e) {}
@@ -2036,12 +2039,11 @@ app.get('/api/dashboard-stats', async (req, res) => {
       });
     } catch (e) { console.warn('[STATS] chat contacts read failed:', e.message); }
 
-    // 2) Universal Contact Book (contactBook collection)
+    // 2) Universal Contact Book (local SQLite; Firestore only as fallback)
     try {
-      const snap = await getDocs(collection(db, 'contactBook'));
-      snap.docs.forEach(d => {
-        const b = d.data() || {};
-        const p = norm(b.phone || d.id); if (!p) return;
+      const rows = await listContacts();
+      rows.forEach(b => {
+        const p = norm(b.phone || b.id); if (!p) return;
         bookContacts++;
         phones.add(p);
         if (b.isLead || (b.leadStatus && b.leadStatus !== 'New')) leads.add(p);
@@ -2099,6 +2101,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
       autoReplyEnabled,
       aiModel,
       autoReplyScope,
+      contactDb: getContactStoreInfo(),
       generatedAt: Date.now()
     });
   } catch (error) {
@@ -2144,11 +2147,11 @@ function sanitizeContactInput(c) {
   return out;
 }
 
-// List entire contact book
+// List entire contact book (local SQLite - no Firestore reads)
+app.get('/api/contactbook/store-info', (req, res) => res.json(getContactStoreInfo()));
 app.get('/api/contactbook', async (req, res) => {
   try {
-    const snap = await getDocs(collection(db, "contactBook"));
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    res.json(await listContacts({ fresh: req.query.fresh === '1' }));
   } catch (error) { res.status(500).json({ error: 'Failed to load contact book.' }); }
 });
 
@@ -2158,10 +2161,9 @@ app.post('/api/contactbook', async (req, res) => {
     const c = sanitizeContactInput(req.body);
     if (!c.phone || c.phone.length < 6) return res.status(400).json({ error: 'A valid phone number is required.' });
     if (!c.source) c.source = 'Manual';
-    const ref = doc(db, "contactBook", c.phone);
-    const existing = await getDoc(ref);
-    await setDoc(ref, { ...c, createdAt: existing.exists() ? (existing.data().createdAt || Date.now()) : Date.now() }, { merge: true });
-    res.json({ success: true, contact: { id: c.phone, ...c } });
+    const existing = await getContact(c.phone);
+    const saved = await setContact(c.phone, { ...c, createdAt: (existing && existing.createdAt) || Date.now() }, { merge: true });
+    res.json({ success: true, contact: saved });
   } catch (error) { res.status(500).json({ error: 'Failed to save contact.' }); }
 });
 
@@ -2181,25 +2183,24 @@ app.put('/api/contactbook/:phone', async (req, res) => {
     }
 
     if (c.phone !== oldId) {
-      // Phone number changed: create at new id, remove old doc
-      const snapOld = await getDoc(doc(db, "contactBook", oldId));
-      await setDoc(doc(db, "contactBook", c.phone), { ...c, createdAt: snapOld.exists() ? (snapOld.data().createdAt || Date.now()) : Date.now() }, { merge: true });
-      await deleteDoc(doc(db, "contactBook", oldId));
+      // Phone number changed: create at the new key, remove the old row
+      const prevRow = await getContact(oldId);
+      await setContact(c.phone, { ...c, createdAt: (prevRow && prevRow.createdAt) || Date.now() }, { merge: true });
+      await deleteContact(oldId);
     } else {
-      const ref = doc(db, "contactBook", oldId);
-      const snap = await getDoc(ref);
-      const prev = snap.exists() ? snap.data() : {};
+      const prev = (await getContact(oldId)) || {};
       const extra = {};
       if (req.body.__full === true) {
         // A manual edit takes ownership of the field: Zaheer must never overwrite it again
-        const aiClear = {};
+        const aiFields = { ...(prev.aiFields || {}) };
+        let changed = false;
         for (const k of ['name', 'company', 'designation', 'country', 'city', 'address', 'website', 'email', 'type', 'wantsToBuy', 'wantsToSell']) {
-          if (c[k] !== undefined && sVal(c[k]) !== sVal(prev[k]) && prev.aiFields && prev.aiFields[k]) aiClear[k] = deleteField();
+          if (c[k] !== undefined && sVal(c[k]) !== sVal(prev[k]) && aiFields[k]) { delete aiFields[k]; changed = true; }
         }
-        if (Object.keys(aiClear).length) extra.aiFields = aiClear;
+        if (changed) extra.aiFields = aiFields;
         if (c.name && sVal(c.name) !== sVal(prev.name)) extra.nameSource = 'manual';
       }
-      await setDoc(ref, { ...c, ...extra, createdAt: snap.exists() ? (prev.createdAt || Date.now()) : Date.now() }, { merge: true });
+      await setContact(oldId, { ...c, ...extra, createdAt: prev.createdAt || Date.now() }, { merge: true });
     }
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Failed to update contact.' }); }
@@ -2210,12 +2211,12 @@ app.delete('/api/contactbook/:phone', async (req, res) => {
   try {
     const phone = normalizePhone(req.params.phone);
     if (!phone) return res.status(400).json({ error: 'Invalid phone.' });
-    await deleteDoc(doc(db, "contactBook", phone));
+    await deleteContact(phone);
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Failed to delete contact.' }); }
 });
 
-// Bulk import (paste / CSV / Excel / vCard) - batched Firestore writes
+// Bulk import (paste / CSV / Excel / vCard) - one local SQLite transaction
 app.post('/api/contactbook/import', async (req, res) => {
   try {
     const rows = Array.isArray(req.body.contacts) ? req.body.contacts : [];
@@ -2233,21 +2234,10 @@ app.post('/api/contactbook/import', async (req, res) => {
       map.set(c.phone, prevRow ? { ...prevRow, ...c } : c); // same phone twice in the file: merge, last non-empty wins
     }
     const unique = [...map.values()];
-    const existingIds = new Map();
-    const exSnap = await getDocs(collection(db, "contactBook"));
-    exSnap.forEach(d => existingIds.set(d.id, (d.data() || {}).createdAt || 0));
-    const BATCH_SIZE = 400;
+    const existingPhones = await contactPhones();
     let created = 0, merged = 0;
-    for (let i = 0; i < unique.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db);
-      unique.slice(i, i + BATCH_SIZE).forEach(c => {
-        const isNew = !existingIds.has(c.phone);
-        if (isNew) created++; else merged++;
-        const data = isNew || !existingIds.get(c.phone) ? { ...c, createdAt: Date.now() } : c;
-        batch.set(doc(db, "contactBook", c.phone), data, { merge: true });
-      });
-      await batch.commit();
-    }
+    unique.forEach(c => { if (existingPhones.has(c.phone)) merged++; else created++; });
+    await bulkSetContacts(unique, { merge: true });
     res.json({ success: true, imported: unique.length, created, merged, skipped: skipped, received: rows.length });
   } catch (error) { res.status(500).json({ error: 'Import failed: ' + error.message }); }
 });
@@ -2285,11 +2275,7 @@ app.post('/api/contactbook/sync-chats', async (req, res) => {
     }
     const BATCH_SIZE = 400;
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db);
-      rows.slice(i, i + BATCH_SIZE).forEach(r => {
-        batch.set(doc(db, "contactBook", r.phone), { ...r, createdAt: Date.now() }, { merge: true });
-      });
-      await batch.commit();
+      await bulkSetContacts(rows.slice(i, i + BATCH_SIZE), { merge: true });
     }
     res.json({ success: true, synced: rows.length });
   } catch (error) { res.status(500).json({ error: 'Sync failed: ' + error.message }); }

@@ -6,9 +6,10 @@
 //  - tells the reply prompt which details are still missing, so Zaheer can ask for them naturally
 // Nothing here messages anybody by itself. Manual edits always win over AI-filled values.
 // ============================================================================
-import { doc, getDoc, setDoc, getDocs, collection, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { callAgentModel } from './agentRunner.mjs';
 import { DEFAULT_AGENT } from './agentTemplates.mjs';
+import { listContacts, getContact, setContact, bulkSetContacts, contactPhones } from './contactStore.mjs';
 
 let DB = null;
 const TYPES = ['Buyer', 'Seller', 'Info only', 'Relative', 'Partner', 'Other'];
@@ -79,8 +80,7 @@ const bookCache = new Map();   // phone -> { at, data }
 function invalidate(phone) { bookCache.delete(phone); }
 
 async function readBookDoc(phone) {
-  const snap = await getDoc(doc(DB, 'contactBook', phone));
-  return snap.exists() ? snap.data() : null;
+  return await getContact(phone);
 }
 
 export async function fillContact(phoneIn, { auto = false } = {}) {
@@ -162,23 +162,22 @@ export async function fillContact(phoneIn, { auto = false } = {}) {
     if (!existing.source) out.source = auto ? 'WhatsApp Web (Zaheer)' : 'Zaheer';
     if (!existing.createdAt) out.createdAt = Date.now();
   }
-  await setDoc(doc(DB, 'contactBook', phone), out, { merge: true });
+  await setContact(phone, out, { merge: true });
   invalidate(phone);
   return { ok: true, status: missing.length ? 'partial' : 'complete', filled, missing, usedModel: r.model };
 }
 
 export async function fillBatch({ limit = 5, force = false } = {}) {
   limit = Math.max(1, Math.min(parseInt(limit, 10) || 5, 15));
-  const snap = await getDocs(collection(DB, 'contactBook'));
+  const all = await listContacts();
   const cutoff = Date.now() - 24 * 3600 * 1000;
   const cands = [];
-  snap.forEach(d => {
-    const c = d.data() || {};
-    if (!c.inChat) return;
-    if (!force && c.zaheerAt && c.zaheerAt > cutoff) return;
-    if (!missingFields(c).length) return;
-    cands.push({ phone: digits(c.phone || d.id), ts: c.lastMessageTs || c.lastChatAt || 0 });
-  });
+  for (const c of all) {
+    if (!c.inChat) continue;
+    if (!force && c.zaheerAt && c.zaheerAt > cutoff) continue;
+    if (!missingFields(c).length) continue;
+    cands.push({ phone: digits(c.phone || c.id), ts: c.lastMessageTs || c.lastChatAt || 0 });
+  }
   cands.sort((a, b) => b.ts - a.ts);
   const results = { tried: 0, filledContacts: 0, noChat: 0, tooShort: 0, blocked: 0, errors: 0, fieldsFilled: 0, remaining: Math.max(0, cands.length) };
   for (const c of cands) {
@@ -186,7 +185,7 @@ export async function fillBatch({ limit = 5, force = false } = {}) {
     const r = await fillContact(c.phone, { auto: false });
     if (r.status === 'no-chat' || r.status === 'too-short' || r.status === 'blocked') {
       // remember the attempt so the same contact is not retried on every batch click
-      try { await setDoc(doc(DB, 'contactBook', c.phone), { zaheerAt: Date.now(), zaheerStatus: r.status }, { merge: true }); } catch (e) { /* ignore */ }
+      try { await setContact(c.phone, { zaheerAt: Date.now(), zaheerStatus: r.status }, { merge: true }); } catch (e) { /* ignore */ }
       if (r.status === 'no-chat') results.noChat++; else if (r.status === 'too-short') results.tooShort++; else results.blocked++;
       continue;   // no AI cost spent - does not count against the limit
     }
@@ -263,44 +262,40 @@ async function importFromWa({ scope = 'all', onlyExisting = false, dryRun = fals
   const wa = await loadWa();
   const rows = wa.listWaWebAddressBook();
   if (!rows.length) return { ok: false, error: 'WhatsApp Web has no contacts yet - connect it (or wait for the sync to finish) and try again.' };
-  const snap = await getDocs(collection(DB, 'contactBook'));
-  const book = new Map();
-  snap.forEach(d => { const c = d.data() || {}; book.set(digits(c.phone || d.id), { id: d.id, data: c }); });
+  const knownPhones = await contactPhones();
+  const bookPhones = new Set(knownPhones);
 
   const stats = { whatsappContacts: rows.length, selected: 0, created: 0, updated: 0, unchanged: 0, skipped: 0 };
   const ops = [];
   for (const r of rows) {
     if (scope === 'saved' && !r.savedName) { stats.skipped++; continue; }
     if (scope === 'chats' && !r.hasChat) { stats.skipped++; continue; }
-    const ex = book.get(r.phone);
-    if (!ex && onlyExisting) { stats.skipped++; continue; }
+    const exists = bookPhones.has(r.phone);
+    if (!exists && onlyExisting) { stats.skipped++; continue; }
     stats.selected++;
     const waName = r.waName || r.verifiedName || '';
-    if (!ex) {
+    if (!exists) {
       const data = { phone: r.phone, phoneRaw: r.phone, source: 'WhatsApp Web (import)', inChat: !!r.hasChat, createdAt: Date.now(), updatedAt: Date.now() };
       if (waName) data.waName = waName;
       if (r.savedName) { data.name = r.savedName; data.nameSource = 'phonebook'; }
       if (r.lastActive) data.lastMessageTs = r.lastActive;
       stats.created++;
-      ops.push({ id: r.phone, data });
+      ops.push({ phone: r.phone, data });
       continue;
     }
-    const c = ex.data, patch = {};
-    if (waName && clean(c.waName) !== waName) patch.waName = waName;
-    if (r.savedName && !clean(c.name)) { patch.name = r.savedName; patch.nameSource = 'phonebook'; }
-    if (r.hasChat && !c.inChat) patch.inChat = true;
-    if (r.lastActive && r.lastActive > (c.lastMessageTs || 0)) patch.lastMessageTs = r.lastActive;
+    const c = await getContact(r.phone);
+    const patch = {};
+    if (waName && clean(c && c.waName) !== waName) patch.waName = waName;
+    if (r.savedName && !clean(c && c.name)) { patch.name = r.savedName; patch.nameSource = 'phonebook'; }
+    if (r.hasChat && !(c && c.inChat)) patch.inChat = true;
+    if (r.lastActive && r.lastActive > ((c && c.lastMessageTs) || 0)) patch.lastMessageTs = r.lastActive;
     if (!Object.keys(patch).length) { stats.unchanged++; continue; }
     patch.updatedAt = Date.now();
     stats.updated++;
-    ops.push({ id: ex.id, data: patch });
+    ops.push({ phone: r.phone, data: patch });
   }
-  if (!dryRun) {
-    for (let i = 0; i < ops.length; i += 400) {
-      const batch = writeBatch(DB);
-      ops.slice(i, i + 400).forEach(o => batch.set(doc(DB, 'contactBook', o.id), o.data, { merge: true }));
-      await batch.commit();
-    }
+  if (!dryRun && ops.length) {
+    await bulkSetContacts(ops.map(o => ({ ...o.data, phone: o.phone })), { merge: true });
     bookCache.clear();
   }
   return { ok: true, dryRun, ...stats };

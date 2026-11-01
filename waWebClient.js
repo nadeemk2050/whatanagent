@@ -22,6 +22,7 @@ import { sendPush } from './alignPush.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
 import { alignDb, ALIGN_BASE } from './alignAdmin.mjs';
 import { listStaff as alignStaffList, getStaffByHandle as alignStaffByHandle } from './alignAuth.mjs';
+import { listContacts, getContact, setContact, deleteContact, contactPhones } from './contactStore.mjs';
 
 const makeWASocket = makeWASocketPkg.default || makeWASocketPkg;
 
@@ -641,23 +642,21 @@ export async function bossAlignTaskDone(p) {
 }
 
 // ================= UNIVERSAL CONTACT BOOK (shared by every AI) =================
-// Read the whole book once (cheap) and return rows sorted by recency.
+// Reads come from the local SQLite store (free, instant) with Firestore as fallback.
 async function bossContactDirectory(limit = 500) {
   try {
-    if (!globalDb) return [];
-    const snap = await getDocs(collection(globalDb, 'contactBook'));
+    const all = await listContacts();
     const rows = [];
-    snap.forEach(d => {
-      const c = d.data() || {};
-      const phone = String(c.phone || d.id || '').replace(/[^0-9]/g, '');
-      if (!phone || phone.length < 8) return;
+    for (const c of all) {
+      const phone = String(c.phone || c.id || '').replace(/[^0-9]/g, '');
+      if (!phone || phone.length < 8) continue;
       rows.push({
         name: String(c.name || c.company || '').trim(),
         company: String(c.company || '').trim(),
         phone: phone,
         ts: Number(c.updatedAt || 0)
       });
-    });
+    }
     rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
     return rows.slice(0, limit);
   } catch (e) { return []; }
@@ -723,10 +722,8 @@ async function getBossBrainContext(limit = 16) {
 // Auto-populate the UNIVERSAL contact book from WhatsApp Web activity (numbers the agent touched)
 async function syncWaWebContactsToBook(limit = 200) {
   try {
-    if (!globalDb || waWebState.status !== 'connected') return;
-    const known = new Set();
-    const snap = await getDocs(collection(globalDb, 'contactBook'));
-    snap.forEach(d => { const p = String((d.data() || {}).phone || d.id || '').replace(/[^0-9]/g, ''); if (p) known.add(p); });
+    if (waWebState.status !== 'connected') return;
+    const known = await contactPhones();
 
     const chats = Array.from(waWebState.chats.values())
       .filter(c => !c.isGroup && c.timestamp)
@@ -736,13 +733,13 @@ async function syncWaWebContactsToBook(limit = 200) {
     let added = 0;
     const abook = new Map(listWaWebAddressBook().map(r => [r.phone, r]));
     for (const c of chats) {
-      if (added >= 15) break;   // cap per run to avoid Firestore write bursts (RESOURCE_EXHAUSTED)
+      if (added >= 15) break;   // cap per run so a sync never runs away
       const phone = resolveRealPhoneNumber(c.id);
       if (!phone || phone.length < 8 || known.has(phone)) continue;
       const ab = abook.get(phone) || {};
       const nm = ab.savedName || '';   // confirmed name only from a saved address-book name
       try {
-        await setDoc(doc(globalDb, 'contactBook', phone), {
+        await setContact(phone, {
           phone: phone,
           phoneRaw: String(c.id || '').split('@')[0],
           name: nm,
@@ -754,7 +751,6 @@ async function syncWaWebContactsToBook(limit = 200) {
         }, { merge: true });
         known.add(phone);
         added++;
-        await new Promise(r => setTimeout(r, 250));
       } catch (e) { /* ignore single failures */ }
     }
     if (added) console.log('[WA-WEB CONTACTS→BOOK] Saved ' + added + ' WhatsApp Web numbers into the universal Contact Book');
@@ -762,12 +758,11 @@ async function syncWaWebContactsToBook(limit = 200) {
 }
 
 // Contact Book upsert / delete
-async function bossUpsertContact(c) {  if (!globalDb) return { ok: false, error: 'No database connection' };
+async function bossUpsertContact(c) {
   const phone = bossNormalizePhone(c && (c.phone || c.number));
   if (!phone || phone.length < 8) return { ok: false, error: 'Give me the contact phone number.' };
-  const ref = doc(globalDb, 'contactBook', phone);
   if (c.delete === true || String(c.delete).toLowerCase() === 'true') {
-    try { await deleteDoc(ref); } catch (e) { /* ignore */ }
+    try { await deleteContact(phone); } catch (e) { /* ignore */ }
     console.log('[WA-WEB BOSS CONTACT] Deleted ' + phone);
     return { ok: true, deleted: phone };
   }
@@ -775,7 +770,7 @@ async function bossUpsertContact(c) {  if (!globalDb) return { ok: false, error:
   for (const k of ['name', 'phone2', 'company', 'email', 'city', 'website', 'leadStatus', 'notes']) {
     if (c[k] !== undefined && c[k] !== null && String(c[k]).trim() !== '') data[k] = String(c[k]).trim();
   }
-  await setDoc(ref, data, { merge: true });
+  await setContact(phone, data, { merge: true });
   console.log('[WA-WEB BOSS CONTACT] Saved ' + phone + ' (' + (data.name || 'no name') + ')');
   return { ok: true, contact: data };
 }
@@ -6071,11 +6066,16 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
   let cheapOrder = null;
   let tryTextProvider = null;
   let chosenModel = 'deepseek-flash';
+  // Display name of whoever wrote the latest message - used by the usage tracker below.
+  // (This was referenced but never declared, so every text reply threw AFTER the model had
+  // already answered and re-ran the whole provider chain - the cause of multi-minute replies.)
+  let senderName = String((opts && opts.senderName) || '').trim().slice(0, 60);
   try {
     const settingsSnap = await getDoc(doc(globalDb, "appData", "settings"));
     settings = settingsSnap.exists() ? settingsSnap.data() : {};
     
     const chatContext = getWaWebChatContext(jid);
+    if (!senderName && chatContext && chatContext.name) senderName = String(chatContext.name).slice(0, 60);
 
     // 🎓 AI STAFF: if the owner assigned a READY agent to this contact's brain card, that agent
     // answers with its own prompt, training material and preferred model. Personal-category

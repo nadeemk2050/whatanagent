@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 import { alignDb } from './alignAdmin.mjs';
 import { listStaff as alignStaffList } from './alignAuth.mjs';
+import { listContacts } from './contactStore.mjs';
 
 const NOTES = 'notes';
 const ALIGNTASKS_APP_ID = '1:410197132578:web:97cfc3ae33f39ed3df917b';
@@ -433,16 +434,15 @@ export function registerNotebookRoutes(app, db) {
       if (!raw) return res.status(400).json({ error: 'Give a contact name or WhatsApp number' });
       let phone = raw.replace(/[^0-9]/g, '');
       if (!phone || phone.length < 8) {
-        // resolve from the universal Contact Book by name
-        const cb = await getDocs(collection(db, 'contactBook'));
+        // resolve from the universal Contact Book by name (local SQLite)
+        const cb = await listContacts();
         const q = raw.toLowerCase();
         let found = '';
-        cb.forEach((d) => {
-          if (found) return;
-          const v = d.data() || {};
+        for (const v of cb) {
+          if (found) break;
           const nm = String(v.name || '').toLowerCase();
-          if (nm && (nm === q || nm.includes(q))) found = String(v.phone || d.id || '').replace(/[^0-9]/g, '');
-        });
+          if (nm && (nm === q || nm.includes(q))) found = String(v.phone || v.id || '').replace(/[^0-9]/g, '');
+        }
         if (!found) return res.status(404).json({ error: 'No contact matches "' + raw + '" - use a number or save the contact first.' });
         phone = found;
       }

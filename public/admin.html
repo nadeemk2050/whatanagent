@@ -3259,7 +3259,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                         <div>
                             <h2 style="margin:0;">📇 Contact Book</h2>
-                            <p class="subtitle" style="margin:6px 0 0 0;">Complete data book: AI chat contacts + manually added & imported contacts.</p>
+                            <p class="subtitle" style="margin:6px 0 0 0;">Complete data book: AI chat contacts + manually added & imported contacts. <span id="cbStoreInfo" style="color:#15803d; font-weight:600;"></span></p>
                         </div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
                             <button onclick="openContactModal()" style="padding:10px 16px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">➕ Add Contact</button>
@@ -5629,7 +5629,22 @@
                 chatContactsCache = results[1] || {};
             } catch(e) { console.error('Contact book load error:', e); }
             loadZaheerSettings();
+            loadContactStoreInfo();
             renderContactBook();
+        }
+
+        async function loadContactStoreInfo() {
+            const el = document.getElementById('cbStoreInfo');
+            if (!el) return;
+            try {
+                const r = await fetch('api/contactbook/store-info');
+                if (!r.ok) return;
+                const d = await r.json();
+                el.innerText = d.mode === 'sqlite'
+                    ? '⚡ Stored locally on the VPS (SQLite) — ' + (d.contacts || 0).toLocaleString() + ' contacts, 0 Firestore reads'
+                    : (d.mode === 'firestore' ? '☁️ Stored in Firestore (local SQLite not available on this server)' : '');
+                el.title = d.path ? 'Local database file: ' + d.path : '';
+            } catch(e) { /* informational only */ }
         }
 
         function renderContactBook() {
@@ -5662,7 +5677,14 @@
                 return;
             }
 
-            list.innerHTML = filtered.map(function(c) {
+            // PERF: thousands of contacts are stored, but only the first 400 cards are drawn.
+            // Search and the filters still cover the WHOLE book.
+            const CB_RENDER_CAP = 400;
+            const shown = filtered.slice(0, CB_RENDER_CAP);
+
+            list.innerHTML = (filtered.length > CB_RENDER_CAP
+                ? '<div style="grid-column:1/-1; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:13px;">Showing the first ' + CB_RENDER_CAP + ' of ' + filtered.length.toLocaleString() + ' contacts — type in the search box (name, phone, company, country, materials…) to find any contact instantly.</div>'
+                : '') + shown.map(function(c) {
                 const badges = [];
                 if (c.fromChat) badges.push('<span style="background:#e8f5e9; color:#2e7d32; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">💬 AI Chat' + (c.chatCount ? ' • ' + c.chatCount + ' msgs' : '') + '</span>');
                 if (c.fromBook) badges.push('<span style="background:#e3f2fd; color:#1565c0; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">📇 Book</span>');
