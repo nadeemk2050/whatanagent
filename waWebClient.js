@@ -734,16 +734,19 @@ async function syncWaWebContactsToBook(limit = 200) {
       .slice(0, limit);
 
     let added = 0;
+    const abook = new Map(listWaWebAddressBook().map(r => [r.phone, r]));
     for (const c of chats) {
       if (added >= 15) break;   // cap per run to avoid Firestore write bursts (RESOURCE_EXHAUSTED)
       const phone = resolveRealPhoneNumber(c.id);
       if (!phone || phone.length < 8 || known.has(phone)) continue;
-      const nm = (c.name && !/^\+?\d+$/.test(c.name)) ? c.name : '';
+      const ab = abook.get(phone) || {};
+      const nm = ab.savedName || '';   // confirmed name only from a saved address-book name
       try {
         await setDoc(doc(globalDb, 'contactBook', phone), {
           phone: phone,
           phoneRaw: String(c.id || '').split('@')[0],
           name: nm,
+          waName: ab.waName || ((c.name && !/^\+?\d+$/.test(c.name)) ? c.name : ''),
           source: 'WhatsApp Web (auto)',
           inChat: true,
           lastMessageTs: c.timestamp || 0,
@@ -4724,6 +4727,15 @@ export async function initWaWeb(db = null) {
         // here, before the AI sees them — so a staff reply is never answered as a customer chat.
         m.messages.forEach(msg => { handleAlignStaffReply(msg).catch(() => {}); });
 
+        // Mr. Zaheer: quietly completes the Contact Book entry of AI-active chats (debounced, capped)
+        if (m.type === 'notify') {
+          m.messages.forEach(msg => {
+            const rj = msg.key && msg.key.remoteJid;
+            if (rj && !msg.key.fromMe && !String(rj).endsWith('@g.us')) {
+              import('./contactIntel.mjs').then(ci => ci.scheduleAutoFill(rj)).catch(() => {});
+            }
+          });
+        }
                 // Auto-Pilot AI Bot check for incoming customer messages
         if (waWebKnowledgeBase && waWebKnowledgeBase.autoReplyEnabled) {
           m.messages.forEach(async (msg) => {
@@ -5302,6 +5314,73 @@ export async function collectBrainChatMessagesForLearning(jid, maxMessages = 120
   }
   const all = (chat.messages || []).slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   return all.slice(-Math.max(1, Math.min(maxMessages, 500)));
+}
+
+// ---- Contact Book bridge (Mr. Zaheer = data steward) ----
+// Every WhatsApp Web contact as a flat row: phone + address-book name + WhatsApp profile name.
+// `name` on a Baileys record falls back to notify, so a "saved" name equal to the profile name is
+// treated as profile-only (the confirmed name is then left for Mr. Zaheer / the boss to confirm).
+export function listWaWebAddressBook() {
+  const seen = new Set();
+  const byPhone = new Map();
+  const push = (phone, row) => {
+    if (!phone || phone.length < 8 || phone.length > 15) return;
+    const cur = byPhone.get(phone) || { phone, savedName: '', waName: '', verifiedName: '', msgCount: 0, lastActive: 0, hasChat: false };
+    for (const k of ['savedName', 'waName', 'verifiedName']) if (row[k] && !cur[k]) cur[k] = row[k];
+    if (row.msgCount > cur.msgCount) cur.msgCount = row.msgCount;
+    if (row.lastActive > cur.lastActive) cur.lastActive = row.lastActive;
+    if (row.hasChat) cur.hasChat = true;
+    byPhone.set(phone, cur);
+  };
+  const isNum = (s) => /^[+\d\s()-]*$/.test(String(s || ''));
+  for (const rec of waWebState.contacts.values()) {
+    if (!rec || seen.has(rec)) continue;
+    seen.add(rec);
+    if (!rec.id || String(rec.id).endsWith('@g.us') || rec.id === 'status@broadcast') continue;
+    const phone = (resolveRealPhoneNumber(rec.id) || jidUser(rec.phoneNumber || rec.phone || '')).replace(/\D/g, '');
+    const notify = String(rec.notify || '').trim();
+    const nm = String(rec.name || '').trim();
+    push(phone, {
+      savedName: (nm && !isNum(nm) && nm !== notify) ? nm : '',
+      waName: (notify && !isNum(notify)) ? notify : (nm && !isNum(nm) ? nm : ''),
+      verifiedName: String(rec.verifiedName || '').trim()
+    });
+  }
+  for (const chat of waWebState.chats.values()) {
+    if (!chat || chat.isGroup || String(chat.id).endsWith('@g.us') || chat.id === 'status@broadcast') continue;
+    const phone = (resolveRealPhoneNumber(chat.id) || '').replace(/\D/g, '');
+    push(phone, { msgCount: (chat.messages || []).length, lastActive: chat.timestamp || 0, hasChat: true });
+  }
+  return Array.from(byPhone.values());
+}
+
+export function findWaWebChatByPhone(phone) {
+  const p = String(phone || '').replace(/\D/g, '');
+  if (!p) return null;
+  let best = null;
+  for (const c of waWebState.chats.values()) {
+    if (!c || c.isGroup || String(c.id).endsWith('@g.us')) continue;
+    const real = (resolveRealPhoneNumber(c.id) || '').replace(/\D/g, '');
+    if (!real || !phonesMatchLoose(real, p)) continue;
+    if (!best || (c.timestamp || 0) > (best.timestamp || 0)) best = c;
+  }
+  return best;
+}
+
+// Plain transcript of the chat for data extraction (stored text only - never triggers AI reading
+// media). Returns null when there is no chat; `blocked` when the chat is explicitly "full off".
+export async function getWaWebChatTranscriptByPhone(phone, maxMessages = 80) {
+  const chat = findWaWebChatByPhone(phone);
+  if (!chat) return null;
+  const st = getContactAiState(chat.id);
+  if (st.status === 'off' && st.source === 'explicit') return { jid: chat.id, blocked: true, aiStatus: st.status, lines: [], total: 0 };
+  const msgs = await collectBrainChatMessagesForLearning(chat.id, maxMessages);
+  const lines = msgs.map(m => {
+    const body = m.text || (m.transcribedAudio ? '[voice] ' + m.transcribedAudio : '');
+    if (!body) return '';
+    return (m.fromMe ? 'OWNER: ' : 'CONTACT: ') + String(body).replace(/\s+/g, ' ').slice(0, 400);
+  }).filter(Boolean);
+  return { jid: chat.id, blocked: false, aiStatus: st.status, lines, total: (chat.messages || []).length, lastActive: chat.timestamp || 0 };
 }
 
 // 📉 Dashboard pagination (egress saver): first page = last 7 days (min 50, max `limit` messages);
@@ -6061,6 +6140,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
 '2. Carefully analyze agreements, quotes, commitments, and status updates already delivered by the Owner/Boss.\n' +
 '3. DO NOT contradict what the Owner/Boss said. DO NOT ask questions the contact or Owner/Boss already answered.\n' +
 '4. Synthesize the whole conversation and formulate the most intelligent, helpful, natural WhatsApp response.');
+
+    // Contact Book duty: ask Mr. Zaheer's missing data naturally (max one item per reply)
+    if (!overridePrompt) {
+      try {
+        const ci = await import('./contactIntel.mjs');
+        const duty = await ci.contactDutyPrompt(jid);
+        if (duty) systemPrompt += duty;
+      } catch (e) { /* optional */ }
+    }
 
     // 🧠 CONTACT BRAIN: per-contact personality, relationship rules, learned style + persona blend
     // (never applied to internal override prompts, e.g. the Boss command brain)

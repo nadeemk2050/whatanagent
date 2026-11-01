@@ -18,6 +18,7 @@ import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
+import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerWorkshopRoutes } from './workshopApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
@@ -163,6 +164,7 @@ const brainEngine = registerBrainRoutes(app, db);
 registerTradeAccountsRoutes(app, db);
 // 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
+registerContactIntelRoutes(app, db);
 // 🏢 Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
 registerOfficeRoutes(app, db);
 // 🏗️ Websites Workshop (site takeover inspection, manager + engineers, health checks)
@@ -2134,7 +2136,11 @@ function sanitizeContactInput(c) {
     notes: sVal(c.notes),
     updatedAt: Date.now()
   };
-  out.isLead = !!(out.email || out.company || out.products || out.website || (out.leadStatus && out.leadStatus !== 'New'));
+  // New fields are only written when the caller sends them, so older clients never blank them out
+  for (const k of ['waName', 'wantsToBuy', 'wantsToSell', 'nameSource']) {
+    if (c[k] !== undefined) out[k] = sVal(c[k]);
+  }
+  out.isLead = !!(out.email || out.company || out.products || out.wantsToBuy || out.wantsToSell || out.website || (out.leadStatus && out.leadStatus !== 'New'));
   return out;
 }
 
@@ -2182,7 +2188,18 @@ app.put('/api/contactbook/:phone', async (req, res) => {
     } else {
       const ref = doc(db, "contactBook", oldId);
       const snap = await getDoc(ref);
-      await setDoc(ref, { ...c, createdAt: snap.exists() ? (snap.data().createdAt || Date.now()) : Date.now() }, { merge: true });
+      const prev = snap.exists() ? snap.data() : {};
+      const extra = {};
+      if (req.body.__full === true) {
+        // A manual edit takes ownership of the field: Zaheer must never overwrite it again
+        const aiClear = {};
+        for (const k of ['name', 'company', 'designation', 'country', 'city', 'address', 'website', 'email', 'type', 'wantsToBuy', 'wantsToSell']) {
+          if (c[k] !== undefined && sVal(c[k]) !== sVal(prev[k]) && prev.aiFields && prev.aiFields[k]) aiClear[k] = deleteField();
+        }
+        if (Object.keys(aiClear).length) extra.aiFields = aiClear;
+        if (c.name && sVal(c.name) !== sVal(prev.name)) extra.nameSource = 'manual';
+      }
+      await setDoc(ref, { ...c, ...extra, createdAt: snap.exists() ? (prev.createdAt || Date.now()) : Date.now() }, { merge: true });
     }
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Failed to update contact.' }); }
@@ -2208,18 +2225,30 @@ app.post('/api/contactbook/import', async (req, res) => {
       const c = sanitizeContactInput(r);
       if (!c.phone || c.phone.length < 6) { skipped++; continue; }
       if (!c.source) c.source = 'Import';
-      map.set(c.phone, c); // dedupe by phone, last wins
+      // Non-destructive merge: empty cells must never wipe data that is already saved
+      if (!sVal(r.leadStatus)) delete c.leadStatus;
+      Object.keys(c).forEach(k => { if (c[k] === '' || (Array.isArray(c[k]) && c[k].length === 0)) delete c[k]; });
+      if (!c.isLead) delete c.isLead;
+      const prevRow = map.get(c.phone);
+      map.set(c.phone, prevRow ? { ...prevRow, ...c } : c); // same phone twice in the file: merge, last non-empty wins
     }
     const unique = [...map.values()];
+    const existingIds = new Map();
+    const exSnap = await getDocs(collection(db, "contactBook"));
+    exSnap.forEach(d => existingIds.set(d.id, (d.data() || {}).createdAt || 0));
     const BATCH_SIZE = 400;
+    let created = 0, merged = 0;
     for (let i = 0; i < unique.length; i += BATCH_SIZE) {
       const batch = writeBatch(db);
       unique.slice(i, i + BATCH_SIZE).forEach(c => {
-        batch.set(doc(db, "contactBook", c.phone), { ...c, createdAt: Date.now() }, { merge: true });
+        const isNew = !existingIds.has(c.phone);
+        if (isNew) created++; else merged++;
+        const data = isNew || !existingIds.get(c.phone) ? { ...c, createdAt: Date.now() } : c;
+        batch.set(doc(db, "contactBook", c.phone), data, { merge: true });
       });
       await batch.commit();
     }
-    res.json({ success: true, imported: unique.length, skipped: skipped, received: rows.length });
+    res.json({ success: true, imported: unique.length, created, merged, skipped: skipped, received: rows.length });
   } catch (error) { res.status(500).json({ error: 'Import failed: ' + error.message }); }
 });
 
