@@ -397,15 +397,106 @@ app.post('/api/wa-web/contact/link-phone', async (req, res) => {
 
 app.post('/api/wa-web/contact/toggle-ai', async (req, res) => {
   try {
-    const { jid, paused } = req.body;
+    const { jid, paused, status } = req.body;
     if (!jid) return res.status(400).json({ error: 'Missing JID' });
-    const { toggleContactAiPause } = await import('./waWebClient.js');
-    const result = await toggleContactAiPause(jid, paused !== undefined ? paused : null);
+    const wa = await import('./waWebClient.js');
+    if (status) {
+      const r = await wa.setContactsAiStatus([jid], String(status));
+      if (!r.success) return res.status(400).json(r);
+      return res.json({ ...r, jid, status: String(status), isPaused: status !== 'active' });
+    }
+    const result = await wa.toggleContactAiPause(jid, paused !== undefined ? paused : null);
     res.json(result);
   } catch (err) {
     console.error('[API] Error toggling contact AI pause:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// --- "Manage all contacts & groups": AI status, handler and data deletion per chat ---
+let managerBrainCache = { at: 0, map: null };
+async function managerHandlers(force) {
+  if (!force && managerBrainCache.map && Date.now() - managerBrainCache.at < 120000) return managerBrainCache.map;
+  const { listBrains, brainKeyFor } = await import('./contactBrain.mjs');
+  const list = await listBrains(1500);
+  const map = new Map();
+  for (const b of list) {
+    const handled = b.handledBy || b.agentId || '';
+    map.set(b.key, handled);
+    if (b.phone) map.set('p:' + String(b.phone).replace(/[^0-9]/g, ''), handled);
+  }
+  managerBrainCache = { at: Date.now(), map, brainKeyFor };
+  return map;
+}
+
+app.get('/api/wa-web/manager', async (req, res) => {
+  try {
+    const wa = await import('./waWebClient.js');
+    const { listAgents } = await import('./agentsStore.mjs');
+    const { DEFAULT_AGENT_ID } = await import('./agentTemplates.mjs');
+    const agents = (await listAgents()).filter(a => a.status !== 'archived');
+    const nameOf = new Map(agents.map(a => [a.id, a.name]));
+    const map = await managerHandlers(req.query.fresh === '1');
+    const keyFor = managerBrainCache.brainKeyFor;
+    const rows = wa.getAiManagerRows().map(r => {
+      let h = map.get(keyFor(r.id));
+      if (h == null && r.phone) h = map.get('p:' + String(r.phone).replace(/[^0-9]/g, ''));
+      const handledBy = h || DEFAULT_AGENT_ID;
+      return { ...r, handledBy, handledByName: nameOf.get(handledBy) || (handledBy === DEFAULT_AGENT_ID ? 'Zaheer Ahmed' : handledBy) };
+    });
+    res.json({
+      rows,
+      defaultMode: wa.getAiDefaultMode(),
+      defaultAgentId: DEFAULT_AGENT_ID,
+      agents: agents.map(a => ({ id: a.id, name: a.name, status: a.status }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/wa-web/manager/status', async (req, res) => {
+  try {
+    const { jids, status } = req.body || {};
+    const wa = await import('./waWebClient.js');
+    const r = await wa.setContactsAiStatus(jids, String(status || ''));
+    res.status(r.success ? 200 : 400).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/wa-web/manager/default', async (req, res) => {
+  try {
+    const wa = await import('./waWebClient.js');
+    res.json(await wa.setAiDefaultMode(String((req.body || {}).mode || '')));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/wa-web/manager/handled-by', async (req, res) => {
+  try {
+    const { jids, agentId } = req.body || {};
+    const list = (Array.isArray(jids) ? jids : []).filter(Boolean).slice(0, 500);
+    if (!list.length) return res.status(400).json({ error: 'No contacts selected' });
+    const { saveBrain } = await import('./contactBrain.mjs');
+    const { DEFAULT_AGENT_ID } = await import('./agentTemplates.mjs');
+    const handled = !agentId || agentId === DEFAULT_AGENT_ID ? '' : String(agentId);
+    const names = new Map(getWaWebChats().map(c => [c.id, c.name]));
+    let ok = 0;
+    for (const jid of list) {
+      try { await saveBrain(jid, { handledBy: handled, agentManual: !!handled, name: names.get(jid) || '' }); ok++; } catch (e) { /* skip */ }
+    }
+    managerBrainCache = { at: 0, map: null };
+    res.json({ success: true, updated: ok });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/wa-web/manager/delete', async (req, res) => {
+  try {
+    const { jid, what } = req.body || {};
+    if (!jid) return res.status(400).json({ error: 'Missing jid' });
+    const wa = await import('./waWebClient.js');
+    const r = await wa.deleteChatData(jid, String(what || ''));
+    res.status(r.success ? 200 : 400).json(r);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/wa-web/contact/update', async (req, res) => {

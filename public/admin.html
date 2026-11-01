@@ -1390,6 +1390,7 @@
 
                     <button onclick="refreshWaWebState()" title="Refresh / Sync" style="background:#2a3942; border:none; color:#e9edef; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🔄 Sync</button>
                     <button id="waWebLogoutBtn" onclick="disconnectWaWeb()" title="Logout & Unlink" style="display:none; background:#d32f2f; border:none; color:#fff; padding:7px 11px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;">🚪 Disconnect</button>
+                    <button onclick="window.openWaManager && window.openWaManager()" title="Manage AI status, handler and data for all contacts and groups" style="background:#4c1d95; border:1px solid #a78bfa; color:#ddd6fe; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px; display:flex; align-items:center; gap:6px;">🎚️ Manage Contacts &amp; AI</button>
                     <a href="/trade" target="_blank" style="background:#065f46; border:1px solid #10b981; color:#a7f3d0; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px; text-decoration:none; display:flex; align-items:center; gap:6px;">📈 Trade Accounts</a>
                     <button onclick="closeWaWebPage()" style="background:#00a884; border:none; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px;">✕ Close Fullscreen</button>
                 </div>
@@ -8792,6 +8793,7 @@
                                 <div style="font-size:13px; color:#8696a0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                     ${lastMsgSnippet}
                                 </div>
+                                ${c.aiStatus && c.aiStatus !== 'active' ? `<span title="AI ${c.aiStatus}" style="font-size:10px; margin-left:6px; flex-shrink:0;">${c.aiStatus === 'off' ? '⛔' : '⏸️'}</span>` : ''}
                                 ${c.unreadCount > 0 ? `<span style="background:#25d366; color:#111b21; font-weight:bold; font-size:10px; padding:2px 6px; border-radius:10px; flex-shrink:0;">${c.unreadCount}</span>` : ''}
                             </div>
                         </div>
@@ -8882,6 +8884,8 @@
         }
 
         function isPausedContact(jid, phone) {
+            const cached = (waWebCachedChats || []).find(x => x.id === jid);
+            if (cached && cached.aiStatus) return cached.aiStatus !== 'active';
             const pausedList = (waWebKnowledgeBaseData && Array.isArray(waWebKnowledgeBaseData.pausedContacts)) ? waWebKnowledgeBaseData.pausedContacts : [];
             const cleanPhone = (phone || (jid || '').split('@')[0].split(':')[0]).replace(/[^0-9]/g, '');
             return pausedList.some(p => {
@@ -8896,21 +8900,22 @@
             const text = document.getElementById('waWebChatAiPauseText');
             if (!btn || !jid) return;
 
-            const isPaused = isPausedContact(jid);
-            if (isPaused) {
-                btn.style.borderColor = '#f59e0b';
-                btn.style.color = '#fbbf24';
-                btn.style.background = '#3b2005';
-                if (icon) icon.innerText = '⏸️';
-                if (text) text.innerText = 'AI: Paused';
-                btn.title = 'AI Auto-reply is PAUSED for this contact. Click to resume.';
+            const cached = (waWebCachedChats || []).find(x => x.id === jid);
+            const status = (cached && cached.aiStatus) || (isPausedContact(jid) ? 'paused' : 'active');
+            if (status !== 'active') {
+                btn.style.borderColor = status === 'off' ? '#ef4444' : '#f59e0b';
+                btn.style.color = status === 'off' ? '#f87171' : '#fbbf24';
+                btn.style.background = status === 'off' ? '#3b1111' : '#3b2005';
+                if (icon) icon.innerText = status === 'off' ? '⛔' : '⏸️';
+                if (text) text.innerText = status === 'off' ? 'AI: Off' : 'AI: Paused';
+                btn.title = 'AI is ' + status.toUpperCase() + ' for this chat - messages and voice notes are shown as plain WhatsApp. Click to switch AI on.';
             } else {
                 btn.style.borderColor = '#22c55e';
                 btn.style.color = '#22c55e';
                 btn.style.background = '#202c33';
                 if (icon) icon.innerText = '🤖';
                 if (text) text.innerText = 'AI: Active';
-                btn.title = 'AI Auto-reply is ACTIVE for this contact. Click to pause.';
+                btn.title = 'AI is ACTIVE for this contact. Click to pause. (Use "Manage AI" for Off / bulk control)';
             }
         }
 
@@ -8926,17 +8931,15 @@
                 const res = await fetch('/api/wa-web/contact/toggle-ai', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jid: waWebCurrentJid, paused: targetPaused })
+                    body: JSON.stringify({ jid: waWebCurrentJid, status: targetPaused ? 'paused' : 'active' })
                 });
 
                 if (res.ok) {
                     const data = await res.json();
-                    if (!waWebKnowledgeBaseData) waWebKnowledgeBaseData = {};
-                    waWebKnowledgeBaseData.pausedContacts = data.pausedContacts || [];
+                    const cached = (waWebCachedChats || []).find(x => x.id === waWebCurrentJid);
+                    if (cached) cached.aiStatus = data.status || (targetPaused ? 'paused' : 'active');
                     updateWaWebChatAiPauseButton(waWebCurrentJid);
                     renderWaWebChatList(waWebCachedChats);
-                    const toastMsg = targetPaused ? '⏸️ AI Auto-reply PAUSED for this contact' : '🟢 AI Auto-reply ACTIVATED for this contact';
-                    console.log(toastMsg);
                 } else {
                     alert('Failed to toggle AI state for contact');
                 }
@@ -12518,6 +12521,7 @@
 
     <!-- 🔴 Live Interactive Discussion / Meeting Board Engine -->
     <script src="/liveMeetingClient.js"></script>
+    <script src="/wa-manager.js"></script>
     <script src="/liveMeetingSessionsClient.js"></script>
 <script>
 /* ===================== ATS AI IDE WORKSPACE (client only, no build step) =====================

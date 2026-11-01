@@ -4395,6 +4395,7 @@ export async function initWaWeb(db = null) {
     await restoreSessionFromFirestore(globalDb);
     await restoreHistoryFromFirestore(globalDb);
     await restoreKnowledgeBaseFromFirestore(globalDb);
+    await restoreAiContactStatus(globalDb);
     await restoreLidMapSeedFromFirestore(globalDb);
     await restoreContactsIndexFromFirestore(globalDb);
     await restoreBossWebAuth();
@@ -4661,6 +4662,9 @@ export async function initWaWeb(db = null) {
         const msgId = msg.key?.id;
         if (!msgId) return;
 
+        // Paused / off / default-off chats are shown exactly like plain WhatsApp Web: no AI touches the audio
+        if (getContactAiState(jid).status !== 'active') return;
+
         // Check if brain allows audio for this contact
         let brain = null;
         try { brain = await getBrainForReply(jid, resolveContactName(jid)); } catch (e) {}
@@ -4780,8 +4784,10 @@ export async function initWaWeb(db = null) {
               }
 
               // Check if AI is paused for this specific contact
-              if (!isBossNumber && isContactAiPaused(remoteJid)) {
-                console.log('[WA-WEB AUTO-REPLY] ⏸️ Skipping auto-reply: AI is PAUSED for contact ' + remoteJid);
+              const aiState = getContactAiState(remoteJid);
+              if (!isBossNumber && aiState.status !== 'active' &&
+                  !(aiState.source === 'default' && conditionalTaskAwaitingFor(remoteJid))) {
+                console.log('[WA-WEB AUTO-REPLY] ⏸️ Skipping auto-reply: AI is ' + aiState.status.toUpperCase() + ' (' + aiState.source + ') for ' + remoteJid);
                 return;
               }
 
@@ -5260,7 +5266,8 @@ export function getWaWebChats() {
       isGroup: c.isGroup || false,
       lastMessage: c.lastMessage || '',
       timestamp: c.timestamp || 0,   // STABLE: never Date.now() (that made rows jump on every sync)
-      unreadCount: c.unreadCount || 0
+      unreadCount: c.unreadCount || 0,
+      aiStatus: getContactAiState(c.id).status
     };
   });
 
@@ -5285,6 +5292,8 @@ export async function getWaWebMessages(jid) {
 export async function collectBrainChatMessagesForLearning(jid, maxMessages = 120) {
   const chat = waWebState.chats.get(jid);
   if (!chat) return [];
+  const st = getContactAiState(jid);
+  if (st.status === 'off' && st.source === 'explicit') return [];   // "full off": AI never reads this chat
   if (chat._messagesLoaded === false) {
     try { await hydrateChatFromVault(jid); } catch (e) { /* keep whatever we have */ }
   }
@@ -5497,6 +5506,7 @@ export function getWaWebChatContext(jid) {
 // Helper: Get overview of all active chats for AI Copilot general discussion
 export function getWaWebAllChatsSummary() {
   const chats = Array.from(waWebState.chats.values())
+    .filter(c => { const st = getContactAiState(c.id); return !(st.status === 'off' && st.source === 'explicit'); })
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     .slice(0, 20);
 
@@ -5637,10 +5647,72 @@ export async function updateWaWebContactName(jid, newName) {
 
 // Build complete system knowledge prompt
 
-// Helper: Check if contact AI auto-reply is paused
-export function isContactAiPaused(jid) {
-  if (!jid) return false;
-  const cleanPhone = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+// ---------------------------------------------------------------------------
+// 🎚️ Per-contact AI control: 'active' | 'paused' | 'off'
+//   active = AI replies + auto-transcribes voice notes
+//   paused = AI never replies, never transcribes/analyses -> shown like plain WhatsApp Web
+//   off    = same as paused, and the chat is also hidden from AI summaries / learning
+// Default policy ('smart'): contacts WITHOUT a saved name are active, saved contacts and groups are
+// off until switched on. 'all_active' restores the old behaviour. Stored in its own Firestore doc
+// (appData/waAiContacts) so the admin page's whole-KB save can never overwrite it.
+// ---------------------------------------------------------------------------
+const AI_STATUSES = ['active', 'paused', 'off'];
+let aiContactStore = { status: {}, defaultMode: 'smart' };
+const aiKey = (s) => String(s || '').replace(/[^0-9A-Za-z-]/g, '_');
+
+async function restoreAiContactStatus(db) {
+  if (!db) return;
+  try {
+    const snap = await getDoc(doc(db, 'appData', 'waAiContacts'));
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      aiContactStore = {
+        status: (d.status && typeof d.status === 'object') ? d.status : {},
+        defaultMode: d.defaultMode === 'all_active' ? 'all_active' : 'smart'
+      };
+    }
+    console.log('[WA-AI] 🎚️ Contact AI status loaded (' + Object.keys(aiContactStore.status).length + ' explicit, default mode: ' + aiContactStore.defaultMode + ')');
+  } catch (e) {
+    console.warn('[WA-AI] could not load contact AI status:', e.message);
+  }
+}
+
+function aiKeysForJid(jid) {
+  const keys = [];
+  const u = aiKey(jidUser(jid));
+  if (u) keys.push(u);
+  const rp = aiKey(resolveRealPhoneNumber(jid));
+  if (rp && !keys.includes(rp)) keys.push(rp);
+  return keys;
+}
+
+function isBossOrSelfJid(jid) {
+  const clean = jidUser(jid);
+  const real = String(resolveRealPhoneNumber(jid) || '').replace(/[^0-9]/g, '');
+  const own = sock?.user?.id ? String(sock.user.id).split('@')[0].split(':')[0].replace(/[^0-9]/g, '') : '';
+  const bossPhone = String(waWebKnowledgeBase.bossPhone || waWebKnowledgeBase.bossKnowledge?.bossPhone || '+971529244592').replace(/[^0-9]/g, '');
+  return clean === '128046178803746' || clean.endsWith('529244592') || real.endsWith('529244592') ||
+    (bossPhone && (clean.endsWith(bossPhone) || (real && real.endsWith(bossPhone)))) ||
+    (own && (clean === own || real === own));
+}
+
+// True only for an address-book / verified-business name (a WhatsApp profile "push" name does not count)
+function hasSavedContactName(jid) {
+  if (!jid || String(jid).endsWith('@g.us')) return false;
+  const cleanPhone = jidUser(jid);
+  const realPhone = resolveRealPhoneNumber(jid);
+  const keys = [jid, cleanPhone, cleanPhone + '@s.whatsapp.net', cleanPhone + '@lid'];
+  if (realPhone) keys.push(realPhone, realPhone + '@s.whatsapp.net', realPhone + '@lid');
+  for (const k of keys) {
+    const c = waWebState.contacts.get(k);
+    const n = c && String(c.name || c.verifiedName || '').trim();
+    if (n && !/^[+\d\s-]+$/.test(n)) return true;
+  }
+  return false;
+}
+
+function legacyPausedContact(jid) {
+  const cleanPhone = jidUser(jid);
   const pausedList = Array.isArray(waWebKnowledgeBase.pausedContacts) ? waWebKnowledgeBase.pausedContacts : [];
   return pausedList.some(p => {
     const cleanP = (p || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
@@ -5648,42 +5720,133 @@ export function isContactAiPaused(jid) {
   });
 }
 
-// Helper: Toggle pause state for a contact
+// { status, source: 'explicit' | 'default' | 'boss' }
+export function getContactAiState(jid) {
+  if (!jid) return { status: 'active', source: 'default' };
+  if (jid === 'status@broadcast') return { status: 'off', source: 'default' };
+  if (isBossOrSelfJid(jid)) return { status: 'active', source: 'boss' };
+  for (const k of aiKeysForJid(jid)) {
+    const v = aiContactStore.status[k];
+    if (AI_STATUSES.includes(v)) return { status: v, source: 'explicit' };
+  }
+  if (legacyPausedContact(jid)) return { status: 'paused', source: 'explicit' };
+  if (aiContactStore.defaultMode === 'smart') {
+    const isGroup = String(jid).endsWith('@g.us');
+    // contact book not synced yet -> stay silent rather than answer a saved contact by mistake
+    if (isGroup || hasSavedContactName(jid) || waWebState.contacts.size === 0) return { status: 'off', source: 'default' };
+  }
+  return { status: 'active', source: 'default' };
+}
+
+// Kept for older callers: anything other than "active" means the AI must stay out of the chat
+export function isContactAiPaused(jid) {
+  return getContactAiState(jid).status !== 'active';
+}
+
+export function getAiDefaultMode() { return aiContactStore.defaultMode; }
+
+async function persistAiContactStore(patch) {
+  if (!globalDb) return;
+  try {
+    await setDoc(doc(globalDb, 'appData', 'waAiContacts'), { ...patch, updatedAt: Date.now() }, { merge: true });
+  } catch (e) {
+    console.warn('[WA-AI] could not save contact AI status:', e.message);
+  }
+}
+
+export async function setAiDefaultMode(mode) {
+  aiContactStore.defaultMode = mode === 'all_active' ? 'all_active' : 'smart';
+  await persistAiContactStore({ defaultMode: aiContactStore.defaultMode });
+  return { success: true, defaultMode: aiContactStore.defaultMode };
+}
+
+export async function setContactsAiStatus(jids, status) {
+  if (!AI_STATUSES.includes(status)) return { success: false, error: 'Invalid status' };
+  const list = (Array.isArray(jids) ? jids : [jids]).filter(Boolean);
+  if (!list.length) return { success: false, error: 'No contacts selected' };
+  const patch = {};
+  for (const jid of list) {
+    for (const k of aiKeysForJid(jid)) {
+      aiContactStore.status[k] = status;
+      patch[k] = status;
+    }
+  }
+  await persistAiContactStore({ status: patch });
+  console.log('[WA-AI] 🎚️ ' + list.length + ' chat(s) -> AI ' + status.toUpperCase());
+  return { success: true, count: list.length, status };
+}
+
+// Helper: Toggle pause state for a contact (chat-header button)
 export async function toggleContactAiPause(jid, shouldPause = null) {
   if (!jid) return { success: false, error: 'Missing JID' };
   const cleanPhone = jid.split('@')[0].split(':')[0];
-  
-  if (!Array.isArray(waWebKnowledgeBase.pausedContacts)) {
-    waWebKnowledgeBase.pausedContacts = [];
-  }
+  const targetPaused = shouldPause !== null ? Boolean(shouldPause) : !isContactAiPaused(jid);
+  const res = await setContactsAiStatus([jid], targetPaused ? 'paused' : 'active');
+  if (!res.success) return res;
+  console.log(`[WA-AI] Contact ${cleanPhone} AI is now: ${targetPaused ? 'PAUSED ⏸️' : 'ACTIVE 🟢'}`);
+  return { success: true, jid, cleanPhone, isPaused: targetPaused, status: targetPaused ? 'paused' : 'active' };
+}
 
-  const isCurrentlyPaused = isContactAiPaused(jid);
-  const targetPaused = shouldPause !== null ? Boolean(shouldPause) : !isCurrentlyPaused;
-
-  if (targetPaused) {
-    if (!waWebKnowledgeBase.pausedContacts.includes(jid)) waWebKnowledgeBase.pausedContacts.push(jid);
-    if (!waWebKnowledgeBase.pausedContacts.includes(cleanPhone)) waWebKnowledgeBase.pausedContacts.push(cleanPhone);
-  } else {
-    waWebKnowledgeBase.pausedContacts = waWebKnowledgeBase.pausedContacts.filter(x => {
-      const cleanX = (x || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-      const cleanTarget = cleanPhone.replace(/[^0-9]/g, '');
-      return x !== jid && x !== cleanPhone && cleanX !== cleanTarget;
+// Rows for the "Manage all contacts & groups" screen
+export function getAiManagerRows() {
+  return getWaWebChats()
+    .filter(c => c.id && !String(c.id).endsWith('@broadcast'))
+    .map(c => {
+      const st = getContactAiState(c.id);
+      const chat = waWebState.chats.get(c.id) || {};
+      return {
+        id: c.id, name: c.name, phone: c.phone, isGroup: c.isGroup,
+        status: st.status, source: st.source,
+        total: chat._messagesLoaded === false ? (chat._messagesCount || 0) : (chat.messages || []).length,
+        timestamp: c.timestamp || 0
+      };
     });
+}
+
+const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker'];
+
+// Permanently remove a chat's data: 'all' | 'media' | 'text'. Removes it from this server, from the
+// Firestore archive and (best effort) from the linked WhatsApp account's own chat copy.
+export async function deleteChatData(jid, what) {
+  const chat = waWebState.chats.get(jid);
+  if (!chat) return { success: false, error: 'Chat not found' };
+  if (!['all', 'media', 'text'].includes(what)) return { success: false, error: 'Invalid delete type' };
+  if (what === 'all') {
+    await clearWaWebChat(jid);
+    for (const k of Array.from(rawMessagesMap.keys())) if (k.startsWith(jid + '_')) rawMessagesMap.delete(k);
+    return { success: true, removed: 'all' };
+  }
+  if (chat._messagesLoaded === false) await hydrateChatFromVault(jid);
+  const before = chat.messages || [];
+  const isMedia = (m) => MEDIA_TYPES.includes(m.mediaType);
+  const doomed = before.filter(m => what === 'media' ? isMedia(m) : !isMedia(m));
+  chat.messages = before.filter(m => !doomed.includes(m));
+  const last = chat.messages[chat.messages.length - 1];
+  chat.lastMessage = last ? (last.text || '') : '';
+
+  // "delete for me" on the linked account, best effort and capped
+  let onPhone = 0;
+  if (sock && waWebState.status === 'connected') {
+    for (const m of doomed.slice(-150)) {
+      try {
+        const raw = rawMessagesMap.get(jid + '_' + m.id);
+        const key = raw && raw.key ? raw.key : { remoteJid: jid, id: m.id, fromMe: !!m.fromMe };
+        await sock.chatModify({ deleteForMe: { deleteMedia: isMedia(m), key, timestamp: m.timestamp || Date.now() } }, jid);
+        rawMessagesMap.delete(jid + '_' + m.id);
+        onPhone++;
+      } catch (e) { /* not supported for this message - archive copy is still removed */ }
+    }
   }
 
   if (globalDb) {
     try {
-      await setDoc(doc(globalDb, "appData", "waWebKnowledgeBase"), {
-        pausedContacts: waWebKnowledgeBase.pausedContacts
-      }, { merge: true });
-      console.log(`[WA-WEB KB] Persisted paused contacts list (${waWebKnowledgeBase.pausedContacts.length} entries) to Firestore`);
-    } catch (e) {
-      console.warn('[WA-WEB KB] Error persisting paused contacts to Firestore:', e.message);
-    }
+      const docId = jid.replace(/[^a-zA-Z0-9_-]/g, '_');
+      await setDoc(doc(globalDb, 'waWebChatHistory', docId), buildChatVaultPayload(chat), { merge: true });
+      chatVaultSignatures.set(jid, chatVaultSignature(chat));
+    } catch (e) { console.warn('[WA-AI] archive update failed:', e.message); }
   }
-
-  console.log(`[WA-WEB KB] Contact ${cleanPhone} AI auto-reply is now: ${targetPaused ? 'PAUSED ⏸️' : 'ACTIVE 🟢'}`);
-  return { success: true, jid, cleanPhone, isPaused: targetPaused, pausedContacts: waWebKnowledgeBase.pausedContacts };
+  calculateSyncStats();
+  return { success: true, removed: doomed.length, onPhone };
 }
 
 // Business facts handed to a staff agent only when its card allows it (useBusinessKb).
