@@ -1434,6 +1434,8 @@ export function registerAlignRoutes(app) {
           patch.completedByName = stamp.name;
         } else {
           patch.completedAt = null;
+          patch.completedByUid = null;
+          patch.completedByName = null;
         }
       }
       if (b.assigneeHandle !== undefined) {

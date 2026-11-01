@@ -4890,7 +4890,7 @@
                     const okComplete = await promptForAdminPassword(ctx.isDone ? 'Reopen this task — password' : 'Complete this task — password', ctx.isDone ? 'Reopen' : 'Complete');
                     if (!okComplete) return;
                     let who = '';
-                    if (!ctx.isDone) {
+                    if (!ctx.isDone && ctx.taskType !== 'tasks' && ctx.taskType !== 'tasks_for_all' && ctx.taskType !== 'personal_tasks') {
                         const suggested = (currentUserProfile && (currentUserProfile.name || currentUserProfile.handle)) || (currentUser && currentUser.email) || '';
                         who = window.prompt('Who completed this task?', suggested);
                         if (who === null) return;                       // cancelled
@@ -4898,13 +4898,30 @@
                     }
                     try {
                         const base = `/artifacts/${appId}/public/data/`;
+                        if (ctx.taskType === 'tasks' || ctx.taskType === 'tasks_for_all') {
+                            if (window.alignRequireUnlock && !(await window.alignRequireUnlock())) return;
+                            // The server stamps who did it; clients cannot write board tasks directly.
+                            await window.alignApi('/task/update', {
+                                method: 'POST',
+                                teamId: teamCtx.teamId,
+                                body: { teamId: teamCtx.teamId, id: ctx.taskId, kind: ctx.taskType === 'tasks' ? 'assigned' : 'shared', status: ctx.isDone ? 'Pending' : 'Done', adminPassword: TASK_ACTION_PASSWORD }
+                            });
+                            showTopNotice(ctx.isDone ? '↩️ Moved back to pending tasks' : 'Completed — moved to Completed Tasks');
+                            return;
+                        }
+                        if (ctx.taskType === 'personal_tasks') {
+                            await window.alignApi('/personal/' + encodeURIComponent(ctx.taskId), {
+                                method: 'PATCH',
+                                body: { status: ctx.isDone ? 'Pending' : 'Done' }
+                            });
+                            showTopNotice(ctx.isDone ? '↩️ Moved back to pending tasks' : 'Completed — moved to Completed Tasks');
+                            return;
+                        }
                         let docRef;
                         if (ctx.taskType === 'project') {
                             docRef = db.collection(base + `projects/${ctx.projectId}/tasks`).doc(ctx.taskId);
                         } else if (ctx.taskType === 'personal_project') {
                             docRef = db.collection(base + `users/${currentUser.uid}/personal_projects/${ctx.projectId}/tasks`).doc(ctx.taskId);
-                        } else if (ctx.taskType === 'personal_tasks') {
-                            docRef = db.collection(base + `users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId);
                         } else {
                             docRef = db.collection(base + ctx.taskType).doc(ctx.taskId);
                         }
@@ -4956,7 +4973,7 @@
                     } else if (ctx.taskType === 'personal_project') {
                         await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_projects/${ctx.projectId}/tasks`).doc(ctx.taskId).delete();
                     } else if (ctx.taskType === 'personal_tasks') {
-                        await db.collection(`/artifacts/${appId}/public/data/users/${currentUser.uid}/personal_tasks`).doc(ctx.taskId).delete();
+                        await window.alignApi('/personal/' + encodeURIComponent(ctx.taskId), { method: 'DELETE' });
                     } else {
                         await window.alignApi('/task/delete', {
                             method: 'POST',
