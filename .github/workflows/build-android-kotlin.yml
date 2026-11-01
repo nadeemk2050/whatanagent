@@ -106,7 +106,7 @@ jobs:
           {
             "versionCode": $CODE,
             "versionName": "$VERSION",
-            "apkUrl": "https://whatanagent-a1e59.web.app/downloads/aligntasks-$VERSION.apk",
+            "apkUrl": "https://whatanagent.duckdns.org/downloads/aligntasks-$VERSION.apk",
             "notes": "${NOTES:-AlignTasks for Android $VERSION}",
             "mandatory": $MANDATORY,
             "publishedAt": "$(date -u +%F)"

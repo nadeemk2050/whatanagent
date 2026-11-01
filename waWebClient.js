@@ -1187,6 +1187,40 @@ const alignTasksCache = new Map();     // task id -> { ref, data, src }
 
 // Admin-SDK board poll: feeds alignTasksCache (due reminders + completion announcements) and
 // refresh the staff WhatsApp map. Replaces the onSnapshot listeners the rules used to deny.
+// Admin-SDK listeners (not polling): Firestore bills the initial load once and afterwards only the
+// documents that change. The old 45s full-collection poll re-read every task ~1,900 times a day.
+const alignBoardUnsubs = [];
+function startAlignBoardWatch(attempt = 0) {
+  let db2;
+  try { db2 = alignDb(); } catch (e) {
+    if (attempt < 20) setTimeout(() => startAlignBoardWatch(attempt + 1), 30000);
+    return;
+  }
+  for (const u of alignBoardUnsubs.splice(0)) { try { u(); } catch (e) { /* ignore */ } }
+  let retryTimer = null;
+  const retry = (why) => {
+    if (retryTimer) return;
+    console.warn('[ALIGN WA] board listener stopped (' + why + ') - restarting in 60s');
+    retryTimer = setTimeout(() => startAlignBoardWatch(0), 60000);
+  };
+  for (const src of ['tasks', 'tasks_for_all']) {
+    const unsub = db2.collection(ALIGNTASKS_BASE + '/' + src).limit(3000).onSnapshot(snap => {
+      snap.docChanges().forEach(ch => {
+        const id = ch.doc.id;
+        if (ch.type === 'removed') { alignTasksCache.delete(id); return; }
+        const data = ch.doc.data() || {};
+        const prev = alignTasksCache.get(id);
+        if (prev && prev.data && prev.data.status !== 'Done' && data.status === 'Done') {
+          announceTaskCompletion(ch.doc.ref, data).catch(() => {});
+        }
+        alignTasksCache.set(id, { ref: ch.doc.ref, data: data, src: src });
+      });
+    }, err => retry((err && err.message) || 'error'));
+    alignBoardUnsubs.push(unsub);
+  }
+}
+
+// Staff WhatsApp map (small collection) - refreshed every few minutes.
 async function alignPollBoard() {
   let db2;
   try { db2 = alignDb(); } catch (e) { return; }
@@ -1196,17 +1230,6 @@ async function alignPollBoard() {
     snap.forEach(d => rows.push({ id: d.id, ref: d.ref, data: d.data() || {} }));
     return rows;
   };
-  for (const src of ['tasks', 'tasks_for_all']) {
-    let rows;
-    try { rows = await readCol(src); } catch (e) { continue; }
-    for (const row of rows) {
-      const prev = alignTasksCache.get(row.id);
-      if (prev && prev.data && prev.data.status !== 'Done' && row.data.status === 'Done') {
-        announceTaskCompletion(row.ref, row.data).catch(() => {});
-      }
-      alignTasksCache.set(row.id, { ref: row.ref, data: row.data, src: src });
-    }
-  }
   if (Date.now() - alignStaffPollAt > 10 * 60 * 1000) {
     alignStaffPollAt = Date.now();
     try {
@@ -1785,9 +1808,9 @@ function initAlignNotifySystem(db) {
       });
     }, () => {});
     // The board rules reserve reads for signed-in members and all task writes for the API,
-    // so the server watches the board with a light Admin-SDK poll instead of onSnapshot
-    // (which the rules denied). 45s matches the reminder tick.
-    alignTasksPollTimer = setInterval(() => { alignPollBoard().catch(() => {}); }, 45000);
+    // so the server watches the board with Admin-SDK listeners (see startAlignBoardWatch).
+    setTimeout(() => { startAlignBoardWatch(); }, 8000);
+    alignTasksPollTimer = setInterval(() => { alignPollBoard().catch(() => {}); }, 11 * 60 * 1000);
     setTimeout(() => { alignPollBoard().catch(() => {}); }, 8000);
     // Announcements config (assigned WhatsApp group + weekly summary schedule) - live from Firestore
     alignAnnounceUnsub = onSnapshot(doc(db, 'appData', 'alignAnnounceConfig'), ds => {
