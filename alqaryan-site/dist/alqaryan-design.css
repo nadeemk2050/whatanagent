@@ -1,0 +1,350 @@
+/* ==========================================================================
+   Al Qaryan Industries — design system
+   Paste into: Appearance → Customize → Additional CSS
+   Prefix "q-" so it never collides with Astra's own classes.
+   ========================================================================== */
+
+:root {
+  --q-ink: #0f172a;
+  --q-body: #3b4a54;
+  --q-muted: #6b7c85;
+  --q-primary: #0b6e4f;
+  --q-primary-dark: #075039;
+  --q-primary-soft: #e8f4ef;
+  --q-line: #e3ebe6;
+  --q-soft: #f5f8f6;
+  --q-wa: #128c4b;
+  --q-radius: 10px;
+  --q-shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 8px 24px rgba(15, 23, 42, .06);
+}
+
+/* ---------- Hide the theme's duplicate page title (our pages carry their own H1) ---------- */
+.page .entry-header,
+.page .entry-meta,
+.page .ast-single-post-order .entry-title { display: none !important; }
+.page .content-area { width: 100% !important; }
+.page #secondary,
+.page .widget-area { display: none !important; }
+
+/* ---------- Base rhythm inside page content ---------- */
+.entry-content .q-hero,
+.entry-content .q-section,
+.entry-content .q-grid,
+.entry-content .q-trust,
+.entry-content .q-cta,
+.entry-content .q-prose { color: var(--q-body); }
+
+.entry-content .q-section > h2,
+.entry-content .q-prose > h2 {
+  color: var(--q-ink);
+  font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+  line-height: 1.25;
+  margin: 0 0 .6em;
+  letter-spacing: -.01em;
+}
+.entry-content .q-section { margin: 2.75rem 0; }
+.entry-content .q-section > *:last-child { margin-bottom: 0; }
+.entry-content .q-prose p,
+.entry-content .q-section p { font-size: 1.0625rem; line-height: 1.7; }
+
+/* ---------- Hero ---------- */
+.q-hero {
+  background: linear-gradient(135deg, #0b6e4f 0%, #08543c 55%, #063c2b 100%);
+  color: #ffffff;
+  border-radius: 16px;
+  padding: clamp(1.75rem, 4vw, 3.5rem);
+  margin: 0 0 2rem;
+  position: relative;
+  overflow: hidden;
+}
+.q-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -60% auto;
+  width: 420px; height: 420px;
+  background: radial-gradient(circle, rgba(255,255,255,.10), transparent 65%);
+  pointer-events: none;
+}
+.q-hero .q-kicker {
+  display: inline-block;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #bff0da;
+  margin: 0 0 .9rem;
+}
+.q-hero h1 {
+  color: #ffffff;
+  font-size: clamp(1.75rem, 3.6vw, 2.9rem);
+  line-height: 1.15;
+  letter-spacing: -.02em;
+  margin: 0 0 1rem;
+  max-width: 22ch;
+}
+.q-hero .q-lead {
+  color: rgba(255,255,255,.92);
+  font-size: clamp(1rem, 1.5vw, 1.15rem);
+  line-height: 1.65;
+  max-width: 62ch;
+  margin: 0 0 1.6rem;
+}
+.q-hero--compact h1 { max-width: none; }
+.q-hero--compact { padding: clamp(1.5rem, 3vw, 2.5rem); }
+
+/* ---------- Buttons ---------- */
+.q-cta-row { display: flex; flex-wrap: wrap; gap: .75rem; }
+.q-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .8rem 1.35rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: .95rem;
+  line-height: 1;
+  text-decoration: none !important;
+  border: 1px solid transparent;
+  transition: transform .12s ease, background .15s ease, color .15s ease, border-color .15s ease;
+}
+.q-btn:hover { transform: translateY(-1px); }
+.q-btn--primary { background: #ffffff; color: var(--q-primary-dark) !important; }
+.q-btn--primary:hover { background: #f0f7f3; color: var(--q-primary-dark) !important; }
+.q-btn--ghost { background: transparent; color: #ffffff !important; border-color: rgba(255,255,255,.55); }
+.q-btn--ghost:hover { background: rgba(255,255,255,.12); }
+.q-btn--wa { background: var(--q-wa); color: #ffffff !important; }
+.q-btn--wa:hover { background: #0f7a41; color: #ffffff !important; }
+.q-cta .q-btn--primary { background: var(--q-primary); color: #ffffff !important; }
+.q-cta .q-btn--primary:hover { background: var(--q-primary-dark); }
+
+/* ---------- Trust strip ---------- */
+.q-trust {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--q-line);
+  border: 1px solid var(--q-line);
+  border-radius: var(--q-radius);
+  overflow: hidden;
+  margin: 0 0 2rem;
+}
+.q-stat { background: #ffffff; padding: 1.1rem 1.15rem; }
+.q-stat strong {
+  display: block;
+  color: var(--q-primary-dark);
+  font-size: 1.2rem;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+.q-stat span { display: block; color: var(--q-muted); font-size: .85rem; margin-top: .2rem; }
+
+/* ---------- Cards & grids ---------- */
+.q-grid { display: grid; gap: 1rem; margin: 1.5rem 0 2.5rem; }
+.q-grid--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.q-grid--3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.q-card {
+  background: #ffffff;
+  border: 1px solid var(--q-line);
+  border-radius: var(--q-radius);
+  padding: 1.35rem;
+  box-shadow: var(--q-shadow);
+}
+.q-card h3 {
+  margin: 0 0 .5rem;
+  color: var(--q-ink);
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+.q-card p { margin: 0 0 .75rem; font-size: .98rem; line-height: 1.6; }
+.q-card p:last-child { margin-bottom: 0; }
+.q-card--flat { box-shadow: none; background: var(--q-soft); }
+
+/* ---------- Text links ---------- */
+.q-link {
+  font-weight: 700;
+  color: var(--q-primary) !important;
+  text-decoration: none !important;
+  border-bottom: 2px solid var(--q-primary-soft);
+  padding-bottom: 1px;
+}
+.q-link:hover { border-bottom-color: var(--q-primary); }
+
+/* ---------- Chips (material shortcuts) ---------- */
+.q-chips { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.25rem 0 2rem; }
+.q-chip {
+  display: inline-block;
+  padding: .55rem 1rem;
+  background: var(--q-primary-soft);
+  color: var(--q-primary-dark) !important;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: .92rem;
+  text-decoration: none !important;
+  border: 1px solid transparent;
+}
+.q-chip:hover { background: #ffffff; border-color: var(--q-primary); }
+
+/* ---------- Lists ---------- */
+.q-list { list-style: none; padding: 0; margin: 1.25rem 0 2rem; }
+.q-list li {
+  position: relative;
+  padding-left: 1.6rem;
+  margin-bottom: .8rem;
+  font-size: 1.03rem;
+  line-height: 1.65;
+}
+.q-list li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: .55em;
+  width: .5rem; height: .5rem;
+  border-radius: 2px;
+  background: var(--q-primary);
+}
+.q-list--tight li { margin-bottom: .45rem; font-size: .98rem; }
+.q-list strong { color: var(--q-ink); }
+
+/* ---------- Numbered process ---------- */
+.q-steps { counter-reset: qstep; list-style: none; padding: 0; margin: 1.5rem 0 2rem; }
+.q-steps li {
+  counter-increment: qstep;
+  position: relative;
+  padding: .1rem 0 1.15rem 3rem;
+  border-left: 2px solid var(--q-line);
+  margin-left: .85rem;
+  font-size: 1.03rem;
+  line-height: 1.65;
+}
+.q-steps li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.q-steps li::before {
+  content: counter(qstep);
+  position: absolute;
+  left: -0.95rem;
+  top: -0.1rem;
+  width: 1.75rem; height: 1.75rem;
+  display: grid; place-items: center;
+  background: var(--q-primary);
+  color: #ffffff;
+  border-radius: 50%;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.q-steps strong { color: var(--q-ink); }
+
+/* ---------- Tables ---------- */
+.q-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0 2rem;
+  font-size: .97rem;
+  background: #ffffff;
+  border: 1px solid var(--q-line);
+  border-radius: var(--q-radius);
+  overflow: hidden;
+}
+.q-table th,
+.q-table td {
+  padding: .8rem 1rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--q-line);
+  line-height: 1.55;
+}
+.q-table thead th {
+  background: var(--q-soft);
+  color: var(--q-ink);
+  font-size: .85rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.q-table tbody th {
+  width: 34%;
+  color: var(--q-ink);
+  font-weight: 700;
+  background: #fcfdfc;
+}
+.q-table tr:last-child th,
+.q-table tr:last-child td { border-bottom: 0; }
+.q-table a { color: var(--q-primary); }
+
+/* ---------- FAQ ---------- */
+.q-faq {
+  border: 1px solid var(--q-line);
+  border-radius: var(--q-radius);
+  background: #ffffff;
+  margin-bottom: .7rem;
+  padding: 0 1.1rem;
+}
+.q-faq summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--q-ink);
+  padding: 1rem 0;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+.q-faq summary::-webkit-details-marker { display: none; }
+.q-faq summary::after {
+  content: "+";
+  color: var(--q-primary);
+  font-size: 1.25rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.q-faq[open] summary::after { content: "–"; }
+.q-faq > p,
+.q-faq > div {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--q-body);
+}
+
+/* ---------- Call to action band ---------- */
+.q-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--q-soft);
+  border: 1px solid var(--q-line);
+  border-left: 4px solid var(--q-primary);
+  border-radius: var(--q-radius);
+  padding: 1.5rem 1.6rem;
+  margin: 3rem 0 1rem;
+}
+.q-cta__text strong { display: block; color: var(--q-ink); font-size: 1.1rem; margin-bottom: .2rem; }
+.q-cta__text span { color: var(--q-muted); font-size: .95rem; }
+.q-cta__actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+
+/* ---------- Utility ---------- */
+.q-kicker { letter-spacing: .08em; }
+.q-muted { color: var(--q-muted) !important; font-size: .93rem; }
+.q-note {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: .9rem 1.1rem;
+  font-size: .96rem !important;
+  line-height: 1.6;
+}
+.q-prose p { margin-bottom: 1.1rem; }
+
+/* ---------- Mobile ---------- */
+@media (max-width: 640px) {
+  .q-hero { border-radius: 12px; }
+  .q-hero h1 { max-width: none; }
+  .q-table { font-size: .92rem; }
+  .q-table th, .q-table td { padding: .65rem .75rem; }
+  .q-table tbody th { width: 42%; }
+  .q-cta { flex-direction: column; align-items: flex-start; }
+  .q-cta__actions { width: 100%; }
+  .q-cta__actions .q-btn { flex: 1 1 auto; }
+  .q-btn { width: 100%; }
+  .q-cta-row .q-btn { width: auto; flex: 1 1 auto; }
+}
