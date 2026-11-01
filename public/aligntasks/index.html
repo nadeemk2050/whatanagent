@@ -3260,7 +3260,9 @@
                 const fromAccountEl = document.getElementById('wa-send-from-account');
                 const useAccount = !!(waAccount && waAccount.linked && fromAccountEl && fromAccountEl.checked);
                 // Hand-off mode: nothing is queued on the server — WhatsApp opens with the message ready.
-                if (!useAccount && (teamCtx.reminderMode === 'handoff' || !(waAccount && waAccount.linked)) && !scheduling) {
+                // Accounts wired to the WhatsApp bridge (the server's connected WhatsApp Web) always send
+                // instantly through it, so hand-off is only for accounts without a bridge or own number.
+                if (!useAccount && !waBridgeAllowed() && (teamCtx.reminderMode === 'handoff' || !(waAccount && waAccount.linked)) && !scheduling) {
                     const items = [];
                     for (const cb of memberBoxes) {
                         const email = String(cb.value || '').toLowerCase();
@@ -3620,6 +3622,8 @@
                 waCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
                 document.getElementById('wa-remind-title').innerText = 'Send WhatsApp Reminder';
                 document.getElementById('wa-remind-schedule-toggle').checked = false;
+                const sendBtnReset = document.getElementById('wa-remind-send');
+                if (sendBtnReset) { sendBtnReset.disabled = false; sendBtnReset.innerText = 'Send on WhatsApp'; }
                 document.getElementById('wa-remind-schedule-fields').classList.add('hidden');
                 const d = new Date(Date.now() + 10 * 60 * 1000);
                 document.getElementById('wa-remind-date').value = localDateValue(d.getTime());
