@@ -120,6 +120,18 @@ export const PIPE_SCRAP = [
       ['HDPE 60 scrap', 'Legacy PE63 pipe recovered from decommissioned lines.', 'hdpe-60-scrap'],
       ['PVC pipe scrap', 'uPVC drainage and sewer pipe recovered for regrind and compound.', 'pvc-pipe-scrap']
     ],
+    market: [
+      `PE100 pipe scrap does not trade like bottle scrap. Its price follows three things at once: the virgin HDPE price it competes with, the pace of municipal and utility work in Sindh and Punjab, and the cost of moving something that is mostly air. When civil works slow — in the monsoon months, or when a provincial budget is delayed — the material piles up at contractors' yards and the price softens. When two large water schemes are running at once, the opposite happens and buyers compete for the same tonnes.`,
+      `The second variable is grade purity. A load that is single-colour, single-application and free of PEX commands a genuine premium, because it goes straight into production with no sorting cost. A mixed load of blue water pipe, orange duct and black gas pipe is still saleable, but it is priced as a mixed stream and processed with a sorting stage attached. Sellers who separate before they call us consistently get the better number, and that is not a negotiating tactic — it reflects a real difference in what we can do with the material.`
+    ],
+    enquiry: [
+      'Diameter range and approximate wall thickness — 63 mm to 630 mm is our normal window, and larger sections need cutting before transport',
+      'Colour mix and, if known, the application each colour came from (water, gas, telecom duct)',
+      'The form you can supply: whole lengths, cut sections, shredded, or already baled',
+      'Approximate tonnage and whether it is a one-off clearance or a recurring monthly volume',
+      'Any known contamination — concrete collars, steel fittings, draw rope, or pipe that is still full of water',
+      'Location, access for a truck, and whether loading equipment is available on site'
+    ],
     cta: CTA
   },
 
@@ -233,6 +245,18 @@ export const PIPE_SCRAP = [
       ['HDPE 60 scrap', 'Legacy PE63 pipe from the oldest decommissioned networks.', 'hdpe-60-scrap'],
       ['HDPE cable cover scrap', 'Cable protection covers and duct recovered from utility works.', 'hdpe-cable-cover-scrap']
     ],
+    market: [
+      `HDPE 80 scrap is priced off the virgin HDPE curve, but with a discount that widens and narrows with how much of it is around. Decommissioned mains arrive in bursts: a city replaces a distribution zone and two or three hundred tonnes appear in a month, then nothing for a while. Buyers who can hold stock through the quiet weeks buy well; buyers who have to fill an order immediately pay whatever the moment demands.`,
+      `The other half of the price is preparation. PE80 pipe that has been cut, drained and freed of concrete collars is worth noticeably more than the same pipe delivered in twenty-metre lengths full of trench water, because the second load costs us labour, water treatment and drying time before it becomes saleable regrind. Colour matters less than for PE100, since most of this stream is black and used in dark products anyway.`
+    ],
+    enquiry: [
+      'Whether the material is PE80 for certain, or a mixed polyethylene load where the grade is undocumented',
+      'Diameter range, whether the pipe is whole or cut, and whether the bore is drained',
+      'Approximate tonnage and how quickly it needs to move off site',
+      'Anything attached: concrete thrust blocks, repair clamps, tapping saddles, steel tie rods',
+      'Colour split — black, blue, or mixed',
+      'Site location and whether a truck can reach the material where it is stacked'
+    ],
     cta: CTA
   },
 
@@ -338,6 +362,18 @@ export const PIPE_SCRAP = [
       ['HDPE 80 scrap', 'Mid-strength PE80 pipe recovered from water and irrigation mains.', 'hdpe-80-scrap'],
       ['HDPE 100 pipe scrap', 'High-strength PE100 pipe from water, gas and telecom projects.', 'hdpe-100-pipe-scrap'],
       ['PP scrap', 'Polypropylene from woven sacks, crates and containers.', 'pp-scrap']
+    ],
+    market: [
+      `HDPE 60 scrap sits at the awkward end of the polyethylene market. Demand for it is thinner than for PE100 or PE80, so the price is set less by virgin resin and more by whether a particular processor happens to be running a product that suits a higher-melt, lower-stiffness feed. When drainage and conduit makers are busy, PE63 moves easily. When they are not, the material sits and sellers who need the yard space accept a lower number.`,
+      `Transport dominates the economics more than it does for the higher grades, because so much PE63 comes from agricultural schemes in remote districts. A load that is three hours from a main road can lose most of its value to freight before it reaches Karachi. That is why we assess remote lots in person and arrange cutting on site — reducing the volume by shredding where the pipe lies can turn an uneconomic clearance into a workable one.`
+    ],
+    enquiry: [
+      'Confirm whether it is PE63 / HDPE 60, or an undocumented mix of older polyethylene pipe',
+      'Length of the runs involved and whether the pipe is above or below ground',
+      'Approximate tonnage, and whether the material is concentrated at one point or spread along a line',
+      'Level of soil and mud contamination, and whether the pipe has been exposed to sun for years',
+      'Any known agricultural chemical use on the scheme it came from',
+      'Distance from the nearest paved road and access for a truck or a shredder'
     ],
     cta: CTA
   },
@@ -455,6 +491,18 @@ export const PIPE_SCRAP = [
       ['PVC cable scrap', 'Cable insulation and sheathing recovered for PVC compound.', 'pvc-cable-scrap'],
       ['HDPE 100 pipe scrap', 'PE100 pressure pipe recovered from water and gas networks.', 'hdpe-100-pipe-scrap']
     ],
+    market: [
+      `PVC pipe scrap is one of the few plastic streams where transport is not the dominant cost, simply because rigid PVC is roughly forty percent denser than polyethylene. A truck carries far more polymer per trip, so collection radius is wider and even distant lots can make sense. What sets the price instead is the compound market: what pipe producers will pay for regrind, and how much filler and stabiliser they have to add to bring it back to spec.`,
+      `Colour and service history do most of the rest. Clean white or grey offcuts from a fabricator command the best rate because they can go back into visible products. Demolition pipe with solvent-cement joints, rubber rings and soil attached is graded lower, and the gap is not arbitrary — every joint has to be trimmed by hand before the material can be ground, and that labour has to be paid for somewhere.`
+    ],
+    enquiry: [
+      'Pipe type and colour — drainage, sewer, conduit, pressure offcut or casing',
+      'Diameter range and wall thickness, since large sewer sections need cutting before they will load',
+      'Whether joints, rubber rings, metal inserts or brackets are still fitted',
+      'Whether the material is post-consumer (dug up, soiled) or fabrication offcut (clean)',
+      'Approximate tonnage and how often you generate it',
+      'Whether any flexible PVC, cable or hose has been mixed in — this must be declared before we quote'
+    ],
     cta: CTA
   },
 
@@ -570,6 +618,18 @@ export const PIPE_SCRAP = [
       ['PVC pipe scrap', 'Rigid uPVC drainage, sewer and conduit pipe recovered for compound.', 'pvc-pipe-scrap'],
       ['PVC cable scrap', 'Insulation and sheathing PVC recovered from cable waste.', 'pvc-cable-scrap'],
       ['Off-grade materials', 'Alternative resin grades in bulk for cost-sensitive applications.', 'off-grade-materials']
+    ],
+    market: [
+      `UPVC profile scrap is priced above general rigid PVC because the input is known. A fabricator can tell you exactly which profile system they run, which colour, and whether the formulation is lead-stabilised or calcium-zinc. That information is worth money to a compounder, because it removes the guesswork that makes mixed PVC so difficult to formulate with. Fabricator offcuts that have never been outdoors are the top of the market; demolition frames are the bottom.`,
+      `The gap between the two is almost entirely labour. A demolition frame arrives with glass, gaskets, steel reinforcement, handles and hinges attached, and every one of those has to be removed by hand before the profile can be crushed. That is why a tonne of frames is worth substantially less than a tonne of factory offcuts of the same colour — not because the polymer is worse, but because someone has to take it apart.`
+    ],
+    enquiry: [
+      'Whether the material is fabricator offcut, rejected stock, or demolition frames with glass still fitted',
+      'Colour and whether the profile is laminated, foiled or woodgrain finished',
+      'Whether steel reinforcement is present and whether the frames are already dismantled',
+      'Approximate tonnage and whether you generate it continuously or in one-off clearances',
+      'Known stabiliser system (lead or calcium-zinc) if your records show it',
+      'Whether glass, gaskets and hardware have been separated or are still in place'
     ],
     cta: CTA
   }

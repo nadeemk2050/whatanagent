@@ -30,7 +30,19 @@ export function renderMaterial(m) {
 
 ${sections}
 
-<div class="q-section">
+${m.market ? `<div class="q-section">
+  <h2>What moves the price of ${m.focusShort}</h2>
+  ${m.market.map(function (p) { return '  <p>' + p + '</p>'; }).join('\n  ')}
+</div>
+
+` : ''}${m.enquiry ? `<div class="q-section">
+  <h2>Specifying ${m.focusShort}: what to send us</h2>
+  <ul class="q-list">
+  ${m.enquiry.map(function (li) { return '  <li>' + li + '</li>'; }).join('\n  ')}
+  </ul>
+</div>
+
+` : ''}<div class="q-section">
   <h2>Buying ${m.focusShort} from Al Qaryan Industries</h2>
   ${m.buying.map(function (p) { return '  <p>' + p + '</p>'; }).join('\n  ')}
 </div>

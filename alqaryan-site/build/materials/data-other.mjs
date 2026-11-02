@@ -116,6 +116,18 @@ export const OTHER_SCRAP = [
       ['UPVC profile scrap', 'Window and door profile scrap with glass and steel removed.', 'upvc-profile-scrap'],
       ['HDPE cable cover scrap', 'Cable protection covers and split duct recovered from utility work.', 'hdpe-cable-cover-scrap']
     ],
+    market: [
+      `Cable PVC pricing is driven by the copper market as much as by plastics. When copper is expensive, more old cable gets stripped, which increases the supply of PVC granulate and softens the plastic price. When copper is cheap, less cable is processed and cable PVC becomes scarce. That inverse relationship catches out buyers who only watch polymer prices.`,
+      `The other driver is plasticiser content and its regulatory direction. Phthalate plasticisers are under increasing restriction in Europe, so material with documented non-phthalate formulation commands a premium and unknown-origin material is discounted. For the Pakistani market, where most recycled flexible PVC goes into hose, conduit, matting and low-voltage sheathing, the practical concern is consistency — a compounder needs to know roughly what plasticiser load they are dealing with before they can set their formulation.`
+    ],
+    enquiry: [
+      'Cable type and whether it is factory scrap, installation offcut, or stripped from decommissioned networks',
+      'Whether the copper has already been separated, or whether it is still in the cable',
+      'Colour mix — black sheathing, grey and white insulation, or coloured cores',
+      'Whether XLPE-insulated cable is mixed in, since it cannot be melted and must be sorted out first',
+      'Approximate tonnage and whether the supply is continuous or one-off',
+      'Any steel wire armour or lead sheath present, and whether it has been removed'
+    ],
     cta: CTA
   },
 
@@ -232,6 +244,18 @@ export const OTHER_SCRAP = [
       ['Prime materials', 'Virgin and prime-grade polymers with a full producer specification.', 'prime-materials'],
       ['Off-grade materials', 'Alternative resin grades in bulk for cost-sensitive applications.', 'off-grade-materials']
     ],
+    market: [
+      `PP scrap prices follow the packaging cycle. When cement, fertiliser and rice are being bagged in volume, sack scrap is scarce because the mills are consuming new bags and the damaged ones get reworked locally. When the construction season slows, torn sacks accumulate and the price falls. That seasonality is stronger for PP than for any other stream we handle, which is why we hold imported bale stock through the tight months.`,
+      `Lightness compounds everything. A truck of PP brings noticeably less weight than the same truck of PVC, so freight is a bigger share of the landed cost and the effective collection radius is smaller. That favours sellers who bale or granulate on site: reducing volume before transport is often worth more than negotiating harder on the per-kilo rate.`
+    ],
+    enquiry: [
+      'What the scrap came from — woven sacks, FIBC, crates, caps, containers, battery cases or automotive parts',
+      'Whether it is homopolymer or copolymer, if the source tells you',
+      'Whether the material is unfilled or mineral-filled (talc, glass), since filler changes the whole pricing basis',
+      'Whether it is baled or loose, and the approximate bale weight',
+      'Approximate monthly tonnage and whether supply is seasonal',
+      'Whether polyethylene is mixed in — lamination on sacks, HDPE liners, or general post-consumer mixing'
+    ],
     cta: CTA
   },
 
@@ -340,6 +364,18 @@ export const OTHER_SCRAP = [
       ['Off-grade materials', 'Alternative resin grades in bulk for cost-sensitive applications.', 'off-grade-materials'],
       ['PET bottle scrap', 'Recycled PET in bales and washed flake for fibre and sheet.', 'pet-bottle-scrap'],
       ['HDPE 100 pipe scrap', 'PE100 pipe scrap recycled for non-pressure applications.', 'hdpe-100-pipe-scrap']
+    ],
+    market: [
+      `Prime material is priced by import parity: the landed cost of a container from the Gulf, Southeast Asia, Japan or North America, plus clearing, inland freight and the trader's margin. Because the reference is a container price, small movements in the rupee-dollar rate change the whole market within days, and buyers who quote weekly rather than daily get caught out. Our pricing follows the import cycle rather than any local list.`,
+      `Availability is the other half. A specific grade from a specific producer may simply not be in the country, and then the choice is to wait for a container or accept a substitute from another plant. Manufacturers running a certified product cannot substitute freely, so they plan around shipping schedules. That is why holding buffer stock of regularly consumed grades is worth more than shaving a few rupees off a single lot.`
+    ],
+    enquiry: [
+      'The grade designation if you know it, or the application and target properties if you do not',
+      'Melt flow index and density you need, with the test conditions your specification uses',
+      'Whether the application requires a food-contact declaration or a certified pressure classification',
+      'Monthly tonnage and delivery city, so we can confirm whether a truckload or a container is the right unit',
+      'Any documentation your customer audit will require — COA, origin, or a specific producer',
+      'Whether you can accept a substitute grade if the exact one is between shipments'
     ],
     cta: CTA
   },
@@ -450,6 +486,18 @@ export const OTHER_SCRAP = [
       ['Prime materials', 'Virgin polymer with a full producer specification and documentation.', 'prime-materials'],
       ['PP scrap', 'Recycled polypropylene from sacks, crates, caps and containers.', 'pp-scrap'],
       ['UPVC profile scrap', 'Rigid PVC profile scrap recycled into compound.', 'upvc-profile-scrap']
+    ],
+    market: [
+      `Off-grade pricing is the most honest pricing in the plastics trade, because nobody can hide behind a datasheet. A lot is worth what it measures. Wide-spec material with one property outside the window sells close to prime; reactor transition material sells at a wider discount; purge and lumps sell at a discount that reflects the regranulation it needs. The spread between the best and worst off-grade in a single month can be larger than the spread between prime and recycled.`,
+      `The practical discipline for a buyer is to set the price against the tested value, not the seller's description — and to insist on a trial before a full lot. The practical discipline for a seller is to test before offering, because an off-grade lot that measures better than expected is worth more than the seller assumed. Both sides lose when material is sold on adjectives.`
+    ],
+    enquiry: [
+      'Grade designation and which property is out of specification — melt flow, density, colour or pellet quality',
+      'Whether it is wide-spec, transition, purge, colour off-grade, or reprocessed material',
+      'The measured values you have, and whether they came from a producer lab or your own test',
+      'Quantity and packaging — bags, jumbo bags, octabins or bulk',
+      'Whether a sample or trial quantity is available before a full lot',
+      'Whether the material has any melt history already, since that limits how many times it can be reused'
     ],
     cta: CTA
   }

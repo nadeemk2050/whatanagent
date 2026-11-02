@@ -116,6 +116,18 @@ export const CONTAINER_SCRAP = [
       ['HDPE jerry can scrap', 'Blow-moulded HDPE containers from oil, chemical and food use.', 'hdpe-jerry-can-scrap'],
       ['Prime materials', 'Virgin and prime-grade polymers in bulk for demanding applications.', 'prime-materials']
     ],
+    market: [
+      `PET bottle scrap is the most transparently priced plastic in the market, because it is traded internationally at scale and tracked daily. Its price moves with polyester fibre demand in China and India, with the price of virgin PTA and MEG, with the rupee-dollar rate, and with the shipping cost of moving bales. When fibre mills are running hard, bottle bales get expensive within a week. When they are not, the same bales sit unsold.`,
+      `Within that headline price, the spread between grades is enormous. Clear, cap-free, label-free material sits at the top; mixed colour with caps and labels attached sits far below, because the yield of usable flake per tonne of bale is much lower. Colour is the first thing a buyer asks about and the first thing that changes the number, which is why sorting at the collection point pays for itself.`
+    ],
+    enquiry: [
+      'Colour mix: clear, light blue, green, or mixed',
+      'Whether it is baled bottle or already washed flake',
+      'Cap, ring and label status — still fitted, or removed before baling',
+      'Moisture situation, since bales stored outdoors hold water and lose value',
+      'Approximate monthly tonnage and whether you can hold a consistent grade',
+      'Any PVC, PETG or oil-bottle contamination present — declaring it changes the price honestly rather than after the fact'
+    ],
     cta: CTA
   },
 
@@ -230,6 +242,18 @@ export const CONTAINER_SCRAP = [
       ['PET bottle scrap', 'The high-volume clear bottle stream, recycled into fibre, sheet and strapping.', 'pet-bottle-scrap'],
       ['Prime materials', 'Virgin and prime-grade engineering and commodity polymers.', 'prime-materials'],
       ['Off-grade materials', 'Alternative resin grades in bulk for cost-sensitive applications.', 'off-grade-materials']
+    ],
+    market: [
+      `Polycarbonate scrap is a niche market with few buyers and few sellers, so price is set by negotiation rather than by any published index. The reference point is the virgin PC price, and the discount depends on colour, clarity and — above all — on how much moisture the material has absorbed in storage. Buyers who have been burned by brittle parts pay close attention to drying history, and a lot with a documented moisture figure will always beat a cheaper one without.`,
+      `Supply is lumpy. Water companies rotate bottles on a fixed maintenance cycle, so a few large lots appear each year rather than a steady stream. That means the seller with storage capacity holds the stronger position, and the seller who needs the space clears at whatever the market offers that week. For a buyer, the practical lesson is to secure material when it is available rather than when it is needed.`
+    ],
+    enquiry: [
+      'Bottle size and type — 5 gallon dispenser, 3 gallon, 2 gallon, or other',
+      'Colour and clarity: clear, light blue, tinted, or printed',
+      'Whether caps, silicone seals, handles and valves are still fitted',
+      'Whether the material is whole, crushed or baled, and the approximate bulk density',
+      'Approximate tonnage and how often you rotate stock',
+      'How the material has been stored — covered or exposed, since moisture absorption affects the whole batch'
     ],
     cta: CTA
   },
@@ -346,6 +370,18 @@ export const CONTAINER_SCRAP = [
       ['HDPE cable cover scrap', 'Cable protection covers and duct recovered from utility works.', 'hdpe-cable-cover-scrap'],
       ['PP scrap', 'Polypropylene from woven sacks, crates and containers.', 'pp-scrap']
     ],
+    market: [
+      `HDPE jerry can scrap is priced off blow-moulding grade virgin HDPE, with two adjustments that matter more than the headline resin price: content history and washing cost. A load of edible-oil cans from a single packer is worth significantly more than a mixed load of oil, detergent and unknown chemical containers, because the first washes clean and the second needs a longer, hotter, more expensive process before the output is saleable.`,
+      `Volume patterns follow industry rather than season. Lubricant blenders and edible oil packers generate steady monthly quantities, so a collection arrangement with them is the most reliable supply in this stream. Workshop and garage material arrives in small lots aggregated by traders, and its price reflects the aggregation work somebody else has already done.`
+    ],
+    enquiry: [
+      'What the cans previously contained — edible oil, lubricant, detergent, water, or agricultural chemical',
+      'Whether pesticide or solvent containers are included, and whether triple-rinsing is documented',
+      'Colour mix: natural, white, black, blue or mixed',
+      'Whether the cans are whole, crushed or baled, and the approximate bulk density',
+      'Approximate monthly tonnage and whether collection can be scheduled',
+      'Whether caps, handles, labels and any liquid remain in the containers'
+    ],
     cta: CTA
   },
 
@@ -460,6 +496,18 @@ export const CONTAINER_SCRAP = [
       ['HDPE jerry can scrap', 'Blow-moulded containers from oil, chemical and food use.', 'hdpe-jerry-can-scrap'],
       ['HDPE 80 scrap', 'PE80 pipe recovered from water and irrigation networks.', 'hdpe-80-scrap'],
       ['PVC cable scrap', 'Cable insulation and sheathing recovered for PVC compound.', 'pvc-cable-scrap']
+    ],
+    market: [
+      `Cable cover scrap is an overlooked stream, and that is precisely why it prices well. Most collectors chase bottles and pipe, so covers and split duct sit in contractors' yards with no obvious buyer. The polymer is good, the colour is often consistent per project, and the contamination is soil rather than chemistry — which makes it cheap to clean. Buyers who know the material get a better input cost than they would for post-consumer container scrap.`,
+      `The catch is lumpiness. Utility work is scheduled, so a project releases several tonnes at once and then nothing for months. A recycler without yard space has to turn it away; we hold it and process it steadily. Sellers should expect the price to reflect distance and access, because covers are stackable but heavy, and a site with no hard standing for a truck adds handling that has to be paid for.`
+    ],
+    enquiry: [
+      'Material type: cover tiles, protective slabs, split duct, conduit offcuts, spacers or drum cores',
+      'Colour and whether the load is single-project or accumulated from several sites',
+      'Level of soil contamination and whether the material has been washed or knocked down',
+      'Whether draw rope, warning tape or cable markers are still inside the duct',
+      'Approximate tonnage, project location and access for a truck',
+      'Whether polypropylene spacers and saddles are mixed in, since they are a different polymer'
     ],
     cta: CTA
   }
