@@ -177,3 +177,33 @@ could not be verified — check the file is still at the root with the right con
 
 **Do not move the key file into `/wp-content/uploads/`.** Hostinger's CDN blocks
 crawler user-agents on that path, so IndexNow cannot verify it there.
+
+---
+
+## Theme safety — read before touching Appearance or hPanel presets
+
+**The entire visual design lives in Astra's Customizer → Additional CSS.** It is not in
+the theme files, not in a child theme, and not in a plugin.
+
+That means: **if the active theme changes, the CSS stops loading and the site renders as
+bare, unstyled HTML.** Content is never lost — only the styling detaches. The fix is:
+
+1. Appearance → Themes → **Activate Astra**
+2. Purge LiteSpeed cache (both plugin cache and LSCache)
+
+### Incident, 2026-11-02
+
+The theme was switched from Astra to `hostinger-ai-theme` without anyone clicking
+Activate. The site served unstyled HTML for ~1 hour. Cause attributed to the
+**Hostinger AI plugin** (`hostinger-ai-assistant`), which can apply presets that change
+the active theme.
+
+**Mitigation applied:** Hostinger AI and Hostinger Reach plugins deactivated. Active
+plugins are now only GA Google Analytics, Hostinger Hub, Hostinger Tools, LiteSpeed
+Cache, Rank Math SEO and WordPress Importer.
+
+Do **not** re-enable `hostinger-ai-assistant`, and do not use hPanel's *Website Presets*
+or AI website-builder features on this site — they can re-apply a theme switch.
+
+`hostinger-ai-theme` remains installed but inactive. Deleting it (Appearance → Themes →
+Hostinger AI theme → Theme Details → Delete) removes the risk entirely.
