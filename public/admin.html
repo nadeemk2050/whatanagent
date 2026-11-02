@@ -13631,14 +13631,21 @@
         }
         box.innerHTML = engs.map(function (e) {
             var sites = e.sites || [];
+            var crews = e.helpers || [];
             var names = sites.length
                 ? sites.map(function (s) { return '<span class="ws-pill ' + (s.healthy ? 'ok' : 'warn') + '">' + esc(s.name || s.key) + '</span>'; }).join(' ')
                 : '<span class="ws-pill mut">No website assigned yet</span>';
+            var crewBits = crews.length
+                ? crews.map(function (h) { return '<span class="ws-pill mut" title="Helper">🤝 ' + esc(h.name) + '</span>'; }).join(' ')
+                : '';
             return '<div class="ws-door">' +
                     '<div class="ws-plate"><div class="nm">' + esc(e.emoji || '🧑‍🔧') + ' ' + esc(e.name) + '</div><div class="rl">' + esc(e.role || 'Website Engineer') + '</div></div>' +
-                    '<div class="meta"><span>Sites: <b>' + sites.length + '</b></span><span>Model: <b>' + esc(e.model || '—') + '</b></span></div>' +
+                    '<div class="meta"><span>Sites: <b>' + sites.length + '</b></span><span>Helpers: <b>' + crews.length + '</b></span><span>Model: <b>' + esc(e.model || '—') + '</b></span></div>' +
                     '<div style="margin-top:9px; display:flex; gap:5px; flex-wrap:wrap;">' + names + '</div>' +
+                    (crewBits ? '<div style="margin-top:6px; display:flex; gap:5px; flex-wrap:wrap;">' + crewBits + '</div>' : '') +
                     '<div class="acts">' +
+                        '<button class="ws-btn" onclick="wshopAssignEngineer(\'' + esc(e.id) + '\')">🌐 Assign website</button>' +
+                        '<button class="ws-btn" onclick="wshopHelpers(\'' + esc(e.id) + '\')">🤝 Helpers</button>' +
                         '<a class="ws-btn" href="/academy.html" target="_blank" rel="noopener" style="text-align:center;text-decoration:none;">🎓 Staff file</a>' +
                         '<button class="ws-btn" onclick="wshopFire(\'' + esc(e.id) + '\')">Fire</button>' +
                     '</div>' +
@@ -13924,24 +13931,63 @@
         finally { btn.disabled = false; }
     }
 
+    function hireMode(v) {
+        var box = $('wsHireNew');
+        if (box) box.style.display = v ? 'none' : '';
+    }
+
+    // Staff already in the workshop, so the picker only offers people who are actually free.
+    function academyPool() {
+        var taken = {};
+        ((WS.data && WS.data.engineers) || []).forEach(function (e) { taken[e.id] = 1; });
+        if (WS.data && WS.data.manager) taken[WS.data.manager.id] = 1;
+        return ((WS.data && WS.data.staff) || []).filter(function (s) { return !taken[s.id]; });
+    }
+
     function hire(kind) {
         var isManager = kind === 'manager';
         if (isManager && WS.data && WS.data.manager) {
             if (!confirm('A manager already exists. Replace ' + WS.data.manager.name + '?')) return;
         }
+        var pool = academyPool();
         openModal({
             title: isManager ? '👷 Hire the Workshop Manager' : '🧑‍🔧 Hire an engineer',
-            hint: 'They are created in the 🎓 AI Staff Academy, so you can train them there too.',
+            hint: 'Pick someone already trained in the 🎓 AI Staff Academy, or create a new staff member — anyone new is saved there too.',
             okText: 'Hire',
-            body: '<div class="ws-grid2">' +
-                '<div class="ws-field"><label>Name</label><input id="wsHireName" class="ws-input" placeholder="e.g. Bilal Ahmed"></div>' +
-                '<div class="ws-field"><label>Emoji</label><input id="wsHireEmoji" class="ws-input" value="' + (isManager ? '👷' : '🧑‍🔧') + '"></div>' +
-                (isManager ? '' : '<div class="ws-field"><label>Speciality</label><input id="wsHireRole" class="ws-input" value="Full-Stack Website Engineer"></div>') +
-                '<div class="ws-field"><label>Model</label><select id="wsHireModel" class="ws-select">' + modelOptions() + '</select></div>' +
+            body:
+                '<div class="ws-field">' +
+                    '<label>Existing AI Staff Academy staff</label>' +
+                    '<select id="wsHirePick" class="ws-select" onchange="wshopHireMode(this.value)">' +
+                        '<option value="">➕ Create a new staff member…</option>' +
+                        pool.map(function (s) {
+                            return '<option value="' + esc(s.id) + '">' + esc(s.emoji || '') + ' ' + esc(s.name) +
+                                ' — ' + esc(s.role || 'staff') + (s.model ? ' · ' + esc(s.model) : '') + '</option>';
+                        }).join('') +
+                    '</select>' +
+                    '<div class="ws-hint" style="margin-top:6px;">' +
+                        (pool.length
+                            ? pool.length + ' trained staff available. Appointing one reuses that person instead of creating a duplicate.'
+                            : 'Every staff member in the academy is already in the workshop, so a new one has to be created below.') +
+                    '</div>' +
+                '</div>' +
+                '<div id="wsHireNew" class="ws-grid2" style="margin-top:12px;">' +
+                    '<div class="ws-field"><label>Name</label><input id="wsHireName" class="ws-input" placeholder="e.g. Bilal Ahmed"></div>' +
+                    '<div class="ws-field"><label>Emoji</label><input id="wsHireEmoji" class="ws-input" value="' + (isManager ? '👷' : '🧑‍🔧') + '"></div>' +
+                    (isManager ? '' : '<div class="ws-field"><label>Speciality</label><input id="wsHireRole" class="ws-input" value="Full-Stack Website Engineer"></div>') +
+                    '<div class="ws-field"><label>Model</label><select id="wsHireModel" class="ws-select">' + modelOptions() + '</select></div>' +
                 '</div>',
             ok: async function () {
+                var pick = val('wsHirePick');
+                if (pick) {
+                    await api('/staff/appoint', { method: 'POST', body: { kind: kind, agentId: pick } });
+                    closeModal();
+                    toastMsg('✅ Appointed from the AI Staff Academy');
+                    await load(true);
+                    tab('office');
+                    return;
+                }
                 var name = val('wsHireName');
-                if (!name) throw new Error('Give the new staff member a name.');
+                if (!name) throw new Error('Pick an existing staff member, or give the new one a name.');
                 await api('/hire', {
                     method: 'POST',
                     body: {
@@ -13952,6 +13998,74 @@
                 });
                 closeModal();
                 toastMsg('✅ ' + name + ' hired');
+                await load(true);
+                tab('office');
+            }
+        });
+    }
+
+    // Which websites this engineer handles — set from the engineer's own office.
+    function assignEngineer(agentId) {
+        var eng = ((WS.data && WS.data.engineers) || []).filter(function (e) { return e.id === agentId; })[0];
+        if (!eng) return;
+        var sites = (WS.data && WS.data.sites) || [];
+        if (!sites.length) { toastMsg('⚠️ Add a website to the register first'); return; }
+        openModal({
+            title: '🌐 Websites for ' + (eng.name || 'this engineer'),
+            hint: 'Tick every website this engineer owns from start to end.',
+            okText: 'Save',
+            body: sites.map(function (s) {
+                var on = (s.engineers || []).some(function (e) { return e.id === agentId; });
+                return '<label class="ws-pick"><input type="checkbox" name="wsAsg" value="' + esc(s.key) + '"' + (on ? ' checked' : '') + '>' +
+                    '<span><span class="n">' + esc(s.name || s.key) + '</span><div class="r">' + esc(s.url || '') + '</div></span></label>';
+            }).join(''),
+            ok: async function () {
+                var wanted = {};
+                [].slice.call(document.querySelectorAll('input[name="wsAsg"]:checked')).forEach(function (i) { wanted[i.value] = 1; });
+                var changed = 0;
+                for (var i = 0; i < sites.length; i++) {
+                    var s = sites[i];
+                    var ids = (s.engineers || []).map(function (e) { return e.id; });
+                    var has = ids.indexOf(agentId) >= 0;
+                    var want = !!wanted[s.key];
+                    if (want === has) continue;
+                    var next = want ? ids.concat([agentId]) : ids.filter(function (x) { return x !== agentId; });
+                    await api('/site/assign', { method: 'POST', body: { key: s.key, engineers: next } });
+                    changed++;
+                }
+                closeModal();
+                toastMsg(changed ? '✅ ' + changed + ' website(s) updated' : 'Nothing changed');
+                await load(true);
+                tab('office');
+            }
+        });
+    }
+
+    // Extra hands for one engineer, drawn from the academy.
+    function helpers(agentId) {
+        var eng = ((WS.data && WS.data.engineers) || []).filter(function (e) { return e.id === agentId; })[0];
+        if (!eng) return;
+        var taken = {};
+        ((WS.data && WS.data.engineers) || []).forEach(function (e) { taken[e.id] = 1; });
+        if (WS.data && WS.data.manager) taken[WS.data.manager.id] = 1;
+        var current = (eng.helpers || []).map(function (h) { return h.id; });
+        var pool = ((WS.data && WS.data.staff) || []).filter(function (s) { return !taken[s.id] || current.indexOf(s.id) >= 0; });
+        openModal({
+            title: '🤝 Helpers for ' + (eng.name || 'this engineer'),
+            hint: 'Helpers are extra hands for this engineer only — up to 12. They stay in the academy.',
+            okText: 'Save helpers',
+            body: pool.length
+                ? pool.map(function (s) {
+                    var on = current.indexOf(s.id) >= 0 ? ' checked' : '';
+                    return '<label class="ws-pick"><input type="checkbox" name="wsHelp" value="' + esc(s.id) + '"' + on + '>' +
+                        '<span><span class="n">' + esc(s.emoji || '') + ' ' + esc(s.name) + '</span><div class="r">' + esc(s.role || 'staff') + '</div></span></label>';
+                }).join('')
+                : '<div class="ws-hint">No other staff in the academy yet — hire someone first.</div>',
+            ok: async function () {
+                var picked = [].slice.call(document.querySelectorAll('input[name="wsHelp"]:checked')).map(function (i) { return i.value; });
+                await api('/engineer/helpers', { method: 'POST', body: { agentId: agentId, helpers: picked } });
+                closeModal();
+                toastMsg(picked.length ? '✅ ' + picked.length + ' helper(s) saved' : '✅ Helpers cleared');
                 await load(true);
                 tab('office');
             }
@@ -14315,6 +14429,9 @@
     window.wshopAddSite = addSite;
     window.wshopReset = reset;
     window.wshopHire = hire;
+    window.wshopHireMode = hireMode;
+    window.wshopHelpers = helpers;
+    window.wshopAssignEngineer = assignEngineer;
     window.wshopAppoint = appoint;
     window.wshopAssign = assign;
     window.wshopFire = fire;

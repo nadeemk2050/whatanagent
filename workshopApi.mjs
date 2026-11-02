@@ -575,9 +575,15 @@ export function registerWorkshopRoutes(app, db) {
       });
 
       const manager = meta.managerId ? byId.get(meta.managerId) : null;
+      const helperMap = meta.helpers || {};
       const engineers = engineerIds.map(id => byId.get(id)).filter(Boolean).map(a => {
         const mine = list.filter(s => (s.engineers || []).some(e => e.id === a.id));
-        return { ...staffCard(a), sites: mine.map(s => ({ key: s.key, name: s.name, healthy: !!(s.health && s.health.ok) })) };
+        const helpers = (Array.isArray(helperMap[a.id]) ? helperMap[a.id] : []).map(h => byId.get(h)).filter(Boolean).map(staffCard);
+        return {
+          ...staffCard(a),
+          sites: mine.map(s => ({ key: s.key, name: s.name, healthy: !!(s.health && s.health.ok) })),
+          helpers
+        };
       });
 
       const healthy = list.filter(s => s.health && s.health.ok).length;
@@ -968,6 +974,60 @@ export function registerWorkshopRoutes(app, db) {
     } catch (e) { bad(res, e.message); }
   });
 
+  // ------------------------------------------------------- appoint staff
+  // Hiring used to mean "create a new academy agent". This appoints somebody who has already
+  // been trained in the AI Staff Academy, so the same person can be reused across roles.
+  app.post(api + '/staff/appoint', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const kind = b.kind === 'manager' ? 'manager' : 'engineer';
+      const agentId = sstr(b.agentId, 80);
+      if (!agentId) return bad(res, 'Choose a staff member from the academy.');
+      const agent = await getAgent(agentId);
+      if (!agent) return bad(res, 'That staff member is no longer in the AI Staff Academy.');
+      const meta = await readMeta(db);
+
+      if (kind === 'manager') {
+        await writeMeta(db, { managerId: agentId });
+      } else {
+        const ids = Array.isArray(meta.engineerIds) ? meta.engineerIds.slice() : [];
+        if (!ids.includes(agentId)) ids.push(agentId);
+        await writeMeta(db, { engineerIds: ids });
+      }
+      res.json({ ok: true, kind, staff: staffCard(agent) });
+    } catch (e) {
+      console.error('[WORKSHOP] appoint failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
+  // ----------------------------------------------------- engineer helpers
+  // An engineer can be given helpers from the academy when one website needs more hands.
+  app.post(api + '/engineer/helpers', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const agentId = sstr(b.agentId, 80);
+      if (!agentId) return bad(res, 'Which engineer?');
+      const meta = await readMeta(db);
+      const ids = Array.isArray(meta.engineerIds) ? meta.engineerIds : [];
+      if (!ids.includes(agentId)) return bad(res, 'That staff member is not an engineer in this workshop.');
+
+      const picked = (Array.isArray(b.helpers) ? b.helpers : [])
+        .map(x => sstr(x, 80)).filter(Boolean)
+        .filter(x => x !== agentId && x !== meta.managerId)
+        .filter((x, i, arr) => arr.indexOf(x) === i)
+        .slice(0, 12);
+
+      const patch = {};
+      patch[agentId] = picked.length ? picked : deleteField();
+      await writeMeta(db, { helpers: patch });
+      res.json({ ok: true, agentId, helpers: picked });
+    } catch (e) {
+      console.error('[WORKSHOP] helpers failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
   // ------------------------------------------------------- remove staff
   app.post(api + '/staff/remove', async (req, res) => {
     try {
@@ -980,7 +1040,11 @@ export function registerWorkshopRoutes(app, db) {
         if (Array.isArray(sites[k].engineers)) sites[k].engineers = sites[k].engineers.filter(x => x !== id);
       }
       const engineerIds = (Array.isArray(meta.engineerIds) ? meta.engineerIds : []).filter(x => x !== id);
-      await writeMeta(db, { engineerIds, sites, ...(meta.managerId === id ? { managerId: '' } : {}) });
+      const helpers = { ...(meta.helpers || {}) };
+      const hp = {};
+      for (const k of Object.keys(helpers)) hp[k] = (helpers[k] || []).filter(x => x !== id);
+      if (helpers[id] !== undefined) hp[id] = deleteField();
+      await writeMeta(db, { engineerIds, sites, helpers: hp, ...(meta.managerId === id ? { managerId: '' } : {}) });
       res.json({ ok: true });
     } catch (e) { bad(res, e.message); }
   });
