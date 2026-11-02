@@ -17,7 +17,13 @@ const manifest = {};
 
 PAGES.forEach(function (p) {
   const wrapped = wrapContent(p.html);
-  manifest[p.slug] = wrapped;
+  manifest[p.slug] = {
+    html: wrapped,
+    title: p.wpTitle || p.seoTitle || p.title,
+    seoTitle: p.seoTitle || p.title,
+    seoDesc: p.seoDesc || '',
+    parent: p.slug.indexOf('/') > -1 ? p.slug.slice(0, p.slug.lastIndexOf('/')) : ''
+  };
 
   const body = wrapped.replace(/<!--\s*\/?wp:html\s*-->/g, '');
   const html = `<!doctype html>
@@ -39,7 +45,8 @@ ${css}
 </html>`;
 
   const file = p.slug === 'home' ? 'index.html' : p.slug + '.html';
-  fs.mkdirSync(OUT, { recursive: true });
+  const dir = path.dirname(path.join(OUT, file));
+  fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(OUT, file), html, 'utf8');
 });
 

@@ -4,6 +4,8 @@
 // ISO 9001 / ISO 14001 / REACH / SGS, feedstock imported from UAE, Saudi Arabia, USA,
 // Canada, Malaysia, Japan and Indonesia, products sold locally in Pakistan.
 // Nothing else is invented: technical grades are described as agreed per lot.
+import { TEL, TEL_LINK, WA, CTA } from './materials/constants.mjs';
+import { MATERIAL_DEAL_PAGES } from './materials/index.mjs';
 
 export const SITE = {
   name: 'Al Qaryan Industries',
@@ -15,22 +17,6 @@ export const SITE = {
   menuName: 'Primary',
   menuSlug: 'primary'
 };
-
-const TEL = '+92 333 201 0506';
-const TEL_LINK = 'tel:+923332010506';
-const WA = 'https://wa.me/923332010506';
-
-const CTA = `
-<div class="q-cta">
-  <div class="q-cta__text">
-    <strong>Need material or a pipe specification?</strong>
-    <span>Send your grade, quantity and delivery city — we reply with availability and price.</span>
-  </div>
-  <div class="q-cta__actions">
-    <a class="q-btn q-btn--primary" href="/contact/">Request a quote</a>
-    <a class="q-btn q-btn--wa" href="${WA}" rel="noopener" target="_blank">WhatsApp ${TEL}</a>
-  </div>
-</div>`;
 
 const NAP = `
 <div class="q-card q-card--flat">
@@ -1288,7 +1274,9 @@ ${CTA}`
 
 ${CTA}`
   },
+
+  ...MATERIAL_DEAL_PAGES
 ];
 
 // Top navigation, in order. "home" is the logo, so it is not repeated here.
-export const MENU = ['about', 'services', 'materials', 'we-buy', 'facility', 'quality', 'contact'];
+export const MENU = ['about', 'services', 'materials', 'materials-we-deal', 'we-buy', 'facility', 'quality', 'contact'];

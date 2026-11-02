@@ -12,7 +12,7 @@ export const HEAD = `
     <nav class="q-nav" aria-label="Main navigation">
       <a href="/about/">About</a>
       <a href="/services/">Services</a>
-      <a href="/materials/">Materials</a>
+      <a href="/materials-we-deal/">Materials We Deal</a>
       <a href="/we-buy/">We Buy Scrap</a>
       <a href="/facility/">Facility</a>
       <a href="/quality/">Quality</a>
@@ -41,6 +41,7 @@ export const FOOT = `
     </div>
     <div class="q-site-foot__col">
       <strong>Materials &amp; pipes</strong>
+      <a href="/materials-we-deal/">Materials we deal</a>
       <a href="/materials/hdpe/">HDPE</a>
       <a href="/materials/ldpe/">LDPE</a>
       <a href="/materials/pp/">PP</a>
