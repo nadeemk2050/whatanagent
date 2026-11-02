@@ -14680,7 +14680,106 @@
                 '</div>';
         }
 
-        return head + gCard + cCard;
+        return head + gCard + (g.connected ? rankMathHtml(g, key) : '') + cCard;
+    }
+
+    function rankRow(name, right) {
+        return '<div class="ws-li"><span>' + name + '</span><span>' + right + '</span></div>';
+    }
+
+    function rankMathHtml(g, key) {
+        var rm = g.rankMath;
+        if (!rm) return '';
+        var c = rm.counts || {};
+        var d = rm.deltas;
+        var page1 = Math.max(0, (c.page1 || 0) - (c.top3 || 0));
+        var posCol = function (p) { return p <= 3.5 ? '#16a34a' : p <= 10.5 ? '#0f766e' : p <= 20.5 ? '#b45309' : '#dc2626'; };
+
+        var kpis = '<div class="ws-kpis">' +
+            googleKpi('Queries ranked', c.queries || 0) +
+            googleKpi('Top 3', c.top3 || 0) +
+            googleKpi('Page 1 (4\u201310)', page1) +
+            googleKpi('Page 2 (11\u201320)', c.page2 || 0) +
+            googleKpi('Beyond 20', c.beyond || 0) +
+            (d ? googleKpi('Clicks vs prev 28d', (d.clicks >= 0 ? '+' : '') + d.clicks) : '') +
+            (d ? googleKpi('Position vs prev 28d', (d.position >= 0 ? '\u25b2 ' : '\u25bc ') + Math.abs(d.position)) : '') +
+            '</div>';
+
+        var striking = (rm.striking || []).length
+            ? '<h4 class="ws-sub-h">Striking distance \u2014 ranked 4\u201320, easiest to push to page one</h4><div class="ws-list">' +
+                rm.striking.map(function (p) {
+                    return rankRow(
+                        '<b style="color:' + posCol(p.position) + ';">#' + p.position.toFixed(1) + '</b> ' + esc(p.query) +
+                        '<div class="ws-hint" style="margin-top:2px;">' + esc(p.page.replace(/^https?:\/\/[^/]+/, '') || '/') + '</div>',
+                        p.impressions + ' impr \u00b7 ' + p.clicks + ' clicks<br>+' + p.gap + ' places \u2248 <b>' + p.potential + ' clicks</b>');
+                }).join('') + '</div>'
+            : '<p class="ws-hint" style="margin-top:10px;">Nothing in positions 4\u201320 yet.</p>';
+
+        var waste = (rm.wastingRanking || []).length
+            ? '<h4 class="ws-sub-h">Ranking but nobody clicks \u2014 fix the title or meta description</h4><div class="ws-list">' +
+                rm.wastingRanking.map(function (q) {
+                    return rankRow(
+                        '<b style="color:' + posCol(q.position) + ';">#' + q.position.toFixed(1) + '</b> ' + esc(q.query),
+                        'CTR ' + (q.ctr * 100).toFixed(1) + '% vs ' + (q.expectedCtr * 100).toFixed(1) + '% expected<br>\u2248 <b>' + q.lostClicks + ' clicks lost</b>');
+                }).join('') + '</div>'
+            : '';
+
+        var zero = (rm.zeroClick || []).length
+            ? '<h4 class="ws-sub-h">Shown but never clicked</h4><div class="ws-list">' +
+                rm.zeroClick.map(function (q) {
+                    return rankRow(esc(q.query), q.impressions + ' impr \u00b7 position ' + q.position.toFixed(1));
+                }).join('') + '</div>'
+            : '';
+
+        var movers = (rm.movers || []).length
+            ? '<h4 class="ws-sub-h">Movers vs the previous 28 days</h4><div class="ws-list">' +
+                rm.movers.map(function (q) {
+                    var pc = q.positionChange || 0;
+                    return rankRow(esc(q.query),
+                        (pc >= 0 ? '<b style="color:#16a34a;">\u25b2 ' + pc.toFixed(1) + '</b>' : '<b style="color:#dc2626;">\u25bc ' + Math.abs(pc).toFixed(1) + '</b>') +
+                        ' places \u00b7 ' + ((q.impressionsChange || 0) >= 0 ? '+' : '') + (q.impressionsChange || 0) + ' impr');
+                }).join('') + '</div>'
+            : '';
+
+        var best = (rm.best || []).length
+            ? '<h4 class="ws-sub-h">Already top 3 \u2014 protect these</h4><div class="ws-list">' +
+                rm.best.map(function (q) {
+                    return rankRow('<b style="color:#16a34a;">#' + q.position.toFixed(1) + '</b> ' + esc(q.query),
+                        q.clicks + ' clicks \u00b7 ' + q.impressions + ' impr');
+                }).join('') + '</div>'
+            : '';
+
+        return '<div class="ws-card"><h3 class="ws-h3">\ud83e\uddee Ranking maths</h3>' +
+                '<p class="ws-hint" style="margin:5px 0 0 0;">Every number here comes from Search Console, compared against the previous 28 days. Positions are the average position Google reported for that query \u2014 never an estimate.</p>' +
+                kpis + striking + waste + zero + movers + best +
+            '</div>' +
+            '<div class="ws-card"><h3 class="ws-h3">\ud83c\udfaf Target keywords</h3>' +
+                '<p class="ws-hint" style="margin:5px 0 0 0;">The phrases you want to rank for, one per line. Each is answered from what Google actually reported \u2014 if Google has never shown the site for it, it says so instead of inventing a position.</p>' +
+                '<textarea id="wsKeywords" class="ws-textarea" rows="4" style="margin-top:10px;">' + esc((g.keywordsSaved || []).join('\n')) + '</textarea>' +
+                '<div class="ws-row" style="margin-top:9px;"><button class="ws-btn dark" onclick="wshopSaveKeywords(\'' + esc(key) + '\')">\ud83d\udcbe Save keywords</button></div>' +
+                ((g.targets || []).length
+                    ? '<div class="ws-list" style="margin-top:12px;">' + g.targets.map(function (t) {
+                        return '<div class="ws-li"><span>' + esc(t.keyword) + '</span><span>' +
+                            (t.found
+                                ? '<b style="color:' + posCol(t.position) + ';">position ' + t.position + '</b> \u00b7 ' + t.impressions + ' impr \u00b7 ' + t.clicks + ' clicks'
+                                : '<b style="color:#b45309;">not shown by Google yet</b>') +
+                            '</span></div>';
+                    }).join('') + '</div>'
+                    : '') +
+            '</div>';
+    }
+
+    async function saveKeywords(key) {
+        var el = $('wsKeywords');
+        if (!el) return;
+        var list = String(el.value || '').split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+        try {
+            await api('/google/keywords', { method: 'POST', body: { key: key, keywords: list } });
+            toastMsg('\u2705 ' + list.length + ' keyword(s) saved');
+            WS.google = WS.google || {};
+            if (WS.google[key]) WS.google[key].at = 0;
+            await runGoogle(key);
+        } catch (e) { toastMsg('\u26a0\ufe0f ' + e.message); }
     }
 
     function soonHtml(s) {
@@ -14757,6 +14856,7 @@
     window.wshopTodoStatus = todoStatus;
     window.wshopTodoRemove = todoRemove;
     window.wshopGoogleRun = runGoogle;
+    window.wshopSaveKeywords = saveKeywords;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;

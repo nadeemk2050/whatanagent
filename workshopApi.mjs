@@ -774,29 +774,106 @@ export function registerWorkshopRoutes(app, db) {
       return out;
     }
 
-    const end = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
-    const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    out.range = { start, end };
-    const analytics = async (dims) => axios.post(
+    const iso = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+    const cur = { start: iso(-30), end: iso(-2) };
+    const prev = { start: iso(-58), end: iso(-30) };
+    out.range = cur;
+    out.prevRange = prev;
+
+    const analytics = (dims, rowLimit, range) => axios.post(
       `https://searchconsole.googleapis.com/webmasters/v3/sites/${prop}/searchAnalytics/query`,
-      { startDate: start, endDate: end, dimensions: dims, rowLimit: dims && dims[0] === 'query' ? 25 : 15 },
-      { headers: { ...H, 'Content-Type': 'application/json' }, timeout: 20000 });
+      { startDate: range.start, endDate: range.end, dimensions: dims, rowLimit },
+      { headers: { ...H, 'Content-Type': 'application/json' }, timeout: 25000 });
+    const rowOf = (x, keyName) => ({
+      key: keyName ? x.keys[keyName] : '',
+      clicks: Number(x.clicks || 0), impressions: Number(x.impressions || 0),
+      ctr: Number(x.ctr || 0), position: Number(x.position || 0)
+    });
 
     try {
-      const r = await analytics(['query']);
-      out.queries = (r.data.rows || []).map(x => ({ query: x.keys[0], clicks: x.clicks, impressions: x.impressions, ctr: x.ctr, position: x.position }));
+      const r = await analytics(['query'], 100, cur);
+      out.queries = (r.data.rows || []).map(x => Object.assign({ query: x.keys[0] }, rowOf(x)));
     } catch (e) { out.notes.push('Queries: ' + gscError(e)); }
     try {
-      const r = await analytics(['page']);
-      out.pages = (r.data.rows || []).map(x => ({ page: x.keys[0], clicks: x.clicks, impressions: x.impressions, ctr: x.ctr, position: x.position }));
+      const r = await analytics(['page'], 25, cur);
+      out.pages = (r.data.rows || []).map(x => Object.assign({ page: x.keys[0] }, rowOf(x)));
     } catch (e) { out.notes.push('Pages: ' + gscError(e)); }
     try {
-      const r = await analytics(null);
+      const r = await analytics(null, 1, cur);
       const row = (r.data.rows || [])[0];
-      out.totals = row
-        ? { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }
-        : { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+      out.totals = row ? { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position } : { clicks: 0, impressions: 0, ctr: 0, position: 0 };
     } catch (e) { out.notes.push('Totals: ' + gscError(e)); }
+
+    // ---- ranking maths: two windows, plus which page ranks for which query ----
+    let prevQueries = [];
+    let prevTotals = null;
+    let pairs = [];
+    try {
+      const r = await analytics(['query'], 100, prev);
+      prevQueries = (r.data.rows || []).map(x => Object.assign({ query: x.keys[0] }, rowOf(x)));
+    } catch (e) { out.notes.push('Previous window: ' + gscError(e)); }
+    try {
+      const r = await analytics(null, 1, prev);
+      const row = (r.data.rows || [])[0];
+      prevTotals = row ? { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position } : null;
+    } catch (e) { /* optional */ }
+    try {
+      const r = await analytics(['query', 'page'], 100, cur);
+      pairs = (r.data.rows || []).map(x => Object.assign({ query: x.keys[0], page: x.keys[1] }, rowOf(x)));
+    } catch (e) { out.notes.push('Query/page pairs: ' + gscError(e)); }
+
+    // Typical click-through rate by ranking position. Used only to judge whether a ranking
+    // is being wasted, never to claim a position Google did not report.
+    const CTR_BY_POS = { 1: 0.28, 2: 0.15, 3: 0.11, 4: 0.08, 5: 0.06, 6: 0.045, 7: 0.035, 8: 0.03, 9: 0.025, 10: 0.022 };
+    const expectedCtr = (pos) => (pos <= 10 ? (CTR_BY_POS[Math.max(1, Math.round(pos))] || 0.022) : 0.015);
+
+    const prevByQuery = new Map(prevQueries.map(q => [q.query, q]));
+    out.queries = out.queries.map(q => {
+      const p = prevByQuery.get(q.query);
+      return Object.assign(q, {
+        expectedCtr: expectedCtr(q.position),
+        positionChange: p ? Number((p.position - q.position).toFixed(1)) : null,
+        impressionsChange: p ? q.impressions - p.impressions : null,
+        isNew: !p
+      });
+    });
+
+    const top3Potential = (r) => Math.max(0, Math.round(r.impressions * CTR_BY_POS[3] - r.clicks));
+    out.rankMath = {
+      striking: pairs
+        .filter(p => p.position > 3.5 && p.position <= 20 && p.impressions >= 3)
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, 12)
+        .map(p => Object.assign(p, { gap: Number((p.position - 3).toFixed(1)), potential: top3Potential(p) })),
+      wastingRanking: out.queries
+        .filter(q => q.impressions >= 10 && q.position <= 10 && q.ctr < q.expectedCtr * 0.6)
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, 12)
+        .map(q => Object.assign(q, { lostClicks: Math.max(0, Math.round(q.impressions * (q.expectedCtr - q.ctr))) })),
+      zeroClick: out.queries
+        .filter(q => q.clicks === 0 && q.impressions >= 5)
+        .sort((a, b) => b.impressions - a.impressions)
+        .slice(0, 12),
+      movers: out.queries
+        .filter(q => !q.isNew && (Math.abs(q.positionChange || 0) >= 2 || Math.abs(q.impressionsChange || 0) >= 10))
+        .sort((a, b) => Math.abs(b.impressionsChange || 0) - Math.abs(a.impressionsChange || 0))
+        .slice(0, 12),
+      newQueries: out.queries.filter(q => q.isNew).sort((a, b) => b.impressions - a.impressions).slice(0, 10),
+      best: out.queries.filter(q => q.position <= 3.5).sort((a, b) => a.position - b.position).slice(0, 10),
+      prevTotals,
+      deltas: (out.totals && prevTotals) ? {
+        clicks: out.totals.clicks - prevTotals.clicks,
+        impressions: out.totals.impressions - prevTotals.impressions,
+        position: Number((prevTotals.position - out.totals.position).toFixed(1))
+      } : null,
+      counts: {
+        queries: out.queries.length,
+        top3: out.queries.filter(q => q.position <= 3.5).length,
+        page1: out.queries.filter(q => q.position <= 10.5).length,
+        page2: out.queries.filter(q => q.position > 10.5 && q.position <= 20.5).length,
+        beyond: out.queries.filter(q => q.position > 20.5).length
+      }
+    };
 
     try {
       const r = await axios.post('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
@@ -912,12 +989,55 @@ export function registerWorkshopRoutes(app, db) {
     } catch (e) { bad(res, e.message); }
   });
 
+  // A target keyword can only be answered from what Google actually reported: if the site has
+  // never been shown for it, that is "not ranking yet", not position 0 or a guess.
+  function matchTargets(keywords, queries) {
+    return (Array.isArray(keywords) ? keywords : []).map(kw => {
+      const t = String(kw).toLowerCase().trim();
+      if (!t) return null;
+      const hits = (queries || []).filter(q => {
+        const qq = String(q.query || '').toLowerCase();
+        return qq === t || qq.includes(t) || t.includes(qq);
+      });
+      if (!hits.length) return { keyword: kw, found: false, position: 0, impressions: 0, clicks: 0, queries: 0, matchedOn: '' };
+      const best = hits.reduce((a, b) => (b.position < a.position ? b : a));
+      return {
+        keyword: kw, found: true,
+        position: Number(best.position.toFixed(1)),
+        impressions: hits.reduce((s, h) => s + h.impressions, 0),
+        clicks: hits.reduce((s, h) => s + h.clicks, 0),
+        queries: hits.length,
+        matchedOn: best.query
+      };
+    }).filter(Boolean);
+  }
+
   app.post(api + '/google/index', async (req, res) => {
     try {
       const key = sstr((req.body || {}).key, 200).toLowerCase();
       const seoSites = await readSeoSites(db);
       if (!seoSites[key]) return bad(res, 'That website is not in the register yet.');
-      res.json(await googleIndex(key, seoSites[key]));
+      const out = await googleIndex(key, seoSites[key]);
+      const meta = await readMeta(db);
+      const saved = (meta.keywords || {})[key] || [];
+      out.keywordsSaved = saved;
+      out.targets = matchTargets(saved, out.queries || []);
+      res.json(out);
+    } catch (e) { bad(res, e.message); }
+  });
+
+  app.post(api + '/google/keywords', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      if (!key) return bad(res, 'Which website?');
+      const cleaned = (Array.isArray(b.keywords) ? b.keywords : [])
+        .map(x => sstr(x, 120).trim()).filter(Boolean)
+        .filter((x, i, arr) => arr.indexOf(x) === i).slice(0, 40);
+      const patch = {};
+      patch[key] = cleaned.length ? cleaned : deleteField();
+      await writeMeta(db, { keywords: patch });
+      res.json({ ok: true, keywords: cleaned });
     } catch (e) { bad(res, e.message); }
   });
 
