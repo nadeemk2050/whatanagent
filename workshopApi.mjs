@@ -29,6 +29,7 @@ import dns from 'node:dns/promises';
 import axios from 'axios';
 import { doc, getDoc, setDoc, updateDoc, deleteField, FieldPath } from 'firebase/firestore';
 import { makeAdminGuard } from './adminGuard.mjs';
+import crypto from 'node:crypto';
 import { attachAgentsDb, listAgents, getAgent, createAgent } from './agentsStore.mjs';
 
 const WORKSHOP = 'websitesWorkshop';
@@ -72,7 +73,10 @@ function normalizeUrl(raw) {
   try { u = new URL(s); } catch (e) { throw new Error('That does not look like a website address.'); }
   if (!/^https?:$/.test(u.protocol)) throw new Error('Only http:// and https:// addresses are supported.');
   if (!u.hostname.includes('.') || u.hostname === 'localhost') throw new Error('The domain in that address looks incomplete.');
-  return trimSlash(u.toString());
+  // Only strip the slash at the root. Stripping it from /about/ turns one request into a
+  // redirect loop on sites whose canonical form keeps the slash.
+  const out = u.toString();
+  return u.pathname === '/' ? trimSlash(out) : out;
 }
 
 async function assertPublicUrl(raw) {
@@ -249,11 +253,12 @@ function detectStack(res) {
   return stack;
 }
 
-async function probeText(url) {
+async function probeText(url, timeout = 9000) {
   const started = Date.now();
   try {
-    const r = await safeGet(url, { maxHops: 2, timeout: 9000 });
-    return { ok: r.ok, status: r.status, body: r.body, ms: Date.now() - started };
+    const r = await safeGet(url, { maxHops: 2, timeout });
+    // keep safeGet's reason: without it a failed page is reported as "HTTP 0" with no explanation
+    return { ok: r.ok, status: r.status, body: r.body, ms: Date.now() - started, error: r.ok ? '' : (r.error || '') };
   } catch (e) { return { ok: false, status: 0, body: '', ms: Date.now() - started, error: e.message }; }
 }
 
@@ -705,6 +710,214 @@ export function registerWorkshopRoutes(app, db) {
       todos[key] = list;
       await writeMeta(db, { todos });
       res.json({ ok: true, todos: list });
+    } catch (e) { bad(res, e.message); }
+  });
+
+  // ---------------------------------------------------------- google index
+  // Two independent sources: what the live site says about itself (no permission needed),
+  // and what Google actually reports (needs the service account on the property).
+  const STOPWORDS = new Set(('a,an,and,are,as,at,be,by,for,from,has,have,in,is,it,its,of,on,or,that,the,to,was,were,will,with,you,your,we,our,this,these,those,not,but,all,any,can,how,what,when,who,why,more,most,other,into,over,under,about,above,after,before,between,during,than,then,them,they,their,there,here,also,just,only,very,our,pakistan,karachi').split(','));
+
+  function wordsOf(text) {
+    return String(text || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/)
+      .filter(w => w.length > 2 && !STOPWORDS.has(w));
+  }
+
+  async function svcToken(sa, scope) {
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const now = Math.floor(Date.now() / 1000);
+    const unsigned = b64({ alg: 'RS256', typ: 'JWT' }) + '.' +
+      b64({ iss: sa.client_email, scope, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+    const sig = crypto.createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
+    const r = await axios.post('https://oauth2.googleapis.com/token',
+      new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: unsigned + '.' + sig }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 });
+    return r.data.access_token;
+  }
+
+  const gscError = (e) => String((e && e.response && e.response.data && e.response.data.error && e.response.data.error.message) || (e && e.message) || 'unknown error').slice(0, 300);
+
+  async function googleIndex(key, site) {
+    const out = {
+      ok: true, property: site.gscPropertyUrl || ('sc-domain:' + key), connected: false,
+      sitemaps: [], totals: null, queries: [], pages: [], inspected: [], notes: [], range: null,
+      error: '', serviceAccount: ''
+    };
+    let sa = null;
+    try { sa = JSON.parse(site.gscAccess || '{}'); } catch (e) { sa = null; }
+    if (!sa || !sa.client_email) {
+      out.error = 'No Google service account is stored for this website, so Google data cannot be read yet.';
+      return out;
+    }
+    out.serviceAccount = sa.client_email;
+
+    let token;
+    try { token = await svcToken(sa, 'https://www.googleapis.com/auth/webmasters'); }
+    catch (e) { out.error = 'Could not sign in to Google: ' + gscError(e); return out; }
+
+    const H = { Authorization: 'Bearer ' + token };
+    const prop = encodeURIComponent(out.property);
+
+    try {
+      const r = await axios.get(`https://searchconsole.googleapis.com/webmasters/v3/sites/${prop}/sitemaps`, { headers: H, timeout: 15000 });
+      out.connected = true;
+      out.sitemaps = (r.data.sitemap || []).slice(0, 20).map(s => ({
+        path: s.path, type: s.type, lastSubmitted: s.lastSubmitted || '', lastDownloaded: s.lastDownloaded || '',
+        errors: Number(s.errors || 0), warnings: Number(s.warnings || 0), isPending: !!s.isPending,
+        urls: Number(((s.contents || [])[0] || {}).submitted || 0)
+      }));
+    } catch (e) {
+      out.error = gscError(e);
+      if (/sufficient permission/i.test(out.error)) {
+        out.error += ' — add ' + sa.client_email + ' as a user of this Search Console property (Settings > Users and permissions) and it will fill in by itself.';
+      }
+      return out;
+    }
+
+    const end = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    out.range = { start, end };
+    const analytics = async (dims) => axios.post(
+      `https://searchconsole.googleapis.com/webmasters/v3/sites/${prop}/searchAnalytics/query`,
+      { startDate: start, endDate: end, dimensions: dims, rowLimit: dims && dims[0] === 'query' ? 25 : 15 },
+      { headers: { ...H, 'Content-Type': 'application/json' }, timeout: 20000 });
+
+    try {
+      const r = await analytics(['query']);
+      out.queries = (r.data.rows || []).map(x => ({ query: x.keys[0], clicks: x.clicks, impressions: x.impressions, ctr: x.ctr, position: x.position }));
+    } catch (e) { out.notes.push('Queries: ' + gscError(e)); }
+    try {
+      const r = await analytics(['page']);
+      out.pages = (r.data.rows || []).map(x => ({ page: x.keys[0], clicks: x.clicks, impressions: x.impressions, ctr: x.ctr, position: x.position }));
+    } catch (e) { out.notes.push('Pages: ' + gscError(e)); }
+    try {
+      const r = await analytics(null);
+      const row = (r.data.rows || [])[0];
+      out.totals = row
+        ? { clicks: row.clicks, impressions: row.impressions, ctr: row.ctr, position: row.position }
+        : { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+    } catch (e) { out.notes.push('Totals: ' + gscError(e)); }
+
+    try {
+      const r = await axios.post('https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
+        { inspectionUrl: site.url || ('https://' + key), siteUrl: out.property, languageCode: 'en' },
+        { headers: { ...H, 'Content-Type': 'application/json' }, timeout: 20000 });
+      const s = (r.data.inspectionResult || {}).indexStatusResult || {};
+      out.inspected.push({
+        url: site.url || ('https://' + key), verdict: s.verdict || '', coverage: s.coverageState || '',
+        indexingState: s.indexingState || '', robots: s.robotsTxtState || '', lastCrawl: s.lastCrawlTime || ''
+      });
+    } catch (e) { out.notes.push('URL inspection: ' + gscError(e)); }
+
+    return out;
+  }
+
+  const decodeEnt = (s) => String(s || '')
+    .replace(/&#(\d+);/g, (m, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+  async function crawlSite(site, key) {
+    const url = normalizeUrl(site.url || key);
+    const origin = new URL(url).origin;
+    const smUrl = trimSlash(site.sitemapUrl || (origin + '/sitemap_index.xml'));
+    const found = new Set();
+    const seen = new Set();
+
+    const harvest = async (u, depth) => {
+      if (!u || seen.has(u) || depth > 2) return;
+      seen.add(u);
+      const r = await probeText(u);
+      if (!r.ok) return;
+      const body = String(r.body || '');
+      const locs = [...body.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1].trim());
+      if (/<sitemapindex[\s>]/i.test(body)) { for (const l of locs.slice(0, 10)) await harvest(l, depth + 1); }
+      else for (const l of locs) found.add(l);
+    };
+    await harvest(smUrl, 0);
+
+    const MAXP = 25;
+    const targets = [...found].slice(0, MAXP);
+    const pages = [];
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < targets.length) {
+        const u = targets[cursor++];
+        const r = await probeText(u, 15000);
+        const h = String(r.body || '');
+        const title = decodeEnt(((h.match(/<title[^>]*>([\s\S]{0,200}?)<\/title>/i) || [])[1] || '').replace(/\s+/g, ' ').trim());
+        const desc = decodeEnt(((h.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || [])[1] || '').trim());
+        const h1 = decodeEnt(((h.match(/<h1[^>]*>([\s\S]{0,160}?)<\/h1>/i) || [])[1] || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+        const robotsMeta = ((h.match(/<meta[^>]+name=["']robots["'][^>]*content=["']([^"']*)["']/i) || [])[1] || '').toLowerCase();
+        const canonical = ((h.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)["']/i) || [])[1] || '');
+        const imgs = [...h.matchAll(/<img\b[^>]*>/gi)].map(m => m[0]);
+        const noAlt = imgs.filter(t => !/\salt\s*=\s*["'][^"']*\S/i.test(t)).length;
+        const text = h.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
+        pages.push({
+          url: u, status: r.status, ok: r.ok, err: r.error || '', title, desc, h1, noindex: /noindex/.test(robotsMeta),
+          canonical, images: imgs.length, noAlt, words: text.split(/\s+/).filter(Boolean).length
+        });
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    pages.sort((a, b) => a.url.localeCompare(b.url));
+
+    const problems = [];
+    const titles = new Map();
+    for (const p of pages) {
+      if (!p.ok) problems.push({ level: 'high', url: p.url, text: 'Answers HTTP ' + p.status + (p.err ? ' — ' + p.err : '') });
+      if (p.noindex) problems.push({ level: 'high', url: p.url, text: 'Sends noindex — Google will drop this page' });
+      if (!p.title) problems.push({ level: 'high', url: p.url, text: 'No title tag' });
+      else {
+        titles.set(p.title, (titles.get(p.title) || 0) + 1);
+        if (p.title.length > 62) problems.push({ level: 'low', url: p.url, text: 'Title is ' + p.title.length + ' characters (Google truncates near 60)' });
+      }
+      if (!p.desc) problems.push({ level: 'medium', url: p.url, text: 'No meta description' });
+      if (!p.h1) problems.push({ level: 'low', url: p.url, text: 'No H1 on the page' });
+      if (!p.canonical) problems.push({ level: 'medium', url: p.url, text: 'No canonical tag' });
+      if (p.words < 300) problems.push({ level: 'medium', url: p.url, text: 'Only ' + p.words + ' words — thin content' });
+      if (p.images && p.noAlt) problems.push({ level: 'low', url: p.url, text: p.noAlt + ' of ' + p.images + ' image(s) without alt text' });
+    }
+    titles.forEach((n, t) => { if (n > 1) problems.push({ level: 'medium', url: '', text: 'Duplicate title on ' + n + ' pages: ' + t.slice(0, 70) }); });
+
+    const termCount = new Map();
+    for (const p of pages) for (const w of wordsOf(p.title + ' ' + p.h1 + ' ' + p.desc)) termCount.set(w, (termCount.get(w) || 0) + 1);
+    const terms = [...termCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([term, n]) => ({ term, pages: n }));
+
+    return {
+      ok: true, url, origin, sitemap: { url: smUrl, urls: found.size },
+      scannedAt: Date.now(), limit: MAXP, scanned: pages.length,
+      totals: {
+        urls: found.size,
+        ok: pages.filter(p => p.ok).length,
+        noindex: pages.filter(p => p.noindex).length,
+        missingDesc: pages.filter(p => !p.desc).length,
+        missingH1: pages.filter(p => !p.h1).length,
+        thin: pages.filter(p => p.words < 300).length,
+        images: pages.reduce((s, p) => s + p.images, 0),
+        imagesNoAlt: pages.reduce((s, p) => s + p.noAlt, 0),
+        words: pages.reduce((s, p) => s + p.words, 0)
+      },
+      pages, problems: problems.slice(0, 120), terms
+    };
+  }
+
+  app.post(api + '/google/crawl', async (req, res) => {
+    try {
+      const key = sstr((req.body || {}).key, 200).toLowerCase();
+      const seoSites = await readSeoSites(db);
+      if (!seoSites[key]) return bad(res, 'That website is not in the register yet.');
+      res.json(await crawlSite(seoSites[key], key));
+    } catch (e) { bad(res, e.message); }
+  });
+
+  app.post(api + '/google/index', async (req, res) => {
+    try {
+      const key = sstr((req.body || {}).key, 200).toLowerCase();
+      const seoSites = await readSeoSites(db);
+      if (!seoSites[key]) return bad(res, 'That website is not in the register yet.');
+      res.json(await googleIndex(key, seoSites[key]));
     } catch (e) { bad(res, e.message); }
   });
 

@@ -565,6 +565,21 @@
         .ws-pstep.ws-custom { border-left: 3px solid #6366f1; }
         .ws-pstep.ws-custom .ws-gtag { color: #4f46e5; }
         .ws-hint-muted { color: #94a3b8; font-style: italic; }
+        .ws-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 14px; }
+        .ws-kpi { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px; padding: 11px 13px; }
+        .ws-kpi .v { font-size: 19px; font-weight: 800; color: #0f172a; line-height: 1.2; }
+        .ws-kpi .l { font-size: 11.5px; color: #64748b; margin-top: 3px; }
+        .ws-kpi .s { font-size: 10.5px; color: #94a3b8; margin-top: 2px; }
+        .ws-sub-h { margin: 18px 0 8px; font-size: 11.5px; letter-spacing: .6px; text-transform: uppercase; color: #64748b; font-weight: 800; }
+        .ws-list { display: flex; flex-direction: column; gap: 6px; }
+        .ws-li { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; padding: 8px 11px; border: 1px solid #eef2f7; border-radius: 9px; background: #fff; }
+        .ws-li > span:first-child { color: #0f172a; font-weight: 600; word-break: break-all; }
+        .ws-li > span:last-child { color: #64748b; white-space: nowrap; }
+        .ws-li.ws-lv-high { border-color: #fecaca; background: #fef2f2; }
+        .ws-li.ws-lv-medium { border-color: #fde68a; background: #fffbeb; }
+        .ws-terms { display: flex; flex-wrap: wrap; gap: 7px; }
+        .ws-term { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; font-weight: 700; }
+        .ws-term b { background: #fff; color: #4338ca; border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
         .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }        .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
         .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
         .ws-door { position: relative; background: linear-gradient(180deg, #3a4048, #2b3037); border-radius: 14px; padding: 16px; color: #f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(15, 23, 42, .16); overflow: hidden; }
@@ -14184,6 +14199,7 @@
     /* ---------------- single-website page (opened from the register) ---------------- */
     var SITE_VIEWS = [
         { id: 'process', label: '\ud83d\udccb Processes & Statuses' },
+        { id: 'google', label: '\ud83d\udd0e Google Index' },
         { id: 'workspace', label: '\ud83d\uddc2 Workspace' },
         { id: 'soon', label: '\u23f3 Coming soon' }
     ];
@@ -14243,7 +14259,7 @@
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
     }
 
-    function siteSwitch(view) { WS.siteView = view; renderSitePage(); }
+    function siteSwitch(view) { WS.siteView = view; renderSitePage(); if (view === 'google') ensureGoogle(WS.siteKey); }
 
     function renderSitePage() {
         if (!WS.siteKey || !$('wsSiteBody')) return;
@@ -14257,8 +14273,10 @@
             }).join('');
         }
         $('wsSiteBody').innerHTML = WS.siteView === 'workspace' ? workspaceHtml(s)
-            : WS.siteView === 'soon' ? soonHtml(s)
-                : processHtml(s.key);
+            : WS.siteView === 'google' ? googleHtml(s.key)
+                : WS.siteView === 'soon' ? soonHtml(s)
+                    : processHtml(s.key);
+        if (WS.siteView === 'google') ensureGoogle(s.key);
     }
 
     function processHtml(key) {
@@ -14527,6 +14545,144 @@
             (s.notes ? '<div class="ws-card"><h3 class="ws-h3">\ud83d\uddd2 Notes for the manager</h3><div class="ws-site-notes">' + esc(s.notes) + '</div></div>' : '');
     }
 
+    /* ---------------- 🔎 Google Index ---------------- */
+    function googleKpi(label, value, sub) {
+        return '<div class="ws-kpi"><div class="v">' + esc(String(value)) + '</div><div class="l">' + esc(label) + '</div>' +
+            (sub ? '<div class="s">' + esc(sub) + '</div>' : '') + '</div>';
+    }
+
+    function ensureGoogle(key) {
+        if (!key) return;
+        WS.google = WS.google || {};
+        var st = WS.google[key];
+        if (st && st.loading) return;
+        if (st && st.at && Date.now() - st.at < 300000) return;   // fresh for 5 minutes
+        runGoogle(key);
+    }
+
+    async function runGoogle(key) {
+        WS.google = WS.google || {};
+        WS.google[key] = { loading: true, crawl: (WS.google[key] || {}).crawl || null, google: (WS.google[key] || {}).google || null };
+        if (WS.siteView === 'google') renderSitePage();
+        try {
+            var both = await Promise.all([
+                api('/google/crawl', { method: 'POST', body: { key: key } }),
+                api('/google/index', { method: 'POST', body: { key: key } })
+            ]);
+            WS.google[key] = { crawl: both[0], google: both[1], at: Date.now(), loading: false, error: '' };
+        } catch (e) {
+            WS.google[key] = { loading: false, error: e.message, at: Date.now() };
+        }
+        if (WS.siteView === 'google') renderSitePage();
+    }
+
+    function googleHtml(key) {
+        var st = (WS.google || {})[key] || {};
+        var head = '<div class="ws-card">' +
+                '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;">' +
+                    '<div style="flex:1;min-width:240px;">' +
+                        '<h3 class="ws-h3">\ud83d\udd0e Google index</h3>' +
+                        '<p class="ws-hint" style="margin:6px 0 0 0;">What Google reports for this website, plus a live crawl of the pages themselves. The crawl needs no permission; the Google numbers need the service account added to the property.</p>' +
+                    '</div>' +
+                    '<button class="ws-btn dark" onclick="wshopGoogleRun(\'' + esc(key) + '\')">' + (st.loading ? '\u23f3 Reading\u2026' : '\u21bb Refresh') + '</button>' +
+                '</div>' +
+            '</div>';
+
+        if (st.loading) {
+            return head + '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83d\udd0e</div><b>Reading Google and crawling the site\u2026</b>' +
+                '<div style="margin-top:6px;">About 15 seconds for 25 pages.</div></div></div>';
+        }
+        if (st.error) return head + '<div class="ws-card"><div class="ws-fact warn">\u26a0\ufe0f ' + esc(st.error) + '</div></div>';
+        if (!st.crawl && !st.google) {
+            return head + '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83d\udd0e</div><b>Not read yet</b>' +
+                '<div style="margin-top:6px;">Press Refresh to crawl the site and read Google Search Console.</div></div></div>';
+        }
+
+        var g = st.google || {};
+        var gCard;
+        if (!g.connected) {
+            gCard = '<div class="ws-card"><h3 class="ws-h3">Google Search Console</h3>' +
+                    '<div class="ws-fact warn" style="margin-top:12px;">\u26a0\ufe0f ' + esc(g.error || 'Not connected yet.') + '</div>' +
+                    (g.serviceAccount ? '<p class="ws-hint" style="margin-top:10px;">Service account: <b>' + esc(g.serviceAccount) + '</b><br>' +
+                        'Search Console \u2192 Settings \u2192 Users and permissions \u2192 Add user \u2192 paste that address \u2192 permission Full.</p>' : '') +
+                '</div>';
+        } else {
+            var t = g.totals || {};
+            gCard = '<div class="ws-card"><h3 class="ws-h3">Google Search Console \u00b7 last 28 days</h3>' +
+                    '<div class="ws-kpis">' +
+                        googleKpi('Clicks', t.clicks || 0) +
+                        googleKpi('Impressions', t.impressions || 0) +
+                        googleKpi('CTR', ((t.ctr || 0) * 100).toFixed(1) + '%') +
+                        googleKpi('Avg position', (t.position || 0).toFixed(1)) +
+                    '</div>' +
+                    ((g.sitemaps || []).length ? '<h4 class="ws-sub-h">Sitemaps Google has read</h4><div class="ws-list">' +
+                        g.sitemaps.map(function (s) {
+                            return '<div class="ws-li"><span>' + esc(s.path.replace(/^https?:\/\/[^/]+/, '') || '/') + '</span><span>' +
+                                s.urls + ' URLs \u00b7 ' + s.errors + ' errors \u00b7 ' + s.warnings + ' warnings' +
+                                (s.lastDownloaded ? ' \u00b7 read ' + esc(String(s.lastDownloaded).slice(0, 10)) : '') + '</span></div>';
+                        }).join('') + '</div>' : '') +
+                    ((g.inspected || []).length ? '<h4 class="ws-sub-h">Google\u2019s verdict on the homepage</h4><div class="ws-list">' +
+                        g.inspected.map(function (x) {
+                            return '<div class="ws-li"><span>' + esc(x.coverage || x.verdict || '') + '</span><span>' +
+                                esc(x.indexingState || '') + ' \u00b7 robots ' + esc(x.robots || '') +
+                                (x.lastCrawl ? ' \u00b7 crawled ' + esc(String(x.lastCrawl).slice(0, 10)) : '') + '</span></div>';
+                        }).join('') + '</div>' : '') +
+                    '<h4 class="ws-sub-h">Search terms people used</h4>' +
+                    ((g.queries || []).length
+                        ? '<div class="ws-list">' + g.queries.slice(0, 15).map(function (q) {
+                            return '<div class="ws-li"><span>' + esc(q.query) + '</span><span>' + q.impressions + ' impr \u00b7 ' +
+                                q.clicks + ' clicks \u00b7 pos ' + Number(q.position).toFixed(1) + '</span></div>';
+                        }).join('') + '</div>'
+                        : '<p class="ws-hint" style="margin-top:8px;">No search queries recorded in this period yet.</p>') +
+                    ((g.pages || []).length ? '<h4 class="ws-sub-h">Pages Google showed</h4><div class="ws-list">' +
+                        g.pages.slice(0, 10).map(function (p) {
+                            return '<div class="ws-li"><span>' + esc(p.page.replace(/^https?:\/\/[^/]+/, '') || '/') + '</span><span>' +
+                                p.impressions + ' impr \u00b7 ' + p.clicks + ' clicks \u00b7 pos ' + Number(p.position).toFixed(1) + '</span></div>';
+                        }).join('') + '</div>' : '') +
+                '</div>';
+        }
+
+        var c = st.crawl;
+        var cCard = '';
+        if (c && c.ok) {
+            var tt = c.totals || {};
+            cCard = '<div class="ws-card"><h3 class="ws-h3">Crawl of the live site</h3>' +
+                    '<p class="ws-hint" style="margin:5px 0 0 0;">' + c.scanned + ' of ' + tt.urls + ' URLs in the sitemap checked' +
+                        (c.scannedAt ? ' \u00b7 ' + esc(when(c.scannedAt)) : '') + '</p>' +
+                    '<div class="ws-kpis">' +
+                        googleKpi('URLs in sitemap', tt.urls) +
+                        googleKpi('Answered 200', tt.ok) +
+                        googleKpi('Noindex', tt.noindex) +
+                        googleKpi('Thin pages', tt.thin, '< 300 words') +
+                        googleKpi('Images', tt.images, tt.imagesNoAlt ? tt.imagesNoAlt + ' without alt' : 'all have alt') +
+                        googleKpi('Words', tt.words) +
+                    '</div>' +
+                '</div>' +
+                '<div class="ws-card"><h3 class="ws-h3">Problems found <span class="ws-sec-n">' + (c.problems || []).length + '</span></h3>' +
+                    ((c.problems || []).length
+                        ? '<div class="ws-list" style="margin-top:12px;">' + c.problems.slice(0, 40).map(function (p) {
+                            return '<div class="ws-li ws-lv-' + esc(p.level) + '"><span>' + esc(p.url ? (p.url.replace(/^https?:\/\/[^/]+/, '') || '/') : 'site-wide') + '</span><span>' + esc(p.text) + '</span></div>';
+                        }).join('') + '</div>'
+                        : '<p class="ws-hint" style="margin-top:10px;">\u2705 Nothing wrong found in the pages that were read.</p>') +
+                '</div>' +
+                '<div class="ws-card"><h3 class="ws-h3">SEO words on the pages</h3>' +
+                    '<p class="ws-hint" style="margin:5px 0 0 0;">Most frequent words across the titles, H1s and meta descriptions of the pages read. A term on many pages means the site is clearly about it.</p>' +
+                    '<div class="ws-terms" style="margin-top:12px;">' + (c.terms || []).map(function (x) {
+                        return '<span class="ws-term">' + esc(x.term) + '<b>' + x.pages + '</b></span>';
+                    }).join('') + '</div>' +
+                '</div>' +
+                '<div class="ws-card"><h3 class="ws-h3">Pages read</h3>' +
+                    '<div class="ws-list" style="margin-top:12px;">' + (c.pages || []).map(function (p) {
+                        return '<div class="ws-li"><span>' + esc(p.url.replace(/^https?:\/\/[^/]+/, '') || '/') + '</span><span>' +
+                            (p.ok ? p.status : '<b style="color:#dc2626;">' + p.status + '</b>') + ' \u00b7 ' + p.words + ' words \u00b7 ' +
+                            p.images + ' img \u00b7 ' + (p.desc ? 'meta ok' : 'no meta') + (p.noindex ? ' \u00b7 <b style="color:#dc2626;">noindex</b>' : '') + '</span></div>';
+                    }).join('') + '</div>' +
+                '</div>';
+        }
+
+        return head + gCard + cCard;
+    }
+
     function soonHtml(s) {
         return '<div class="ws-card"><div class="ws-empty">' +
             '<div class="big">\u23f3</div>' +
@@ -14600,6 +14756,7 @@
     window.wshopTodoAsk = todoAsk;
     window.wshopTodoStatus = todoStatus;
     window.wshopTodoRemove = todoRemove;
+    window.wshopGoogleRun = runGoogle;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;
