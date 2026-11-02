@@ -1278,5 +1278,59 @@ ${CTA}`
   ...MATERIAL_DEAL_PAGES
 ];
 
+// Contextual cross-links from the six resin-family pages into the specific scrap
+// streams and trading grades. Without these the material pages are reachable only
+// from the hub, which leaves them badly under-linked.
+const X_LINKS = {
+  hdpe: [
+    ['HDPE 100 pipe scrap', 'hdpe-100-pipe-scrap', 'PE100 pressure pipe from water, gas and telecom networks'],
+    ['HDPE 80 scrap', 'hdpe-80-scrap', 'PE80 pipe recovered from older water and irrigation mains'],
+    ['HDPE 60 scrap', 'hdpe-60-scrap', 'Legacy PE63 pipe from decommissioned supply lines'],
+    ['HDPE jerry can scrap', 'hdpe-jerry-can-scrap', 'Blow-moulded containers from oil, chemical and food use'],
+    ['HDPE cable cover scrap', 'hdpe-cable-cover-scrap', 'Cable protection covers, split duct and conduit']
+  ],
+  pvc: [
+    ['PVC pipe scrap', 'pvc-pipe-scrap', 'Rigid uPVC drainage, sewer and conduit pipe'],
+    ['UPVC profile scrap', 'upvc-profile-scrap', 'Window and door profile scrap'],
+    ['PVC cable scrap', 'pvc-cable-scrap', 'Plasticised PVC from wire and cable']
+  ],
+  pp: [
+    ['PP scrap', 'pp-scrap', 'Woven sacks, FIBC, crates, caps and containers'],
+    ['Off-grade materials', 'off-grade-materials', 'Wide-spec and off-spec polymer for cost-sensitive work']
+  ],
+  pet: [
+    ['PET bottle scrap', 'pet-bottle-scrap', 'Baled bottles and washed flake for fibre and sheet'],
+    ['Prime materials', 'prime-materials', 'Virgin bottle-grade resin with full documentation']
+  ],
+  'abs-ps': [
+    ['PC bottle scrap', 'pc-bottle-scrap', 'Polycarbonate water bottles recycled into engineering applications'],
+    ['Off-grade materials', 'off-grade-materials', 'Alternative resin grades in bulk']
+  ],
+  ldpe: [
+    ['Prime materials', 'prime-materials', 'Virgin LDPE and LLDPE film grades'],
+    ['Off-grade materials', 'off-grade-materials', 'Wide-spec film resin for cost-sensitive extrusion']
+  ]
+};
+
+PAGES.forEach(function (p) {
+  const links = X_LINKS[p.slug];
+  if (!links || p.html.indexOf('<div class="q-cta">') === -1) return;
+  const cards = links
+    .map(function (l) {
+      return '  <div class="q-card"><h3>' + l[0] + '</h3><p>' + l[2] + '</p><a class="q-link" href="/materials-we-deal/' + l[1] + '/">' + l[0] + '</a></div>';
+    })
+    .join('\n');
+  const block = `<div class="q-section">
+  <h2>Grades and scrap streams for this material</h2>
+  <p>Each stream has its own page covering the grades we buy and sell, the specification we work to, the contamination that matters, and how we process it.</p>
+  <div class="q-grid q-grid--3">
+${cards}
+  </div>
+</div>
+
+`;
+  p.html = p.html.replace('<div class="q-cta">', block + '<div class="q-cta">');
+});
+
 // Top navigation, in order. "home" is the logo, so it is not repeated here.
 export const MENU = ['about', 'services', 'materials', 'materials-we-deal', 'we-buy', 'facility', 'quality', 'contact'];
