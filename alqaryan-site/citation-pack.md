@@ -192,7 +192,6 @@ listed alongside yours, walk away.
 ---
 
 ## 6. Honest expectation setting
-
 Citations do not produce rankings overnight. What they do is make it unambiguous, to both
 Google and to AI models, that Al Qaryan Industries LLC is a real, operating, locatable
 business in a specific industry at a specific address. That is the foundation everything
@@ -203,3 +202,81 @@ verification. Directory citations take a few weeks to be crawled and acknowledge
 citation in ChatGPT or Perplexity is not something you can measure directly — but it
 follows from being indexed, being corroborated, and being the clearest source for a
 specific fact.
+
+---
+
+## 7. Google Business Profile — Products and Services
+
+Add these in the profile's **Products** section (keep names short; long names get truncated).
+Each product can be linked to the matching page on the site.
+
+| Product name | Description | Link |
+|---|---|---|
+| HDPE Regrind & Pellets | Washed HDPE regrind and pellets from bottle, crate and pipe scrap, graded to the application. | /materials/hdpe/ |
+| HDPE 100 Pipe Scrap | PE100 pressure pipe scrap from water, gas and telecom networks. | /materials-we-deal/hdpe-100-pipe-scrap/ |
+| HDPE 80 Scrap | PE80 pipe recovered from decommissioned water and irrigation mains. | /materials-we-deal/hdpe-80-scrap/ |
+| PVC Pipe Scrap | Rigid uPVC drainage, sewer and conduit pipe for regrind and compound. | /materials-we-deal/pvc-pipe-scrap/ |
+| UPVC Profile Scrap | Window and door profile scrap with glass, gasket and steel removed. | /materials-we-deal/upvc-profile-scrap/ |
+| PVC Cable Scrap | Plasticised PVC from wire and cable, copper separated. | /materials-we-deal/pvc-cable-scrap/ |
+| PET Bottle Scrap | Baled bottles and washed flake for fibre, sheet and strapping producers. | /materials-we-deal/pet-bottle-scrap/ |
+| PP Scrap | Woven sacks, FIBC, crates and caps in polypropylene. | /materials-we-deal/pp-scrap/ |
+| PC Bottle Scrap | Polycarbonate water bottles recycled into engineering applications. | /materials-we-deal/pc-bottle-scrap/ |
+| HDPE Jerry Can Scrap | Blow-moulded containers from oil, chemical and detergent use. | /materials-we-deal/hdpe-jerry-can-scrap/ |
+| Off-Grade Polymer | Wide-spec and off-spec polymer in tested lots for cost-sensitive work. | /materials-we-deal/off-grade-materials/ |
+| Prime Polymer | Virgin HDPE, LDPE, PP, PVC resin and PET with producer documentation. | /materials-we-deal/prime-materials/ |
+| PVC Pipes | Drainage, sewer, conduit and irrigation pipe from our own extrusion lines. | /pvc-pipe-manufacturing/ |
+
+**Services** section:
+
+- Plastic Scrap Collection
+- Site Clearance and Scrap Removal
+- Plastic Recycling and Processing
+- Recycled Polymer Supply
+- PVC Pipe Supply
+
+---
+
+## 8. LinkedIn Company Page
+
+| Field | Value |
+|---|---|
+| Name | Al Qaryan Industries LLC |
+| LinkedIn public URL | linkedin.com/company/al-qaryan-industries |
+| Tagline (93 / 120 chars) | Plastic trading, recycling and PVC pipe manufacturing in Karachi, Pakistan. Established 2007. |
+| Industry | Plastics Manufacturing |
+| Company size | 11-50 employees |
+| Type | Privately Held |
+| Founded | 2007 |
+| Website | https://alqaryangroup.com |
+| Phone | +92 333 201 0506 |
+| Headquarters | Karachi, Sindh, Pakistan |
+
+**About (1,343 / 2,000 characters):**
+
+```
+Al Qaryan Industries LLC is a plastic trading and recycling company based in the Shershah Industrial Area of Karachi, Pakistan, established in 2007.
+
+We operate at both ends of the plastic chain. We buy scrap from factories, utilities, municipal contractors, demolition firms and collectors across Pakistan, and we import baled and shredded feedstock from the UAE, Saudi Arabia, Malaysia, Indonesia, Japan, the USA and Canada. We supply manufacturers with recycled and virgin polymers as regrind, washed flake, agglomerate, pellets, bales and purges, together with off-grade material for cost-sensitive applications and prime resin with full producer documentation.
+
+Our facility processes around 500 tons of plastic per month. It runs a shredding line, a washing and drying line, a pelletiser with filtration, and two PVC pipe extrusion lines, which also consume a share of our own recycled compound.
+
+We handle HDPE (including PE100, PE80 and PE63 pipe scrap), LDPE, LLDPE, PP, PET, PVC in rigid and flexible form, polycarbonate and other engineering plastics, and our PVC pipe range serves drainage, sewer, conduit and irrigation applications.
+
+We work to ISO 9001 and ISO 14001 and hold REACH and SGS documentation. Deliveries move by road nationwide, with container lots available for export enquiries.
+
+Website: https://alqaryangroup.com
+```
+
+**Specialties (comma separated, 20 max):**
+
+```
+plastic recycling, HDPE regrind, LDPE scrap, PP scrap, PET flake, PVC pipe scrap,
+UPVC profile scrap, PVC cable scrap, polymer trading, off-grade polymer, prime resin,
+PVC pipe manufacturing, plastic scrap buying, industrial scrap collection, Karachi
+```
+
+**Images:**
+
+- Logo: square, at least 300 x 300 px. The "AQ" mark from the site works.
+- Cover: 1128 x 191 px. Use the facility photo (`plant-shredder-line.webp`).
+- Add the same photos used on the Google Business Profile.
