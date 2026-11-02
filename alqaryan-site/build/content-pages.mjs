@@ -189,7 +189,7 @@ export const PAGES = [
 ${CTA}
 
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":["Organization","LocalBusiness"],"@id":"https://alqaryangroup.com/#organization","name":"Al Qaryan Industries LLC","alternateName":"Al Qaryan Group","url":"https://alqaryangroup.com","description":"Plastic recycling, polymer trading and PVC pipe manufacturing in Karachi, Pakistan, established 2007.","foundingDate":"2007","telephone":"+923332010506","address":{"@type":"PostalAddress","streetAddress":"Shershah Industrial Area","addressLocality":"Karachi","addressRegion":"Sindh","addressCountry":"PK"},"areaServed":[{"@type":"Country","name":"Pakistan"}],"knowsAbout":["plastic recycling","HDPE regrind","PVC pipe manufacturing","polymer trading"],"hasCredential":["ISO 9001","ISO 14001","REACH"]}
+{"@context":"https://schema.org","@type":["Organization","LocalBusiness"],"@id":"https://alqaryangroup.com/#organization","name":"Al Qaryan Industries LLC","alternateName":"Al Qaryan Group","url":"https://alqaryangroup.com","description":"Plastic recycling, polymer trading and PVC pipe manufacturing in Karachi, Pakistan, established 2007.","foundingDate":"2007","telephone":"+923332010506","email":"info@alqaryangroup.com","address":{"@type":"PostalAddress","streetAddress":"Shershah Industrial Area","addressLocality":"Karachi","addressRegion":"Sindh","postalCode":"75700","addressCountry":"PK"},"areaServed":[{"@type":"Country","name":"Pakistan"}],"knowsAbout":["plastic recycling","HDPE regrind","PVC pipe manufacturing","polymer trading"],"hasCredential":["ISO 9001","ISO 14001","REACH"]}
 </script>`
   },
 
