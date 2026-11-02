@@ -599,6 +599,7 @@ export function registerWorkshopRoutes(app, db) {
         staff: agents.map(staffCard),
         process: mergeProcess(meta.process),
         processSteps: PROCESS_STEPS,
+        todos: meta.todos || {},
         stats: { sites: list.length, engineers: engineers.length, healthy, unassigned, manager: manager ? 1 : 0 }
       });
     } catch (e) {
@@ -638,6 +639,73 @@ export function registerWorkshopRoutes(app, db) {
       console.error('[WORKSHOP] process update failed:', e.message);
       bad(res, e.message);
     }
+  });
+
+  // --------------------------------------------------------------- to-do tasks
+  // Something the owner wants done that is not part of the fixed pipeline. It keeps the
+  // description and the suggestion — written by an AI engineer or typed by the owner — together.
+  const TODO_STATUSES = ['todo', 'doing', 'done', 'blocked'];
+
+  app.post(api + '/todo/add', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      const text = sstr(b.text, 600).trim();
+      if (!key) return bad(res, 'Which website?');
+      if (!text) return bad(res, 'Describe the task first.');
+      const meta = await readMeta(db);
+      const todos = { ...(meta.todos || {}) };
+      const list = Array.isArray(todos[key]) ? todos[key].slice() : [];
+      const item = {
+        id: 'td-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        text,
+        suggestion: sstr(b.suggestion, 4000).trim(),
+        by: sstr(b.by, 80),
+        byName: sstr(b.byName, 60),
+        status: TODO_STATUSES.includes(b.status) ? b.status : 'todo',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      list.unshift(item);
+      todos[key] = list.slice(0, 200);
+      await writeMeta(db, { todos });
+      res.json({ ok: true, item, todos: todos[key] });
+    } catch (e) { bad(res, e.message); }
+  });
+
+  app.post(api + '/todo/status', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      const id = sstr(b.id, 60);
+      const status = sstr(b.status, 20);
+      if (!key || !id) return bad(res, 'Which task?');
+      if (!TODO_STATUSES.includes(status)) return bad(res, 'Unknown status.');
+      const meta = await readMeta(db);
+      const todos = { ...(meta.todos || {}) };
+      const list = Array.isArray(todos[key]) ? todos[key].slice() : [];
+      const i = list.findIndex(t => t.id === id);
+      if (i < 0) return bad(res, 'That task no longer exists.');
+      list[i] = { ...list[i], status, updatedAt: Date.now() };
+      todos[key] = list;
+      await writeMeta(db, { todos });
+      res.json({ ok: true, todos: list });
+    } catch (e) { bad(res, e.message); }
+  });
+
+  app.post(api + '/todo/remove', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      const id = sstr(b.id, 60);
+      if (!key || !id) return bad(res, 'Which task?');
+      const meta = await readMeta(db);
+      const todos = { ...(meta.todos || {}) };
+      const list = Array.isArray(todos[key]) ? todos[key].filter(t => t.id !== id) : [];
+      todos[key] = list;
+      await writeMeta(db, { todos });
+      res.json({ ok: true, todos: list });
+    } catch (e) { bad(res, e.message); }
   });
 
   // ------------------------------------------------------ engineer live audit

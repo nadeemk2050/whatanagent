@@ -562,8 +562,10 @@
         .ws-menu-opt .ic { font-size: 21px; line-height: 1.1; }
         .ws-menu-opt b { display: block; font-size: 14px; color: var(--ws-ink); }
         .ws-menu-opt b + span { display: block; font-size: 12px; color: var(--ws-muted); margin-top: 3px; line-height: 1.45; }
-        .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }
-        .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
+        .ws-pstep.ws-custom { border-left: 3px solid #6366f1; }
+        .ws-pstep.ws-custom .ws-gtag { color: #4f46e5; }
+        .ws-hint-muted { color: #94a3b8; font-style: italic; }
+        .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }        .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
         .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
         .ws-door { position: relative; background: linear-gradient(180deg, #3a4048, #2b3037); border-radius: 14px; padding: 16px; color: #f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(15, 23, 42, .16); overflow: hidden; }
         .ws-door:before { content: ''; position: absolute; inset: 7px; border: 1px solid rgba(216, 185, 120, .32); border-radius: 10px; pointer-events: none; }
@@ -14191,7 +14193,7 @@
     var WS_STATUS_SECTIONS = [
         { id: 'done', title: '\u2705 Completed / Done', hint: 'Verified finished, with the evidence and the date it was confirmed.', states: ['done'] },
         { id: 'doing', title: '\ud83d\udd04 Under process', hint: 'Started, not finished yet.', states: ['doing'] },
-        { id: 'todo', title: '\u23f8 To start', hint: 'Not started yet. Anything blocked is shown in red.', states: ['todo', 'blocked', 'na'] }
+        { id: 'todo', title: '\u23f8 To do', hint: 'Not started yet, plus every task you add yourself. Anything blocked is shown in red.', states: ['todo', 'blocked', 'na'] }
     ];
 
     var APPROVAL_LABELS = {
@@ -14275,6 +14277,12 @@
             byState[bucket].push({ def: st, rec: rec });
         });
 
+        // Tasks the owner added by hand live in the same three sections as the pipeline.
+        ((d.todos || {})[key] || []).forEach(function (t) {
+            var bucket = t.status === 'done' ? 'done' : (t.status === 'doing' ? 'doing' : 'todo');
+            byState[bucket].push({ todo: t });
+        });
+
         var facts = proc.facts || {};
         var factRows = Object.keys(facts).map(function (k) {
             return '<div class="ws-fact"><span><b>' + esc(k) + ':</b>&nbsp;' + esc(facts[k]) + '</span></div>';
@@ -14283,11 +14291,17 @@
         var sections = WS_STATUS_SECTIONS.map(function (sec) {
             var items = byState[sec.id];
             var rows = items.length
-                ? items.map(function (it) { return stepRow(key, it.def, it.rec); }).join('')
+                ? items.map(function (it) { return it.todo ? todoRow(key, it.todo) : stepRow(key, it.def, it.rec); }).join('')
                 : '<div class="ws-hint" style="padding:4px 2px;">Nothing in this section.</div>';
+            var addBtn = sec.id === 'todo'
+                ? '<button class="ws-btn dark" onclick="wshopTodoForm(\'' + esc(key) + '\')">\u2795 Add to-do task</button>'
+                : '';
             return '<div class="ws-card ws-sec ' + sec.id + '">' +
-                    '<h3 class="ws-h3">' + sec.title + ' <span class="ws-sec-n">' + items.length + '</span></h3>' +
-                    '<p class="ws-hint" style="margin:5px 0 0 0;">' + sec.hint + '</p>' +
+                    '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;gap:12px;">' +
+                        '<div><h3 class="ws-h3">' + sec.title + ' <span class="ws-sec-n">' + items.length + '</span></h3>' +
+                        '<p class="ws-hint" style="margin:5px 0 0 0;">' + sec.hint + '</p></div>' +
+                        addBtn +
+                    '</div>' +
                     '<div style="margin-top:13px;">' + rows + '</div>' +
                 '</div>';
         }).join('');
@@ -14327,6 +14341,144 @@
             '</div>' +
             '<select class="ws-psel" onchange="wshopProcSet(\'' + esc(key) + '\',\'' + esc(st.id) + '\',this.value)">' + opts + '</select>' +
         '</div>';
+    }
+
+    function todoRow(key, t) {
+        var opts = ['todo', 'doing', 'done', 'blocked'].map(function (x) {
+            return '<option value="' + x + '"' + (t.status === x ? ' selected' : '') + '>' + x + '</option>';
+        }).join('');
+        return '<div class="ws-pstep ' + esc(t.status) + ' ws-custom">' +
+            '<div class="ws-dot"></div>' +
+            '<div>' +
+                '<div class="ws-plabel">' + esc(t.text) + '<span class="ws-gtag">to-do task</span></div>' +
+                (t.suggestion ? '<div class="ws-pnote">' + esc(t.suggestion) + '</div>' : '<div class="ws-pnote ws-hint-muted">No suggestion saved.</div>') +
+                '<div class="ws-pwhy">' +
+                    (t.byName ? 'Discussed with <b>' + esc(t.byName) + '</b>' : 'Added by you') +
+                    (t.createdAt ? ' \u00b7 ' + esc(when(t.createdAt)) : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="ws-row" style="gap:6px;flex-wrap:nowrap;">' +
+                '<select class="ws-psel" onchange="wshopTodoStatus(\'' + esc(key) + '\',\'' + esc(t.id) + '\',this.value)">' + opts + '</select>' +
+                '<button class="ws-btn sm bad" title="Delete task" onclick="wshopTodoRemove(\'' + esc(key) + '\',\'' + esc(t.id) + '\')">\ud83d\uddd1</button>' +
+            '</div>' +
+        '</div>';
+    }
+
+    // Calls the AI Staff Academy chat endpoint (different prefix from /api/workshop).
+    async function apiAgents(path, body) {
+        var r = await fetch('/api/agents' + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken() },
+            body: JSON.stringify(body || {})
+        });
+        var j = null;
+        try { j = await r.json(); } catch (e) { j = null; }
+        if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+        return j;
+    }
+
+    function todoForm(key) {
+        var engs = (WS.data && WS.data.engineers) || [];
+        var staff = (WS.data && WS.data.staff) || [];
+        var site = siteByKey(key);
+        var onSite = (site && site.engineers) ? site.engineers.map(function (e) { return e.id; }) : [];
+        var ordered = engs.slice().sort(function (a, b) {
+            var ra = onSite.indexOf(a.id) >= 0 ? 0 : 1, rb = onSite.indexOf(b.id) >= 0 ? 0 : 1;
+            return ra - rb;
+        });
+        var others = staff.filter(function (s) { return !engs.some(function (e) { return e.id === s.id; }); });
+        var options = ordered.map(function (e) {
+            return '<option value="' + esc(e.id) + '">' + esc(e.emoji || '') + ' ' + esc(e.name) +
+                (onSite.indexOf(e.id) >= 0 ? ' \u2014 on this site' : '') + '</option>';
+        }).join('') + others.map(function (s) {
+            return '<option value="' + esc(s.id) + '">' + esc(s.emoji || '') + ' ' + esc(s.name) + ' \u2014 ' + esc(s.role || 'staff') + '</option>';
+        }).join('');
+
+        WS.todoBy = null;
+        openModal({
+            title: '\u2795 New to-do task',
+            hint: 'Write what has to be done, discuss it with an AI engineer if you want, then keep their suggestion or replace it with your own.',
+            okText: 'Save task',
+            body:
+                '<div class="ws-field"><label>1. What has to be done</label>' +
+                    '<textarea id="wsTodoText" class="ws-textarea" rows="3" placeholder="e.g. Write a case study page for a PVC pipe buyer in Karachi"></textarea></div>' +
+                '<div class="ws-field" style="margin-top:12px;"><label>2. Discuss it with an AI engineer</label>' +
+                    '<div class="ws-row" style="gap:8px;align-items:flex-start;">' +
+                        '<select id="wsTodoAgent" class="ws-select" style="flex:1;">' +
+                            (options || '<option value="">No AI staff available</option>') +
+                        '</select>' +
+                        '<button type="button" class="ws-btn dark" id="wsTodoAskBtn" onclick="wshopTodoAsk()">\ud83d\udcac Ask</button>' +
+                    '</div>' +
+                    '<div class="ws-hint" id="wsTodoAskMsg" style="margin-top:6px;">The engineer reads the task and writes a suggestion below. You can skip this and write your own instead.</div>' +
+                '</div>' +
+                '<div class="ws-field" style="margin-top:12px;"><label>3. Suggestion \u2014 keep the AI answer, or type your own</label>' +
+                    '<textarea id="wsTodoSug" class="ws-textarea" rows="6" placeholder="Leave it exactly as the engineer wrote it, or type your own plan here."></textarea></div>',
+            ok: async function () {
+                var text = val('wsTodoText');
+                if (!text) throw new Error('Describe the task first.');
+                var sel = $('wsTodoAgent');
+                var sugEl = $('wsTodoSug');
+                var suggestion = sugEl ? String(sugEl.value || '').trim() : '';
+                await api('/todo/add', {
+                    method: 'POST',
+                    body: {
+                        key: key, text: text, suggestion: suggestion,
+                        by: (suggestion && WS.todoBy) ? WS.todoBy.id : '',
+                        byName: (suggestion && WS.todoBy) ? WS.todoBy.name : ''
+                    }
+                });
+                closeModal();
+                toastMsg('\u2705 Task saved');
+                await load(true);
+            }
+        });
+    }
+
+    async function todoAsk() {
+        var text = val('wsTodoText');
+        if (!text) { toastMsg('\u26a0\ufe0f Describe the task first'); return; }
+        var sel = $('wsTodoAgent');
+        if (!sel || !sel.value) { toastMsg('\u26a0\ufe0f No AI engineer to discuss with'); return; }
+        var btn = $('wsTodoAskBtn');
+        var msg = $('wsTodoAskMsg');
+        var label = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Thinking\u2026'; }
+        if (msg) msg.textContent = 'The engineer is reading the task and the site history\u2026';
+        try {
+            var site = siteByKey(WS.siteKey || '');
+            var who = sel.options[sel.selectedIndex].text;
+            var prompt = 'Website: ' + ((site && site.url) || 'unknown') + '\n' +
+                'Task from the owner: ' + text + '\n\n' +
+                'Reply with a concrete plan for this website only: what to do, in what order, where it goes, and how we will verify it worked. Keep it under 200 words. If something needs the owner, say so plainly.';
+            var r = await apiAgents('/' + encodeURIComponent(sel.value) + '/chat', { messages: [{ role: 'user', content: prompt }] });
+            var sug = $('wsTodoSug');
+            if (sug) sug.value = String(r.reply || '').trim();
+            WS.todoBy = { id: sel.value, name: who };
+            if (msg) msg.textContent = '\u2705 Suggestion written below \u2014 edit it or keep it as it is.';
+        } catch (e) {
+            if (msg) msg.textContent = '\u26a0\ufe0f ' + e.message;
+            toastMsg('\u26a0\ufe0f ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = label || '\ud83d\udcac Ask'; }
+        }
+    }
+
+    async function todoStatus(key, id, status) {
+        try {
+            var r = await api('/todo/status', { method: 'POST', body: { key: key, id: id, status: status } });
+            if (WS.data) { WS.data.todos = WS.data.todos || {}; WS.data.todos[key] = r.todos; }
+            renderSitePage();
+        } catch (e) { toastMsg('\u26a0\ufe0f ' + e.message); }
+    }
+
+    async function todoRemove(key, id) {
+        if (!confirm('Delete this to-do task?')) return;
+        try {
+            var r = await api('/todo/remove', { method: 'POST', body: { key: key, id: id } });
+            if (WS.data) { WS.data.todos = WS.data.todos || {}; WS.data.todos[key] = r.todos; }
+            renderSitePage();
+            toastMsg('Task deleted');
+        } catch (e) { toastMsg('\u26a0\ufe0f ' + e.message); }
     }
 
     function workspaceHtml(s) {
@@ -14444,6 +14596,10 @@
     window.wshopSiteSwitch = siteSwitch;
     window.wshopMenuClose = menuClose;
     window.wshopAudit = auditLive;
+    window.wshopTodoForm = todoForm;
+    window.wshopTodoAsk = todoAsk;
+    window.wshopTodoStatus = todoStatus;
+    window.wshopTodoRemove = todoRemove;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;
