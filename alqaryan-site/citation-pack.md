@@ -89,6 +89,23 @@ export enquiries.
 
 ---
 
+### 750 characters — Google Business Profile (hard limit)
+
+Google allows **750 characters max** and rejects URLs, phone numbers, promotional
+language and superlatives ("best", "cheapest", "No.1"). This version is 698 characters:
+
+```
+Al Qaryan Industries LLC is a plastic trading and recycling company based in the Shershah Industrial Area of Karachi, established in 2007. We import virgin, off-grade and recycled polymers and process around 500 tons of plastic per month at our own facility, which runs a shredder, a washing and drying line, a pelletiser and two PVC pipe extrusion lines. We buy plastic scrap from factories, utilities, contractors and collectors across Pakistan, and supply recycled HDPE, LDPE, PP, PET and PVC as regrind, flakes and pellets, along with off-grade material, prime resin and finished PVC pipes to manufacturers nationwide. ISO 9001 and ISO 14001 certified, with SGS inspection available on request.
+```
+
+Shorter fallback (530 characters) if a platform trims descriptions aggressively:
+
+```
+Al Qaryan Industries LLC is a plastic trading and recycling company in Karachi, established 2007. We import and process around 500 tons of plastic per month at our Shershah Industrial Area facility, which runs a shredder, washing line, pelletiser and two PVC pipe extrusion lines. We buy scrap from factories, utilities, contractors and collectors across Pakistan, and supply recycled HDPE, LDPE, PP, PET and PVC as regrind, flakes and pellets, plus off-grade material, prime resin and PVC pipes. ISO 9001 and ISO 14001 certified.
+```
+
+---
+
 ## 3. Category and keyword selections
 
 Use these when a directory asks you to pick categories (most allow 3–5):
