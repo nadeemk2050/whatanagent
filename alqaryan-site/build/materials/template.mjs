@@ -6,7 +6,6 @@ export function renderMaterial(m) {
   const chips = (m.chips || [])
     .map(function (c) { return '<span class="q-chip">' + c + '</span>'; })
     .join('');
-
   const sections = m.sections.map(renderSection).join('\n\n');
 
   const faqs = m.faqs
@@ -62,8 +61,64 @@ ${m.market ? `<div class="q-section">
 ${m.cta}
 
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Product","name":"${m.h1}","category":"Plastic scrap and recycled raw material","material":"${m.schemaMaterial}","brand":{"@type":"Brand","name":"Al Qaryan Industries"},"description":"${m.seoDesc}","offers":{"@type":"Offer","availability":"https://schema.org/InStock","businessFunction":"http://purl.org/goodrelations/v1#Sell","areaServed":{"@type":"Country","name":"Pakistan"},"seller":{"@id":"https://alqaryangroup.com/#organization"}}}
+${jsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'Product',
+  name: m.h1,
+  category: 'Plastic scrap and recycled raw material',
+  material: m.schemaMaterial,
+  brand: { '@type': 'Brand', name: 'Al Qaryan Industries' },
+  description: m.seoDesc,
+  offers: {
+    '@type': 'Offer',
+    availability: 'https://schema.org/InStock',
+    businessFunction: 'http://purl.org/goodrelations/v1#Sell',
+    areaServed: { '@type': 'Country', name: 'Pakistan' },
+    seller: {
+      '@type': 'Organization',
+      '@id': 'https://alqaryangroup.com/#organization',
+      name: 'Al Qaryan Industries LLC',
+      url: 'https://alqaryangroup.com/'
+    }
+  }
+})}
+</script>
+
+<script type="application/ld+json">
+${jsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://alqaryangroup.com/' },
+    { '@type': 'ListItem', position: 2, name: 'Materials We Deal', item: 'https://alqaryangroup.com/materials-we-deal/' },
+    { '@type': 'ListItem', position: 3, name: m.h1, item: 'https://alqaryangroup.com/materials-we-deal/' + m.slug + '/' }
+  ]
+})}
+</script>
+
+<script type="application/ld+json">
+${jsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: m.faqs.map(function (f) {
+    return {
+      '@type': 'Question',
+      name: stripTags(f[0]),
+      acceptedAnswer: { '@type': 'Answer', text: stripTags(f[1]) }
+    };
+  })
+})}
 </script>`;
+}
+
+// Serialises structured data safely: escapes the characters that would otherwise
+// break the JSON when the source text contains quotes or angle brackets.
+function jsonLd(obj) {
+  return JSON.stringify(obj).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
+
+function stripTags(s) {
+  return String(s).replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&#8217;/g, "'").replace(/&nbsp;/g, ' ');
 }
 
 function renderSection(s) {

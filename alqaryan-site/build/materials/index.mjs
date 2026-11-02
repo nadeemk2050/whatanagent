@@ -80,7 +80,11 @@ ${cards}
   <p class="q-note">Where a figure depends on the lot — melt flow, intrinsic viscosity, filler content — we say so and confirm it on the batch report rather than publishing a number we cannot hold to.</p>
 </div>
 
-${CTA}`,
+${CTA}
+
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://alqaryangroup.com/"},{"@type":"ListItem","position":2,"name":"Materials We Deal","item":"https://alqaryangroup.com/materials-we-deal/"}]}
+</script>`,
   parent: null
 };
 
