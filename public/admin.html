@@ -549,6 +549,15 @@
         .ws-sec.doing { border-left-color: #d97706; }
         .ws-sec.todo { border-left-color: #94a3b8; }
         .ws-sec-n { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 12px; font-weight: 800; vertical-align: 2px; margin-left: 4px; }
+        .ws-sec-head { cursor: pointer; user-select: none; flex: 1; min-width: 0; border-radius: 8px; padding: 2px 4px; margin: -2px -4px; transition: background .15s ease; }
+        .ws-sec-head:hover { background: #f8fafc; }
+        .ws-sec-head:hover .ws-h3 { color: #0f766e; }
+        .ws-sec-head:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+        .ws-chev { display: inline-block; color: #94a3b8; font-size: 12px; vertical-align: 1px; transition: transform .15s ease; }
+        .ws-sec.collapsed .ws-chev { transform: rotate(-90deg); }
+        .ws-sec.collapsed .ws-sec-hint { display: none; }
+        .ws-sec.collapsed .ws-sec-body { display: none; }
+        .ws-sec.collapsed { padding-bottom: 14px; }
         .ws-gtag { font-size: 9px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #94a3b8; margin-left: 8px; vertical-align: 2px; }
         .ws-site-notes { margin-top: 12px; font-size: 13px; line-height: 1.6; color: #334155; white-space: pre-wrap; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px; padding: 12px 14px; }
         .ws-menu-wrap { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; }
@@ -14308,19 +14317,25 @@
 
         var sections = WS_STATUS_SECTIONS.map(function (sec) {
             var items = byState[sec.id];
+            var collapsed = !!(WS.collapsed || {})[sec.id];
             var rows = items.length
                 ? items.map(function (it) { return it.todo ? todoRow(key, it.todo) : stepRow(key, it.def, it.rec); }).join('')
                 : '<div class="ws-hint" style="padding:4px 2px;">Nothing in this section.</div>';
             var addBtn = sec.id === 'todo'
                 ? '<button class="ws-btn dark" onclick="wshopTodoForm(\'' + esc(key) + '\')">\u2795 Add to-do task</button>'
                 : '';
-            return '<div class="ws-card ws-sec ' + sec.id + '">' +
+            var toggle = 'wshopToggleSection(\'' + sec.id + '\')';
+            return '<div class="ws-card ws-sec ' + sec.id + (collapsed ? ' collapsed' : '') + '">' +
                     '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;gap:12px;">' +
-                        '<div><h3 class="ws-h3">' + sec.title + ' <span class="ws-sec-n">' + items.length + '</span></h3>' +
-                        '<p class="ws-hint" style="margin:5px 0 0 0;">' + sec.hint + '</p></div>' +
+                        '<div class="ws-sec-head" role="button" tabindex="0" aria-expanded="' + (collapsed ? 'false' : 'true') + '"' +
+                            ' onclick="' + toggle + '"' +
+                            ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();' + toggle + '}">' +
+                            '<h3 class="ws-h3"><span class="ws-chev">\u25be</span> ' + sec.title + ' <span class="ws-sec-n">' + items.length + '</span></h3>' +
+                            '<p class="ws-hint ws-sec-hint" style="margin:5px 0 0 0;">' + sec.hint + '</p>' +
+                        '</div>' +
                         addBtn +
                     '</div>' +
-                    '<div style="margin-top:13px;">' + rows + '</div>' +
+                    '<div class="ws-sec-body" style="margin-top:13px;">' + rows + '</div>' +
                 '</div>';
         }).join('');
 
@@ -14359,6 +14374,19 @@
             '</div>' +
             '<select class="ws-psel" onchange="wshopProcSet(\'' + esc(key) + '\',\'' + esc(st.id) + '\',this.value)">' + opts + '</select>' +
         '</div>';
+    }
+
+    // Headings fold their section. Kept in WS so the state survives the re-render that every
+    // status change triggers.
+    function toggleSection(id) {
+        WS.collapsed = WS.collapsed || {};
+        WS.collapsed[id] = !WS.collapsed[id];
+        var card = document.querySelector('.ws-sec.' + id);
+        if (card) {
+            card.classList.toggle('collapsed', !!WS.collapsed[id]);
+            var head = card.querySelector('.ws-sec-head');
+            if (head) head.setAttribute('aria-expanded', WS.collapsed[id] ? 'false' : 'true');
+        }
     }
 
     function todoRow(key, t) {
@@ -14857,6 +14885,7 @@
     window.wshopTodoRemove = todoRemove;
     window.wshopGoogleRun = runGoogle;
     window.wshopSaveKeywords = saveKeywords;
+    window.wshopToggleSection = toggleSection;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;
