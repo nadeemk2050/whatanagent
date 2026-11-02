@@ -634,6 +634,126 @@ export function registerWorkshopRoutes(app, db) {
     }
   });
 
+  // ------------------------------------------------------ engineer live audit
+  // The engineer assigned to a website checks the live site and updates its status sections.
+  // Only steps that can be PROVEN from the live site are touched: when a check cannot be made
+  // the step is left exactly as it was rather than guessed. Steps a person marked "na" are
+  // never overwritten.
+  async function auditSiteLive(site) {
+    const url = normalizeUrl(site.url || site.key);
+    const host = new URL(url).hostname.toLowerCase();
+    const apex = host.replace(/^www\./, '');
+    const origin = new URL(url).origin;
+    const findings = [];
+    const mark = (id, status, note) => findings.push({ id, status, note });
+
+    const home = await probeText(url);
+    const html = home.body || '';
+
+    if (home.ok && html) {
+      const meta = html.match(/<meta[^>]+name=["']robots["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*name=["']robots["']/i);
+      const robotsContent = meta ? meta[1].trim() : '';
+      if (/noindex/i.test(robotsContent)) {
+        mark('index-follow', 'blocked', 'Live check: the homepage still sends noindex, so Google will not index this site');
+      } else {
+        mark('index-follow', 'done', robotsContent
+          ? 'Live check: meta robots = ' + robotsContent
+          : 'Live check: no robots meta on the page, which defaults to index, follow');
+      }
+
+      const canon = (html.match(/<link[^>]+rel=["']canonical["'][^>]*href=["']([^"']+)["']/i) || [])[1] || '';
+      mark('canonicals', canon ? 'done' : 'todo',
+        canon ? 'Live check: canonical points to ' + canon : 'Live check: no canonical tag on the homepage');
+
+      const ld = (html.match(/<script[^>]+application\/ld\+json/gi) || []).length;
+      mark('schema', ld > 0 ? 'done' : 'todo', 'Live check: ' + ld + ' JSON-LD block(s) on the homepage');
+
+      // Case-sensitive on purpose: a case-insensitive /G-.../i matches CSS custom properties
+      // such as "--g-padding", which would report a measurement ID that is not there.
+      const ga = (html.match(/gtag\/js\?id=(G-[A-Z0-9]{6,})/) || [])[1]
+        || (html.match(/(?:^|[^A-Za-z0-9_-])(G-[A-Z0-9]{8,})(?![A-Za-z0-9_-])/) || [])[1] || '';
+      mark('ga4', ga ? 'done' : 'todo',
+        ga ? 'Live check: measurement ID ' + ga + ' is on the page' : 'Live check: no GA4 measurement ID on the homepage');
+
+      const seen = new Set();
+      const hrefs = html.match(/href=["']([^"'#]+)["']/gi) || [];
+      for (const h of hrefs) {
+        const v = h.replace(/^href=["']/i, '').replace(/["']$/, '');
+        if (v.startsWith('/') || v.includes(apex)) seen.add(v.split('?')[0]);
+      }
+      mark('internal-links', seen.size >= 5 ? 'done' : 'todo',
+        'Live check: ' + seen.size + ' distinct internal link(s) on the homepage');
+    }
+
+    const robots = await probeText(origin + '/robots.txt');
+    if (robots.ok) {
+      const body = String(robots.body || '');
+      const blocksAll = /user-agent:\s*\*[\s\S]{0,300}?disallow:\s*\/\s*(?:\r?\n|$)/i.test(body);
+      mark('robots-txt', blocksAll ? 'blocked' : 'done',
+        blocksAll ? 'Live check: robots.txt blocks every crawler' : 'Live check: robots.txt answers 200 and does not block everything');
+    }
+
+    const llms = await probeText(origin + '/llms.txt');
+    mark('llms-txt', llms.ok ? 'done' : 'todo',
+      llms.ok ? 'Live check: /llms.txt answers 200 (' + String(llms.body || '').length + ' characters)' : 'Live check: /llms.txt is not published');
+
+    // Only meaningful when the site itself lives on the apex domain.
+    if (host === apex) {
+      try {
+        const r = await axios.get('https://www.' + apex, {
+          timeout: 9000, maxRedirects: 0, validateStatus: () => true,
+          headers: { 'user-agent': UA }
+        });
+        const loc = String((r.headers && r.headers.location) || '');
+        const good = r.status >= 300 && r.status < 400 && loc.toLowerCase().includes(apex);
+        mark('www-redirect', good ? 'done' : 'todo', good
+          ? 'Live check: https://www.' + apex + ' answers ' + r.status + ' to ' + loc
+          : 'Live check: https://www.' + apex + ' answers ' + r.status + ' instead of redirecting to the apex');
+      } catch (e) { /* no answer: leave the step untouched */ }
+    }
+
+    return findings;
+  }
+
+  app.post(api + '/process/audit', async (req, res) => {
+    try {
+      const key = sstr((req.body || {}).key, 200).toLowerCase();
+      if (!key) return bad(res, 'Which website?');
+      const seoSites = await readSeoSites(db);
+      const site = seoSites[key];
+      if (!site) return bad(res, 'That website is not in the register yet.');
+
+      const findings = await auditSiteLive(Object.assign({ key }, site));
+      if (!findings.length) return bad(res, 'The live site did not answer, so nothing was changed.');
+
+      const meta = await readMeta(db);
+      const process = { ...(meta.process || {}) };
+      const entry = { ...(process[key] || {}) };
+      const steps = { ...(entry.steps || {}) };
+      for (const f of findings) {
+        if ((steps[f.id] || {}).status === 'na') continue;
+        steps[f.id] = { status: f.status, note: f.note, at: Date.now() };
+      }
+      entry.steps = steps;
+      entry.name = entry.name || key;
+      entry.url = entry.url || site.url;
+      entry.lastAudit = Date.now();
+      process[key] = entry;
+      await writeMeta(db, { process });
+
+      const verified = findings.filter(f => f.status === 'done').length;
+      console.log('[WORKSHOP] audit', key, '->', verified + '/' + findings.length, 'verified');
+      res.json({
+        ok: true, key, verified, skipped: Math.max(0, PROCESS_STEPS.length - findings.length),
+        changes: findings.map(f => ({ id: f.id, status: f.status })), process: mergeProcess(process)
+      });
+    } catch (e) {
+      console.error('[WORKSHOP] audit failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
   // --------------------------------------------------------- promote site
   // Tracked-only sites (like alqaryangroup.com) become full register entries so
   // health checks and engineer assignment work on them too.

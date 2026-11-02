@@ -530,6 +530,38 @@
         .ws-pwhy { font-size: 11.5px; color: #94a3b8; margin-top: 3px; line-height: 1.4; }
         .ws-psel { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--ws-line); font-size: 11.5px; font-weight: 700; background: #fff; color: #374151; font-family: inherit; cursor: pointer; }
         .ws-facts2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin-top: 12px; }
+
+        /* ---- single-website page, status sections and the site menu ---- */
+        .ws-site-open { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+        .ws-site-open span { display: block; }
+        .ws-site-open:hover .ws-site-name { color: #0f766e; text-decoration: underline; }
+        .ws-sitebar-card { padding: 0 !important; overflow: hidden; }
+        .ws-sitebar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; flex-wrap: wrap; }
+        .ws-sitebar-id { flex: 1 1 240px; min-width: 0; }
+        .ws-sitebar-t { font-size: 16px; font-weight: 800; color: var(--ws-ink); }
+        .ws-sitebar-u { font-size: 12px; color: var(--ws-muted); word-break: break-all; margin-top: 2px; }
+        .ws-vchips { display: flex; gap: 6px; flex-wrap: wrap; }
+        .ws-vchip { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--ws-line); background: #fff; font-size: 12px; font-weight: 700; color: #334155; cursor: pointer; font-family: inherit; transition: all .15s ease; }
+        .ws-vchip:hover { background: #f8fafc; }
+        .ws-vchip.on { background: #0f766e; border-color: #0f766e; color: #fff; }
+        .ws-sec { border-left: 4px solid var(--ws-line); }
+        .ws-sec.done { border-left-color: #16a34a; }
+        .ws-sec.doing { border-left-color: #d97706; }
+        .ws-sec.todo { border-left-color: #94a3b8; }
+        .ws-sec-n { display: inline-block; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 12px; font-weight: 800; vertical-align: 2px; margin-left: 4px; }
+        .ws-gtag { font-size: 9px; letter-spacing: .6px; text-transform: uppercase; font-weight: 800; color: #94a3b8; margin-left: 8px; vertical-align: 2px; }
+        .ws-site-notes { margin-top: 12px; font-size: 13px; line-height: 1.6; color: #334155; white-space: pre-wrap; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 10px; padding: 12px 14px; }
+        .ws-menu-wrap { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; }
+        .ws-menu-card { background: #fff; border-radius: 16px; width: 100%; max-width: 560px; box-shadow: 0 26px 70px rgba(2, 6, 23, .38); overflow: hidden; max-height: 88vh; overflow-y: auto; }
+        .ws-menu-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--ws-line); }
+        .ws-menu-name { font-size: 15.5px; font-weight: 800; color: var(--ws-ink); }
+        .ws-menu-url { font-size: 12px; color: var(--ws-muted); word-break: break-all; margin-top: 2px; }
+        .ws-menu-opt { display: flex; gap: 13px; width: 100%; text-align: left; align-items: flex-start; padding: 15px 18px; border: 0; border-bottom: 1px solid #eef2f7; background: #fff; cursor: pointer; font-family: inherit; }
+        .ws-menu-opt:last-child { border-bottom: 0; }
+        .ws-menu-opt:hover { background: #f8fafc; }
+        .ws-menu-opt .ic { font-size: 21px; line-height: 1.1; }
+        .ws-menu-opt b { display: block; font-size: 14px; color: var(--ws-ink); }
+        .ws-menu-opt b + span { display: block; font-size: 12px; color: var(--ws-muted); margin-top: 3px; line-height: 1.45; }
         .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }
         .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
         .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
@@ -3811,7 +3843,6 @@
                         <button class="ws-tab active" id="wsTabBtn-add" onclick="wshopTab('add')">➕ Add New Website</button>
                         <button class="ws-tab" id="wsTabBtn-office" onclick="wshopTab('office')">🏢 Workshop Office</button>
                         <button class="ws-tab" id="wsTabBtn-sites" onclick="wshopTab('sites')">🌐 Websites Register</button>
-                        <button class="ws-tab" id="wsTabBtn-process" onclick="wshopTab('process')">📋 Site Process</button>
                         <button class="ws-tab" id="wsTabBtn-meeting" onclick="wshopTab('meeting')">🚪 Meeting Room <span class="ws-soon">SOON</span></button>
                     </div>
 
@@ -3881,17 +3912,43 @@
                         </div>
                     </div>
 
-                    <!-- ---------------- TAB 3b : SITE PROCESS ---------------- -->
-                    <div class="ws-pane" id="wsPane-process">
-                        <div class="ws-card">
-                            <div class="ws-row" style="justify-content:space-between;">
-                                <div>
-                                    <h3 class="ws-h3">📋 SEO process — what is done, what is pending</h3>
-                                    <p class="ws-hint" style="margin:6px 0 0 0;">Every step we actually perform on a website, in the order that matters. Green = verified done, amber = in progress, red = blocked, grey = not started. Change a status from the dropdown — it saves immediately.</p>
+                    <!-- ---------------- SITE DETAIL: opened by clicking a website name, not a tab ---------------- -->
+                    <div class="ws-pane" id="wsPane-site">
+                        <div class="ws-card ws-sitebar-card">
+                            <div class="ws-sitebar">
+                                <button class="ws-btn sm" onclick="wshopTab('sites')">← Register</button>
+                                <div class="ws-sitebar-id">
+                                    <div class="ws-sitebar-t" id="wsSiteTitle">—</div>
+                                    <div class="ws-sitebar-u" id="wsSiteUrl">—</div>
                                 </div>
-                                <button class="ws-btn" onclick="wshopProcessRefresh()">↻ Refresh</button>
+                                <div class="ws-vchips" id="wsSiteViewChips"></div>
                             </div>
-                            <div id="wsProcBody" style="margin-top:16px;"></div>
+                        </div>
+                        <div id="wsSiteBody"></div>
+                    </div>
+
+                    <!-- ---------------- SITE MENU: shown when a website name is clicked ---------------- -->
+                    <div class="ws-menu-wrap" id="wsSiteMenu" style="display:none;" onclick="if(event.target===this)wshopMenuClose()">
+                        <div class="ws-menu-card">
+                            <div class="ws-menu-head">
+                                <div style="min-width:0;">
+                                    <div class="ws-menu-name" id="wsMenuName">—</div>
+                                    <div class="ws-menu-url" id="wsMenuUrl">—</div>
+                                </div>
+                                <button class="ws-btn sm" onclick="wshopMenuClose()">✕</button>
+                            </div>
+                            <button class="ws-menu-opt" onclick="wshopSiteOpen('process')">
+                                <span class="ic">📋</span>
+                                <span><b>Website Processes &amp; Statuses</b><span>Every step done and pending for this website, with evidence and dates.</span></span>
+                            </button>
+                            <button class="ws-menu-opt" onclick="wshopSiteOpen('workspace')">
+                                <span class="ic">🗂</span>
+                                <span><b>Workspace of this site only</b><span>Access supplied, platform, people assigned and the notes for this website alone.</span></span>
+                            </button>
+                            <button class="ws-menu-opt" onclick="wshopSiteOpen('soon')">
+                                <span class="ic">⏳</span>
+                                <span><b>Coming soon</b><span>Reserved for the next module. Nothing is built here yet.</span></span>
+                            </button>
                         </div>
                     </div>
 
@@ -13482,13 +13539,13 @@
 
     /* ---------------- tabs ---------------- */
     function tab(name) {
-        ['add', 'office', 'sites', 'process', 'meeting'].forEach(function (n) {
+        ['add', 'office', 'sites', 'site', 'meeting'].forEach(function (n) {
             var b = $('wsTabBtn-' + n), p = $('wsPane-' + n);
             if (b) b.classList.toggle('active', n === name);
             if (p) p.classList.toggle('active', n === name);
         });
-        if (name === 'office' || name === 'sites' || name === 'process') load(false);
-        if (name === 'process') renderProcess();
+        if (name === 'office' || name === 'sites') load(false);
+        if (name === 'sites') WS.siteKey = '';
     }
 
     /* ---------------- state + rendering ---------------- */
@@ -13502,7 +13559,7 @@
             renderManager();
             renderEngineers();
             renderSites();
-            renderProcess();
+            renderSitePage();
         } catch (e) {
             var box = $('wsSitesTable');
             if (box && !WS.data) {
@@ -13598,8 +13655,17 @@
     function renderSites() {
         var box = $('wsSitesTable');
         if (!box) return;
-        var list = (WS.data && WS.data.sites) || [];
-        if (!list.length) {
+        var proc = (WS.data && WS.data.process) || {};
+        var list = ((WS.data && WS.data.sites) || []).slice();
+        // The website with a tracked process is the one being worked on, so it leads the list.
+        list.sort(function (a, b) {
+            var pa = proc[a.key] ? 0 : 1, pb = proc[b.key] ? 0 : 1;
+            return pa !== pb ? pa - pb : String(a.key).localeCompare(String(b.key));
+        });
+        var trackedOnly = Object.keys(proc).filter(function (k) {
+            return !list.some(function (s) { return s.key === k; });
+        });
+        if (!list.length && !trackedOnly.length) {
             box.innerHTML = '<div class="ws-empty"><div class="big">🌐</div><b>No websites in the workshop yet</b>' +
                 '<div style="margin-top:6px;">Go to <b>Add New Website</b>, paste an address and let the workshop inspect it.</div></div>';
             return;
@@ -13615,7 +13681,10 @@
             if (!hostBits.length && s.scan && s.scan.dns && s.scan.dns.provider) hostBits.push(esc(s.scan.dns.provider));
             var pages = (s.pages && s.pages.count) || (s.scan && s.scan.pages && s.scan.pages.count) || 0;
             return '<tr>' +
-                '<td><div class="ws-site-name">' + esc(s.name || s.key) + '</div><div class="ws-site-url">' + esc(s.url) + '</div></td>' +
+                '<td><button class="ws-site-open" onclick="wshopSiteMenu(\'' + esc(s.key) + '\')" title="Open this website">' +
+                    '<span class="ws-site-name">' + esc(s.name || s.key) + '</span>' +
+                    '<span class="ws-site-url">' + esc(s.url) + '</span>' +
+                '</button></td>' +
                 '<td>' + healthCell(s.health) + '</td>' +
                 '<td>' + (pages ? pages : '<span class="ws-hint">—</span>') + '</td>' +
                 '<td><span class="ws-pill mut">' + esc(s.cmsPlatform || 'unknown') + '</span></td>' +
@@ -13631,9 +13700,27 @@
                 '</div></td>' +
             '</tr>';
         }).join('');
+        var trackedRows = trackedOnly.map(function (k) {
+            var p = proc[k];
+            var pct = (p.summary && p.summary.total) ? Math.round((p.summary.done / p.summary.total) * 100) : 0;
+            return '<tr>' +
+                '<td><button class="ws-site-open" onclick="wshopSiteMenu(\'' + esc(k) + '\')" title="Open this website">' +
+                    '<span class="ws-site-name">' + esc(p.name || k) + '</span>' +
+                    '<span class="ws-site-url">' + esc(p.url || k) + '</span>' +
+                '</button></td>' +
+                '<td><span class="ws-pill warn">tracked only</span></td>' +
+                '<td><span class="ws-hint">\u2014</span></td>' +
+                '<td><span class="ws-pill mut">unknown</span></td>' +
+                '<td><span class="ws-hint">\u2014</span></td>' +
+                '<td><span class="ws-hint">' + pct + '% of process done</span></td>' +
+                '<td><span class="ws-hint">\u2014</span></td>' +
+                '<td><button class="ws-btn sm dark" onclick="wshopProcPromote(\'' + esc(k) + '\')">Add to register</button></td>' +
+            '</tr>';
+        }).join('');
+
         box.innerHTML = '<div class="ws-tblwrap"><table class="ws-tbl"><thead><tr>' +
             '<th>Website address</th><th>Health</th><th>Pages</th><th>Platform</th><th>Host / DNS</th><th>Engineer assigned</th><th>Added</th><th>Actions</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+            '</tr></thead><tbody>' + rows + trackedRows + '</tbody></table></div>';
     }
 
     /* ---------------- tab 1: inspection ---------------- */
@@ -13978,102 +14065,248 @@
     /* ---------------- SEO process pipeline ---------------- */
     var PROC_STATUS = ['todo', 'doing', 'done', 'blocked', 'na'];
 
-    function renderProcess() {
-        var box = $('wsProcBody');
-        if (!box) return;
-        var d = WS.data || {};
-        var proc = d.process || {};
-        var steps = d.processSteps || [];
-        var keys = Object.keys(proc).sort();
+    /* ---------------- single-website page (opened from the register) ---------------- */
+    var SITE_VIEWS = [
+        { id: 'process', label: '\ud83d\udccb Processes & Statuses' },
+        { id: 'workspace', label: '\ud83d\uddc2 Workspace' },
+        { id: 'soon', label: '\u23f3 Coming soon' }
+    ];
 
-        if (!keys.length) {
-            box.innerHTML = '<div class="ws-empty"><div class="big">📋</div><b>Nothing tracked yet</b><div style="margin-top:6px;">Add a website in the register and its process will appear here.</div></div>';
-            return;
-        }
-        if (!WS.procKey || !proc[WS.procKey]) WS.procKey = keys[0];
-        var cur = proc[WS.procKey];
+    // The status page is organised by STATE, not by topic: what is finished, what is moving,
+    // and what has not started. Blocked work stays visible in "To start" but in red.
+    var WS_STATUS_SECTIONS = [
+        { id: 'done', title: '\u2705 Completed / Done', hint: 'Verified finished, with the evidence and the date it was confirmed.', states: ['done'] },
+        { id: 'doing', title: '\ud83d\udd04 Under process', hint: 'Started, not finished yet.', states: ['doing'] },
+        { id: 'todo', title: '\u23f8 To start', hint: 'Not started yet. Anything blocked is shown in red.', states: ['todo', 'blocked', 'na'] }
+    ];
 
-        var left = keys.map(function (k) {
-            var s = proc[k];
-            var pct = s.summary.total ? Math.round((s.summary.done / s.summary.total) * 100) : 0;
-            return '<button class="ws-proc-site' + (k === WS.procKey ? ' on' : '') + '" onclick="wshopProcPick(\'' + esc(k) + '\')">' +
-                '<b>' + esc(s.name) + '</b>' +
-                '<span>' + esc(String(s.url || '').replace(/^https?:\/\//, '')) + '</span>' +
-                '<div class="ws-bar"><i style="width:' + pct + '%"></i></div>' +
-                '<span style="margin-top:6px;">' + s.summary.done + ' of ' + s.summary.total + ' done · ' + pct + '%</span>' +
-                '</button>';
-        }).join('');
+    var APPROVAL_LABELS = {
+        'cms.username': 'Admin username',
+        'cms.appPassword': 'Application password / API key',
+        'cms.adminUrl': 'Admin (wp-admin) address',
+        'server.panel': 'Hosting panel access',
+        'server.ftp': 'FTP / SFTP account',
+        'dns.registrar': 'Domain registrar access',
+        'cloud.cfToken': 'Cloudflare API token',
+        'growth.gsc': 'Google Search Console',
+        'growth.analytics': 'Google Analytics 4',
+        'growth.meta': 'Meta / Facebook page',
+        'approval.owner': 'Owner authorised full management'
+    };
 
-        var groups = [], byGroup = {};
-        steps.forEach(function (st) {
-            if (!byGroup[st.group]) { byGroup[st.group] = []; groups.push(st.group); }
-            byGroup[st.group].push(st);
-        });
-
-        var right = groups.map(function (g) {
-            var rows = byGroup[g].map(function (st) {
-                var rec = cur.steps[st.id] || { status: 'todo', note: '' };
-                var opts = PROC_STATUS.map(function (s) {
-                    return '<option value="' + s + '"' + (rec.status === s ? ' selected' : '') + '>' + s + '</option>';
-                }).join('');
-                return '<div class="ws-pstep ' + esc(rec.status) + '">' +
-                    '<div class="ws-dot"></div>' +
-                    '<div>' +
-                        '<div class="ws-plabel">' + esc(st.label) + '</div>' +
-                        (rec.note ? '<div class="ws-pnote">' + esc(rec.note) + '</div>' : '') +
-                        '<div class="ws-pwhy">' + esc(st.why) +
-                            (st.owner === 'owner' ? ' · <b>owner action</b>' : '') +
-                            (rec.at ? ' · ' + esc(when(rec.at)) : '') +
-                        '</div>' +
-                    '</div>' +
-                    '<select class="ws-psel" onchange="wshopProcSet(\'' + esc(cur.key) + '\',\'' + esc(st.id) + '\',this.value)">' + opts + '</select>' +
-                    '</div>';
-            }).join('');
-            return '<div class="ws-pgroup"><h4>' + esc(g) + '</h4>' + rows + '</div>';
-        }).join('');
-
-        var facts = cur.facts || {};
-        var factRows = Object.keys(facts).map(function (k) {
-            return '<div class="ws-fact"><b>' + esc(k) + ':</b>&nbsp;' + esc(facts[k]) + '</div>';
-        }).join('');
-
-        box.innerHTML = '<div class="ws-proc">' +
-            '<div><div class="ws-proc-sites">' + left + '</div></div>' +
-            '<div>' +
-                '<div class="ws-row" style="justify-content:space-between;margin-bottom:8px;">' +
-                    '<div><b style="font-size:15px;">' + esc(cur.name) + '</b> <span class="ws-hint">' + esc(cur.url) + '</span></div>' +
-                    '<button class="ws-btn sm" onclick="wshopProcPromote(\'' + esc(cur.key) + '\')">➕ Add to Websites Register</button>' +
-                '</div>' +
-                (factRows ? '<div class="ws-facts2">' + factRows + '</div>' : '') +
-                right +
-            '</div></div>';
+    function siteByKey(key) {
+        var s = ((WS.data && WS.data.sites) || []).filter(function (x) { return x.key === key; })[0];
+        if (s) return s;
+        var p = WS.data && WS.data.process && WS.data.process[key];
+        if (p) return { key: key, name: p.name || key, url: p.url || ('https://' + key), trackedOnly: true, approvals: {}, engineers: [], pages: null };
+        return null;
     }
 
-    function procPick(key) { WS.procKey = key; renderProcess(); }
+    function siteMenu(key) {
+        var s = siteByKey(key);
+        if (!s) return;
+        WS.menuKey = key;
+        if ($('wsMenuName')) $('wsMenuName').textContent = s.name || s.key;
+        if ($('wsMenuUrl')) $('wsMenuUrl').textContent = s.url || '';
+        if ($('wsSiteMenu')) $('wsSiteMenu').style.display = 'flex';
+    }
+
+    function menuClose() {
+        WS.menuKey = '';
+        if ($('wsSiteMenu')) $('wsSiteMenu').style.display = 'none';
+    }
+
+    function siteOpen(view) {
+        var key = WS.menuKey || WS.siteKey;
+        if (!key) return;
+        WS.siteKey = key;
+        WS.siteView = view || 'process';
+        menuClose();
+        tab('site');
+        renderSitePage();
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
+    }
+
+    function siteSwitch(view) { WS.siteView = view; renderSitePage(); }
+
+    function renderSitePage() {
+        if (!WS.siteKey || !$('wsSiteBody')) return;
+        var s = siteByKey(WS.siteKey);
+        if (!s) return;
+        if ($('wsSiteTitle')) $('wsSiteTitle').textContent = s.name || s.key;
+        if ($('wsSiteUrl')) $('wsSiteUrl').textContent = s.url || '';
+        if ($('wsSiteViewChips')) {
+            $('wsSiteViewChips').innerHTML = SITE_VIEWS.map(function (v) {
+                return '<button class="ws-vchip' + (WS.siteView === v.id ? ' on' : '') + '" onclick="wshopSiteSwitch(\'' + v.id + '\')">' + v.label + '</button>';
+            }).join('');
+        }
+        $('wsSiteBody').innerHTML = WS.siteView === 'workspace' ? workspaceHtml(s)
+            : WS.siteView === 'soon' ? soonHtml(s)
+                : processHtml(s.key);
+    }
+
+    function processHtml(key) {
+        var d = WS.data || {};
+        var proc = (d.process || {})[key];
+        var defs = d.processSteps || [];
+        if (!proc) {
+            return '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83d\udccb</div><b>No process tracked for this website yet</b>' +
+                '<div style="margin-top:6px;">The pipeline starts recording as soon as the engineer verifies the first step.</div></div></div>';
+        }
+        var pct = proc.summary.total ? Math.round((proc.summary.done / proc.summary.total) * 100) : 0;
+        var byState = { done: [], doing: [], todo: [] };
+        defs.forEach(function (st) {
+            var rec = proc.steps[st.id] || { status: 'todo', note: '' };
+            var bucket = rec.status === 'done' ? 'done' : (rec.status === 'doing' ? 'doing' : 'todo');
+            byState[bucket].push({ def: st, rec: rec });
+        });
+
+        var facts = proc.facts || {};
+        var factRows = Object.keys(facts).map(function (k) {
+            return '<div class="ws-fact"><span><b>' + esc(k) + ':</b>&nbsp;' + esc(facts[k]) + '</span></div>';
+        }).join('');
+
+        var sections = WS_STATUS_SECTIONS.map(function (sec) {
+            var items = byState[sec.id];
+            var rows = items.length
+                ? items.map(function (it) { return stepRow(key, it.def, it.rec); }).join('')
+                : '<div class="ws-hint" style="padding:4px 2px;">Nothing in this section.</div>';
+            return '<div class="ws-card ws-sec ' + sec.id + '">' +
+                    '<h3 class="ws-h3">' + sec.title + ' <span class="ws-sec-n">' + items.length + '</span></h3>' +
+                    '<p class="ws-hint" style="margin:5px 0 0 0;">' + sec.hint + '</p>' +
+                    '<div style="margin-top:13px;">' + rows + '</div>' +
+                '</div>';
+        }).join('');
+
+        return '<div class="ws-card">' +
+                '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;">' +
+                    '<div style="flex:1;min-width:240px;">' +
+                        '<h3 class="ws-h3">\ud83d\udccb Website processes &amp; statuses</h3>' +
+                        '<p class="ws-hint" style="margin:6px 0 0 0;">Checked live by the engineer assigned to this website rather than guessed. The engineer keeps these three sections up to date; you can override any line from the dropdown and it saves immediately.</p>' +
+                    '</div>' +
+                    '<div class="ws-row" style="gap:14px;align-items:center;">' +
+                        '<button class="ws-btn dark" id="wsAuditBtn" onclick="wshopAudit(\'' + esc(key) + '\')">\ud83e\udd16 Engineer: verify live</button>' +
+                        '<div style="text-align:right;min-width:120px;">' +
+                            '<div style="font-size:22px;font-weight:800;color:#0f172a;">' + pct + '%</div>' +
+                            '<div class="ws-hint">' + proc.summary.done + ' of ' + proc.summary.total + ' done</div>' +
+                            '<div class="ws-bar" style="margin-top:8px;"><i style="width:' + pct + '%"></i></div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>' +
+                (factRows ? '<div class="ws-facts2">' + factRows + '</div>' : '') +
+            '</div>' + sections;
+    }
+
+    function stepRow(key, st, rec) {
+        var opts = PROC_STATUS.map(function (x) {
+            return '<option value="' + x + '"' + (rec.status === x ? ' selected' : '') + '>' + x + '</option>';
+        }).join('');
+        return '<div class="ws-pstep ' + esc(rec.status) + '">' +
+            '<div class="ws-dot"></div>' +
+            '<div>' +
+                '<div class="ws-plabel">' + esc(st.label) + '<span class="ws-gtag">' + esc(st.group) + '</span></div>' +
+                (rec.note ? '<div class="ws-pnote">' + esc(rec.note) + '</div>' : '') +
+                '<div class="ws-pwhy">' + esc(st.why) +
+                    (st.owner === 'owner' ? ' \u00b7 <b>owner action</b>' : '') +
+                    (rec.at ? ' \u00b7 ' + esc(when(rec.at)) : '') +
+                '</div>' +
+            '</div>' +
+            '<select class="ws-psel" onchange="wshopProcSet(\'' + esc(key) + '\',\'' + esc(st.id) + '\',this.value)">' + opts + '</select>' +
+        '</div>';
+    }
+
+    function workspaceHtml(s) {
+        var h = s.health;
+        var hostBits = [s.host && s.host.provider, s.host && s.host.server, s.host && s.host.cdn].filter(Boolean).join(' \u00b7 ');
+        var rows = [
+            ['Website', s.url],
+            ['Platform', s.cmsPlatform || 'not set'],
+            ['Admin address', s.cmsAdminUrl || 'not set'],
+            ['Username', s.cmsUsername || 'not set'],
+            ['Access key', s.hasPassword ? 'saved \ud83d\udd11' : 'missing'],
+            ['Sitemap', s.sitemapUrl || 'not set'],
+            ['Pages', (s.pages && s.pages.count) ? (s.pages.count + ' (' + (s.pages.source || 'sitemap') + ')') : 'not measured'],
+            ['Host', hostBits || 'not detected'],
+            ['Approved by', s.approvedBy || 'not recorded'],
+            ['Health', h ? ((h.ok ? 'OK' : 'DOWN') + ' \u00b7 HTTP ' + (h.status || '?') + ' \u00b7 ' + (h.ms || 0) + ' ms' + (h.checkedAt ? ' \u00b7 ' + when(h.checkedAt) : '')) : 'not checked']
+        ].map(function (r) {
+            return '<div class="ws-fact"><span><b>' + esc(r[0]) + ':</b>&nbsp;' + esc(String(r[1])) + '</span></div>';
+        }).join('');
+
+        var ap = s.approvals || {};
+        var apRows = Object.keys(APPROVAL_LABELS).map(function (id) {
+            var on = !!ap[id];
+            return '<div class="ws-need' + (on ? ' done' : '') + '">' +
+                '<span style="font-size:15px;">' + (on ? '\u2705' : '\u2b55') + '</span>' +
+                '<span><span class="t">' + esc(APPROVAL_LABELS[id]) + '</span></span></div>';
+        }).join('');
+
+        var engs = (s.engineers || []).length
+            ? s.engineers.map(function (e) { return '<span class="ws-pill ok">' + esc(e.emoji || '\ud83d\udc77') + ' ' + esc(e.name) + '</span>'; }).join(' ')
+            : '<span class="ws-pill warn">No engineer assigned to this website yet</span>';
+
+        return '<div class="ws-card">' +
+                '<h3 class="ws-h3">\ud83d\uddc2 Workspace of this website only</h3>' +
+                '<p class="ws-hint" style="margin:6px 0 0 0;">Everything below belongs to this website alone. Nothing here is shared with the other sites in the workshop.</p>' +
+                '<div class="ws-facts2" style="margin-top:14px;">' + rows + '</div>' +
+            '</div>' +
+            '<div class="ws-card">' +
+                '<h3 class="ws-h3">\ud83d\udd11 Access supplied for this site</h3>' +
+                '<div class="ws-needs" style="margin-top:12px;">' + apRows + '</div>' +
+            '</div>' +
+            '<div class="ws-card">' +
+                '<h3 class="ws-h3">\ud83d\udc77 People on this website</h3>' +
+                '<div class="ws-row" style="margin-top:12px;">' + engs + '</div>' +
+            '</div>' +
+            (s.notes ? '<div class="ws-card"><h3 class="ws-h3">\ud83d\uddd2 Notes for the manager</h3><div class="ws-site-notes">' + esc(s.notes) + '</div></div>' : '');
+    }
+
+    function soonHtml(s) {
+        return '<div class="ws-card"><div class="ws-empty">' +
+            '<div class="big">\u23f3</div>' +
+            '<b>Coming soon</b>' +
+            '<div style="margin-top:8px;max-width:540px;margin-left:auto;margin-right:auto;line-height:1.6;">' +
+                'This slot is reserved for the next module of <b>' + esc(s.name || s.key) + '</b>. Nothing is built here yet, and when it opens it will live inside this website rather than in the workshop tabs.' +
+            '</div></div></div>';
+    }
 
     async function procSet(key, step, status) {
         try {
             var d = await api('/process', { method: 'POST', body: { key: key, step: step, status: status } });
             if (WS.data) WS.data.process = d.process;
-            renderProcess();
-            toastMsg('✅ Saved');
+            renderSitePage();
+            toastMsg('\u2705 Saved');
         } catch (e) {
-            toastMsg('⚠️ ' + e.message);
+            toastMsg('\u26a0\ufe0f ' + e.message);
+        }
+    }
+
+    async function auditLive(key) {
+        var btn = $('wsAuditBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Checking the live site\u2026'; }
+        try {
+            var r = await api('/process/audit', { method: 'POST', body: { key: key } });
+            if (WS.data) WS.data.process = r.process;
+            renderSitePage();
+            toastMsg('\u2705 ' + (r.verified || 0) + ' step(s) verified live' + (r.skipped ? ' \u00b7 ' + r.skipped + ' need a person' : ''));
+        } catch (e) {
+            toastMsg('\u26a0\ufe0f ' + e.message);
+            if (btn) { btn.disabled = false; btn.textContent = '\ud83e\udd16 Engineer: verify live'; }
         }
     }
 
     async function procPromote(key) {
         try {
             await api('/process/promote', { method: 'POST', body: { key: key } });
-            toastMsg('✅ Added to the Websites Register');
+            toastMsg('\u2705 Added to the Websites Register');
             await load(true);
         } catch (e) {
-            toastMsg('⚠️ ' + e.message);
+            toastMsg('\u26a0\ufe0f ' + e.message);
         }
     }
 
     function procRefresh() {
-        load(true).then(renderProcess).catch(function () { });
+        load(true).then(renderSitePage).catch(function () { });
     }
 
     window.wshopTab = tab;
@@ -14089,7 +14322,11 @@
     window.wshopHealthOne = healthOne;
     window.wshopRemoveSite = removeSite;
     window.wshopModalOk = modalOk;
-    window.wshopProcPick = procPick;
+    window.wshopSiteMenu = siteMenu;
+    window.wshopSiteOpen = siteOpen;
+    window.wshopSiteSwitch = siteSwitch;
+    window.wshopMenuClose = menuClose;
+    window.wshopAudit = auditLive;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;
