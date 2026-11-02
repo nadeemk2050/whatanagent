@@ -205,5 +205,6 @@ Cache, Rank Math SEO and WordPress Importer.
 Do **not** re-enable `hostinger-ai-assistant`, and do not use hPanel's *Website Presets*
 or AI website-builder features on this site — they can re-apply a theme switch.
 
-`hostinger-ai-theme` remains installed but inactive. Deleting it (Appearance → Themes →
-Hostinger AI theme → Theme Details → Delete) removes the risk entirely.
+`hostinger-ai-theme` was **deleted on 2026-11-02**, so the theme can no longer be
+switched to it at all. Available themes are now Astra (active) plus Twenty Twenty-Five,
+Twenty Twenty-Four and Twenty Twenty-Three.
