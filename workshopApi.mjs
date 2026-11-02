@@ -418,6 +418,96 @@ async function readSeoSites(db) {
   return snap.exists() ? ((snap.data() || {}).sites || {}) : {};
 }
 
+// ---------------------------------------------------------------------------
+// SEO process pipeline
+// "Finished" for a website is not a feeling — it is this list. Every step below
+// is something we actually did for alqaryangroup.com, in the order it matters.
+// ---------------------------------------------------------------------------
+const PROCESS_STEPS = [
+  { id: 'gsc-property',    group: 'Indexing',  label: 'Search Console property verified',  owner: 'workshop', why: 'Domain property beats URL-prefix: it covers www, non-www and every subdomain in one place.' },
+  { id: 'index-follow',    group: 'Indexing',  label: 'Noindex removed site-wide',         owner: 'workshop', why: 'The single most common silent killer. Settings → Reading → "Discourage search engines" must be OFF.' },
+  { id: 'robots-txt',      group: 'Indexing',  label: 'robots.txt clean + sitemap declared', owner: 'workshop', why: 'No stray Disallow: /, and the sitemap index linked so crawlers find it first.' },
+  { id: 'sitemap-google',  group: 'Indexing',  label: 'Sitemap submitted to Google',       owner: 'workshop', why: 'Must show Success, not "Couldn\'t fetch". A 403 to Googlebot here means nothing gets indexed.' },
+  { id: 'bing-property',   group: 'Indexing',  label: 'Bing Webmaster Tools verified',     owner: 'workshop', why: 'Feeds Bing, DuckDuckGo and Copilot. Bing\'s importer only reads URL-prefix properties, so verify manually.' },
+  { id: 'sitemap-bing',    group: 'Indexing',  label: 'Sitemap submitted to Bing',         owner: 'workshop', why: 'Bing shows total URLs discovered — a quick sanity check that the sitemap is well formed.' },
+  { id: 'indexnow',        group: 'Indexing',  label: 'IndexNow key live + accepted',      owner: 'workshop', why: 'Key file at the site ROOT (custom path is fine). Hostinger\'s CDN blocks verification from /wp-content/uploads/.' },
+  { id: 'canonicals',      group: 'Structure', label: 'Canonical tag on every page',       owner: 'workshop', why: 'Without it, www/non-www and trailing-slash variants compete with each other.' },
+  { id: 'www-redirect',    group: 'Structure', label: 'www → non-www 301',                 owner: 'workshop', why: 'One hostname only. 301 preserves the path and consolidates link equity.' },
+  { id: 'schema',          group: 'Structure', label: 'Structured data (Organization, Product, Breadcrumb, FAQ)', owner: 'workshop', why: 'Organization gives the entity an address and phone. Product/Breadcrumb/FAQ is what answer engines quote.' },
+  { id: 'internal-links',  group: 'Structure', label: 'Internal linking hub ↔ families ↔ children', owner: 'workshop', why: 'New pages reachable from one hub only stay invisible. Give them real internal links.' },
+  { id: 'llms-txt',        group: 'Structure', label: 'llms.txt served',                   owner: 'workshop', why: 'A curated index for AI crawlers. Neither OpenAI nor Google consume it yet — cheap, not a ranking factor.' },
+  { id: 'ga4',             group: 'Analytics', label: 'GA4 live with correct timezone/currency', owner: 'workshop', why: 'Timezone is set at creation and drives report day boundaries. Currency only matters for e-commerce.' },
+  { id: 'ga4-gsc',         group: 'Analytics', label: 'GA4 linked to Search Console',      owner: 'workshop', why: 'Puts real queries next to landing pages — the most useful B2B report there is.' },
+  { id: 'gbp',             group: 'Off-site',  label: 'Google Business Profile verified',  owner: 'owner',    why: 'Feeds the local pack and the knowledge graph. Cannot be delegated: needs the owner\'s phone for verification.' },
+  { id: 'linkedin',        group: 'Off-site',  label: 'LinkedIn company page',             owner: 'owner',    why: 'A second corroborating source, and a sameAs target for the Organization schema.' },
+  { id: 'directories',     group: 'Off-site',  label: 'Tier-1 directory citations',        owner: 'owner',    why: 'Same NAP everywhere. Inconsistent name/address/phone suppresses entity confidence.' },
+  { id: 'reviews',         group: 'Off-site',  label: 'Google reviews collected',          owner: 'owner',    why: 'A verified profile with no reviews ranks poorly regardless of everything else.' },
+  { id: 'case-studies',    group: 'Content',   label: 'Case study pages published',        owner: 'owner',    why: 'Wins the long-tail queries product pages cannot. Needs real project facts — never invented.' }
+];
+
+const PROCESS_SEED = {
+  'alqaryangroup.com': {
+    name: 'Al Qaryan Industries LLC',
+    url: 'https://alqaryangroup.com',
+    facts: {
+      gsc: 'sc-domain:alqaryangroup.com · DNS TXT verified',
+      ga4: 'G-MMBWQXX946 · Asia/Karachi · PKR · property p561840648',
+      stack: 'WordPress 7.1.4 · Astra · Rank Math · LiteSpeed',
+      host: 'Hostinger (Business Web Hosting)',
+      sitemap: '37 URLs · Success on Google and Bing',
+      notes: '13 material pages 1,951–2,692 words. GBP in progress.'
+    },
+    steps: {
+      'gsc-property':   { status: 'done', note: 'Domain property, verified by DNS TXT on 2 Nov 2026', at: 1762000000000 },
+      'index-follow':   { status: 'done', note: 'Was noindex site-wide — removed. Now index, follow, max-image-preview:large', at: 1762000000000 },
+      'robots-txt':     { status: 'done', note: 'Disallow only /wp-admin/ · sitemap_index.xml declared', at: 1762000000000 },
+      'sitemap-google': { status: 'done', note: 'Status Success · type Sitemap index · 37 URLs', at: 1762000000000 },
+      'bing-property':  { status: 'done', note: 'Verified · sitemap import failed (Domain property), verified manually', at: 1762200000000 },
+      'sitemap-bing':   { status: 'done', note: 'Success · 37 URLs discovered · last crawl 2 Nov 2026', at: 1762200000000 },
+      'indexnow':       { status: 'done', note: 'Key at site root · api.indexnow 202, Bing 200, Yandex 202', at: 1762200000000 },
+      'canonicals':     { status: 'done', note: 'Verified on homepage and all material pages', at: 1762000000000 },
+      'www-redirect':   { status: 'done', note: '301 → https://alqaryangroup.com, path preserved', at: 1762100000000 },
+      'schema':         { status: 'done', note: 'Organization + LocalBusiness on home · Product + BreadcrumbList + FAQPage on 14 pages, 0 invalid', at: 1762100000000 },
+      'internal-links': { status: 'done', note: 'Family pages cross-linked into material pages (4–7 contextual links each)', at: 1762200000000 },
+      'llms-txt':       { status: 'done', note: 'Served at /llms.txt · ~9 KB · auto-generated, lists all pages', at: 1762100000000 },
+      'ga4':            { status: 'done', note: 'G-MMBWQXX946 via GA Google Analytics plugin · Pakistan Time · PKR', at: 1762000000000 },
+      'ga4-gsc':        { status: 'done', note: 'Linked 2 Nov 2026 · stream 16251515891', at: 1762100000000 },
+      'gbp':            { status: 'doing', note: 'In progress — business description stage', at: 1762100000000 },
+      'linkedin':       { status: 'todo', note: 'Copy written in citation-pack.md §8', at: 0 },
+      'directories':    { status: 'todo', note: 'Citation pack ready · PPMA, FPCCI, Karachi Chamber', at: 0 },
+      'reviews':        { status: 'todo', note: 'Blocked until GBP is verified — then ask 5 buyers', at: 0 },
+      'case-studies':   { status: 'todo', note: 'Waiting on real project facts from owner', at: 0 }
+    }
+  }
+};
+
+function mergeProcess(stored) {
+  const out = {};
+  const keys = new Set([...Object.keys(PROCESS_SEED), ...Object.keys(stored || {})]);
+  for (const key of keys) {
+    const seed = PROCESS_SEED[key] || {};
+    const mine = (stored || {})[key] || {};
+    const steps = {};
+    let done = 0;
+    for (const step of PROCESS_STEPS) {
+      const base = (seed.steps || {})[step.id] || { status: 'todo', note: '', at: 0 };
+      const override = (mine.steps || {})[step.id] || null;
+      const rec = override ? { ...base, ...override } : base;
+      if (rec.status === 'done') done++;
+      steps[step.id] = rec;
+    }
+    out[key] = {
+      key,
+      name: mine.name || seed.name || key,
+      url: mine.url || seed.url || ('https://' + key),
+      facts: { ...(seed.facts || {}), ...(mine.facts || {}) },
+      steps,
+      summary: { done, total: PROCESS_STEPS.length }
+    };
+  }
+  return out;
+}
+
 function staffCard(a) {
   return {
     id: a.id, name: sstr(a.name, 60), emoji: sstr(a.emoji, 8) || '🧑‍💼',
@@ -501,6 +591,8 @@ export function registerWorkshopRoutes(app, db) {
         engineerIds,
         sites: list,
         staff: agents.map(staffCard),
+        process: mergeProcess(meta.process),
+        processSteps: PROCESS_STEPS,
         stats: { sites: list.length, engineers: engineers.length, healthy, unassigned, manager: manager ? 1 : 0 }
       });
     } catch (e) {
@@ -510,6 +602,68 @@ export function registerWorkshopRoutes(app, db) {
   });
 
   // ----------------------------------------------------------------- scan
+  // ---------------------------------------------------------- process
+  app.post(api + '/process', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      const step = sstr(b.step, 60);
+      const status = sstr(b.status, 20);
+      if (!key) return bad(res, 'Which website?');
+      if (!PROCESS_STEPS.some(s => s.id === step)) return bad(res, 'Unknown process step.');
+      if (['done', 'doing', 'todo', 'blocked', 'na'].indexOf(status) === -1) return bad(res, 'Unknown status.');
+
+      const meta = await readMeta(db);
+      const process = { ...(meta.process || {}) };
+      const site = { ...(process[key] || {}) };
+      const steps = { ...(site.steps || {}) };
+      steps[step] = {
+        status,
+        note: b.note !== undefined ? sstr(b.note, 400) : ((steps[step] || {}).note || ''),
+        at: Date.now()
+      };
+      site.steps = steps;
+      if (b.name) site.name = sstr(b.name, 120);
+      process[key] = site;
+
+      await writeMeta(db, { process });
+      res.json({ ok: true, key, step, status, process: mergeProcess(process) });
+    } catch (e) {
+      console.error('[WORKSHOP] process update failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
+  // --------------------------------------------------------- promote site
+  // Tracked-only sites (like alqaryangroup.com) become full register entries so
+  // health checks and engineer assignment work on them too.
+  app.post(api + '/process/promote', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase();
+      if (!key) return bad(res, 'Which website?');
+      const seed = PROCESS_SEED[key] || {};
+      const url = seed.url || ('https://' + key);
+      const seoSites = await readSeoSites(db);
+      await setDoc(doc(db, 'appData', SEO), { sites: { [key]: { url, updatedAt: Date.now() } }, updatedAt: Date.now() }, { merge: true });
+
+      const meta = await readMeta(db);
+      const sites = { ...(meta.sites || {}) };
+      sites[key] = {
+        ...(sites[key] || {}),
+        name: seed.name || key,
+        notes: (seed.facts && seed.facts.notes) || '',
+        addedAt: (sites[key] && sites[key].addedAt) || Date.now(),
+        updatedAt: Date.now()
+      };
+      await writeMeta(db, { sites });
+      res.json({ ok: true, key, alreadyThere: !!seoSites[key] });
+    } catch (e) {
+      console.error('[WORKSHOP] promote failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
   app.post(api + '/scan', async (req, res) => {
     const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
     if (throttled(ip)) return res.status(429).json({ ok: false, error: 'Too many inspections — wait a minute.' });

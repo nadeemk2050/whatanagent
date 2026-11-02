@@ -498,6 +498,38 @@
         .ws-need { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--ws-line); border-radius: 11px; padding: 11px 12px; background: #fff; }
         .ws-need.done { border-color: #a7f3d0; background: #f0fdf4; }
         .ws-need input[type=checkbox] { margin-top: 2px; width: 16px; height: 16px; flex: none; cursor: pointer; }
+
+        /* ---- full-bleed: the workshop uses the whole viewport, not the 800px column ---- */
+        body.ws-bleed .container { max-width: 100% !important; padding: 0 clamp(12px, 2vw, 30px) 40px; margin: 6px auto; }
+        body.ws-bleed #workshopSection .ws { max-width: none; }
+
+        /* ---- SEO process pipeline ---- */
+        .ws-proc { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+        @media (max-width: 980px) { .ws-proc { grid-template-columns: 1fr; } }
+        .ws-proc-sites { display: flex; flex-direction: column; gap: 8px; }
+        .ws-proc-site { text-align: left; border: 1px solid var(--ws-line); background: #fff; border-radius: 12px; padding: 12px 13px; cursor: pointer; font-family: inherit; transition: all .15s ease; }
+        .ws-proc-site:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .ws-proc-site.on { border-color: #0f172a; box-shadow: 0 4px 14px rgba(15, 23, 42, .10); }
+        .ws-proc-site b { display: block; font-size: 13.5px; color: var(--ws-ink); }
+        .ws-proc-site span { display: block; font-size: 11.5px; color: var(--ws-muted); margin-top: 2px; word-break: break-all; }
+        .ws-bar { height: 6px; border-radius: 999px; background: #eef2f7; margin-top: 9px; overflow: hidden; }
+        .ws-bar i { display: block; height: 100%; background: linear-gradient(90deg, #0f766e, #115e59); border-radius: 999px; }
+        .ws-pgroup { margin-top: 18px; }
+        .ws-pgroup > h4 { margin: 0 0 8px 0; font-size: 11.5px; letter-spacing: .7px; text-transform: uppercase; color: #64748b; font-weight: 800; }
+        .ws-pstep { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 11px 12px; border: 1px solid var(--ws-line); border-radius: 11px; background: #fff; margin-bottom: 7px; }
+        .ws-pstep.done { background: #f0fdf4; border-color: #bbf7d0; }
+        .ws-pstep.doing { background: #fffbeb; border-color: #fde68a; }
+        .ws-pstep.blocked { background: #fef2f2; border-color: #fecaca; }
+        .ws-pstep.na { opacity: .55; }
+        .ws-dot { width: 11px; height: 11px; border-radius: 50%; margin-top: 4px; background: #cbd5e1; }
+        .ws-pstep.done .ws-dot { background: #16a34a; }
+        .ws-pstep.doing .ws-dot { background: #d97706; }
+        .ws-pstep.blocked .ws-dot { background: #dc2626; }
+        .ws-plabel { font-size: 13.5px; font-weight: 700; color: var(--ws-ink); }
+        .ws-pnote { font-size: 12px; color: #475569; margin-top: 3px; line-height: 1.45; }
+        .ws-pwhy { font-size: 11.5px; color: #94a3b8; margin-top: 3px; line-height: 1.4; }
+        .ws-psel { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--ws-line); font-size: 11.5px; font-weight: 700; background: #fff; color: #374151; font-family: inherit; cursor: pointer; }
+        .ws-facts2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin-top: 12px; }
         .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }
         .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
         .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
@@ -3779,6 +3811,7 @@
                         <button class="ws-tab active" id="wsTabBtn-add" onclick="wshopTab('add')">➕ Add New Website</button>
                         <button class="ws-tab" id="wsTabBtn-office" onclick="wshopTab('office')">🏢 Workshop Office</button>
                         <button class="ws-tab" id="wsTabBtn-sites" onclick="wshopTab('sites')">🌐 Websites Register</button>
+                        <button class="ws-tab" id="wsTabBtn-process" onclick="wshopTab('process')">📋 Site Process</button>
                         <button class="ws-tab" id="wsTabBtn-meeting" onclick="wshopTab('meeting')">🚪 Meeting Room <span class="ws-soon">SOON</span></button>
                     </div>
 
@@ -3845,6 +3878,20 @@
                                 </div>
                             </div>
                             <div id="wsSitesTable" style="margin-top:14px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- ---------------- TAB 3b : SITE PROCESS ---------------- -->
+                    <div class="ws-pane" id="wsPane-process">
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between;">
+                                <div>
+                                    <h3 class="ws-h3">📋 SEO process — what is done, what is pending</h3>
+                                    <p class="ws-hint" style="margin:6px 0 0 0;">Every step we actually perform on a website, in the order that matters. Green = verified done, amber = in progress, red = blocked, grey = not started. Change a status from the dropdown — it saves immediately.</p>
+                                </div>
+                                <button class="ws-btn" onclick="wshopProcessRefresh()">↻ Refresh</button>
+                            </div>
+                            <div id="wsProcBody" style="margin-top:16px;"></div>
                         </div>
                     </div>
 
@@ -4209,6 +4256,7 @@
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
             const sec = document.getElementById(id + 'Section');
             if (sec) sec.classList.add('active');
+            document.body.classList.toggle('ws-bleed', id === 'workshop');
             
             const container = document.querySelector('.container');
             if (container) {
@@ -13434,12 +13482,13 @@
 
     /* ---------------- tabs ---------------- */
     function tab(name) {
-        ['add', 'office', 'sites', 'meeting'].forEach(function (n) {
+        ['add', 'office', 'sites', 'process', 'meeting'].forEach(function (n) {
             var b = $('wsTabBtn-' + n), p = $('wsPane-' + n);
             if (b) b.classList.toggle('active', n === name);
             if (p) p.classList.toggle('active', n === name);
         });
-        if (name === 'office' || name === 'sites') load(false);
+        if (name === 'office' || name === 'sites' || name === 'process') load(false);
+        if (name === 'process') renderProcess();
     }
 
     /* ---------------- state + rendering ---------------- */
@@ -13453,6 +13502,7 @@
             renderManager();
             renderEngineers();
             renderSites();
+            renderProcess();
         } catch (e) {
             var box = $('wsSitesTable');
             if (box && !WS.data) {
@@ -13925,6 +13975,107 @@
     }
 
     /* ---------------- wiring ---------------- */
+    /* ---------------- SEO process pipeline ---------------- */
+    var PROC_STATUS = ['todo', 'doing', 'done', 'blocked', 'na'];
+
+    function renderProcess() {
+        var box = $('wsProcBody');
+        if (!box) return;
+        var d = WS.data || {};
+        var proc = d.process || {};
+        var steps = d.processSteps || [];
+        var keys = Object.keys(proc).sort();
+
+        if (!keys.length) {
+            box.innerHTML = '<div class="ws-empty"><div class="big">📋</div><b>Nothing tracked yet</b><div style="margin-top:6px;">Add a website in the register and its process will appear here.</div></div>';
+            return;
+        }
+        if (!WS.procKey || !proc[WS.procKey]) WS.procKey = keys[0];
+        var cur = proc[WS.procKey];
+
+        var left = keys.map(function (k) {
+            var s = proc[k];
+            var pct = s.summary.total ? Math.round((s.summary.done / s.summary.total) * 100) : 0;
+            return '<button class="ws-proc-site' + (k === WS.procKey ? ' on' : '') + '" onclick="wshopProcPick(\'' + esc(k) + '\')">' +
+                '<b>' + esc(s.name) + '</b>' +
+                '<span>' + esc(String(s.url || '').replace(/^https?:\/\//, '')) + '</span>' +
+                '<div class="ws-bar"><i style="width:' + pct + '%"></i></div>' +
+                '<span style="margin-top:6px;">' + s.summary.done + ' of ' + s.summary.total + ' done · ' + pct + '%</span>' +
+                '</button>';
+        }).join('');
+
+        var groups = [], byGroup = {};
+        steps.forEach(function (st) {
+            if (!byGroup[st.group]) { byGroup[st.group] = []; groups.push(st.group); }
+            byGroup[st.group].push(st);
+        });
+
+        var right = groups.map(function (g) {
+            var rows = byGroup[g].map(function (st) {
+                var rec = cur.steps[st.id] || { status: 'todo', note: '' };
+                var opts = PROC_STATUS.map(function (s) {
+                    return '<option value="' + s + '"' + (rec.status === s ? ' selected' : '') + '>' + s + '</option>';
+                }).join('');
+                return '<div class="ws-pstep ' + esc(rec.status) + '">' +
+                    '<div class="ws-dot"></div>' +
+                    '<div>' +
+                        '<div class="ws-plabel">' + esc(st.label) + '</div>' +
+                        (rec.note ? '<div class="ws-pnote">' + esc(rec.note) + '</div>' : '') +
+                        '<div class="ws-pwhy">' + esc(st.why) +
+                            (st.owner === 'owner' ? ' · <b>owner action</b>' : '') +
+                            (rec.at ? ' · ' + esc(when(rec.at)) : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<select class="ws-psel" onchange="wshopProcSet(\'' + esc(cur.key) + '\',\'' + esc(st.id) + '\',this.value)">' + opts + '</select>' +
+                    '</div>';
+            }).join('');
+            return '<div class="ws-pgroup"><h4>' + esc(g) + '</h4>' + rows + '</div>';
+        }).join('');
+
+        var facts = cur.facts || {};
+        var factRows = Object.keys(facts).map(function (k) {
+            return '<div class="ws-fact"><b>' + esc(k) + ':</b>&nbsp;' + esc(facts[k]) + '</div>';
+        }).join('');
+
+        box.innerHTML = '<div class="ws-proc">' +
+            '<div><div class="ws-proc-sites">' + left + '</div></div>' +
+            '<div>' +
+                '<div class="ws-row" style="justify-content:space-between;margin-bottom:8px;">' +
+                    '<div><b style="font-size:15px;">' + esc(cur.name) + '</b> <span class="ws-hint">' + esc(cur.url) + '</span></div>' +
+                    '<button class="ws-btn sm" onclick="wshopProcPromote(\'' + esc(cur.key) + '\')">➕ Add to Websites Register</button>' +
+                '</div>' +
+                (factRows ? '<div class="ws-facts2">' + factRows + '</div>' : '') +
+                right +
+            '</div></div>';
+    }
+
+    function procPick(key) { WS.procKey = key; renderProcess(); }
+
+    async function procSet(key, step, status) {
+        try {
+            var d = await api('/process', { method: 'POST', body: { key: key, step: step, status: status } });
+            if (WS.data) WS.data.process = d.process;
+            renderProcess();
+            toastMsg('✅ Saved');
+        } catch (e) {
+            toastMsg('⚠️ ' + e.message);
+        }
+    }
+
+    async function procPromote(key) {
+        try {
+            await api('/process/promote', { method: 'POST', body: { key: key } });
+            toastMsg('✅ Added to the Websites Register');
+            await load(true);
+        } catch (e) {
+            toastMsg('⚠️ ' + e.message);
+        }
+    }
+
+    function procRefresh() {
+        load(true).then(renderProcess).catch(function () { });
+    }
+
     window.wshopTab = tab;
     window.wshopLoad = function () { return load(false); };
     window.wshopInspect = inspect;
@@ -13938,6 +14089,10 @@
     window.wshopHealthOne = healthOne;
     window.wshopRemoveSite = removeSite;
     window.wshopModalOk = modalOk;
+    window.wshopProcPick = procPick;
+    window.wshopProcSet = procSet;
+    window.wshopProcPromote = procPromote;
+    window.wshopProcessRefresh = procRefresh;
     window.wshopNeedToggle = needToggle;
     window.wshopModalClose = function (ev) {
         if (ev && ev.target && ev.target.id !== 'wsModalBack') return;
