@@ -48,6 +48,7 @@ const ICON = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>',
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 19h16"/></svg>',
   print: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8V3h10v5"/><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 16h10v5H7z"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2"/><path d="M21 4v5h-5M3 20v-5h5"/></svg>',
   empty: '📒'
 };
@@ -64,6 +65,7 @@ const state = {
   view: 'register',
   segment: 'ledger',
   filter: { q: '', party: '', from: '', to: '', year: '' },
+  report: { from: '', to: '', type: '', seller: '' },
   serverInfo: null,
   masterCache: null
 };
@@ -522,6 +524,374 @@ function registerTotals() {
     paid: r2(paid),
     balance: r2(commission - received - paid)
   };
+}
+
+/* ---------------------------------------------------------------- views: register */
+/* ---------------------------------------------------------------- registers: day book & purchases */
+const TXN = {
+  commission: { label: 'Commission', pill: 'both' },
+  purchase: { label: 'Purchase', pill: 'buyer' },
+  sales: { label: 'Sales', pill: 'seller' },
+  receipt: { label: 'Receipt', pill: 'seller' },
+  payment: { label: 'Payment', pill: 'cash' },
+  journal: { label: 'Journal', pill: 'gray' }
+};
+
+// Every entry in the books, in one list — this is what the Day Book shows.
+function allTransactions() {
+  const out = [];
+  for (const inv of invoices()) {
+    const d = inv.data;
+    out.push({
+      id: inv.id, rec: inv, kind: 'commission',
+      date: d.date || '', no: d.invNo || '', party: d.seller || '', against: d.buyer || '',
+      narration: d.notes || ('Commission on GST of invoice ' + (d.invNo || '')),
+      item: d.item || '', hsCode: d.hsCode || '',
+      base: num(d.amount), gst: num(d.gstValue), value: num(d.commValue),
+      pct: num(d.commPct), account: ''
+    });
+  }
+  for (const v of allVouchers()) {
+    const d = v.data;
+    if (v.type === 'purchase' || v.type === 'sales') {
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      out.push({
+        id: v.id, rec: v, kind: v.type,
+        date: d.date || '', no: d.no || '', party: d.party || '', against: '',
+        narration: d.narration || lines.map(l => (l.item || '') + ' x ' + money(l.qty, 0)).filter(Boolean).join(', '),
+        item: lines.map(l => l.item).filter(Boolean).join(', '),
+        hsCode: (lines[0] || {}).hsCode || '', lines,
+        base: num(d.subTotal), gst: num(d.taxTotal), value: num(d.grandTotal), account: ''
+      });
+    } else {
+      out.push({
+        id: v.id, rec: v, kind: v.type,
+        date: d.date || '', no: d.no || '', party: d.party || '', against: '',
+        narration: d.narration || '',
+        item: '', hsCode: '', base: 0, gst: 0, value: num(d.amount),
+        account: d.account || [d.debitAccount, d.creditAccount].filter(Boolean).join(' -> ')
+      });
+    }
+  }
+  out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.no).localeCompare(String(b.no)));
+  return out;
+}
+
+function dayTotals(list) {
+  const t = { purchase: 0, sales: 0, receipt: 0, payment: 0, commission: 0, journal: 0 };
+  for (const x of list) t[x.kind] = r2((t[x.kind] || 0) + x.value);
+  return t;
+}
+
+function inReportRange(date) {
+  const { from, to } = state.report;
+  if (from && (date || '') < from) return false;
+  if (to && (date || '') > to) return false;
+  return true;
+}
+
+function reportLabel() {
+  const { from, to } = state.report;
+  if (from && to && from === to) return 'Showing ' + fmtDate(from);
+  if (from || to) return 'Showing ' + (from ? fmtDate(from) : 'start') + ' to ' + (to ? fmtDate(to) : 'today');
+  return 'All dates';
+}
+
+function renderDayBook() {
+  const all = allTransactions();
+  const rows = all.filter(x => inReportRange(x.date) && (!state.report.type || x.kind === state.report.type));
+  const days = [];
+  const map = new Map();
+  for (const x of rows) {
+    const key = x.date || 'undated';
+    if (!map.has(key)) { map.set(key, []); days.push(key); }
+    map.get(key).push(x);
+  }
+  days.sort((a, b) => a.localeCompare(b));
+  const totalAll = dayTotals(rows);
+
+  const dayBlock = (day) => {
+    const list = map.get(day);
+    const t = dayTotals(list);
+    const d = day === 'undated' ? null : new Date(day + 'T00:00:00');
+    const wd = d && !isNaN(d) ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] : '';
+    return `
+      <div class="day-block">
+        <div class="day-head">
+          <div class="day-date">
+            <b>${day === 'undated' ? 'No date' : esc(fmtDate(day))}</b>
+            <span>${esc(wd)}${wd ? ' / ' : ''}${list.length} entr${list.length === 1 ? 'y' : 'ies'}</span>
+          </div>
+          <div class="day-chips">
+            ${t.purchase ? `<span class="pill buyer">Purchase ${money0(t.purchase)}</span>` : ''}
+            ${t.sales ? `<span class="pill seller">Sales ${money0(t.sales)}</span>` : ''}
+            ${t.receipt ? `<span class="pill ok">Received ${money0(t.receipt)}</span>` : ''}
+            ${t.payment ? `<span class="pill pend">Paid ${money0(t.payment)}</span>` : ''}
+            ${t.journal ? `<span class="pill gray">Journal ${money0(t.journal)}</span>` : ''}
+            ${t.commission ? `<span class="pill both">Commission ${money0(t.commission)}</span>` : ''}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="rtable">
+            <thead><tr>
+              <th>Type</th><th>Voucher</th><th>Party</th><th>Particulars</th>
+              <th class="num">Amount</th><th class="num">GST</th><th class="num">Value</th><th></th>
+            </tr></thead>
+            <tbody>${list.map(x => `
+              <tr>
+                <td data-label="Type"><span class="pill ${TXN[x.kind].pill}">${esc(TXN[x.kind].label)}</span></td>
+                <td class="mono strong" data-label="Voucher">${esc(x.no || '-')}</td>
+                <td class="wrap" data-label="Party">${esc(x.party || '-')}${x.account ? `<div class="muted sub">${esc(x.account)}</div>` : ''}</td>
+                <td class="wrap" data-label="Particulars">
+                  <div class="cell-val">
+                    <div>${esc(x.narration || '-')}</div>
+                    ${x.item ? `<div class="muted sub">${esc(x.item)}${x.hsCode ? ' / HS ' + esc(x.hsCode) : ''}</div>` : ''}
+                  </div>
+                </td>
+                <td class="num" data-label="Amount">${x.base ? money(x.base, 0) : '-'}</td>
+                <td class="num" data-label="GST">${x.gst ? money(x.gst, 0) : '-'}</td>
+                <td class="num strong" data-label="Value" style="color:${x.kind === 'payment' ? 'var(--amber)' : x.kind === 'receipt' ? 'var(--brand)' : 'var(--ink)'}">${money(x.value)}</td>
+                <td class="cell-actions"><div class="row-actions">
+                  <button class="icon-btn" data-edit="${esc(x.id)}" title="Open">${ICON.edit}</button>
+                </div></td>
+              </tr>`).join('')}</tbody>
+            ${list.length > 1 ? `<tfoot><tr>
+              <td colspan="4" data-label="Day total">Day total (${list.length})</td>
+              <td class="num" data-label="Amount">${money(list.reduce((a, x) => a + x.base, 0), 0)}</td>
+              <td class="num" data-label="GST">${money(list.reduce((a, x) => a + x.gst, 0), 0)}</td>
+              <td class="num" data-label="Value">${money(list.reduce((a, x) => a + x.value, 0))}</td>
+              <td></td>
+            </tr></tfoot>` : ''}
+          </table>
+        </div>
+      </div>`;
+  };
+
+  $('#main').innerHTML = `
+    <div class="view-head">
+      <div><h2>Day Book</h2><p>Every entry, day by day: purchases, sales, receipts, payments, journals and commission.</p></div>
+      <div class="actions">
+        <button class="btn" data-act="range">${ICON.calendar} Date range</button>
+        <button class="btn" data-act="export">${ICON.download} Export CSV</button>
+        <button class="btn primary" data-act="day">${ICON.calendar} View a day</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="label">Purchases</div><div class="value">${money0(totalAll.purchase)}</div><div class="sub">bought in this period</div></div>
+      <div class="kpi"><div class="label">Sales</div><div class="value">${money0(totalAll.sales)}</div><div class="sub">sold in this period</div></div>
+      <div class="kpi green"><div class="label">Received</div><div class="value">${money0(totalAll.receipt)}</div><div class="sub">commission received</div></div>
+      <div class="kpi amber"><div class="label">Paid out</div><div class="value">${money0(totalAll.payment)}</div><div class="sub">expenses and deductions</div></div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, party, narration..." value="${esc(state.filter.q)}"></div>
+        <select id="rType">
+          <option value="">All types</option>
+          ${Object.keys(TXN).map(k => `<option value="${k}" ${state.report.type === k ? 'selected' : ''}>${TXN[k].label}</option>`).join('')}
+        </select>
+        <input type="date" id="rFrom" value="${esc(state.report.from)}" title="From date">
+        <input type="date" id="rTo" value="${esc(state.report.to)}" title="To date">
+        <span class="pill ok" id="rLabel">${esc(reportLabel())}</span>
+        ${(state.report.from || state.report.to || state.report.type) ? '<button class="btn sm" data-act="clear">Clear</button>' : ''}
+        <span class="kbd-hint" title="Press F2 to open one day, Alt+F2 for a date range">F2 / Alt+F2</span>
+      </div>
+      ${rows.length ? days.map(dayBlock).join('') : emptyState('No entries in this period', 'Change the dates, or add a voucher from Quick Vouchers.', '<button class="btn primary" data-act="day">View a day</button>')}
+    </div>`;
+
+  $('#main').querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; render(); }, 220));
+  $('#rType').addEventListener('change', (e) => { state.report.type = e.target.value; render(); });
+  $('#rFrom').addEventListener('change', (e) => { state.report.from = e.target.value; render(); });
+  $('#rTo').addEventListener('change', (e) => { state.report.to = e.target.value; render(); });
+  const acts = {
+    day: () => openPeriodDialog('day'),
+    range: () => openPeriodDialog('range'),
+    export: exportDayBookCsv,
+    clear: () => { state.report = { from: '', to: '', type: '', seller: '' }; render(); }
+  };
+  $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
+}
+
+function exportDayBookCsv() {
+  const rows = allTransactions().filter(x => inReportRange(x.date));
+  if (!rows.length) return toast('Nothing to export', 'err');
+  const head = ['Date', 'Type', 'Voucher', 'Party', 'Particulars', 'Item', 'Amount', 'GST', 'Value'];
+  const body = rows.map(x => [x.date, TXN[x.kind].label, x.no, x.party, x.narration, x.item, x.base, x.gst, x.value]);
+  const csv = [head, ...body].map(line => line.map(v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\r\n');
+  download('day-book-' + (state.report.from || 'all') + '.csv', '\ufeff' + csv, 'text/csv');
+  toast('Day book exported');
+}
+
+function renderPurchases() {
+  const all = vouchers('purchase')
+    .filter(v => inReportRange(v.data.date))
+    .filter(v => !state.filter.q || JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()))
+    .sort((a, b) => (a.data.date || '').localeCompare(b.data.date || '') || String(a.data.no || '').localeCompare(String(b.data.no || '')));
+
+  const sum = (k) => r2(all.reduce((a, v) => a + num(v.data[k]), 0));
+  const totalQty = all.reduce((a, v) => a + (v.data.lines || []).reduce((s, l) => s + num(l.qty), 0), 0);
+
+  const body = all.length ? `
+    <div class="table-wrap">
+      <table class="rtable">
+        <thead><tr>
+          <th>Date</th><th>Voucher</th><th>Seller</th><th>Items</th>
+          <th class="num">Qty</th><th class="num">Sub total</th><th class="num">GST</th><th class="num">Total</th><th></th>
+        </tr></thead>
+        <tbody>${all.map(v => {
+          const d = v.data;
+          const qty = (d.lines || []).reduce((s, l) => s + num(l.qty), 0);
+          return `<tr>
+            <td class="mono nowrap" data-label="Date">${esc(fmtDate(d.date))}</td>
+            <td class="mono strong" data-label="Voucher">${esc(d.no || '-')}</td>
+            <td class="wrap strong" data-label="Seller">${esc(d.party || '-')}${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</td>
+            <td class="wrap" data-label="Items">${(d.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)} @ ${money(l.rate, 0)}</span>`).join('<br>') || '-'}</td>
+            <td class="num" data-label="Qty">${money(qty, 0)}</td>
+            <td class="num" data-label="Sub total">${money(d.subTotal)}</td>
+            <td class="num" data-label="GST">${money(d.taxTotal)}</td>
+            <td class="num strong" data-label="Total">${money(d.grandTotal)}</td>
+            <td class="cell-actions"><div class="row-actions">
+              <button class="icon-btn" data-edit="${esc(v.id)}" title="Open voucher">${ICON.edit}</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr>
+          <td colspan="4" data-label="Total">Total (${all.length} voucher${all.length === 1 ? '' : 's'})</td>
+          <td class="num" data-label="Qty">${money(totalQty, 0)}</td>
+          <td class="num" data-label="Sub total">${money(sum('subTotal'))}</td>
+          <td class="num" data-label="GST">${money(sum('taxTotal'))}</td>
+          <td class="num" data-label="Total">${money(sum('grandTotal'))}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>
+    </div>` : emptyState('No purchases in this period', 'Purchase vouchers you save will appear here, with GST on every line.', '<button class="btn primary" data-act="new">New purchase voucher</button>');
+
+  $('#main').innerHTML = `
+    <div class="view-head">
+      <div><h2>Purchase Register</h2><p>Every material purchase, with the GST you paid on it.</p></div>
+      <div class="actions">
+        <button class="btn" data-act="range">${ICON.calendar} Date range</button>
+        <button class="btn" data-act="print">${ICON.print} Print</button>
+        <button class="btn primary" data-act="new">${ICON.plus} New purchase</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="label">Purchases</div><div class="value">${money0(sum('subTotal'))}</div><div class="sub">${all.length} voucher${all.length === 1 ? '' : 's'}</div></div>
+      <div class="kpi amber"><div class="label">GST paid</div><div class="value">${money0(sum('taxTotal'))}</div><div class="sub">input tax</div></div>
+      <div class="kpi violet"><div class="label">Total with tax</div><div class="value">${money0(sum('grandTotal'))}</div><div class="sub">what you owe</div></div>
+      <div class="kpi"><div class="label">Quantity</div><div class="value">${money0(totalQty)}</div><div class="sub">all items</div></div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, seller, item..." value="${esc(state.filter.q)}"></div>
+        <input type="date" id="rFrom" value="${esc(state.report.from)}" title="From date">
+        <input type="date" id="rTo" value="${esc(state.report.to)}" title="To date">
+        <span class="pill ok">${esc(reportLabel())}</span>
+        ${(state.report.from || state.report.to) ? '<button class="btn sm" data-act="clear">Clear</button>' : ''}
+        <span class="kbd-hint" title="Press F2 to open one day, Alt+F2 for a date range">F2 / Alt+F2</span>
+      </div>
+      ${body}
+    </div>`;
+
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; render(); }, 220));
+  $('#rFrom').addEventListener('change', e => { state.report.from = e.target.value; render(); });
+  $('#rTo').addEventListener('change', e => { state.report.to = e.target.value; render(); });
+  const acts = {
+    range: () => openPeriodDialog('range'),
+    print: () => window.print(),
+    new: () => voucherModal('purchase'),
+    clear: () => { state.report.from = ''; state.report.to = ''; render(); }
+  };
+  $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
+  $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+}
+
+/* ---------------------------------------------------------------- F2 / Alt+F2 period view */
+function openPeriodDialog(mode) {
+  const todayStr = today();
+  const from = state.report.from || (mode === 'day' ? todayStr : todayStr.slice(0, 8) + '01');
+  const to = state.report.to || todayStr;
+  const isDay = mode === 'day';
+  const modal = openModal(`
+    <div class="modal-head">
+      <div><h3>${isDay ? 'View a day' : 'View a date range'}</h3>
+        <div class="sub">${isDay ? 'Opens the Day Book for one date.' : 'Opens the Day Book between two dates.'}</div></div>
+      <button class="icon-btn x" data-close>Close</button>
+    </div>
+    <div class="modal-body">
+      ${isDay ? `
+        <div class="quick-days">
+          <button class="btn sm" data-day="0">Today</button>
+          <button class="btn sm" data-day="-1">Yesterday</button>
+          <button class="btn sm" data-day="-7">A week ago</button>
+        </div>
+        <div class="field" style="margin-top:14px"><label for="pDay">Date</label><input id="pDay" type="date" value="${esc(from)}"></div>` : `
+        <div class="quick-days">
+          <button class="btn sm" data-range="month">This month</button>
+          <button class="btn sm" data-range="last-month">Last month</button>
+          <button class="btn sm" data-range="year">This year</button>
+          <button class="btn sm" data-range="fy">Financial year (Jul-Jun)</button>
+        </div>
+        <div class="grid-2" style="margin-top:14px">
+          <div class="field"><label for="pFrom">From</label><input id="pFrom" type="date" value="${esc(from)}"></div>
+          <div class="field"><label for="pTo">To</label><input id="pTo" type="date" value="${esc(to)}"></div>
+        </div>`}
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="pGo">${isDay ? 'Open that day' : 'Open range'}</button>
+    </div>`);
+
+  const go = (f, t) => {
+    state.report.from = f;
+    state.report.to = t;
+    state.filter.q = '';
+    state.view = 'daybook';
+    closeModal();
+    render();
+  };
+
+  $$('[data-close]', modal).forEach(b => b.addEventListener('click', closeModal));
+  if (isDay) {
+    $$('[data-day]', modal).forEach(b => b.addEventListener('click', () => {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(b.dataset.day));
+      $('#pDay', modal).value = d.toLocaleDateString('en-CA');
+    }));
+  } else {
+    $$('[data-range]', modal).forEach(b => b.addEventListener('click', () => {
+      const now = new Date();
+      const iso = (d) => d.toLocaleDateString('en-CA');
+      let f, t;
+      if (b.dataset.range === 'month') { f = new Date(now.getFullYear(), now.getMonth(), 1); t = now; }
+      else if (b.dataset.range === 'last-month') { f = new Date(now.getFullYear(), now.getMonth() - 1, 1); t = new Date(now.getFullYear(), now.getMonth(), 0); }
+      else if (b.dataset.range === 'year') { f = new Date(now.getFullYear(), 0, 1); t = now; }
+      else { const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1; f = new Date(y, 6, 1); t = new Date(y + 1, 5, 30); }
+      $('#pFrom', modal).value = iso(f);
+      $('#pTo', modal).value = iso(t);
+    }));
+  }
+  $('#pGo', modal).addEventListener('click', () => {
+    if (isDay) {
+      const d = $('#pDay', modal).value || today();
+      go(d, d);
+    } else {
+      let f = $('#pFrom', modal).value;
+      let t = $('#pTo', modal).value;
+      if (!f && !t) return toast('Choose at least one date', 'err');
+      if (f && t && f > t) { const x = f; f = t; t = x; }
+      go(f, t || f);
+    }
+  });
+  const first = $(isDay ? '#pDay' : '#pFrom', modal);
+  if (first) setTimeout(() => { try { first.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }, 60);
 }
 
 /* ---------------------------------------------------------------- views: register */
@@ -1683,6 +2053,8 @@ function navigate(view) {
 
 const VIEW_TITLES = {
   register: ['Commission Register', 'S.E. Engineering (Pvt) Ltd'],
+  daybook: ['Day Book', 'All entries, day by day'],
+  purchases: ['Purchase Register', 'Every purchase, with GST'],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
 };
@@ -1704,6 +2076,8 @@ function render() {
 
   if (kind === 'master') return renderMaster(sub);
   if (kind === 'voucher') return renderVouchers(sub);
+  if (state.view === 'daybook') return renderDayBook();
+  if (state.view === 'purchases') return renderPurchases();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
   return renderRegister();
@@ -1721,7 +2095,15 @@ function wireChrome() {
   $('#userChip').addEventListener('click', () => navigate('settings'));
   $('#drawerLogout').addEventListener('click', () => { closeDrawer(); signOut(); });
   $('#modalBackdrop').addEventListener('click', (e) => { if (e.target.id === 'modalBackdrop') closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeDrawer(); } });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeModal(); closeDrawer(); return; }
+    // F2 = one day, Alt+F2 = a date range (the AccPro habit)
+    if (e.key === 'F2') {
+      e.preventDefault();
+      if ($('#appShell').hidden) return;
+      openPeriodDialog(e.altKey ? 'range' : 'day');
+    }
+  });
 
   window.addEventListener('online', () => { state.online = true; refreshSyncChip(); syncNow({ quiet: true }); });
   window.addEventListener('offline', () => { state.online = false; refreshSyncChip(); });

@@ -112,8 +112,19 @@ fills it in automatically and the form shows the working as you type.
 | Commission Register | One ledger: seller, invoice, item, GST, commission, received, running balance. Filter by company/year, switch to company-wise summary, export CSV, print. |
 | Manage Master → Customers & Companies · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. |
 | Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. Purchase and Sales carry a line-by-line table with GST per line, and an optional "record commission from this deal" box that writes the matching entry into the register. Editing the voucher updates that entry; switching the box off removes it. |
+| Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |
+| Purchase Register | Every purchase voucher with its items, quantity, sub total, GST and total, plus period totals. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
+
+### F2 and Alt+F2
+
+In the AccPro habit, **F2** opens the Day Book for one date and **Alt+F2** opens it for a date
+range (with one-tap presets: this month, last month, this year, financial year). Both are also
+buttons in the toolbar, so they work on a phone where there is no function key.
+
+The shortcut lives in [commission.js](./public/commission.js) (`wireChrome` → `openPeriodDialog`);
+the chosen period is kept in `state.report` and shared by the Day Book and the Purchase Register.
 
 ### Phones
 

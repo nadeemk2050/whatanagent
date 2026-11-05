@@ -422,7 +422,25 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
 .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
 
 .party-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 16px 20px; }
-.party-sum-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 15px; background: #fcfdff; }
+
+/* ------------------------------------------------------------------ day book */
+.day-block { border-bottom: 1px solid var(--line); }
+.day-block:last-child { border-bottom: 0; }
+.day-head {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 13px 20px; background: linear-gradient(180deg, #f8fafc, #f4f7fb);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 1;
+}
+.day-date { display: flex; align-items: baseline; gap: 10px; }
+.day-date b { font-size: 14.5px; letter-spacing: -.01em; }
+.day-date span { font-size: 11.5px; color: var(--muted); }
+.day-chips { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.kbd-hint {
+  margin-left: auto; font-size: 11.5px; color: var(--muted);
+  background: #f1f5f9; border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px;
+  font-family: var(--mono); white-space: nowrap;
+}
+.quick-days { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }.party-sum-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 15px; background: #fcfdff; }
 .party-sum-card .top { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
 .party-sum-card .name { font-weight: 700; font-size: 13.5px; }
 .party-sum-card .amt { font-family: var(--mono); font-size: 17px; font-weight: 700; color: var(--brand); }
@@ -606,13 +624,13 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
   .modal-backdrop { padding: 0; align-items: flex-end; }
   .modal, .modal.wide {
     max-width: none; width: 100%; border-radius: 18px 18px 0 0;
-    max-height: 94vh; display: flex; flex-direction: column;
+    max-height: 94vh; display: flex; flex-direction: column; overflow: hidden;
   }
-  .modal-head { position: sticky; top: 0; background: #fff; z-index: 3; border-radius: 18px 18px 0 0; padding: 14px 16px; }
-  .modal-body { overflow-y: auto; padding: 14px 16px; flex: 1; }
+  .modal-head { flex: none; background: #fff; z-index: 3; border-radius: 18px 18px 0 0; padding: 14px 16px; }
+  .modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px; flex: 1 1 auto; min-height: 0; }
   .modal-foot {
-    position: sticky; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    border-radius: 0; box-shadow: 0 -8px 20px -12px rgba(15, 23, 42, .3);
+    flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    border-radius: 0; box-shadow: 0 -8px 20px -12px rgba(15, 23, 42, .3); background: #fbfdff;
   }
   .modal-foot .btn { flex: 1; }
   .modal-foot .left { flex: none; margin-right: 0; }
@@ -644,6 +662,13 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
   .auth-card { padding: 24px 20px; border-radius: 16px; }
   .auth-card h2 { font-size: 21px; }
   .auth-tabs button { padding: 11px; }
+
+  /* day book */
+  .day-head { padding: 11px 13px; gap: 8px; position: static; }
+  .day-date { width: 100%; justify-content: space-between; }
+  .day-chips { margin-left: 0; width: 100%; }
+  .kbd-hint { display: none; }
+  .quick-days .btn { flex: 1 1 45%; }
 }
 
 @media (max-width: 400px) {
