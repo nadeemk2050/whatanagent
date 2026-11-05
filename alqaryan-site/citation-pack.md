@@ -280,3 +280,86 @@ PVC pipe manufacturing, plastic scrap buying, industrial scrap collection, Karac
 - Logo: square, at least 300 x 300 px. The "AQ" mark from the site works.
 - Cover: 1128 x 191 px. Use the facility photo (`plant-shredder-line.webp`).
 - Add the same photos used on the Google Business Profile.
+
+---
+
+## 9. Review request kit (Google Business Profile is verified)
+
+**The listing (public, verified):**
+
+- Google Maps: `https://www.google.com/maps/place/?cid=13947061490449884173`
+- Place ID: `ChIJQakj7h0Vsz4RDaTL5ofqjcE`
+
+**The one link to send — opens the star-rating form directly:**
+
+```
+https://search.google.com/local/writereview?placeid=ChIJQakj7h0Vsz4RDaTL5ofqjcE
+```
+
+### Rules, because breaking them loses the listing
+
+- Ask **real customers only** — people who actually bought or collected material.
+- Never pay, discount, or offer anything in exchange for a review. Google treats an
+  incentivised review as a policy breach and can remove the whole profile.
+- Never write the review for them, and never post from a staff device on their behalf.
+- One ask is enough. If someone does not reply, leave it.
+
+### Message 1 — short, for WhatsApp (English)
+
+```
+Assalam o Alaikum [Name],
+
+Our Google profile is live now. If we have served you well, a one-line review would
+help other buyers find us — it takes 30 seconds:
+
+<review link>
+
+JazakAllah,
+Nadeem Khan
+Al Qaryan Industries LLC
+```
+
+### Message 2 — short, for WhatsApp (Roman Urdu)
+
+```
+Assalam o Alaikum [Name],
+
+Hamara Google profile live ho gaya hai. Agar hum ne aap ko theek service di hai to
+ek chota sa review likh dein — 30 second lagenge, aur doosre buyers ko humein
+dhoondhne mein madad milegi:
+
+<review link>
+
+Shukriya,
+Nadeem Khan
+Al Qaryan Industries LLC
+```
+
+### Message 3 — for a long-standing buyer
+
+```
+Assalam o Alaikum [Name],
+
+We have been supplying you since [year]. Our Google listing is finally verified, and
+reviews are what buyers look at before they call. If you have a minute, one honest
+sentence about the material quality or the delivery would mean a lot:
+
+<review link>
+
+No obligation at all — and thank you for the years of business either way.
+
+Nadeem Khan
+Al Qaryan Industries LLC
+```
+
+### Who to ask, in order
+
+1. The five largest customers by tonnage — they know the material best.
+2. Buyers who collected during the last 90 days — the experience is recent.
+3. Suppliers and collectors who dealt with us honestly.
+
+### What a good review mentions
+
+Ask nothing specific. If a review happens to mention *material grade*, *delivery
+time*, *weighing fairness* or *payment on time*, that is worth more than a dozen
+one-word reviews, because those are the things the next buyer is worried about.
