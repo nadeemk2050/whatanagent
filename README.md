@@ -109,7 +109,7 @@ fills it in automatically and the form shows the working as you type.
 
 | Menu | What it does |
 | --- | --- |
-| Commission Register | One ledger: seller, the buyer it went to, the dealer it came through, invoice, item, GST, commission, received, running balance. Search, filter by company/year, sort by any column, 40 rows a page. |
+| All Commission Transactions Register | One ledger: seller, **dealer name**, the buyer it went to, invoice, item, GST, commission, received, running balance. Search, company/year filters and sorting live in the **top bar**, so the list gets the whole window; 40 rows a page. |
 | Manage Master → Customers & Companies · **Dealer Names** · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. Dealers are the third-party people who bring the customers — money is received from them. |
 | Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. **A sales voucher *is* the commission voucher**: seller, buyer, dealer, GST per line and the brokerage % (switched on by default). Purchase and Sales both carry a line-by-line table with GST per line. |
 | Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |

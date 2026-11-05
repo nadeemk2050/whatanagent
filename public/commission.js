@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -544,7 +544,8 @@ function ledgerRows() {
     if (v.type === 'receipt' || v.type === 'payment') {
       rows.push({
         kind: v.type, id: v.id, rec: v,
-        date: d.date || '', party: d.party || '', counterparty: d.account || '', dealer: '',
+        date: d.date || '', party: d.party || '', counterparty: d.account || '',
+        dealer: d.dealer || d.party || '',
         invNo: d.no || '', item: '', hsCode: '',
         qty: 0, rate: 0, amount: 0, gstPct: 0, gstValue: 0, commPct: 0, commission: 0,
         received: num(d.amount),
@@ -579,6 +580,7 @@ function registerTotals() {
 /* ---------------------------------------------------------------- views: register */
 /* ---------------------------------------------------------------- sorting & pagination */
 const PAGE_SIZE = 40;
+let refocusSearch = false;
 
 function sortList(list, getters, sort) {
   const get = getters[sort.key] || getters.date || Object.values(getters)[0];
@@ -596,7 +598,8 @@ function sortList(list, getters, sort) {
 
 const SORT_GETTERS = {
   register: {
-    date: r => r.date || '', party: r => r.party || '', item: r => r.item || '',
+    date: r => r.date || '', party: r => r.party || '', dealer: r => r.dealer || '',
+    item: r => r.item || '',
     qty: r => r.qty, amount: r => r.amount, gst: r => r.gstValue,
     commission: r => r.commission, received: r => r.received, balance: r => r.balance
   },
@@ -1481,6 +1484,7 @@ function renderRegister() {
         <thead><tr>
           ${sortHeader('date', 'Date')}
           ${sortHeader('party', 'Seller / Party')}
+          ${sortHeader('dealer', 'Dealer Name')}
           ${sortHeader('item', 'Item')}
           ${sortHeader('qty', 'Qty \u00d7 Rate', true)}
           ${sortHeader('amount', 'Amount', true)}
@@ -1498,9 +1502,9 @@ function renderRegister() {
               <div class="cell-val">
                 <div class="strong">${esc(r.party || '-')}</div>
                 <div class="muted sub">${r.counterparty ? '&#8594; ' + esc(r.counterparty) : ''}${r.counterparty && (r.invNo || r.narration) ? ' &middot; ' : ''}${r.invNo ? esc(r.invNo) : ''}${r.invNo && r.narration ? ' &middot; ' : ''}${r.narration ? esc(r.narration) : ''}</div>
-                ${r.dealer ? `<div class="sub" style="color:var(--violet)">Dealer: ${esc(r.dealer)}</div>` : ''}
               </div>
             </td>
+            <td class="wrap" data-label="Dealer Name"><div class="cell-val"><span class="pill both" style="font-size:11.5px;white-space:nowrap">${esc(r.dealer || '-')}</span></div></td>
             <td class="wrap" data-label="Item">
               <div class="cell-val">
                 <div>${esc(r.item || '-')}</div>
@@ -1522,7 +1526,7 @@ function renderRegister() {
           </tr>`).join('')}
         </tbody>
         <tfoot><tr>
-          <td colspan="3" data-label="Total">Total (${filtered.length} row${filtered.length === 1 ? '' : 's'})</td>
+          <td colspan="4" data-label="Total">Total (${filtered.length} row${filtered.length === 1 ? '' : 's'})</td>
           <td class="col-opt"></td>
           <td class="num col-opt" data-label="Amount">${money(sum('amount'), 0)}</td>
           <td class="num" data-label="GST">${money(sum('gstValue'), 0)}</td>
@@ -1540,26 +1544,39 @@ function renderRegister() {
 
   $('#main').innerHTML = `
     <div class="card flexcard">
-      <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, invoice, item..." value="${esc(state.filter.q)}"></div>
-        <select id="fParty">
-          <option value="">All companies</option>
-          ${partyList.map(p => `<option value="${esc(p.data.name)}" ${state.filter.party === p.data.name ? 'selected' : ''}>${esc(p.data.name)}</option>`).join('')}
-        </select>
-        <select id="fYear"><option value="">All years</option>${years.map(y => `<option value="${y}" ${state.filter.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>
-        <span class="pill ok">${state.sort.key === 'date' && state.sort.dir === 'desc' ? 'Newest first' : state.sort.key === 'date' && state.sort.dir === 'asc' ? 'Oldest first' : 'Sorted by ' + state.sort.key}</span>
-      </div>
       ${body}
       ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  // The register's search and filters live in the top bar, so the list gets the whole
+  // window.
+  const filters = $('#topbarFilters');
+  if (filters) {
+    filters.hidden = false;
+    filters.innerHTML = `
+      <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, dealer, invoice, item..." value="${esc(state.filter.q)}"></div>
+      <select id="fParty" title="Filter by seller">
+        <option value="">All companies</option>
+        ${partyList.map(p => `<option value="${esc(p.data.name)}" ${state.filter.party === p.data.name ? 'selected' : ''}>${esc(p.data.name)}</option>`).join('')}
+      </select>
+      <select id="fYear" title="Filter by year"><option value="">All years</option>${years.map(y => `<option value="${y}" ${state.filter.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>
+      <span class="pill ok">${state.sort.key === 'date' && state.sort.dir === 'desc' ? 'Newest first' : state.sort.key === 'date' && state.sort.dir === 'asc' ? 'Oldest first' : 'By ' + state.sort.key}</span>`;
+    $('.topbar')?.classList.add('has-filters');
+  }
+
+  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; refocusSearch = true; render(); }, 220));
   $('#fParty').addEventListener('change', (e) => { state.filter.party = e.target.value; state.page = 1; render(); });
   $('#fYear').addEventListener('change', (e) => { state.filter.year = e.target.value; state.page = 1; render(); });
   wireSortHeaders($('#main'));
   wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
   $$('[data-del]').forEach(b => b.addEventListener('click', () => askDelete(b.dataset.del)));
+  // Re-rendering rebuilds the top-bar search box, so put the caret back where it was.
+  if (refocusSearch) {
+    refocusSearch = false;
+    const q = $('#fQ');
+    if (q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) { /* ignore */ } }
+  }
 }
 
 function emptyState(title, text, action = '') {
@@ -2305,8 +2322,8 @@ function exportDocument() {
   if (state.view === 'register') {
     const rows = sortList(ledgerRows().filter(matchesFilter), SORT_GETTERS.register, state.sort);
     return {
-      filename: 'commission-register-' + stamp,
-      title: 'Commission Register',
+      filename: 'commission-transactions-' + stamp,
+      title: 'All Commission Transactions Register',
       subtitle: COMPANY + ' - ' + rows.length + ' rows - ' + reportLabel(),
       sheetName: 'Commission Register',
       columns: [
@@ -2704,7 +2721,7 @@ function navigate(view) {
 }
 
 const VIEW_TITLES = {
-  register: ['Commission Register', COMPANY],
+  register: ['All Commission Transactions Register', COMPANY],
   daybook: ['Day Book', 'All entries, day by day'],
   purchases: ['Purchase Register', 'Every purchase, with GST'],
   sales: ['Sales Register', 'Every sale, with GST'],
@@ -2743,6 +2760,11 @@ function render() {
   main.scrollTop = 0;
   const exports = $('#topbarExports');
   if (exports) exports.hidden = !isList;
+  // Views that keep their filters in the top bar (the register) fill this in themselves.
+  const topFilters = $('#topbarFilters');
+  if (topFilters) { topFilters.hidden = true; topFilters.innerHTML = ''; }
+  const topbar = $('.topbar');
+  if (topbar) topbar.classList.remove('has-filters');
 
   if (kind === 'master') return renderMaster(sub);
   if (kind === 'voucher') return renderVouchers(sub);
