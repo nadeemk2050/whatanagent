@@ -112,12 +112,11 @@ fills it in automatically and the form shows the working as you type.
 | All Commission Transactions Register | One ledger: seller, **dealer name**, the buyer it went to, invoice, item, GST, commission, received, running balance. The **top bar** holds the search, the company filter, a **clickable date-range chip** (calendar with presets — all dates, today, this month, last month, this year, financial year) and the live **transaction count**; a strip under the list always shows the totals for the filtered set: transactions, qty, amount, GST value, commission, received and remaining (commission − received). 40 rows a page. |
 | Manage Master → Customers & Companies · **Dealer Names** · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. Dealers are the third-party people who bring the customers — money is received from them. |
 | Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. **A sales voucher *is* the commission voucher**: seller, buyer, dealer, GST per line and the brokerage % (switched on by default). Purchase and Sales both carry a line-by-line table with GST per line. |
-| Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |
 | Purchase Register | Every purchase voucher with its seller, buyer, dealer, items, quantity, sub total, GST and total, plus period totals. |
 | Sales Register | Every sale voucher with seller, buyer, dealer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
 | Seller Register | Seller-wise control: for each seller, how many deals, which buyers they went to, the value, the GST and the commission earned. |
 | Buyer Register | The same position from the buyer side: how many deals, which sellers supplied them, value, GST and commission. |
-| **Dealers Register** | The list of dealers with deals, commission, received and balance. Pick a dealer and the full ledger opens: inv date, inv no., seller, buyer, item, HS code, qty, rate, amount, GST %, GST value, commission %, commission (Dr.), commission received (Cr.) and running balance. |
+| **Dealers Register** | The list of dealers with deals, commission, received and balance — the dealer name is clickable and opens that dealer's full ledger: inv date, inv no., seller name, buyer name, item name, HS code, qty, amount, GST %, GST value, commission %, commission value (Dr.), received from dealer (Cr.) and running balance. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
 
@@ -141,14 +140,13 @@ so each device picks the change up through the normal delta sync, and it takes a
 first. The client still reads old `invoice` rows, so the books look right even before the server is
 restarted.
 
-### F2 and Alt+F2
+### Date ranges
 
-In the AccPro habit, **F2** opens the Day Book for one date and **Alt+F2** opens it for a date
-range (with one-tap presets: this month, last month, this year, financial year). Both are also
-buttons in the toolbar, so they work on a phone where there is no function key.
-
-The shortcut lives in [commission.js](./public/commission.js) (`wireChrome` → `openPeriodDialog`);
-the chosen period is kept in `state.report` and shared by the Day Book and the Purchase Register.
+The All Commission Transactions Register carries the date range in its top bar: click the chip to
+open the calendar (presets: all dates, today, yesterday, last 7 days, this month, last month, this
+year, financial year — or tap a first and a last day). The Purchase and Sales registers keep simple
+From/To date inputs in their toolbar (`state.report`). The Day Book was removed: the All Commission
+Transactions Register already lists every deals, receipt and payment with its totals.
 
 ### Phones
 
