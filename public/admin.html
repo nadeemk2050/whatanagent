@@ -589,6 +589,26 @@
         .ws-terms { display: flex; flex-wrap: wrap; gap: 7px; }
         .ws-term { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 12px; font-weight: 700; }
         .ws-term b { background: #fff; color: #4338ca; border-radius: 999px; padding: 0 6px; font-size: 10.5px; }
+        .ws-pages { display: flex; flex-direction: column; gap: 7px; }
+        .ws-pagerow { border: 1px solid #eef2f7; border-radius: 11px; background: #fff; overflow: hidden; }
+        .ws-pagerow.open { border-color: #cbd5e1; box-shadow: 0 3px 12px rgba(15, 23, 42, .07); }
+        .ws-pagehead { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: none; cursor: pointer; padding: 11px 13px; font-family: inherit; }
+        .ws-pagehead:hover { background: #f8fafc; }
+        .ws-pagehead .u { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: #0f172a; word-break: break-all; }
+        .ws-pagehead .meta { font-size: 11.5px; color: #64748b; white-space: nowrap; }
+        .ws-pagerow.open .ws-chev { transform: rotate(180deg); }
+        .ws-score { display: inline-flex; align-items: baseline; gap: 1px; min-width: 62px; justify-content: center; padding: 4px 9px; border-radius: 8px; border: 1px solid; font-size: 14px; font-weight: 800; }
+        .ws-score i { font-style: normal; font-size: 9.5px; font-weight: 700; opacity: .7; }
+        .ws-pagebody { padding: 4px 13px 13px; border-top: 1px solid #eef2f7; }
+        .ws-err { display: flex; gap: 10px; align-items: flex-start; padding: 9px 11px; border-radius: 9px; margin-top: 7px; background: #fef2f2; border: 1px solid #fecaca; }
+        .ws-err.lv-medium { background: #fffbeb; border-color: #fde68a; }
+        .ws-err.lv-low { background: #f8fafc; border-color: #e2e8f0; }
+        .ws-err .pts { flex: none; font-size: 12px; font-weight: 800; color: #b91c1c; min-width: 30px; }
+        .ws-err.lv-medium .pts { color: #b45309; }
+        .ws-err.lv-low .pts { color: #64748b; }
+        .ws-err b { font-size: 12.5px; color: #0f172a; }
+        .ws-err .d { font-size: 11.5px; color: #475569; margin-top: 2px; }
+        .ws-err .fx { font-size: 11.5px; color: #334155; margin-top: 3px; }
         .ws-need .t { font-size: 13px; font-weight: 700; color: var(--ws-ink); }        .ws-need .w { font-size: 11.5px; color: var(--ws-muted); line-height: 1.5; margin-top: 3px; }
         .ws-need .req { font-size: 8.5px; letter-spacing: .6px; padding: 2px 6px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-weight: 800; margin-left: 6px; vertical-align: 2px; }
         .ws-door { position: relative; background: linear-gradient(180deg, #3a4048, #2b3037); border-radius: 14px; padding: 16px; color: #f8fafc; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(15, 23, 42, .16); overflow: hidden; }
@@ -14268,7 +14288,7 @@
         try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
     }
 
-    function siteSwitch(view) { WS.siteView = view; renderSitePage(); if (view === 'google') ensureGoogle(WS.siteKey); }
+    function siteSwitch(view) { WS.siteView = view; renderSitePage(); if (view === 'google' || view === 'workspace') ensureGoogle(WS.siteKey); }
 
     function renderSitePage() {
         if (!WS.siteKey || !$('wsSiteBody')) return;
@@ -14285,7 +14305,7 @@
             : WS.siteView === 'google' ? googleHtml(s.key)
                 : WS.siteView === 'soon' ? soonHtml(s)
                     : processHtml(s.key);
-        if (WS.siteView === 'google') ensureGoogle(s.key);
+        if (WS.siteView === 'google' || WS.siteView === 'workspace') ensureGoogle(s.key);
     }
 
     function processHtml(key) {
@@ -14527,6 +14547,107 @@
         } catch (e) { toastMsg('\u26a0\ufe0f ' + e.message); }
     }
 
+    function siteScoreBadge(score) {
+        var col = score >= 90 ? '#16a34a' : score >= 75 ? '#0f766e' : score >= 60 ? '#b45309' : '#dc2626';
+        var bg = score >= 90 ? '#f0fdf4' : score >= 75 ? '#ecfdf5' : score >= 60 ? '#fffbeb' : '#fef2f2';
+        return '<span class="ws-score" style="color:' + col + ';background:' + bg + ';border-color:' + col + '33;">' + score + '<i>/100</i></span>';
+    }
+
+    function rankPagesHtml(key) {
+        var st = (WS.google || {})[key] || {};
+        var c = st.crawl;
+        var head = '<div class="ws-card">' +
+                '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;">' +
+                    '<div style="flex:1;min-width:240px;">' +
+                        '<h3 class="ws-h3">\ud83e\uddee Rank maths \u2014 page by page</h3>' +
+                        '<p class="ws-hint" style="margin:6px 0 0 0;">A fixed 18-point checklist that adds up to exactly 100. Click a page to see every check it failed, how many points each cost, and what to fix. This is our score, not a Google metric \u2014 every point comes from something measurable in the HTML.</p>' +
+                    '</div>' +
+                    '<button class="ws-btn dark" onclick="wshopGoogleRun(\'' + esc(key) + '\')">' + (st.loading ? '\u23f3 Scoring\u2026' : '\u21bb Rescore') + '</button>' +
+                '</div>' +
+            '</div>';
+        if (st.loading) {
+            return head + '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83e\uddee</div><b>Scoring every page\u2026</b><div style="margin-top:6px;">About 15 seconds.</div></div></div>';
+        }
+        if (!c || !c.ok) {
+            return head + '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83e\uddee</div><b>Not scored yet</b>' +
+                '<div style="margin-top:6px;">Press Rescore to read the pages and mark them.</div></div></div>';
+        }
+
+        var pages = (c.pages || []).slice().sort(function (a, b) { return a.score.score - b.score.score; });
+        var t = c.totals || {};
+        var rows = pages.map(function (p, i) {
+            var open = !!(WS.openPage || {})[p.url];
+            var failed = p.score.failed || [];
+            var path = p.url.replace(/^https?:\/\/[^/]+/, '') || '/';
+            var errRows = failed.map(function (f) {
+                return '<div class="ws-err lv-' + esc(f.level) + '">' +
+                        '<span class="pts">\u2212' + f.points + '</span>' +
+                        '<span><b>' + esc(f.label) + '</b>' +
+                            '<div class="d">' + esc(f.detail || '') + '</div>' +
+                            '<div class="fx">\u2192 ' + esc(f.fix || '') + '</div>' +
+                        '</span></div>';
+            }).join('');
+            return '<div class="ws-pagerow' + (open ? ' open' : '') + '">' +
+                    '<button class="ws-pagehead" onclick="wshopTogglePage(\'' + esc(p.url).replace(/'/g, "\\'") + '\')">' +
+                        '<span class="ws-chev">\u25be</span>' +
+                        siteScoreBadge(p.score.score) +
+                        '<span class="u">' + esc(path) + '</span>' +
+                        '<span class="meta">' + (failed.length ? failed.length + ' issue' + (failed.length === 1 ? '' : 's') + ' \u00b7 \u2212' + p.score.lostPoints + ' pts' : '\u2705 clean') + '</span>' +
+                    '</button>' +
+                    (open
+                        ? '<div class="ws-pagebody">' +
+                            (failed.length
+                                ? '<div class="ws-hint" style="margin-bottom:8px;">Fixing all of these would take this page to 100.</div>' + errRows
+                                : '<div class="ws-fact" style="background:#f0fdf4;border-color:#bbf7d0;">\u2705 Nothing to fix \u2014 this page scores 100.</div>') +
+                            '<div class="ws-hint" style="margin-top:10px;">' + p.words + ' words \u00b7 ' + p.images + ' image(s) \u00b7 ' + p.internal + ' internal links \u00b7 ' + p.jsonLd + ' schema block(s)</div>' +
+                          '</div>'
+                        : '') +
+                '</div>';
+        }).join('');
+
+        // site-wide: which checks fail most often, and what they cost in total
+        var agg = {};
+        for (var i = 0; i < pages.length; i++) {
+            var fl = pages[i].score.failed || [];
+            for (var j = 0; j < fl.length; j++) {
+                var id = fl[j].id;
+                agg[id] = agg[id] || { label: fl[j].label, fix: fl[j].fix, points: fl[j].points, n: 0 };
+                agg[id].n++;
+            }
+        }
+        var aggRows = Object.keys(agg).sort(function (a, b) { return agg[b].n - agg[a].n; }).map(function (id) {
+            var a = agg[id];
+            return '<div class="ws-li"><span><b>' + esc(a.label) + '</b><div class="ws-hint" style="margin-top:2px;">' + esc(a.fix) + '</div></span>' +
+                '<span>' + a.n + ' page' + (a.n === 1 ? '' : 's') + '<br>-' + a.points + ' each</span></div>';
+        }).join('');
+
+        return head +
+            '<div class="ws-card">' +
+                '<div class="ws-kpis">' +
+                    googleKpi('Average score', (t.avgScore || 0) + '/100') +
+                    googleKpi('At 100', t.perfect || 0, 'of ' + pages.length + ' pages') +
+                    googleKpi('Weakest page', (t.weakest || 0) + '/100') +
+                    googleKpi('Pages scored', pages.length) +
+                '</div>' +
+            '</div>' +
+            '<div class="ws-card">' +
+                '<h3 class="ws-h3">Pages \u2014 worst first</h3>' +
+                '<p class="ws-hint" style="margin:5px 0 10px 0;">Click any page to open its issue list.</p>' +
+                '<div class="ws-pages">' + rows + '</div>' +
+            '</div>' +
+            (aggRows
+                ? '<div class="ws-card"><h3 class="ws-h3">What is costing marks site-wide</h3>' +
+                    '<p class="ws-hint" style="margin:5px 0 10px 0;">Ordered by how many pages each check affects. Fixing the top one lifts the whole site at once.</p>' +
+                    '<div class="ws-list">' + aggRows + '</div></div>'
+                : '');
+    }
+
+    function togglePage(url) {
+        WS.openPage = WS.openPage || {};
+        WS.openPage[url] = !WS.openPage[url];
+        renderSitePage();
+    }
+
     function workspaceHtml(s) {
         var h = s.health;
         var hostBits = [s.host && s.host.provider, s.host && s.host.server, s.host && s.host.cdn].filter(Boolean).join(' \u00b7 ');
@@ -14570,6 +14691,7 @@
                 '<h3 class="ws-h3">\ud83d\udc77 People on this website</h3>' +
                 '<div class="ws-row" style="margin-top:12px;">' + engs + '</div>' +
             '</div>' +
+            rankPagesHtml(s.key) +
             (s.notes ? '<div class="ws-card"><h3 class="ws-h3">\ud83d\uddd2 Notes for the manager</h3><div class="ws-site-notes">' + esc(s.notes) + '</div></div>' : '');
     }
 
@@ -14886,6 +15008,7 @@
     window.wshopGoogleRun = runGoogle;
     window.wshopSaveKeywords = saveKeywords;
     window.wshopToggleSection = toggleSection;
+    window.wshopTogglePage = togglePage;
     window.wshopProcSet = procSet;
     window.wshopProcPromote = procPromote;
     window.wshopProcessRefresh = procRefresh;

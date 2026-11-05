@@ -895,6 +895,90 @@ export function registerWorkshopRoutes(app, db) {
     .replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
+  // ---------------------------------------------------------------- page score
+  // A transparent, fixed checklist that adds up to exactly 100. It is OUR score, not a Google
+  // metric: every point comes from something measurable in the HTML, and every lost point names
+  // the check that lost it. Nothing here is weighted by opinion or learned guesswork.
+  const SCORE_CHECKS = [
+    { id: 'http-ok', points: 10, level: 'high', label: 'Page answers HTTP 200', fix: 'Fix the server or the redirect chain so the page loads directly.' },
+    { id: 'indexable', points: 10, level: 'high', label: 'Indexable (no noindex)', fix: 'Remove noindex from the robots meta / WordPress Reading settings.' },
+    { id: 'title', points: 6, level: 'high', label: 'Title tag present', fix: 'Add a title tag — it is the single biggest on-page signal.' },
+    { id: 'title-len', points: 5, level: 'low', label: 'Title between 30 and 62 characters', fix: 'Shorten or lengthen the title so Google shows it whole.' },
+    { id: 'desc', points: 6, level: 'medium', label: 'Meta description present', fix: 'Write a meta description; Google uses it as the snippet.' },
+    { id: 'desc-len', points: 4, level: 'low', label: 'Meta description between 110 and 165 characters', fix: 'Trim or expand the description so it is not cut off.' },
+    { id: 'h1', points: 7, level: 'high', label: 'H1 present', fix: 'Add one H1 that states what the page is about.' },
+    { id: 'h1-one', points: 3, level: 'low', label: 'Exactly one H1', fix: 'Use a single H1 and make the rest H2/H3.' },
+    { id: 'canonical', points: 6, level: 'medium', label: 'Canonical points at this page', fix: 'Add a self-referencing canonical link.' },
+    { id: 'words-300', points: 8, level: 'medium', label: 'At least 300 words', fix: 'Add real, useful copy — thin pages rarely rank.' },
+    { id: 'words-800', points: 4, level: 'low', label: 'At least 800 words', fix: 'Expand with detail: specifications, grades, process, FAQs.' },
+    { id: 'img-alt', points: 4, level: 'low', label: 'Every image has alt text', fix: 'Describe each image in the alt attribute.' },
+    { id: 'internal', points: 6, level: 'medium', label: 'At least 3 internal links', fix: 'Link to related pages so crawlers understand the structure.' },
+    { id: 'jsonld', points: 8, level: 'medium', label: 'Structured data (JSON-LD) present', fix: 'Add Product / Organization / FAQ schema.' },
+    { id: 'viewport', points: 6, level: 'high', label: 'Mobile viewport declared', fix: 'Add the viewport meta tag; the page is not mobile-friendly without it.' },
+    { id: 'lang', points: 3, level: 'low', label: 'HTML lang attribute set', fix: 'Add lang="en" (or the correct language) to the html tag.' },
+    { id: 'url-clean', points: 2, level: 'low', label: 'Clean URL (short, no query string)', fix: 'Use a short, readable slug without tracking parameters.' },
+    { id: 'og', points: 2, level: 'low', label: 'Open Graph title and description', fix: 'Add og:title and og:description for link previews.' }
+  ];
+
+  function scorePage(p) {
+    const urlPath = (() => { try { return new URL(p.url).pathname + new URL(p.url).search; } catch (e) { return p.url; } })();
+    const pass = {
+      'http-ok': p.ok && p.status === 200,
+      'indexable': !p.noindex,
+      'title': !!p.title,
+      'title-len': !!p.title && p.title.length >= 30 && p.title.length <= 62,
+      'desc': !!p.desc,
+      'desc-len': !!p.desc && p.desc.length >= 110 && p.desc.length <= 165,
+      'h1': !!p.h1,
+      'h1-one': p.h1Count === 1,
+      'canonical': !!p.canonical && (p.canonical === p.url || p.canonical.replace(/\/$/, '') === p.url.replace(/\/$/, '')),
+      'words-300': p.words >= 300,
+      'words-800': p.words >= 800,
+      'img-alt': p.images === 0 || p.noAlt === 0,
+      'internal': p.internal >= 3,
+      'jsonld': p.jsonLd > 0,
+      'viewport': !!p.viewport,
+      'lang': !!p.lang,
+      'url-clean': urlPath.length <= 75 && urlPath.indexOf('?') === -1,
+      'og': !!p.og
+    };
+    const checks = SCORE_CHECKS.map(c => ({
+      id: c.id, label: c.label, points: c.points, level: c.level,
+      ok: !!pass[c.id], lost: pass[c.id] ? 0 : c.points,
+      detail: checkDetail(c.id, p),
+      fix: pass[c.id] ? '' : c.fix
+    }));
+    const score = checks.reduce((s, c) => s + (c.ok ? c.points : 0), 0);
+    return {
+      score,
+      grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F',
+      failed: checks.filter(c => !c.ok),
+      lostPoints: 100 - score
+    };
+  }
+
+  function checkDetail(id, p) {
+    switch (id) {
+      case 'http-ok': return 'HTTP ' + (p.status || 'no response') + (p.err ? ' — ' + p.err : '');
+      case 'title': return p.title ? p.title.length + ' characters' : 'no title tag';
+      case 'title-len': return p.title ? p.title.length + ' characters' : 'no title';
+      case 'desc': return p.desc ? p.desc.length + ' characters' : 'no description';
+      case 'desc-len': return p.desc ? p.desc.length + ' characters' : 'no description';
+      case 'h1': return p.h1 ? p.h1.slice(0, 70) : 'no H1';
+      case 'h1-one': return p.h1Count + ' H1 tag(s)';
+      case 'canonical': return p.canonical ? p.canonical : 'no canonical';
+      case 'words-300': case 'words-800': return p.words + ' words';
+      case 'img-alt': return p.noAlt + ' of ' + p.images + ' image(s) missing alt';
+      case 'internal': return p.internal + ' internal, ' + p.external + ' external links';
+      case 'jsonld': return p.jsonLd + ' JSON-LD block(s)';
+      case 'viewport': return p.viewport ? 'declared' : 'missing';
+      case 'lang': return p.lang || 'not set';
+      case 'url-clean': return p.url.replace(/^https?:\/\/[^/]+/, '') || '/';
+      case 'og': return p.og ? 'present' : 'missing';
+      default: return '';
+    }
+  }
+
   async function crawlSite(site, key) {
     const url = normalizeUrl(site.url || key);
     const origin = new URL(url).origin;
@@ -931,10 +1015,21 @@ export function registerWorkshopRoutes(app, db) {
         const imgs = [...h.matchAll(/<img\b[^>]*>/gi)].map(m => m[0]);
         const noAlt = imgs.filter(t => !/\salt\s*=\s*["'][^"']*\S/i.test(t)).length;
         const text = h.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
-        pages.push({
+        const h1Count = (h.match(/<h1\b/gi) || []).length;
+        const jsonLd = (h.match(/<script[^>]+application\/ld\+json/gi) || []).length;
+        const og = /property=["']og:title["']/i.test(h) && /property=["']og:description["']/i.test(h);
+        const viewport = /name=["']viewport["']/i.test(h);
+        const langM = h.match(/<html[^>]*\blang=["']([^"']+)["']/i);
+        const hrefs = [...h.matchAll(/href=["']([^"'#]+)["']/gi)].map(m => m[1].trim());
+        const internal = hrefs.filter(x => x.startsWith('/') || x.startsWith(origin)).length;
+        const external = hrefs.filter(x => /^https?:\/\//i.test(x) && !x.startsWith(origin)).length;
+        const page = {
           url: u, status: r.status, ok: r.ok, err: r.error || '', title, desc, h1, noindex: /noindex/.test(robotsMeta),
-          canonical, images: imgs.length, noAlt, words: text.split(/\s+/).filter(Boolean).length
-        });
+          canonical, images: imgs.length, noAlt, words: text.split(/\s+/).filter(Boolean).length,
+          h1Count, jsonLd, og, viewport, lang: langM ? langM[1] : '', internal, external
+        };
+        page.score = scorePage(page);
+        pages.push(page);
       }
     };
     await Promise.all([worker(), worker(), worker()]);
@@ -962,6 +1057,9 @@ export function registerWorkshopRoutes(app, db) {
     for (const p of pages) for (const w of wordsOf(p.title + ' ' + p.h1 + ' ' + p.desc)) termCount.set(w, (termCount.get(w) || 0) + 1);
     const terms = [...termCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([term, n]) => ({ term, pages: n }));
 
+    const scored = pages.filter(p => p.ok).map(p => p.score.score);
+    const avgScore = scored.length ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : 0;
+
     return {
       ok: true, url, origin, sitemap: { url: smUrl, urls: found.size },
       scannedAt: Date.now(), limit: MAXP, scanned: pages.length,
@@ -974,8 +1072,12 @@ export function registerWorkshopRoutes(app, db) {
         thin: pages.filter(p => p.words < 300).length,
         images: pages.reduce((s, p) => s + p.images, 0),
         imagesNoAlt: pages.reduce((s, p) => s + p.noAlt, 0),
-        words: pages.reduce((s, p) => s + p.words, 0)
+        words: pages.reduce((s, p) => s + p.words, 0),
+        avgScore,
+        perfect: scored.filter(s => s === 100).length,
+        weakest: scored.length ? Math.min(...scored) : 0
       },
+      checks: SCORE_CHECKS.map(c => ({ id: c.id, label: c.label, points: c.points, level: c.level })),
       pages, problems: problems.slice(0, 120), terms
     };
   }
