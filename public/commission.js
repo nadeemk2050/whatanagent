@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -1456,6 +1456,150 @@ function openPeriodDialog(mode) {
 }
 
 /* ---------------------------------------------------------------- views: register */
+// What the top-bar date chip says: the whole book, one day, or a range.
+function dateRangeLabel() {
+  const { from, to } = state.filter;
+  if (from && to) return from === to ? fmtDate(from) : fmtDate(from) + ' \u2013 ' + fmtDate(to);
+  if (from) return 'From ' + fmtDate(from);
+  if (to) return 'Up to ' + fmtDate(to);
+  return 'All dates';
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const isoOf = (d) => d.toLocaleDateString('en-CA');
+const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
+
+// The smart range calendar behind the top-bar date chip.
+function openRangeDialog() {
+  let from = state.filter.from || '';
+  let to = state.filter.to || '';
+  const start = from ? new Date(from + 'T00:00:00') : new Date();
+  let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const firstOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+
+  const modal = openModal(`
+    <div class="modal-head">
+      <div><h3>Choose a date range</h3>
+        <div class="sub">Tap the first day, then the last day — or take all dates.</div></div>
+      <button class="icon-btn x" data-close>✕</button>
+    </div>
+    <div class="modal-body cal-body" id="calBody"></div>
+    <div class="modal-foot">
+      <button class="btn left" id="calClear">All dates</button>
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn primary" id="calApply">Apply range</button>
+    </div>`, { wide: true });
+
+  const monthHtml = (first) => {
+    const y = first.getFullYear();
+    const m = first.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const lead = new Date(y, m, 1).getDay();
+    const todayIso = today();
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<span class="cal-day blank"></span>');
+    for (let d = 1; d <= daysInMonth; d++) {
+      const iso = isoOf(new Date(y, m, d));
+      const classes = ['cal-day'];
+      if (iso === from || iso === to) classes.push('edge');
+      else if (from && to && iso > from && iso < to) classes.push('in-range');
+      else if (from && !to && iso === from) classes.push('edge');
+      if (iso === todayIso) classes.push('today');
+      cells.push(`<button type="button" class="${classes.join(' ')}" data-d="${iso}">${d}</button>`);
+    }
+    return `<div class="cal-month">
+      <div class="cal-title">${MONTHS_LONG[m]} ${y}</div>
+      <div class="cal-dow">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<span>${x}</span>`).join('')}</div>
+      <div class="cal-grid">${cells.join('')}</div>
+    </div>`;
+  };
+
+  const summary = () => {
+    if (!from && !to) return 'All dates — every transaction in the register';
+    if (from && !to) return 'From <b>' + fmtDate(from) + '</b> — pick the last day';
+    return '<b>' + fmtDate(from) + '</b> to <b>' + fmtDate(to) + '</b>';
+  };
+
+  const paint = () => {
+    const active = (k) => {
+      const p = presetRange(k);
+      return p.from === from && p.to === to ? ' on' : '';
+    };
+    $('#calBody', modal).innerHTML = `
+      <div class="cal-presets">
+        ${[['all', 'All dates'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'Last 7 days'],
+        ['month', 'This month'], ['last-month', 'Last month'], ['year', 'This year'], ['fy', 'Financial year']]
+        .map(([k, label]) => `<button type="button" class="cal-preset${active(k)}" data-preset="${k}">${label}</button>`).join('')}
+      </div>
+      <div class="cal-nav">
+        <button type="button" class="icon-btn" data-nav="-1" title="Previous month">‹</button>
+        <div class="cal-months">${monthHtml(cursor)}${monthHtml(addMonths(cursor, 1))}</div>
+        <button type="button" class="icon-btn" data-nav="1" title="Next month">›</button>
+      </div>
+      <div class="cal-summary">${summary()}</div>`;
+  };
+
+  const presetRange = (kind) => {
+    const now = new Date();
+    const first = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+    const last = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    switch (kind) {
+      case 'today': return { from: isoOf(now), to: isoOf(now) };
+      case 'yesterday': { const y = new Date(now); y.setDate(y.getDate() - 1); return { from: isoOf(y), to: isoOf(y) }; }
+      case 'week': { const w = new Date(now); w.setDate(w.getDate() - 6); return { from: isoOf(w), to: isoOf(now) }; }
+      case 'month': return { from: isoOf(first(now)), to: isoOf(last(now)) };
+      case 'last-month': { const p = addMonths(now, -1); return { from: isoOf(first(p)), to: isoOf(last(p)) }; }
+      case 'year': return { from: isoOf(new Date(now.getFullYear(), 0, 1)), to: isoOf(new Date(now.getFullYear(), 11, 31)) };
+      case 'fy': {
+        const y = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+        return { from: isoOf(new Date(y, 6, 1)), to: isoOf(new Date(y + 1, 5, 30)) };
+      }
+      default: return { from: '', to: '' };
+    }
+  };
+
+  $('#calBody', modal).addEventListener('click', (e) => {
+    const day = e.target.closest('[data-d]');
+    if (day) {
+      const iso = day.dataset.d;
+      if (!from || (from && to)) { from = iso; to = ''; }
+      else if (iso < from) { from = iso; to = ''; }
+      else { to = iso; }
+      paint();
+      return;
+    }
+    const nav = e.target.closest('[data-nav]');
+    if (nav) { cursor = addMonths(cursor, Number(nav.dataset.nav)); paint(); return; }
+    const preset = e.target.closest('[data-preset]');
+    if (preset) {
+      const r = presetRange(preset.dataset.preset);
+      from = r.from; to = r.to;
+      cursor = firstOfMonth(from ? new Date(from + 'T00:00:00') : new Date());
+      paint();
+    }
+  });
+
+  $$('[data-close]', modal).forEach(b => b.addEventListener('click', closeModal));
+  $('#calClear', modal).addEventListener('click', () => {
+    state.filter.from = '';
+    state.filter.to = '';
+    state.filter.year = '';
+    state.page = 1;
+    closeModal();
+    render();
+  });
+  $('#calApply', modal).addEventListener('click', () => {
+    state.filter.from = from;
+    state.filter.to = to;
+    state.filter.year = '';
+    state.page = 1;
+    closeModal();
+    render();
+  });
+
+  paint();
+}
+
 function matchesFilter(row) {
   const f = state.filter;
   if (f.party && row.party !== f.party) return false;
@@ -1474,9 +1618,10 @@ function renderRegister() {
   const filtered = all.filter(matchesFilter);
   const sorted = sortList(filtered, SORT_GETTERS.register, state.sort);
   const slice = pageSlice(sorted);
-  const years = [...new Set(all.map(r => String(r.date || '').slice(0, 4)).filter(Boolean))].sort().reverse();
   const partyList = parties().filter(p => p.data.role !== 'buyer');
-  const sum = (k) => r2(filtered.reduce((a, r) => a + r[k], 0));
+  const sum = (k) => r2(filtered.reduce((a, r) => a + num(r[k]), 0));
+  const tCommission = sum('commission');
+  const tReceived = sum('received');
 
   const body = slice.rows.length ? `
     <div class="table-wrap">
@@ -1525,16 +1670,6 @@ function renderRegister() {
             </td>
           </tr>`).join('')}
         </tbody>
-        <tfoot><tr>
-          <td colspan="4" data-label="Total">Total (${filtered.length} row${filtered.length === 1 ? '' : 's'})</td>
-          <td class="col-opt"></td>
-          <td class="num col-opt" data-label="Amount">${money(sum('amount'), 0)}</td>
-          <td class="num" data-label="GST">${money(sum('gstValue'), 0)}</td>
-          <td class="num" style="color:var(--brand)" data-label="Commission">${money(sum('commission'))}</td>
-          <td class="num" style="color:var(--amber)" data-label="Received">${money(sum('received'))}</td>
-          <td class="num" data-label="Balance">${money(r2(sum('commission') - sum('received')))}</td>
-          <td></td>
-        </tr></tfoot>
       </table>
     </div>` : emptyState(
       'No entries yet',
@@ -1545,6 +1680,15 @@ function renderRegister() {
   $('#main').innerHTML = `
     <div class="card flexcard">
       ${body}
+      <div class="sumstrip">
+        <span class="sum"><i>Transactions</i><b>${filtered.length}</b></span>
+        <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
+        <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
+        <span class="sum"><i>GST value</i><b>${money0(sum('gstValue'))}</b></span>
+        <span class="sum cr"><i>Commission</i><b>${money(tCommission)}</b></span>
+        <span class="sum dr"><i>Received</i><b>${money(tReceived)}</b></span>
+        <span class="sum rem"><i>Remaining</i><b>${money(r2(tCommission - tReceived))}</b></span>
+      </div>
       ${pagerHtml(slice)}
     </div>`;
 
@@ -1559,14 +1703,19 @@ function renderRegister() {
         <option value="">All companies</option>
         ${partyList.map(p => `<option value="${esc(p.data.name)}" ${state.filter.party === p.data.name ? 'selected' : ''}>${esc(p.data.name)}</option>`).join('')}
       </select>
-      <select id="fYear" title="Filter by year"><option value="">All years</option>${years.map(y => `<option value="${y}" ${state.filter.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>
-      <span class="pill ok">${state.sort.key === 'date' && state.sort.dir === 'desc' ? 'Newest first' : state.sort.key === 'date' && state.sort.dir === 'asc' ? 'Oldest first' : 'By ' + state.sort.key}</span>`;
+      <button class="range-chip" id="fRange" title="Choose a date range">
+        ${ICON.calendar}<span>${esc(dateRangeLabel())}</span>
+      </button>
+      <span class="count-chip" title="${filtered.length === all.length ? 'Every transaction' : filtered.length + ' of ' + all.length + ' transactions'}">
+        ${filtered.length}${filtered.length === all.length ? '' : ' <small>/ ' + all.length + '</small>'} <small>txns</small>
+      </span>`;
     $('.topbar')?.classList.add('has-filters');
   }
 
   $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; refocusSearch = true; render(); }, 220));
   $('#fParty').addEventListener('change', (e) => { state.filter.party = e.target.value; state.page = 1; render(); });
-  $('#fYear').addEventListener('change', (e) => { state.filter.year = e.target.value; state.page = 1; render(); });
+  const rangeBtn = $('#fRange');
+  if (rangeBtn) rangeBtn.addEventListener('click', () => openRangeDialog());
   wireSortHeaders($('#main'));
   wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
