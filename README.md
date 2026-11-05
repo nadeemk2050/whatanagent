@@ -109,27 +109,37 @@ fills it in automatically and the form shows the working as you type.
 
 | Menu | What it does |
 | --- | --- |
-| Commission Register | One ledger: seller, the buyer it went to, invoice, item, GST, commission, received, running balance. Search, filter by company/year, sort by any column, 40 rows a page. |
-| Manage Master → Customers & Companies · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. |
-| Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. Purchase and Sales carry a line-by-line table with GST per line, and an optional "record commission from this deal" box that writes the matching entry into the register. Editing the voucher updates that entry; switching the box off removes it. |
+| Commission Register | One ledger: seller, the buyer it went to, the dealer it came through, invoice, item, GST, commission, received, running balance. Search, filter by company/year, sort by any column, 40 rows a page. |
+| Manage Master → Customers & Companies · **Dealer Names** · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. Dealers are the third-party people who bring the customers — money is received from them. |
+| Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. **A sales voucher *is* the commission voucher**: seller, buyer, dealer, GST per line and the brokerage % (switched on by default). Purchase and Sales both carry a line-by-line table with GST per line. |
 | Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |
-| Purchase Register | Every purchase voucher with its seller, buyer, items, quantity, sub total, GST and total, plus period totals. |
-| Sales Register | Every sale voucher with its seller and buyer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
-| Seller Register | Seller-wise control: for each seller, how many deals, which buyers they went to, the value, the GST, the commission earned, what has been received and what is still outstanding. |
+| Purchase Register | Every purchase voucher with its seller, buyer, dealer, items, quantity, sub total, GST and total, plus period totals. |
+| Sales Register | Every sale voucher with seller, buyer, dealer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
+| Seller Register | Seller-wise control: for each seller, how many deals, which buyers they went to, the value, the GST and the commission earned. |
 | Buyer Register | The same position from the buyer side: how many deals, which sellers supplied them, value, GST and commission. |
+| **Dealers Register** | The list of dealers with deals, commission, received and balance. Pick a dealer and the full ledger opens: inv date, inv no., seller, buyer, item, HS code, qty, rate, amount, GST %, GST value, commission %, commission (Dr.), commission received (Cr.) and running balance. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
 
-### Seller and buyer on a voucher
+### Seller, buyer and dealer on a voucher
 
-This is a brokerage book, so a **Purchase or Sales voucher names both sides of the deal**. Each
-voucher stores `seller` and `buyer`; `party` keeps its old meaning (the seller on a purchase, the
-buyer on a sale) so older rows and the registers still read correctly. The pickers are real
-drop-downs of the master companies, with **＋ Add a new name…** for a company that is not in the
-master yet. Selecting a seller also fills in that company's commission %.
+This is a brokerage book, so a **Purchase or Sales voucher names every side of the deal**.
+Each voucher stores `seller`, `buyer` and `dealer`; `party` keeps its old meaning (the seller on a
+purchase, the buyer on a sale) so older rows and the registers still read correctly. The pickers
+are real drop-downs of the master names, with **＋ Add a new name…** for a company that is not in
+the master yet. Selecting a seller fills in that company's commission %.
 
-The Seller and Buyer registers are built from the commission ledger plus any goods voucher that
-never produced a commission entry, so a deal is never counted twice.
+**Money only moves through dealers.** Receipt and Payment vouchers list dealers — never a seller or
+a buyer — so the Dealers Register is the place that shows what is still to come in.
+
+### The Excel history
+
+The attached sheet was the business of a single dealer, **S.E. ENGINEERING**, so on the first start
+after upgrading the server rewrites every imported commission invoice as a sales voucher carrying
+that dealer name (and links the imported receipts to it). The migration keeps the same record ids,
+so each device picks the change up through the normal delta sync, and it takes a database backup
+first. The client still reads old `invoice` rows, so the books look right even before the server is
+restarted.
 
 ### F2 and Alt+F2
 

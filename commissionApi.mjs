@@ -399,22 +399,29 @@ function seedIfEmpty() {
     add('master', 'expense', { name: ex[0], notes: ex[1], active: true }, 'expense-' + i);
   }
 
-  // Commission invoices ------------------------------------------------
+  // The dealer behind the Excel history --------------------------------
+  add('master', 'dealer', {
+    name: IMPORT_DEALER, company: 'S.E. Engineering (Pvt) Ltd', phone: '', commissionPct: 20,
+    notes: 'Dealer behind the imported Excel history', active: true
+  }, 'dealer-se-engineering');
+
+  // Deals — a sales voucher IS the commission voucher -------------------
   for (const inv of seed.invoices || []) {
-    add('invoice', 'commission', {
-      date: inv.date, seller: inv.seller, buyer: inv.buyer, invNo: inv.invNo, item: inv.item,
-      hsCode: inv.hsCode, grade: inv.grade || '', qty: inv.qty, rate: inv.rate, amount: inv.amount,
+    add('voucher', 'sales', dealVoucherData({
+      date: inv.date, invNo: inv.invNo, seller: inv.seller, buyer: inv.buyer,
+      item: inv.item, hsCode: inv.hsCode, qty: inv.qty, rate: inv.rate, amount: inv.amount,
       gstPct: inv.gstPct, gstValue: inv.gstValue, commPct: inv.commPct, commValue: inv.commValue,
-      notes: inv.notes || '', source: inv.source || ''
-    }, inv.id);
+      notes: inv.notes, source: inv.source
+    }), inv.id);
   }
 
   // Receipts / payments ------------------------------------------------
   for (const p of seed.payments || []) {
     const isExpense = p.kind === 'expense';
     add('voucher', isExpense ? 'payment' : 'receipt', {
-      date: p.date, no: p.no || '', party: p.party, amount: p.amount, mode: p.mode || 'Bank',
-      account: p.mode || 'Bank Account', narration: p.narration || (isExpense ? 'Payment' : 'Commission received'),
+      date: p.date, no: p.no || '', party: p.party, dealer: IMPORT_DEALER, amount: p.amount,
+      mode: p.mode || 'Bank', account: p.mode || 'Bank Account',
+      narration: p.narration || (isExpense ? 'Payment' : 'Commission received'),
       auto: 'excel-import', partyType: isExpense ? 'expense' : 'seller'
     }, p.id);
   }
@@ -444,6 +451,93 @@ function backupNow(force = false) {
 }
 
 // --------------------------------------------------------------------------- maintenance
+// The Excel history was the business of ONE dealer (S.E. ENGINEERING), and in this app a
+// sales voucher *is* the commission voucher — so the old `commission invoice` rows are
+// rewritten as sales vouchers that carry the dealer name. Runs once, keeps the same ids
+// (so every device picks the change up through the normal delta sync) and takes a backup
+// of the database first.
+const IMPORT_DEALER = 'S.E. ENGINEERING';
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// An invoice-shaped deal → the data of the sales voucher that now holds it.
+function dealVoucherData(d) {
+  const qty = Number(d.qty) || 0;
+  const rate = Number(d.rate) || 0;
+  const amount = round2(Number(d.amount) || qty * rate);
+  const gstValue = round2(Number(d.gstValue) || 0);
+  const commValue = round2(Number(d.commValue) || 0);
+  const gstPct = Number(d.gstPct) || (amount ? round2(gstValue / amount * 100) : 0);
+  return {
+    date: d.date || '',
+    no: d.invNo || '',
+    seller: d.seller || '',
+    buyer: d.buyer || '',
+    dealer: d.dealer || IMPORT_DEALER,
+    lines: [{
+      item: d.item || '', hsCode: d.hsCode || '', qty, rate, amount,
+      taxPct: gstPct, taxAmt: gstValue, total: round2(amount + gstValue)
+    }],
+    subTotal: amount,
+    taxTotal: gstValue,
+    grandTotal: round2(amount + gstValue),
+    comm: { enabled: commValue > 0, pct: Number(d.commPct) || 0, value: commValue },
+    narration: d.notes || '',
+    source: d.source || 'excel-import'
+  };
+}
+
+function migrateDealsToSalesVouchers() {
+  const all = store.all();
+  const invoices = all.filter(r => r.kind === 'invoice');
+  const dealerKey = IMPORT_DEALER.toLowerCase();
+  const hasDealer = all.some(r => r.kind === 'master' && r.type === 'dealer'
+    && String(r.data.name || '').trim().toLowerCase() === dealerKey);
+  if (!invoices.length && hasDealer) return { moved: 0, dealerAdded: false, tagged: 0 };
+
+  if (invoices.length) backupNow(true);
+
+  let moved = 0;
+  for (const r of invoices) {
+    store.putRecord({
+      ...r,
+      kind: 'voucher',
+      type: 'sales',
+      data: dealVoucherData(r.data || {}),
+      updatedAt: nowMs(),
+      seq: store.nextSeq(),
+      updatedBy: 'migration'
+    });
+    moved++;
+  }
+
+  let dealerAdded = false;
+  if (!hasDealer) {
+    store.putRecord({
+      id: 'dealer-se-engineering',
+      kind: 'master',
+      type: 'dealer',
+      data: {
+        name: IMPORT_DEALER, company: 'S.E. Engineering (Pvt) Ltd', phone: '', commissionPct: 20,
+        notes: 'Dealer behind the imported Excel history', active: true
+      },
+      updatedAt: nowMs(), deleted: false, updatedBy: 'migration', seq: store.nextSeq()
+    });
+    dealerAdded = true;
+  }
+
+  // The imported receipts/payments were all settled through that same dealer.
+  let tagged = 0;
+  for (const r of all) {
+    if (r.kind !== 'voucher' || (r.type !== 'receipt' && r.type !== 'payment')) continue;
+    if (r.data.dealer) continue;
+    if (r.data.auto !== 'excel-import' && r.data.partyType !== 'seller' && r.data.partyType !== 'expense') continue;
+    store.putRecord({ ...r, data: { ...r.data, dealer: IMPORT_DEALER }, updatedAt: nowMs(), seq: store.nextSeq(), updatedBy: 'migration' });
+    tagged++;
+  }
+
+  return { moved, dealerAdded, tagged };
+}
+
 // Vouchers created before numbering existed (an already-deployed database) get a
 // number on the next start, so every receipt/payment is referenceable like in Tally.
 function backfillVoucherNumbers() {
@@ -478,6 +572,12 @@ export function initCommissionStore() {
   if (seeded.seeded) console.log('[COMMISSION] 🧾 seeded ' + seeded.records + ' records from the Excel history');
   const numbered = backfillVoucherNumbers();
   if (numbered) console.log('[COMMISSION] 🧾 numbered ' + numbered + ' imported vouchers');
+  const migrated = migrateDealsToSalesVouchers();
+  if (migrated.moved || migrated.dealerAdded || migrated.tagged) {
+    console.log('[COMMISSION] 🧾 migrated ' + migrated.moved + ' commission invoices into sales vouchers'
+      + (migrated.dealerAdded ? ', added dealer "' + IMPORT_DEALER + '"' : '')
+      + (migrated.tagged ? ', linked ' + migrated.tagged + ' receipts to the dealer' : ''));
+  }
   backupNow();
   const timer = setInterval(() => backupNow(), 6 * 3600 * 1000);
   if (timer.unref) timer.unref();
@@ -744,19 +844,19 @@ export function registerCommissionRoutes(app) {
   });
 
   app.get(api + '/stats', auth, (req, res) => {
-    let commission = 0, received = 0, paid = 0, invoices = 0;
+    let commission = 0, received = 0, paid = 0, deals = 0;
     for (const rec of store.all()) {
-      if (rec.kind === 'invoice') {
-        invoices++;
-        commission += numOr(rec.data.commValue, 0);
-      } else if (rec.kind === 'voucher') {
-        if (rec.type === 'receipt') received += numOr(rec.data.amount, 0);
-        if (rec.type === 'payment') paid += numOr(rec.data.amount, 0);
+      if (rec.kind !== 'voucher') continue;
+      if (rec.type === 'receipt') received += numOr(rec.data.amount, 0);
+      else if (rec.type === 'payment') paid += numOr(rec.data.amount, 0);
+      else if (rec.type === 'sales' || rec.type === 'purchase') {
+        const v = numOr((rec.data.comm || {}).value, 0);
+        if (v > 0) { deals++; commission += v; }
       }
     }
     res.json({
       ok: true,
-      stats: { invoices, commission: Math.round(commission * 100) / 100, received: Math.round(received * 100) / 100, paid: Math.round(paid * 100) / 100, balance: Math.round((commission - received - paid) * 100) / 100 },
+      stats: { deals, commission: Math.round(commission * 100) / 100, received: Math.round(received * 100) / 100, paid: Math.round(paid * 100) / 100, balance: Math.round((commission - received - paid) * 100) / 100 },
       store: info()
     });
   });

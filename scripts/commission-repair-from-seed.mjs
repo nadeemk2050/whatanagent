@@ -29,6 +29,8 @@ const BASE = arg('base', process.env.COMMISSION_BASE || 'http://127.0.0.1:3000')
 const USER = arg('user');
 const PASS = arg('password');
 const DRY = process.argv.includes('--dry');
+// The whole Excel history came through this one dealer.
+const DEALER = arg('dealer', 'S.E. ENGINEERING');
 
 if (!USER || !PASS) {
   console.error('Usage: node scripts/commission-repair-from-seed.mjs --user <username> --password <password> [--base http://host] [--dry]');
@@ -53,21 +55,33 @@ const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + login
 
 // ---------------------------------------------------------------- what to write
 const wanted = [
-  ...seed.invoices.map(inv => ({
-    id: inv.id, kind: 'invoice', type: 'commission',
-    data: {
-      date: inv.date, seller: inv.seller, buyer: inv.buyer, invNo: inv.invNo, item: inv.item,
-      hsCode: inv.hsCode, grade: inv.grade || '', qty: inv.qty, rate: inv.rate, amount: inv.amount,
-      gstPct: inv.gstPct, gstValue: inv.gstValue, commPct: inv.commPct, commValue: inv.commValue,
-      notes: inv.notes || '', source: inv.source
-    }
-  })),
+  // A sales voucher IS the commission voucher: the sheet's deals are written as sales
+  // vouchers that carry the dealer they came through.
+  ...seed.invoices.map(inv => {
+    const amount = Math.round((Number(inv.amount) + Number.EPSILON) * 100) / 100;
+    const gstValue = Math.round((Number(inv.gstValue) + Number.EPSILON) * 100) / 100;
+    return {
+      id: inv.id, kind: 'voucher', type: 'sales',
+      data: {
+        date: inv.date, no: inv.invNo, seller: inv.seller, buyer: inv.buyer, dealer: DEALER,
+        lines: [{
+          item: inv.item || '', hsCode: inv.hsCode || '', qty: Number(inv.qty) || 0, rate: Number(inv.rate) || 0,
+          amount, taxPct: Number(inv.gstPct) || 0, taxAmt: gstValue,
+          total: Math.round((amount + gstValue + Number.EPSILON) * 100) / 100
+        }],
+        subTotal: amount, taxTotal: gstValue,
+        grandTotal: Math.round((amount + gstValue + Number.EPSILON) * 100) / 100,
+        comm: { enabled: Number(inv.commValue) > 0, pct: Number(inv.commPct) || 0, value: Number(inv.commValue) || 0 },
+        narration: inv.notes || '', source: inv.source
+      }
+    };
+  }),
   ...seed.payments.map(p => {
     const isExpense = p.kind === 'expense';
     return {
       id: p.id, kind: 'voucher', type: isExpense ? 'payment' : 'receipt',
       data: {
-        date: p.date, no: p.no || '', party: p.party, amount: p.amount, mode: p.mode || 'Bank',
+        date: p.date, no: p.no || '', party: p.party, dealer: DEALER, amount: p.amount, mode: p.mode || 'Bank',
         account: p.mode || 'Bank Account',
         narration: p.narration || (isExpense ? 'Payment' : 'Commission received'),
         auto: 'excel-import', partyType: isExpense ? 'expense' : 'seller', source: p.source

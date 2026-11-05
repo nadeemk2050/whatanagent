@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -19,6 +19,7 @@ import { buildExcel, buildPdf, downloadFile } from './commission-export.js';
 /* ---------------------------------------------------------------- utilities */
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const safeDecode = (v) => { try { return decodeURIComponent(v || ''); } catch (e) { return String(v || ''); } };
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
@@ -298,7 +299,43 @@ const items = () => records('master', 'item').sort((a, b) => (a.data.name || '')
 const banks = () => records('master', 'bank');
 const taxes = () => records('master', 'tax');
 const expenseHeads = () => records('master', 'expense');
-const invoices = () => records('invoice', 'commission');
+const dealers = () => records('master', 'dealer').sort((a, b) => (a.data.name || '').localeCompare(b.data.name || ''));
+// In this book a sales voucher IS the commission voucher: every goods voucher that
+// carries brokerage on is one deal in the registers, exposed in the old invoice shape.
+// Rows written before that change (kind "invoice") are still read, so the app keeps
+// working on a server that has not been migrated yet — and disappears once it has.
+const commissionDeals = () => records('voucher')
+  .filter(v => (v.type === 'sales' || v.type === 'purchase') && num((v.data.comm || {}).value) > 0);
+
+function invoices() {
+  const out = records('invoice', 'commission');
+  for (const v of commissionDeals()) {
+    const d = v.data;
+    const lines = Array.isArray(d.lines) ? d.lines : [];
+    const amount = num(d.subTotal);
+    const gstValue = num(d.taxTotal);
+    out.push({
+      id: v.id, kind: 'voucher', type: v.type, rec: v,
+      data: {
+        date: d.date || '', invNo: d.no || '',
+        seller: d.seller || (v.type === 'purchase' ? d.party : ''),
+        buyer: d.buyer || (v.type === 'sales' ? d.party : ''),
+        dealer: d.dealer || '',
+        item: lines.map(l => l.item).filter(Boolean).join(', '),
+        hsCode: (lines[0] || {}).hsCode || '',
+        qty: lines.reduce((s, l) => s + num(l.qty), 0),
+        rate: num((lines[0] || {}).rate),
+        amount,
+        gstPct: amount ? r2(gstValue / amount * 100) : 0,
+        gstValue,
+        commPct: num((d.comm || {}).pct),
+        commValue: num((d.comm || {}).value),
+        notes: d.narration || ''
+      }
+    });
+  }
+  return out;
+}
 const vouchers = (type) => records('voucher', type);
 const allVouchers = () => records('voucher');
 
@@ -309,6 +346,8 @@ function partyByName(name) {
 // A party with role "both" counts as a seller and as a buyer.
 const sellerNames = () => parties().filter(p => (p.data.role || 'seller') !== 'buyer').map(p => p.data.name).filter(Boolean);
 const buyerNames = () => parties().filter(p => (p.data.role || 'seller') !== 'seller').map(p => p.data.name).filter(Boolean);
+// Money in this book only ever moves through a dealer.
+const dealerNames = () => dealers().map(d => d.data.name).filter(Boolean);
 // Both sides of a goods voucher, with the old single-`party` rows still readable.
 const voucherSeller = (d, type) => (d && (d.seller || (type === 'purchase' ? d.party : ''))) || '';
 const voucherBuyer = (d, type) => (d && (d.buyer || (type === 'sales' ? d.party : ''))) || '';
@@ -491,8 +530,8 @@ function ledgerRows() {
   for (const inv of invoices()) {
     const d = inv.data;
     rows.push({
-      kind: 'invoice', id: inv.id, rec: inv,
-      date: d.date || '', party: d.seller || '', counterparty: d.buyer || '',
+      kind: 'invoice', id: inv.id, rec: inv.rec,
+      date: d.date || '', party: d.seller || '', counterparty: d.buyer || '', dealer: d.dealer || '',
       invNo: d.invNo || '', item: d.item || '', hsCode: d.hsCode || '',
       qty: num(d.qty), rate: num(d.rate), amount: num(d.amount),
       gstPct: num(d.gstPct), gstValue: num(d.gstValue),
@@ -505,7 +544,7 @@ function ledgerRows() {
     if (v.type === 'receipt' || v.type === 'payment') {
       rows.push({
         kind: v.type, id: v.id, rec: v,
-        date: d.date || '', party: d.party || '', counterparty: d.account || '',
+        date: d.date || '', party: d.party || '', counterparty: d.account || '', dealer: '',
         invNo: d.no || '', item: '', hsCode: '',
         qty: 0, rate: 0, amount: 0, gstPct: 0, gstValue: 0, commPct: 0, commission: 0,
         received: num(d.amount),
@@ -655,6 +694,7 @@ function allTransactions() {
     out.push({
       id: inv.id, rec: inv, kind: 'commission',
       date: d.date || '', no: d.invNo || '', party: d.seller || '', against: d.buyer || '',
+      dealer: d.dealer || '',
       narration: d.notes || ('Commission on GST of invoice ' + (d.invNo || '')),
       item: d.item || '', hsCode: d.hsCode || '',
       base: num(d.amount), gst: num(d.gstValue), value: num(d.commValue),
@@ -668,7 +708,7 @@ function allTransactions() {
       out.push({
         id: v.id, rec: v, kind: v.type,
         date: d.date || '', no: d.no || '', party: voucherSeller(d, v.type),
-        against: voucherBuyer(d, v.type),
+        against: voucherBuyer(d, v.type), dealer: d.dealer || '',
         narration: d.narration || lines.map(l => (l.item || '') + ' x ' + money(l.qty, 0)).filter(Boolean).join(', '),
         item: lines.map(l => l.item).filter(Boolean).join(', '),
         hsCode: (lines[0] || {}).hsCode || '', lines,
@@ -752,7 +792,7 @@ function renderDayBook() {
               <tr>
                 <td data-label="Type"><span class="pill ${TXN[x.kind].pill}">${esc(TXN[x.kind].label)}</span></td>
                 <td class="mono strong" data-label="Voucher">${esc(x.no || '-')}</td>
-                <td class="wrap" data-label="Party">${esc(x.party || '-')}${x.against ? `<div class="muted sub">&#8594; ${esc(x.against)}</div>` : ''}${x.account ? `<div class="muted sub">${esc(x.account)}</div>` : ''}</td>
+                <td class="wrap" data-label="Party">${esc(x.party || '-')}${x.against ? `<div class="muted sub">&#8594; ${esc(x.against)}</div>` : ''}${x.dealer ? `<div class="sub" style="color:var(--violet)">via ${esc(x.dealer)}</div>` : ''}${x.account ? `<div class="muted sub">${esc(x.account)}</div>` : ''}</td>
                 <td class="wrap" data-label="Particulars">
                   <div class="cell-val">
                     <div>${esc(x.narration || '-')}</div>
@@ -860,14 +900,14 @@ function renderGoodsRegister(type) {
   const sum = (k) => r2(all.reduce((a, v) => a + num(v.data[k]), 0));
   const totalQty = all.reduce((a, v) => a + (v.data.lines || []).reduce((s, l) => s + num(l.qty), 0), 0);
   const hasBrokerage = all.some(v => num((v.data.comm || {}).value) > 0);
-  const colspan = 5;
+  const colspan = 6;
   const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
 
   const body = pageRows.length ? `
     <div class="table-wrap">
       <table class="rtable">
         <thead><tr>
-          ${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Items</th>
+          ${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Dealer</th><th>Items</th>
           ${sortTh('qty', 'Qty', true)}${sortTh('gst', 'Sub total', true)}${sortTh('gst', 'GST', true)}${sortTh('total', 'Total', true)}
           ${hasBrokerage ? '<th class="num">Brokerage</th>' : ''}<th></th>
         </tr></thead>
@@ -882,6 +922,7 @@ function renderGoodsRegister(type) {
             <td class="mono strong" data-label="Voucher">${esc(d.no || '-')}</td>
             <td class="wrap" data-label="Seller"><div class="cell-val"><div class="strong">${esc(seller || '-')}</div>${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</div></td>
             <td class="wrap" data-label="Buyer"><div class="cell-val">${esc(buyer || '-')}</div></td>
+            <td class="wrap" data-label="Dealer"><div class="cell-val">${esc(d.dealer || '-')}</div></td>
             <td class="wrap" data-label="Items"><div class="cell-val">${(d.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)} @ ${money(l.rate, 0)}</span>${num(l.taxPct) ? ` <span class="muted">(${money(l.taxPct, 0)}% GST)</span>` : ''}`).join('<br>') || '-'}</div></td>
             <td class="num" data-label="Qty">${money(qty, 0)}</td>
             <td class="num" data-label="Sub total">${money(d.subTotal)}</td>
@@ -972,19 +1013,18 @@ function partyRegisterRows(side) {
     if ((deal.date || '') > g.last) g.last = deal.date || '';
   };
 
-  const linked = new Set();
   for (const inv of invoices()) {
     const d = inv.data;
-    if (d.voucherId) linked.add(d.voucherId);
     const name = String((isSeller ? d.seller : d.buyer) || '').trim();
     if (!name) continue;
     const other = String((isSeller ? d.buyer : d.seller) || '').trim();
     bump(name, other, { date: d.date, amount: d.amount, gst: d.gstValue, commission: d.commValue });
   }
 
+  // Goods vouchers without brokerage are still deals — they just earn nothing.
   for (const v of allVouchers()) {
     if (v.type !== 'purchase' && v.type !== 'sales') continue;
-    if (linked.has(v.id)) continue;
+    if (num((v.data.comm || {}).value) > 0) continue;
     const d = v.data;
     const seller = String(voucherSeller(d, v.type)).trim();
     const buyer = String(voucherBuyer(d, v.type)).trim();
@@ -1097,6 +1137,240 @@ function openPartyDeals(side, name) {
   render();
 }
 
+/* ---------------------------------------------------------------- dealers */
+// Every dealer, with what is still to come in from them.
+function dealerSummaries() {
+  const groups = new Map();
+  const touch = (name) => {
+    let g = groups.get(name);
+    if (!g) {
+      g = { name, deals: 0, commission: 0, received: 0, balance: 0, last: '' };
+      groups.set(name, g);
+    }
+    return g;
+  };
+  for (const d of dealers()) {
+    const name = String(d.data.name || '').trim();
+    if (name) touch(name);
+  }
+  for (const inv of invoices()) {
+    const name = String(inv.data.dealer || '').trim();
+    if (!name) continue;
+    const g = touch(name);
+    g.deals += 1;
+    g.commission = r2(g.commission + num(inv.data.commValue));
+    if ((inv.data.date || '') > g.last) g.last = inv.data.date || '';
+  }
+  for (const v of vouchers('receipt')) {
+    const name = String(v.data.dealer || v.data.party || '').trim();
+    if (!name) continue;
+    const g = touch(name);
+    g.received = r2(g.received + num(v.data.amount));
+  }
+  for (const g of groups.values()) g.balance = r2(g.commission - g.received);
+  return [...groups.values()];
+}
+
+function renderDealers() {
+  const all = dealerSummaries();
+  const q = state.filter.q.trim().toLowerCase();
+  const filtered = q ? all.filter(r => r.name.toLowerCase().includes(q)) : all;
+  const getters = {
+    name: r => r.name, deals: r => r.deals, commission: r => r.commission,
+    received: r => r.received, balance: r => r.balance
+  };
+  const sorted = sortList(filtered, getters, state.sort);
+  const slice = pageSlice(sorted);
+  const sum = (k) => r2(filtered.reduce((a, r) => a + r[k], 0));
+  const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
+
+  const body = slice.rows.length ? `
+    <div class="table-wrap">
+      <table class="rtable">
+        <thead><tr>
+          ${sortTh('name', 'Dealer')}${sortTh('deals', 'Deals', true)}
+          ${sortTh('commission', 'Commission', true)}${sortTh('received', 'Received', true)}${sortTh('balance', 'Balance', true)}<th></th>
+        </tr></thead>
+        <tbody>${slice.rows.map(r => `<tr>
+          <td class="wrap" data-label="Dealer"><div class="cell-val"><div class="strong">${esc(r.name)}</div>${r.last ? `<div class="muted sub">last ${esc(fmtDate(r.last))}</div>` : ''}</div></td>
+          <td class="num" data-label="Deals">${r.deals}</td>
+          <td class="num strong" style="color:var(--brand)" data-label="Commission">${money(r.commission)}</td>
+          <td class="num" style="color:var(--amber)" data-label="Received">${r.received ? money(r.received) : '-'}</td>
+          <td class="num strong" data-label="Balance">${money(r.balance)}</td>
+          <td class="cell-actions"><div class="row-actions">
+            <button class="icon-btn" data-open-dealer="${esc(r.name)}" title="Open the dealer register">${ICON.edit}</button>
+          </div></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr>
+          <td colspan="2" data-label="Total">Total (${filtered.length} dealer${filtered.length === 1 ? '' : 's'})</td>
+          <td class="num" data-label="Commission">${money(sum('commission'))}</td>
+          <td class="num" data-label="Received">${money(sum('received'))}</td>
+          <td class="num" data-label="Balance">${money(sum('balance'))}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>
+    </div>` : emptyState(
+      'No dealers yet',
+      'Add your dealers in Manage Master → Dealer Names, then pick one on a sales voucher.',
+      '<button class="btn primary" data-add-dealer="1">Add a dealer</button>'
+    );
+
+  $('#main').innerHTML = `
+    <div class="card flexcard">
+      <div class="toolbar">
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search dealer..." value="${esc(state.filter.q)}"></div>
+        <span class="muted" style="font-size:12.5px;margin-left:auto">${filtered.length} of ${all.length}</span>
+      </div>
+      ${body}
+      ${pagerHtml(slice)}
+    </div>`;
+
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
+  $$('[data-open-dealer]').forEach(b => b.addEventListener('click', () => openDealerRegister(b.dataset.openDealer)));
+  $$('[data-add-dealer]').forEach(b => b.addEventListener('click', () => masterModal('dealer')));
+}
+
+function openDealerRegister(name) {
+  state.view = 'dealer:' + encodeURIComponent(name);
+  state.page = 1;
+  state.filter.q = '';
+  render();
+}
+
+// One dealer's full ledger: every deal they brought (commission Dr) against every
+// receipt from them (Cr), with a running balance.
+function dealerLedger(name) {
+  const key = String(name || '').trim().toLowerCase();
+  const rows = [];
+  for (const inv of invoices()) {
+    if (String(inv.data.dealer || '').trim().toLowerCase() !== key) continue;
+    const d = inv.data;
+    const qty = num(d.qty), rate = num(d.rate);
+    rows.push({
+      kind: 'deal', id: inv.id,
+      date: d.date || '', no: d.invNo || '',
+      seller: d.seller || '', buyer: d.buyer || '',
+      item: d.item || '', hsCode: d.hsCode || '',
+      qty, rate, amount: r2(qty * rate) || num(d.amount),
+      gstPct: num(d.gstPct), gstValue: num(d.gstValue),
+      commPct: num(d.commPct), commValue: num(d.commValue),
+      received: 0
+    });
+  }
+  for (const v of vouchers('receipt')) {
+    if (String(v.data.dealer || v.data.party || '').trim().toLowerCase() !== key) continue;
+    rows.push({
+      kind: 'receipt', id: v.id,
+      date: v.data.date || '', no: v.data.no || '',
+      seller: '', buyer: '', item: v.data.narration || 'Commission received', hsCode: '',
+      qty: 0, rate: 0, amount: 0, gstPct: 0, gstValue: 0, commPct: 0, commValue: 0,
+      received: num(v.data.amount)
+    });
+  }
+  rows.sort((a, b) => (a.date || '9999-99-99').localeCompare(b.date || '9999-99-99')
+    || (a.kind === b.kind ? 0 : a.kind === 'deal' ? -1 : 1)
+    || String(a.no).localeCompare(String(b.no)));
+  let bal = 0;
+  for (const r of rows) {
+    bal = r2(bal + r.commValue - r.received);
+    r.balance = bal;
+  }
+  return rows;
+}
+
+function renderDealerRegister(name) {
+  const rows = dealerLedger(name);
+  const slice = pageSlice(rows);
+  const sum = (k) => r2(rows.reduce((a, r) => a + r[k], 0));
+  const deals = rows.filter(r => r.kind === 'deal').length;
+  const closing = rows.length ? rows[rows.length - 1].balance : 0;
+
+  const body = slice.rows.length ? `
+    <div class="table-wrap">
+      <table class="rtable ledger dense">
+        <thead><tr>
+          <th>Inv Date</th><th>Inv No.</th><th>Seller Name</th><th>Buyer</th><th>Item</th><th>HS Code</th>
+          <th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th>
+          <th class="num">GST %</th><th class="num">GST Value</th>
+          <th class="num">Comm %</th><th class="num">Commission (Dr.)</th>
+          <th class="num">Com Recv (Cr.)</th><th class="num">Running Balance</th><th></th>
+        </tr></thead>
+        <tbody>${slice.rows.map(r => r.kind === 'receipt' ? `<tr class="row-cr">
+          <td class="mono nowrap" data-label="Inv Date">${esc(fmtDate(r.date))}</td>
+          <td class="mono strong" data-label="Inv No."><span class="pill ok">Receipt</span> ${esc(r.no || '-')}</td>
+          <td data-label="Seller Name">-</td>
+          <td data-label="Buyer">-</td>
+          <td class="wrap muted" data-label="Item" colspan="2">${esc(r.item || 'Commission received')}</td>
+          <td class="num" data-label="Qty">-</td>
+          <td class="num" data-label="Rate">-</td>
+          <td class="num" data-label="Amount">-</td>
+          <td class="num" data-label="GST %">-</td>
+          <td class="num" data-label="GST Value">-</td>
+          <td class="num" data-label="Comm %">-</td>
+          <td class="num" data-label="Commission (Dr.)">-</td>
+          <td class="num strong" style="color:var(--amber)" data-label="Com Recv (Cr.)">${money(r.received)}</td>
+          <td class="num strong" data-label="Running Balance">${money(r.balance)}</td>
+          <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(r.id)}" title="Open receipt">${ICON.edit}</button></div></td>
+        </tr>` : `<tr>
+          <td class="mono nowrap" data-label="Inv Date">${esc(fmtDate(r.date))}</td>
+          <td class="mono strong" data-label="Inv No.">${esc(r.no || '-')}</td>
+          <td class="wrap" data-label="Seller Name">${esc(r.seller || '-')}</td>
+          <td class="wrap" data-label="Buyer">${esc(r.buyer || '-')}</td>
+          <td class="wrap" data-label="Item">${esc(r.item || '-')}</td>
+          <td class="mono muted" data-label="HS Code">${esc(r.hsCode || '-')}</td>
+          <td class="num" data-label="Qty">${r.qty ? money(r.qty, 0) : '-'}</td>
+          <td class="num" data-label="Rate">${r.rate ? money(r.rate, 0) : '-'}</td>
+          <td class="num" data-label="Amount">${r.amount ? money(r.amount, 0) : '-'}</td>
+          <td class="num" data-label="GST %">${r.gstPct ? money(r.gstPct, 0) + '%' : '-'}</td>
+          <td class="num" data-label="GST Value">${r.gstValue ? money(r.gstValue, 0) : '-'}</td>
+          <td class="num" data-label="Comm %">${r.commPct ? money(r.commPct, 0) + '%' : '-'}</td>
+          <td class="num strong" style="color:var(--brand)" data-label="Commission (Dr.)">${r.commValue ? money(r.commValue) : '-'}</td>
+          <td class="num" data-label="Com Recv (Cr.)">-</td>
+          <td class="num strong" data-label="Running Balance">${money(r.balance)}</td>
+          <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(r.id)}" title="Open deal">${ICON.edit}</button></div></td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr>
+          <td colspan="8" data-label="Total">Total (${deals} deal${deals === 1 ? '' : 's'})</td>
+          <td class="num" data-label="Amount">${money(sum('amount'), 0)}</td>
+          <td></td>
+          <td class="num" data-label="GST Value">${money(sum('gstValue'), 0)}</td>
+          <td></td>
+          <td class="num" data-label="Commission (Dr.)">${money(sum('commValue'))}</td>
+          <td class="num" data-label="Com Recv (Cr.)">${money(sum('received'))}</td>
+          <td class="num" data-label="Running Balance">${money(closing)}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>
+    </div>` : emptyState(
+      'No deals from this dealer yet',
+      'Pick this dealer on a sales voucher (with commission switched on) and the deal appears here.',
+      ''
+    );
+
+  $('#main').innerHTML = `
+    <div class="page-head">
+      <button class="btn sm" data-back="1">\u2039 All dealers</button>
+      <div style="min-width:0">
+        <h2 class="nowrap" style="overflow:hidden;text-overflow:ellipsis">${esc(name)}</h2>
+      </div>
+      <span class="spacer" style="flex:1"></span>
+      <span class="slip"><span>Deals</span><b>${deals}</b></span>
+      <span class="slip"><span>Received</span><b style="color:var(--amber)">${money(sum('received'))}</b></span>
+      <span class="slip"><span>Balance</span><b style="color:${closing > 0 ? 'var(--brand)' : 'var(--ink)'}">${money(closing)}</b></span>
+    </div>
+    <div class="card flexcard">
+      ${body}
+      ${pagerHtml(slice)}
+    </div>`;
+
+  const back = $('[data-back]');
+  if (back) back.addEventListener('click', () => navigate('dealers'));
+  wirePager($('#main'), slice);
+  $$('[data-edit]', $('#main')).forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+}
+
 /* ---------------------------------------------------------------- F2 / Alt+F2 period view */
 function openPeriodDialog(mode) {
   const todayStr = today();
@@ -1186,7 +1460,7 @@ function matchesFilter(row) {
   if (f.to && (row.date || '') > f.to) return false;
   if (f.year && String(row.date || '').slice(0, 4) !== f.year) return false;
   if (f.q) {
-    const hay = [row.party, row.counterparty, row.invNo, row.item, row.hsCode, row.narration].join(' ').toLowerCase();
+    const hay = [row.party, row.counterparty, row.dealer, row.invNo, row.item, row.hsCode, row.narration].join(' ').toLowerCase();
     if (!hay.includes(f.q.toLowerCase())) return false;
   }
   return true;
@@ -1224,6 +1498,7 @@ function renderRegister() {
               <div class="cell-val">
                 <div class="strong">${esc(r.party || '-')}</div>
                 <div class="muted sub">${r.counterparty ? '&#8594; ' + esc(r.counterparty) : ''}${r.counterparty && (r.invNo || r.narration) ? ' &middot; ' : ''}${r.invNo ? esc(r.invNo) : ''}${r.invNo && r.narration ? ' &middot; ' : ''}${r.narration ? esc(r.narration) : ''}</div>
+                ${r.dealer ? `<div class="sub" style="color:var(--violet)">Dealer: ${esc(r.dealer)}</div>` : ''}
               </div>
             </td>
             <td class="wrap" data-label="Item">
@@ -1351,6 +1626,16 @@ const MASTERS = {
       { k: 'pct', t: 'Rate', num: true, cell: (d) => money(d.pct || 0, 0) + '% of GST' },
       { k: 'notes', t: 'Notes', cell: (d) => `<span class="muted">${esc(d.notes || '—')}</span>` }
     ]
+  },
+  dealer: {
+    title: 'Dealer Names', sub: 'Third-party dealers who bring the customers — money is received from them.',
+    addLabel: 'Add dealer',
+    columns: [
+      { k: 'name', t: 'Dealer', cell: (d) => `<div class="strong">${esc(d.name || '—')}</div>${d.company ? `<div class="muted" style="font-size:11.5px">${esc(d.company)}</div>` : ''}` },
+      { k: 'phone', t: 'Contact', cell: (d) => `<span class="muted">${esc(d.phone || d.email || '—')}</span>` },
+      { k: 'commissionPct', t: 'Commission %', num: true, cell: (d) => num(d.commissionPct) ? money(d.commissionPct, 0) + '% of GST' : '—' },
+      { k: 'notes', t: 'Notes', cell: (d) => `<span class="muted">${esc(d.notes || '—')}</span>` }
+    ]
   }
 };
 
@@ -1473,6 +1758,21 @@ function masterModal(type, rec) {
       ${field('mName', 'Name <span class="req">*</span>', `<input id="mName" value="${esc(d.name || '')}" placeholder="Default brokerage" autofocus>`)}
       ${field('mPct', 'Percent of GST', `<input id="mPct" type="number" step="0.01" value="${num(d.pct, 20)}">`)}
       ${field('mNotes', 'Notes', `<input id="mNotes" value="${esc(d.notes || '')}">`)}`;
+  } else if (type === 'dealer') {
+    fields = `
+      ${field('mName', 'Dealer name <span class="req">*</span>', `<input id="mName" value="${esc(d.name || '')}" placeholder="e.g. Bilal Traders" autofocus>`)}
+      <div class="grid-2">
+        ${field('mCompany', 'Firm / company', `<input id="mCompany" value="${esc(d.company || '')}" placeholder="Optional">`)}
+        ${field('mPhone', 'Phone', `<input id="mPhone" value="${esc(d.phone || '')}" placeholder="03xx…">`)}
+      </div>
+      <div class="grid-2">
+        ${field('mComm', 'Commission % of GST', `<input id="mComm" type="number" step="0.01" min="0" max="100" value="${num(d.commissionPct, 20)}">`, 'Applied automatically on new entries for this dealer.')}
+        ${field('mActive', 'Status', `<select id="mActive">
+          <option value="1" ${d.active === false ? '' : 'selected'}>Active</option>
+          <option value="0" ${d.active === false ? 'selected' : ''}>Inactive</option>
+        </select>`)}
+      </div>
+      ${field('mNotes', 'Notes', `<input id="mNotes" value="${esc(d.notes || '')}">`)}`;
   }
 
   const modal = openModal(`
@@ -1511,6 +1811,12 @@ function masterModal(type, rec) {
     } else if (type === 'rate') {
       if (!val('mName')) return toast('Name is required', 'err');
       Object.assign(data, { name: val('mName'), pct: num(val('mPct')), notes: val('mNotes') });
+    } else if (type === 'dealer') {
+      if (!val('mName')) return toast('Dealer name is required', 'err');
+      Object.assign(data, {
+        name: val('mName'), company: val('mCompany'), phone: val('mPhone'),
+        commissionPct: num(val('mComm')), active: val('mActive') !== '0', notes: val('mNotes')
+      });
     }
     await saveRecord('master', type, data, rec);
     closeModal();
@@ -1519,134 +1825,13 @@ function masterModal(type, rec) {
   });
 }
 
-/* ---------------------------------------------------------------- commission entry modal */
-function commissionModal(rec) {
-  const d = rec ? rec.data : {
-    date: today(), seller: '', buyer: '', invNo: '',
-    item: '', hsCode: '', grade: '', qty: 0, rate: 0, amount: 0,
-    gstPct: 18, gstValue: 0, commPct: 20, commValue: 0, notes: ''
-  };
-  const sellerOpts = sellerNames();
-  const buyerOpts = buyerNames();
-
-  const modal = openModal(`
-    <div class="modal-head">
-      <div><h3>${rec ? 'Edit commission entry' : 'New commission entry'}</h3>
-        <div class="sub">Amount → GST → your commission. Everything calculates as you type.</div></div>
-      <button class="icon-btn x" data-close>✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="grid-3">
-        <div class="field"><label for="cDate">Invoice date</label><input id="cDate" type="date" value="${esc(d.date || today())}"></div>
-        <div class="field"><label for="cInv">Invoice no.</label><input id="cInv" value="${esc(d.invNo || '')}" placeholder="829 / AQ-0461"></div>
-        <div class="field"><label for="cHs">HS code</label><input id="cHs" value="${esc(d.hsCode || '')}" placeholder="3901"></div>
-      </div>
-      <div class="grid-2">
-        <div class="field"><label for="cSeller">Seller (who supplies) <span class="req">*</span></label>
-          <input id="cSeller" list="dlSeller" value="${esc(d.seller || '')}" placeholder="Chagani" autocomplete="off">
-          <datalist id="dlSeller">${sellerOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-        </div>
-        <div class="field"><label for="cBuyer">Buyer (who receives)</label>
-          <input id="cBuyer" list="dlBuyer" value="${esc(d.buyer || '')}" placeholder="Buyer company" autocomplete="off">
-          <datalist id="dlBuyer">${buyerOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-        </div>
-      </div>
-      <div class="field"><label for="cItem">Item description</label>
-        <input id="cItem" list="dlItem" value="${esc(d.item || '')}" placeholder="ABS DANA" autocomplete="off">
-        <datalist id="dlItem">${items().map(i => `<option value="${esc(i.data.name)}">`).join('')}</datalist>
-      </div>
-      <div class="grid-4">
-        <div class="field"><label for="cQty">Quantity</label><input id="cQty" type="number" step="0.01" value="${num(d.qty)}"></div>
-        <div class="field"><label for="cRate">Rate</label><input id="cRate" type="number" step="0.01" value="${num(d.rate)}"></div>
-        <div class="field"><label for="cAmount">Amount</label><input id="cAmount" type="number" step="0.01" value="${num(d.amount)}"></div>
-        <div class="field"><label for="cGstPct">GST %</label><input id="cGstPct" type="number" step="0.01" value="${num(d.gstPct, 18)}"></div>
-      </div>
-      <div class="grid-3">
-        <div class="field"><label for="cGstVal">GST value</label><input id="cGstVal" type="number" step="0.01" value="${num(d.gstValue)}" readonly></div>
-        <div class="field"><label for="cCommPct">Commission %</label><input id="cCommPct" type="number" step="0.01" value="${num(d.commPct, 20)}"></div>
-        <div class="field"><label for="cCommVal">Commission value</label><input id="cCommVal" type="number" step="0.01" value="${num(d.commValue)}" readonly></div>
-      </div>
-      <div class="field"><label for="cNotes">Notes</label><input id="cNotes" value="${esc(d.notes || '')}" placeholder="Optional"></div>
-      <div class="banner info" style="margin:0">
-        <span id="cFormula">—</span>
-      </div>
-    </div>
-    <div class="modal-foot">
-      ${rec ? '<button class="btn danger left" id="cDelete">Delete</button>' : ''}
-      <button class="btn" data-close>Cancel</button>
-      <button class="btn primary" id="cSave">Save entry</button>
-    </div>`, { wide: false });
-
-  const get = (id) => $('#' + id, modal);
-  const recalc = (source) => {
-    const qty = num(get('cQty').value), rate = num(get('cRate').value);
-    if (source === 'qty' || source === 'rate') {
-      const amt = r2(qty * rate);
-      if (amt) get('cAmount').value = amt;
-    }
-    const amount = num(get('cAmount').value);
-    const gstPct = num(get('cGstPct').value);
-    const gstValue = r2(amount * gstPct / 100);
-    get('cGstVal').value = gstValue || 0;
-    const commPct = num(get('cCommPct').value);
-    const commValue = r2(gstValue * commPct / 100);
-    get('cCommVal').value = commValue || 0;
-    $('#cFormula', modal).textContent =
-      `${money(amount, 0)} × ${gstPct}% = GST ${money(gstValue, 0)}  →  ${commPct}% of GST = commission ${money(commValue, 0)}`;
-  };
-
-  ['cQty', 'cRate', 'cAmount', 'cGstPct', 'cCommPct'].forEach(id => get(id).addEventListener('input', (e) => recalc(id.replace('c', '').toLowerCase())));
-  get('cSeller').addEventListener('change', () => {
-    const name = get('cSeller').value.trim();
-    if (name && !rec) get('cCommPct').value = commissionPctFor(name);
-    recalc();
-  });
-  get('cItem').addEventListener('change', () => {
-    const it = itemByName(get('cItem').value);
-    if (it) {
-      if (!get('cHs').value) get('cHs').value = it.data.hsCode || '';
-      get('cGstPct').value = num(it.data.gstPct, 18);
-      recalc();
-    }
-  });
-  recalc();
-  $$('[data-close]', modal).forEach(b => b.addEventListener('click', closeModal));
-  if (rec) $('#cDelete', modal).addEventListener('click', () => { closeModal(); askDelete(rec.id); });
-
-  $('#cSave', modal).addEventListener('click', async () => {
-    const seller = get('cSeller').value.trim();
-    if (!seller) { toast('Seller is required', 'err'); return get('cSeller').focus(); }
-    const data = {
-      date: get('cDate').value || today(),
-      seller,
-      buyer: get('cBuyer').value.trim(),
-      invNo: get('cInv').value.trim(),
-      item: get('cItem').value.trim().toUpperCase(),
-      hsCode: get('cHs').value.trim(),
-      grade: d.grade || '',
-      qty: num(get('cQty').value),
-      rate: num(get('cRate').value),
-      amount: num(get('cAmount').value),
-      gstPct: num(get('cGstPct').value),
-      gstValue: num(get('cGstVal').value),
-      commPct: num(get('cCommPct').value),
-      commValue: num(get('cCommVal').value),
-      notes: get('cNotes').value.trim()
-    };
-    await saveRecord('invoice', 'commission', data, rec);
-    closeModal();
-    toast(rec ? 'Entry updated' : 'Commission entry saved');
-    render();
-  });
-}
-
 /* ---------------------------------------------------------------- vouchers */
 const VOUCHER_META = {
-  payment: { title: 'Payment Vouchers', sub: 'Money you pay out — expenses, deductions, industry payments.', code: 'PV', tone: 'payment' },
-  receipt: { title: 'Receipt Vouchers', sub: 'Commission and payments received from companies.', code: 'RV', tone: 'receipt' },
+  payment: { title: 'Payment Vouchers', sub: 'Money you pay out to a dealer — expenses, deductions, industry payments.', code: 'PV', tone: 'payment' },
+  receipt: { title: 'Receipt Vouchers', sub: 'Commission received from dealers — never straight from a buyer or seller.', code: 'RV', tone: 'receipt' },
   journal: { title: 'Journal Vouchers', sub: 'Adjustments between two accounts.', code: 'JV', tone: 'journal' },
   purchase: { title: 'Purchase Vouchers', sub: 'Material bought from a seller — with GST on every line.', code: 'PU', tone: 'purchase' },
-  sales: { title: 'Sales Vouchers', sub: 'Material sold to a buyer — with GST on every line.', code: 'SL', tone: 'sales' }
+  sales: { title: 'Sales Vouchers', sub: 'The commission voucher — seller, buyer, dealer and the GST your brokerage is earned on.', code: 'SL', tone: 'sales' }
 };
 
 function nextVoucherNo(type) {
@@ -1691,31 +1876,32 @@ function renderVouchers(type) {
     }
     if (type === 'purchase' || type === 'sales') {
       return `<table class="rtable">
-        <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Items</th>
+        <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Dealer</th><th>Items</th>
           ${sortTh('gst', 'Sub total', true)}${sortTh('gst', 'GST', true)}${sortTh('total', 'Total', true)}<th></th></tr></thead>
         <tbody>${list.map(v => `<tr>
           <td class="mono" data-label="Date">${esc(fmtDate(v.data.date))}</td>
           <td class="mono strong" data-label="Voucher">${esc(v.data.no || '-')}</td>
           <td class="wrap" data-label="Seller"><div class="strong">${esc(voucherSeller(v.data, type) || '-')}</div>${v.data.narration ? `<div class="muted sub">${esc(v.data.narration)}</div>` : ''}</td>
           <td class="wrap" data-label="Buyer">${esc(voucherBuyer(v.data, type) || '-')}</td>
+          <td class="wrap" data-label="Dealer">${esc(v.data.dealer || '-')}</td>
           <td class="wrap" data-label="Items">${(v.data.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)}</span>`).join('<br>') || '-'}</td>
           <td class="num" data-label="Sub total">${money(v.data.subTotal)}</td>
           <td class="num" data-label="GST">${money(v.data.taxTotal)}</td>
           <td class="num strong" data-label="Total">${money(v.data.grandTotal)}</td>
           <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(v.id)}">${ICON.edit}</button><button class="icon-btn del" data-del="${esc(v.id)}">${ICON.del}</button></div></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="5" data-label="Total">Total (${sorted.length})</td>
+        <tfoot><tr><td colspan="6" data-label="Total">Total (${sorted.length})</td>
           <td class="num" data-label="Sub total">${money(sorted.reduce((a, v) => a + num(v.data.subTotal), 0))}</td>
           <td class="num" data-label="GST">${money(sorted.reduce((a, v) => a + num(v.data.taxTotal), 0))}</td>
           <td class="num" data-label="Total">${money(sorted.reduce((a, v) => a + num(v.data.grandTotal), 0))}</td><td></td></tr></tfoot>
       </table>`;
     }
     return `<table class="rtable">
-      <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Party')}<th>${type === 'receipt' ? 'Received in' : 'Paid from'}</th>${sortTh('amount', 'Amount', true)}<th>Narration</th><th></th></tr></thead>
+      <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Dealer')}<th>${type === 'receipt' ? 'Received in' : 'Paid from'}</th>${sortTh('amount', 'Amount', true)}<th>Narration</th><th></th></tr></thead>
       <tbody>${list.map(v => `<tr>
         <td class="mono" data-label="Date">${esc(fmtDate(v.data.date))}</td>
         <td class="mono strong" data-label="Voucher">${esc(v.data.no || '-')}</td>
-        <td class="wrap strong" data-label="Party">${esc(v.data.party || '-')}</td>
+        <td class="wrap strong" data-label="Dealer">${esc(v.data.party || '-')}</td>
         <td class="wrap" data-label="${type === 'receipt' ? 'Received in' : 'Paid from'}">${esc(v.data.account || '-')}</td>
         <td class="num strong" style="color:${type === 'receipt' ? 'var(--brand)' : 'var(--amber)'}" data-label="Amount">${money(v.data.amount)}</td>
         <td class="wrap muted" data-label="Narration">${esc(v.data.narration || '')}</td>
@@ -1807,32 +1993,37 @@ function pickerValue(root, id) {
 function voucherModal(type, rec) {
   const meta = VOUCHER_META[type];
   const isGoods = type === 'purchase' || type === 'sales';
+  // Money only moves through dealers: receipt and payment vouchers are dealer-only.
+  const isMoney = type === 'receipt' || type === 'payment';
   const d = rec ? rec.data : {
     date: today(), no: nextVoucherNo(type), party: '', account: banks()[0]?.data.name || 'Bank Account',
     amount: 0, narration: '', debitAccount: '', creditAccount: '',
-    seller: '', buyer: '',
+    seller: '', buyer: '', dealer: '',
     lines: [{ item: '', hsCode: '', qty: 0, rate: 0, amount: 0, taxPct: 18, taxAmt: 0, total: 0 }],
     subTotal: 0, taxTotal: 0, grandTotal: 0,
-    comm: { enabled: false, pct: 20, value: 0 }
+    // A sales voucher is the commission voucher, so brokerage starts switched on.
+    comm: { enabled: type === 'sales', pct: 20, value: 0 }
   };
   const accountOpts = banks().map(b => b.data.name);
-  const partyOpts = parties().map(p => p.data.name);
+  const partyOpts = isMoney ? dealerNames() : parties().map(p => p.data.name);
   // Goods vouchers name both sides of the deal: a seller always, a buyer on sales.
   const sellerValue = isGoods ? (d.seller || (type === 'purchase' ? d.party : '')) : '';
   const buyerValue = isGoods ? (d.buyer || (type === 'sales' ? d.party : '')) : '';
+  const dealerValue = d.dealer || '';
 
   const head = `
-    <div class="grid-${isGoods ? '2' : '3'}">
+    <div class="grid-${isMoney ? '2' : isGoods ? '2' : '3'}">
       <div class="field"><label for="vDate">Date</label><input id="vDate" type="date" value="${esc(d.date || today())}"></div>
       <div class="field"><label for="vNo">Voucher no.</label><input id="vNo" value="${esc(d.no || '')}"></div>
-      ${isGoods ? '' : `<div class="field"><label for="vParty">Party${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
-        <input id="vParty" list="dlVP" value="${esc(d.party || '')}" autocomplete="off" placeholder="Company name">
+      ${isGoods ? '' : `<div class="field"><label for="vParty">${isMoney ? 'Dealer' : 'Party'}${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
+        <input id="vParty" list="dlVP" value="${esc(d.party || '')}" autocomplete="off" placeholder="${isMoney ? 'Dealer name' : 'Company name'}">
         <datalist id="dlVP">${partyOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
       </div>`}
     </div>
-    ${isGoods ? `<div class="grid-2">
+    ${isGoods ? `<div class="grid-3">
       ${partyPicker('vSeller', 'Seller', sellerValue, sellerNames(), true)}
       ${partyPicker('vBuyer', 'Buyer', buyerValue, buyerNames(), type === 'sales')}
+      ${partyPicker('vDealer', 'Dealer', dealerValue, dealerNames(), type === 'sales')}
     </div>` : ''}`;
 
   let body = '';
@@ -2008,7 +2199,7 @@ function voucherModal(type, rec) {
   if (type === 'purchase' || type === 'sales') {
     bindLines();
     calcLines();
-    wirePartyPickers(modal, ['vSeller', 'vBuyer']);
+    wirePartyPickers(modal, ['vSeller', 'vBuyer', 'vDealer']);
     get('vAddLine').addEventListener('click', () => {
       lines.push({ item: '', hsCode: '', qty: 0, rate: 0, amount: 0, taxPct: 18, taxAmt: 0, total: 0 });
       redrawLines();
@@ -2039,8 +2230,8 @@ function voucherModal(type, rec) {
     if (type === 'payment' || type === 'receipt') {
       const amount = num(get('vAmount').value);
       if (!amount) { toast('Amount is required', 'err'); return; }
-      if (!party) { toast('Party is required', 'err'); return; }
-      data = { date, no, party, account: get('vAccount').value, amount, narration, head: get('vHead') ? get('vHead').value : '', partyType: type === 'receipt' ? 'seller' : 'expense' };
+      if (!party) { toast('Dealer is required', 'err'); return; }
+      data = { date, no, party, account: get('vAccount').value, amount, narration, head: get('vHead') ? get('vHead').value : '', partyType: 'dealer' };
     } else if (type === 'journal') {
       const amount = num(get('vAmount').value);
       const debitAccount = get('vDebit').value.trim();
@@ -2053,8 +2244,10 @@ function voucherModal(type, rec) {
       if (!clean.length) { toast('Add at least one line with quantity and rate', 'err'); return; }
       const seller = pickerValue(modal, 'vSeller').trim();
       const buyer = pickerValue(modal, 'vBuyer').trim();
+      const dealer = pickerValue(modal, 'vDealer').trim();
       if (!seller) { toast('Seller is required', 'err'); return; }
       if (type === 'sales' && !buyer) { toast('Buyer is required', 'err'); return; }
+      if (type === 'sales' && !dealer) { toast('Dealer is required', 'err'); return; }
       const subTotal = r2(clean.reduce((a, l) => a + l.amount, 0));
       const taxTotal = r2(clean.reduce((a, l) => a + l.taxAmt, 0));
       const grandTotal = r2(subTotal + taxTotal);
@@ -2062,7 +2255,7 @@ function voucherModal(type, rec) {
       const commPct = num(get('vCommPct').value);
       data = {
         date, no, narration,
-        seller, buyer,
+        seller, buyer, dealer,
         // `party` keeps its old meaning: the seller on a purchase, the buyer on a sale.
         party: type === 'purchase' ? seller : buyer,
         lines: clean, subTotal, taxTotal, grandTotal,
@@ -2071,41 +2264,8 @@ function voucherModal(type, rec) {
     }
 
     await saveRecord('voucher', type, data, rec);
-
-    // A purchase/sales voucher with brokerage on owns exactly one register entry:
-    // created with the voucher, updated when the voucher changes, removed when the
-    // commission is switched off.
-    if (type === 'purchase' || type === 'sales') {
-      const saved = rec || [...state.records.values()].find(r => r.kind === 'voucher' && r.type === type && r.data.no === data.no);
-      const linked = saved ? invoices().find(i => i.data.voucherId === saved.id) : null;
-      const wantsCommission = data.comm.enabled && data.comm.value > 0;
-      if (wantsCommission) {
-        // The register keeps both sides of the deal so a seller-wise register can be
-        // built from it: who sold, to whom, and what GST the brokerage shared.
-        const dealSeller = data.seller || (type === 'purchase' ? data.party : '') || COMPANY;
-        const dealBuyer = data.buyer || (type === 'sales' ? data.party : '') || COMPANY;
-        await saveRecord('invoice', 'commission', {
-          date: data.date,
-          seller: dealSeller,
-          buyer: dealBuyer,
-          invNo: data.no,
-          item: (data.lines[0] || {}).item || '',
-          hsCode: (data.lines[0] || {}).hsCode || '',
-          qty: (data.lines[0] || {}).qty || 0,
-          rate: (data.lines[0] || {}).rate || 0,
-          amount: data.subTotal,
-          gstPct: data.subTotal ? r2(data.taxTotal / data.subTotal * 100) : 0,
-          gstValue: data.taxTotal,
-          commPct: data.comm.pct,
-          commValue: data.comm.value,
-          notes: 'Brokerage from ' + type + ' voucher ' + data.no,
-          voucherId: saved ? saved.id : ''
-        }, linked || undefined);
-      } else if (linked) {
-        await deleteRecord(linked);
-      }
-    }
-
+    // A sales voucher with brokerage on IS the commission entry, so the registers read
+    // it directly — there is no second record to create or clean up.
     closeModal();
     toast(rec ? 'Voucher updated' : 'Voucher saved');
     render();
@@ -2132,7 +2292,6 @@ function askDelete(id) {
 function openEntry(id) {
   const rec = byId(id);
   if (!rec) return;
-  if (rec.kind === 'invoice') return commissionModal(rec);
   if (rec.kind === 'voucher') return voucherModal(rec.type, rec);
   if (rec.kind === 'master') return masterModal(rec.type, rec);
 }
@@ -2151,13 +2310,13 @@ function exportDocument() {
       subtitle: COMPANY + ' - ' + rows.length + ' rows - ' + reportLabel(),
       sheetName: 'Commission Register',
       columns: [
-        { label: 'Date' }, { label: 'Seller / Party' }, { label: 'Buyer' }, { label: 'Invoice' },
+        { label: 'Date' }, { label: 'Seller / Party' }, { label: 'Buyer' }, { label: 'Dealer' }, { label: 'Invoice' },
         { label: 'Item' }, { label: 'HS' }, { label: 'Qty', num: true }, { label: 'Rate', num: true },
         { label: 'Amount', num: true }, { label: 'GST %', num: true }, { label: 'GST', num: true },
         { label: 'Comm %', num: true }, { label: 'Commission', num: true },
         { label: 'Received', num: true }, { label: 'Balance', num: true }, { label: 'Narration' }
       ],
-      rows: rows.map(r => [r.date, r.party, r.counterparty, r.invNo, r.item, r.hsCode,
+      rows: rows.map(r => [r.date, r.party, r.counterparty, r.dealer, r.invNo, r.item, r.hsCode,
         r.qty, r.rate, r.amount, r.gstPct, r.gstValue, r.commPct, r.commission, r.received, r.balance, r.narration])
     };
   }
@@ -2172,14 +2331,14 @@ function exportDocument() {
         filename: sub + '-register-' + stamp,
         title: meta.title || sub, subtitle: rows.length + ' vouchers', sheetName: meta.title,
         columns: [
-          { label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Items' },
+          { label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Dealer' }, { label: 'Items' },
           { label: 'Qty', num: true }, { label: 'Sub total', num: true },
           { label: 'GST', num: true }, { label: 'Total', num: true }, { label: 'Brokerage', num: true },
           { label: 'Narration' }
         ],
         rows: rows.map(v => {
           const d = v.data;
-          return [d.date, d.no, voucherSeller(d, sub), voucherBuyer(d, sub),
+          return [d.date, d.no, voucherSeller(d, sub), voucherBuyer(d, sub), d.dealer || '',
             (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}`).join(' | '),
             (d.lines || []).reduce((s, l) => s + num(l.qty), 0),
             num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''];
@@ -2209,6 +2368,41 @@ function exportDocument() {
       title: cfg.title, subtitle: rows.length + ' entries', sheetName: cfg.title,
       columns: used.map(k => ({ label: k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()), num: ['commissionPct', 'gstPct', 'rate'].includes(k) })),
       rows: rows.map(r => used.map(k => r.data[k] === undefined ? '' : r.data[k]))
+    };
+  }
+
+  if (kind === 'dealer') {
+    const name = safeDecode(sub);
+    const rows = dealerLedger(name);
+    return {
+      filename: 'dealer-' + name.replace(/[^\w]+/g, '-').toLowerCase() + '-' + stamp,
+      title: 'Dealer Register — ' + name, subtitle: rows.length + ' entries', sheetName: 'Dealer ' + name.slice(0, 20),
+      columns: [
+        { label: 'Inv Date' }, { label: 'Inv No.' }, { label: 'Seller Name' }, { label: 'Buyer' },
+        { label: 'Item' }, { label: 'HS Code' }, { label: 'Qty', num: true }, { label: 'Rate', num: true },
+        { label: 'Amount', num: true }, { label: 'GST %', num: true }, { label: 'GST Value', num: true },
+        { label: 'Comm %', num: true }, { label: 'Commission (Dr.)', num: true },
+        { label: 'Com Recv (Cr.)', num: true }, { label: 'Running Balance', num: true }
+      ],
+      rows: rows.map(r => [r.date, r.no, r.seller, r.buyer, r.item, r.hsCode,
+        r.qty, r.rate, r.amount, r.gstPct, r.gstValue, r.commPct, r.commValue, r.received, r.balance])
+    };
+  }
+
+  if (state.view === 'dealers') {
+    const getters = {
+      name: r => r.name, deals: r => r.deals, commission: r => r.commission,
+      received: r => r.received, balance: r => r.balance
+    };
+    const rows = sortList(dealerSummaries(), getters, state.sort);
+    return {
+      filename: 'dealers-register-' + stamp,
+      title: 'Dealers Register', subtitle: rows.length + ' dealers', sheetName: 'Dealers',
+      columns: [
+        { label: 'Dealer' }, { label: 'Deals', num: true }, { label: 'Commission', num: true },
+        { label: 'Received', num: true }, { label: 'Balance', num: true }
+      ],
+      rows: rows.map(r => [r.name, r.deals, r.commission, r.received, r.balance])
     };
   }
 
@@ -2248,12 +2442,12 @@ function exportDocument() {
     return {
       filename: type + '-register-' + (state.report.from || 'all'),
       title: meta.title, subtitle: rows.length + ' vouchers - ' + reportLabel(), sheetName: meta.title,
-      columns: [{ label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Items' },
+      columns: [{ label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Dealer' }, { label: 'Items' },
         { label: 'Qty', num: true }, { label: 'Sub total', num: true }, { label: 'GST', num: true },
         { label: 'Total', num: true }, { label: 'Brokerage', num: true }, { label: 'Narration' }],
       rows: rows.map(v => {
         const d = v.data;
-        return [d.date, d.no, voucherSeller(d, type), voucherBuyer(d, type),
+        return [d.date, d.no, voucherSeller(d, type), voucherBuyer(d, type), d.dealer || '',
           (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}`).join(' | '),
           (d.lines || []).reduce((s, l) => s + num(l.qty), 0),
           num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''];
@@ -2501,6 +2695,7 @@ function navigate(view) {
   state.page = 1;
   if (changedView) {
     if (view === 'sellers' || view === 'buyers') state.sort = { key: 'commission', dir: 'desc' };
+    else if (view === 'dealers') state.sort = { key: 'balance', dir: 'desc' };
     else if (view === 'sales' || view === 'purchases' || view === 'register') state.sort = { key: 'date', dir: 'desc' };
     else state.sort = { key: 'date', dir: 'asc' };
   }
@@ -2515,20 +2710,25 @@ const VIEW_TITLES = {
   sales: ['Sales Register', 'Every sale, with GST'],
   sellers: ['Seller Register', 'Seller-wise sales, GST and commission'],
   buyers: ['Buyer Register', 'Buyer-wise purchases, GST and commission'],
+  dealers: ['Dealers Register', 'Dealer-wise deals, commission and receipts'],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
 };
 
 function render() {
   const [kind, sub] = String(state.view).split(':');
-  const menuKey = kind === 'master' ? 'master:' + sub : kind === 'voucher' ? 'voucher:' + sub : kind;
+  let menuKey = kind === 'master' ? 'master:' + sub : kind === 'voucher' ? 'voucher:' + sub : kind;
+  if (kind === 'dealer') menuKey = 'dealers';
   $$('.menu-item[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === menuKey));
 
+  const dealName = kind === 'dealer' ? safeDecode(sub) : '';
   const titles = VIEW_TITLES[state.view] || (kind === 'master'
     ? [MASTERS[sub]?.title || 'Manage Master', 'Add, edit and remove master names']
     : kind === 'voucher'
       ? [VOUCHER_META[sub]?.title || 'Vouchers', VOUCHER_META[sub]?.sub || '']
-      : VIEW_TITLES.register);
+      : kind === 'dealer'
+        ? [dealName || 'Dealer', 'Dealer ledger — deals, commission and receipts']
+        : VIEW_TITLES.register);
   $('#pageTitle').textContent = titles[0];
   $('#pageSub').textContent = titles[1];
   document.title = titles[0] + ' — Commission Accounts';
@@ -2536,7 +2736,8 @@ function render() {
 
   // The register is a pure list: no second heading, no action buttons - the whole
   // window is the list, with a pager at the bottom.
-  const isList = kind === 'master' || kind === 'voucher' || ['register', 'daybook', 'purchases', 'sales', 'sellers', 'buyers'].includes(state.view);
+  const isList = kind === 'master' || kind === 'voucher' || kind === 'dealer'
+    || ['register', 'daybook', 'purchases', 'sales', 'sellers', 'buyers', 'dealers'].includes(state.view);
   const main = $('#main');
   main.className = 'main' + (isList ? ' fill' : ' scroll');
   main.scrollTop = 0;
@@ -2545,11 +2746,13 @@ function render() {
 
   if (kind === 'master') return renderMaster(sub);
   if (kind === 'voucher') return renderVouchers(sub);
+  if (kind === 'dealer') return renderDealerRegister(dealName);
   if (state.view === 'daybook') return renderDayBook();
   if (state.view === 'purchases') return renderGoodsRegister('purchase');
   if (state.view === 'sales') return renderGoodsRegister('sales');
   if (state.view === 'sellers') return renderPartyRegister('seller');
   if (state.view === 'buyers') return renderPartyRegister('buyer');
+  if (state.view === 'dealers') return renderDealers();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
   return renderRegister();

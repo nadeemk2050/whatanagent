@@ -65,19 +65,26 @@ const server = app.listen(PORT, async () => {
     const boot = await (await fetch(base + '/bootstrap', { headers: H })).json();
     const kinds = {};
     boot.records.forEach(r => { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
-    check('history imported: 132 commission invoices', kinds.invoice === 132, JSON.stringify(kinds));
-    check('history imported: 57 vouchers', kinds.voucher === 57, JSON.stringify(kinds));
-    check('masters imported', (kinds.master || 0) >= 13, String(kinds.master));
+    check('history imported as sales vouchers (no commission invoices left)', !kinds.invoice, JSON.stringify(kinds));
+    check('history imported: 132 deals + 57 receipts/payments', kinds.voucher === 189, JSON.stringify(kinds));
+    check('masters imported', (kinds.master || 0) >= 14, String(kinds.master));
     check('every history row has a date', boot.records.filter(r => r.kind !== 'master').every(r => !!r.data.date));
     check('every imported voucher has a number', boot.records.filter(r => r.kind === 'voucher').every(r => !!r.data.no));
+    const deals = boot.records.filter(r => r.kind === 'voucher' && r.data.comm && r.data.comm.value > 0);
+    check('every deal carries the dealer name', deals.length === 132 && deals.every(r => r.data.dealer === 'S.E. ENGINEERING'), deals.length + ' deals');
+    check('a dealer master exists', boot.records.some(r => r.kind === 'master' && r.type === 'dealer' && r.data.name === 'S.E. ENGINEERING'));
 
     const stats = (await (await fetch(base + '/stats', { headers: H })).json()).stats;
     check('commission matches the Excel sheet (17,360,600)', stats.commission === 17360600, JSON.stringify(stats));
     check('balance matches the Excel sheet (5,700,126)', stats.balance === 5700126, JSON.stringify(stats));
 
     const rec = {
-      id: 'invoice-test-1', kind: 'invoice', type: 'commission',
-      data: { date: '2026-11-05', seller: 'Chagani', buyer: 'S.E. ENGINEERING (PRIVATE) LIMITED', invNo: 'T-1', item: 'ABS DANA', qty: 100, rate: 400, amount: 40000, gstPct: 18, gstValue: 7200, commPct: 20, commValue: 1440 },
+      id: 'deal-test-1', kind: 'voucher', type: 'sales',
+      data: {
+        date: '2026-11-05', no: 'SL-TEST', seller: 'Chagani', buyer: 'S.E. ENGINEERING (PRIVATE) LIMITED',
+        dealer: 'S.E. ENGINEERING', lines: [{ item: 'ABS DANA', hsCode: '3901', qty: 100, rate: 400, amount: 40000, taxPct: 18, taxAmt: 7200, total: 47200 }],
+        subTotal: 40000, taxTotal: 7200, grandTotal: 47200, comm: { enabled: true, pct: 20, value: 1440 }
+      },
       updatedAt: Date.now(), deleted: false
     };
     const push = await (await post('/sync', { cursor: boot.cursor, changes: [rec], limit: 5000 }, H)).json();
@@ -85,15 +92,15 @@ const server = app.listen(PORT, async () => {
     check('sync moves the cursor', push.cursor > boot.cursor, push.cursor + ' > ' + boot.cursor);
 
     const pull = await (await post('/sync', { cursor: 0, changes: [], limit: 5000 }, H)).json();
-    check('delta pull returns the new record', pull.changes.some(c => c.id === 'invoice-test-1'), pull.changes.length + ' changes');
+    check('delta pull returns the new record', pull.changes.some(c => c.id === 'deal-test-1'), pull.changes.length + ' changes');
 
-    const stale = await (await post('/sync', { cursor: pull.cursor, changes: [{ ...rec, data: { ...rec.data, invNo: 'OLD' }, updatedAt: rec.updatedAt - 5000 }] }, H)).json();
+    const stale = await (await post('/sync', { cursor: pull.cursor, changes: [{ ...rec, data: { ...rec.data, no: 'OLD' }, updatedAt: rec.updatedAt - 5000 }] }, H)).json();
     check('older write is ignored (last-writer-wins)', stale.ignored === 1, JSON.stringify({ applied: stale.applied, ignored: stale.ignored }));
 
-    const fresh = await (await post('/sync', { cursor: stale.cursor, changes: [{ ...rec, data: { ...rec.data, invNo: 'NEW' }, updatedAt: Date.now() + 1000 }] }, H)).json();
+    const fresh = await (await post('/sync', { cursor: stale.cursor, changes: [{ ...rec, data: { ...rec.data, no: 'NEW' }, updatedAt: Date.now() + 1000 }] }, H)).json();
     check('newer write is applied', fresh.applied === 1, JSON.stringify({ applied: fresh.applied }));
 
-    const del = await fetch(base + '/records/invoice-test-1', { method: 'DELETE', headers: H });
+    const del = await fetch(base + '/records/deal-test-1', { method: 'DELETE', headers: H });
     check('delete works', del.ok, String(del.status));
 
     const junk = await (await post('/sync', { cursor: 0, changes: [{ id: 'x1', kind: 'hack', type: 'x', data: {} }] }, H)).json();
