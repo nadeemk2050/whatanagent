@@ -116,7 +116,7 @@ fills it in automatically and the form shows the working as you type.
 | Sales Register | Every sale voucher with seller, buyer, dealer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
 | Seller Register | Seller-wise control: for each seller, how many deals, which buyers they went to, the value, the GST and the commission earned. |
 | Buyer Register | The same position from the buyer side: how many deals, which sellers supplied them, value, GST and commission. |
-| **Dealers Register** | The list of dealers with deals, commission, received and balance — the dealer name is clickable and opens that dealer's full ledger: inv date, inv no., seller name, buyer name, item name, HS code, qty, amount, GST %, GST value, commission %, commission value (Dr.), received from dealer (Cr.) and running balance. |
+| **Dealers Register** | The list of dealers with deals, commission, received and balance — the dealer name is clickable and opens that dealer's full ledger: inv date, inv no., seller name, buyer name, item name, HS code, qty, amount, GST %, GST value, commission %, commission value (Dr.), received from dealer (Cr.) and running balance. The ledger's totals (deals, qty, amount, GST, commission, received, balance) sit right above the columns, **Inv Date** sorts oldest/newest, and the magnifier in the top bar opens a search over everything on the page — including dates and amounts. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
 

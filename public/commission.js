@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -1062,11 +1062,13 @@ function openDealerRegister(name) {
   state.view = 'dealer:' + encodeURIComponent(name);
   state.page = 1;
   state.filter.q = '';
+  state.sort = { key: 'date', dir: 'asc' };
   render();
 }
 
 // One dealer's full ledger: every deal they brought (commission Dr) against every
-// receipt from them (Cr), with a running balance.
+// receipt from them (Cr), with a running balance. The balance always follows the
+// calendar, whatever order the table is displayed in.
 function dealerLedger(name) {
   const key = String(name || '').trim().toLowerCase();
   const rows = [];
@@ -1107,17 +1109,20 @@ function dealerLedger(name) {
 }
 
 function renderDealerRegister(name) {
-  const rows = dealerLedger(name);
-  const slice = pageSlice(rows);
-  const sum = (k) => r2(rows.reduce((a, r) => a + r[k], 0));
+  const ledger = dealerLedger(name);
+  const q = state.filter.q.trim().toLowerCase();
+  const rows = q ? ledger.filter(r => dealerRowMatches(r, q)) : ledger;
+  const slice = pageSlice(sortList(rows, { date: r => r.date || '' }, state.sort));
+  const sum = (k) => r2(rows.reduce((a, r) => a + num(r[k]), 0));
   const deals = rows.filter(r => r.kind === 'deal').length;
   const closing = rows.length ? rows[rows.length - 1].balance : 0;
+  const showSearch = !!q;
 
   const body = slice.rows.length ? `
     <div class="table-wrap">
       <table class="rtable ledger dense">
         <thead><tr>
-          <th>Inv Date</th><th>Inv No.</th><th>Seller Name</th><th>Buyer Name</th><th>Item Name</th><th>HS Code</th>
+          ${sortHeader('date', 'Inv Date')}<th>Inv No.</th><th>Seller Name</th><th>Buyer Name</th><th>Item Name</th><th>HS Code</th>
           <th class="num">Qty</th><th class="num">Amount</th>
           <th class="num">GST %</th><th class="num">GST Value</th>
           <th class="num">Commission %</th><th class="num">Commission Value (Dr.)</th>
@@ -1173,26 +1178,58 @@ function renderDealerRegister(name) {
       ''
     );
 
+  // Totals right above the columns; the page title in the top bar already names the dealer.
   $('#main').innerHTML = `
-    <div class="page-head">
-      <button class="btn sm" data-back="1">\u2039 All dealers</button>
-      <div style="min-width:0">
-        <h2 class="nowrap" style="overflow:hidden;text-overflow:ellipsis">${esc(name)}</h2>
-      </div>
-      <span class="spacer" style="flex:1"></span>
-      <span class="slip"><span>Deals</span><b>${deals}</b></span>
-      <span class="slip"><span>Received</span><b style="color:var(--amber)">${money(sum('received'))}</b></span>
-      <span class="slip"><span>Balance</span><b style="color:${closing > 0 ? 'var(--brand)' : 'var(--ink)'}">${money(closing)}</b></span>
-    </div>
     <div class="card flexcard">
+      <div class="sumstrip top">
+        <span class="sum"><i>Deals</i><b>${deals}</b></span>
+        <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
+        <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
+        <span class="sum"><i>GST value</i><b>${money0(sum('gstValue'))}</b></span>
+        <span class="sum cr"><i>Commission</i><b>${money(sum('commValue'))}</b></span>
+        <span class="sum dr"><i>Received</i><b>${money(sum('received'))}</b></span>
+        <span class="sum rem"><i>Balance</i><b>${money(closing)}</b></span>
+      </div>
       ${body}
       ${pagerHtml(slice)}
     </div>`;
 
-  const back = $('[data-back]');
-  if (back) back.addEventListener('click', () => navigate('dealers'));
+  // Search lives in the top bar, behind the magnifier next to the download icons.
+  const filters = $('#topbarFilters');
+  if (filters) {
+    filters.hidden = false;
+    filters.classList.toggle('search-closed', !showSearch);
+    filters.innerHTML = `
+      <div class="search" id="topSearchWrap" ${showSearch ? '' : 'hidden'}>
+        ${ICON.search}<input id="fQ" placeholder="Search anything — date, invoice, seller, buyer, item, amount..." value="${esc(state.filter.q)}">
+      </div>
+      <span class="count-chip" title="${rows.length} of ${ledger.length} lines">${rows.length}${rows.length === ledger.length ? '' : ' <small>/ ' + ledger.length + '</small>'} <small>lines</small></span>`;
+    $('.topbar')?.classList.add('has-filters');
+  }
+
+  const searchWrap = $('#topSearchWrap');
+  if (searchWrap && !searchWrap.hidden) setTimeout(() => { const i = $('#fQ'); if (i) i.focus(); }, 60);
+  const qBox = $('#fQ');
+  if (qBox) qBox.addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; refocusSearch = true; render(); }, 220));
+  wireSortHeaders($('#main'));
   wirePager($('#main'), slice);
   $$('[data-edit]', $('#main')).forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+  if (refocusSearch) {
+    refocusSearch = false;
+    const i = $('#fQ');
+    if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) { /* ignore */ } }
+  }
+}
+
+// Everything on the page is searchable: dates, numbers as shown, names and narration.
+function dealerRowMatches(r, q) {
+  const hay = [
+    r.date, fmtDate(r.date), r.no, r.seller, r.buyer, r.item, r.hsCode,
+    r.qty, money0(r.qty), r.amount, money0(r.amount), r.gstPct, r.gstValue, money0(r.gstValue),
+    r.commPct, r.commValue, money(r.commValue), r.received, money(r.received), r.balance, money(r.balance),
+    r.kind === 'receipt' ? 'receipt received cr' : 'deal commission dr'
+  ].join(' ').toLowerCase();
+  return q.split(/\s+/).filter(Boolean).every(part => hay.includes(part));
 }
 
 /* ---------------------------------------------------------------- views: register */
@@ -1438,7 +1475,7 @@ function renderRegister() {
   if (filters) {
     filters.hidden = false;
     filters.innerHTML = `
-      <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, dealer, invoice, item..." value="${esc(state.filter.q)}"></div>
+      <div class="search" id="topSearchWrap" data-permanent="1">${ICON.search}<input id="fQ" placeholder="Search party, dealer, invoice, item..." value="${esc(state.filter.q)}"></div>
       <select id="fParty" title="Filter by seller">
         <option value="">All companies</option>
         ${partyList.map(p => `<option value="${esc(p.data.name)}" ${state.filter.party === p.data.name ? 'selected' : ''}>${esc(p.data.name)}</option>`).join('')}
@@ -2636,9 +2673,11 @@ function render() {
   main.scrollTop = 0;
   const exports = $('#topbarExports');
   if (exports) exports.hidden = !isList;
+  const sBtn = $('#searchToggle');
+  if (sBtn) sBtn.hidden = !isList;
   // Views that keep their filters in the top bar (the register) fill this in themselves.
   const topFilters = $('#topbarFilters');
-  if (topFilters) { topFilters.hidden = true; topFilters.innerHTML = ''; }
+  if (topFilters) { topFilters.hidden = true; topFilters.innerHTML = ''; topFilters.classList.remove('search-closed'); }
   const topbar = $('.topbar');
   if (topbar) topbar.classList.remove('has-filters');
 
@@ -2656,6 +2695,31 @@ function render() {
 }
 
 /* ---------------------------------------------------------------- boot */
+// The magnifier in the top bar opens (or focuses) whatever search the page has.
+function focusSearch() {
+  const wrap = $('#topbarFilters .search');
+  const filters = $('#topbarFilters');
+  if (wrap) {
+    const inp = wrap.querySelector('input');
+    if (wrap.dataset.permanent) {
+      if (inp) { inp.focus(); try { inp.select(); } catch (e) { /* ignore */ } }
+      return;
+    }
+    const activeEmpty = document.activeElement === inp && inp && !inp.value;
+    if (!wrap.hidden && activeEmpty) {
+      wrap.hidden = true;
+      if (filters) filters.classList.add('search-closed');
+      return;
+    }
+    wrap.hidden = false;
+    if (filters) filters.classList.remove('search-closed');
+    if (inp) { inp.focus(); try { inp.select(); } catch (e) { /* ignore */ } }
+    return;
+  }
+  const local = $('#main #fQ');
+  if (local) { local.focus(); try { local.select(); } catch (e) { /* ignore */ } }
+}
+
 function wireChrome() {
   $('#menuBtn').addEventListener('click', openDrawer);
   $('#drawerClose').addEventListener('click', closeDrawer);
@@ -2664,6 +2728,8 @@ function wireChrome() {
   $('#qvToggle').addEventListener('click', (e) => toggleSubmenu('qv', e.currentTarget));
   $$('.menu-item[data-view]').forEach(b => b.addEventListener('click', () => navigate(b.dataset.view)));
   $('#syncChip').addEventListener('click', () => syncNow({ quiet: false }));
+  const searchBtn = $('#searchToggle');
+  if (searchBtn) searchBtn.addEventListener('click', focusSearch);
   const xls = $('#exportXls'); if (xls) xls.addEventListener('click', () => exportCurrent('xls'));
   const pdf = $('#exportPdf'); if (pdf) pdf.addEventListener('click', () => exportCurrent('pdf'));
   // Profile chip: opens your account, and closes it again when clicked a second time.

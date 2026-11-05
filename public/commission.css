@@ -177,6 +177,7 @@ a { color: var(--brand); text-decoration: none; }
 .topbar-filters { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
 .topbar.has-filters .topbar-spacer { flex: 0 1 0; }
 .topbar-filters .search { position: relative; flex: 1 1 200px; max-width: 340px; min-width: 130px; }
+.topbar-filters .search[hidden] { display: none; }
 .topbar-filters .search input {
   width: 100%; padding: 8px 12px 8px 32px; border: 1px solid var(--line-2); border-radius: 9px;
   background: #fff; outline: none; font-size: 13px;
@@ -218,6 +219,9 @@ a { color: var(--brand); text-decoration: none; }
 .sumstrip .sum.dr b { color: var(--amber); }
 .sumstrip .sum.rem { margin-left: auto; padding-left: 14px; border-left: 1px solid var(--line); }
 .sumstrip .sum.rem b { color: var(--violet); font-size: 13.5px; }
+/* the same strip when it sits above the columns */
+.sumstrip.top { border-top: 0; border-bottom: 1px solid var(--line); background: #fff; }
+@media (max-width: 900px) { .topbar-filters.search-closed { display: none; } }
 @media (max-width: 720px) { .sumstrip { gap: 14px; padding: 8px 12px; } .sumstrip .sum.rem { margin-left: 0; border-left: 0; padding-left: 0; } }
 
 /* ---- range calendar ---- */
