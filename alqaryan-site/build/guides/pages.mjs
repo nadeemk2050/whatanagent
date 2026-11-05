@@ -326,6 +326,217 @@ export const PVC = {
   ]
 };
 
-export const GUIDES = [HDPE, PVC];
+// ---------------------------------------------------------------------------
+// Pillar pages for the two head terms "HDPE scrap in Pakistan" and "LDPE scrap in Pakistan".
+//
+// These are deliberately different from the existing /materials/hdpe/ and /materials/ldpe/
+// pages: those describe the polymer, these describe the TRANSACTION — which grades we buy,
+// what moves the price per kg, how a load is inspected and paid, and what we supply back.
+// They also link down to the specific grade pages, so the site has one pillar and many
+// children instead of six pages fighting over the same phrase.
+
+export const HDPE_SCRAP = {
+  slug: 'hdpe-scrap-pakistan',
+  kicker: 'WE BUY AND SUPPLY · HDPE SCRAP',
+  h1: 'HDPE Scrap in Pakistan — Grades We Buy, Prices and How It Works',
+  lede: 'Which HDPE scrap grades are worth money in Pakistan, what decides the price per kilogram, how a load is inspected and paid, and how to sell to us or buy recycled HDPE regrind and pellets back.',
+  seoTitle: 'HDPE Scrap in Pakistan | Buyers, Grades & Prices',
+  seoDesc: 'HDPE scrap in Pakistan: which grades we buy, what decides the price per kg, inspection and payment, plus recycled HDPE regrind and pellets for manufacturers.',
+  focus: 'hdpe scrap in pakistan',
+  category: 'HDPE scrap and recycled HDPE',
+  schemaMaterial: 'High-density polyethylene (HDPE)',
+  chips: ['We buy scrap', 'We supply regrind & pellets', 'All grades', 'Nationwide collection', 'Karachi'],
+  sections: [
+    {
+      h2: 'What counts as HDPE scrap',
+      paras: [
+        'HDPE — high-density polyethylene, density roughly <strong>0.94 to 0.96 g/cm³</strong> — is the plastic used for jerry cans, drums, crates, caps, pipe, cable covering and much industrial packaging. Scrap arises at three points: offcuts and rejects inside a factory, purge and start-up lumps from an extruder, and finished products at end of life.',
+        'The single most important thing to understand about HDPE scrap pricing is that "HDPE" alone is not a grade. Two loads of HDPE can differ by three or four times in value depending on the application it came from, the melt flow index, the colour, and how much metal and moisture is inside it.'
+      ]
+    },
+    {
+      h2: 'HDPE scrap grades we buy in Pakistan',
+      table: [
+        ['Blow-moulding scrap', 'Jerry cans, drums, containers, water tanks. Usually high molecular weight, good value when clean and single-colour.'],
+        ['Injection scrap', 'Crates, pallets, caps, closures, housewares. Higher melt flow, often mixed colour.'],
+        ['Pipe-grade scrap', 'PE63, PE80 and PE100 pipe — offcuts, rejected lengths, decommissioned mains. Valuable when the grade is known and the pipe is not contaminated with soil or water.'],
+        ['Cable-cover scrap', 'The outer HDPE sheath stripped from cable. Clean and consistent, but must be separated from the inner insulation.'],
+        ['Film and sheet scrap', 'Industrial liners and heavy film — lower bulk density, so baling matters.'],
+        ['Off-grade and purge', 'Lumps, start-up material, coloured purging. Priced on contamination and colour rather than application.'],
+        ['Regrind and agglomerate', 'Already-processed material offered by other recyclers.'],
+        ['Post-consumer hard plastics', 'Mixed domestic HDPE — bottles, cans, household items. Needs sorting and washing before it becomes useful.']
+      ],
+      note: 'If you are not sure which grade your material is, send photographs, the application it came from, and the colour. That is usually enough to give you a real number instead of a range.'
+    },
+    {
+      h2: 'What decides the price per kilogram',
+      table: [
+        ['Resin class and MFI', 'PE100 is not PE63, and a blow-moulding grade with low melt flow behaves differently from an injection grade. If you know the original application, say so — it raises the price.'],
+        ['Colour', 'Natural and white are worth most because they can be re-coloured. Mixed colour is lower. Black is lowest, because it can only go back into black products.'],
+        ['Contamination', 'Metal, stone, rubber, paper, wood and other polymers all cost money to remove. A load with metal is priced as a load with metal.'],
+        ['Moisture', 'Wet scrap is paid for partly as water. Film and washed flake hold moisture; dry material is worth more per kilo of polymer.'],
+        ['Form and bulk density', 'Baled or shredded material moves more polymer per truck than loose film or whole containers.'],
+        ['Volume and regularity', 'A regular monthly tonnage is worth more per kilo than a one-off load, because it can be planned into production.'],
+        ['Location', 'Freight to Karachi is deducted from the price. Material already in or near Karachi is at an advantage.']
+      ]
+    },
+    {
+      h2: 'How selling HDPE scrap to us works',
+      list: [
+        '<strong>Send the details</strong> — photographs of the material, approximate quantity, colour, form (bales, loose, regrind), and the city it is in.',
+        '<strong>We give a price per kilogram</strong>, with the basis stated: what grade we are treating it as, and what deductions apply for contamination or moisture.',
+        '<strong>Inspection</strong> — for a first load we sample. Large or mixed loads are inspected at our plant in the Shershah Industrial Area, Karachi.',
+        '<strong>Weighing</strong> — on a calibrated weighbridge, with the slip available to you. Weight disputes are the most common argument in scrap trading and the easiest to avoid.',
+        '<strong>Payment terms agreed in writing before dispatch</strong>, not after the truck has arrived.'
+      ],
+      note: 'We are buyers as well as recyclers, so we can tell you honestly when a load is better sold to a different processor — for example heavily filled or heavily printed material that our washing line cannot clean economically.'
+    },
+    {
+      h2: 'What we supply back: recycled HDPE',
+      paras: [
+        'Because we process what we buy, we also supply recycled HDPE to manufacturers: <strong>regrind, flakes and pellets</strong>, in the grades that come off our own washing and pelletising lines. If you are buying, the same variables run the other way — ask for the melt flow index, the colour, and whether it is washed, and ask for a sample before committing to a monthly contract.',
+        'Buying recycled HDPE on price alone is how manufacturers end up with production problems three weeks later. A few rupees per kilo saved against a batch of inconsistent melt flow is not a saving.'
+      ]
+    },
+    {
+      h2: 'The quality checks that matter in recycled HDPE',
+      table: [
+        ['Melt flow index (MFI)', 'The single most useful number. It tells you how the material will flow in your machine, and whether it matches your virgin grade.'],
+        ['Density', 'Confirms the material is HDPE rather than a PP or mixed stream.'],
+        ['Moisture content', 'Wet regrind produces voids, streaks and weak parts.'],
+        ['Metal content', 'A metal detector on the line catches what hand sorting misses.'],
+        ['Colour consistency', 'Within a batch and between batches — inconsistency shows up in the finished product.'],
+        ['Filler content', 'Heavily filled material looks like HDPE but behaves nothing like it.']
+      ]
+    },
+    {
+      h2: 'Where the material comes from and goes to',
+      paras: [
+        'We buy across Pakistan — Karachi and Sindh, Punjab (Lahore, Faisalabad, Gujranwala, Sialkot, Multan), Khyber Pakhtunkhwa and Islamabad — and we deliver recycled material nationwide. Factories, utilities, contractors, municipal collections and other recyclers all sell to us; manufacturers of pipe, crates, film and injection mouldings buy from us.',
+        'If you are a generator with regular tonnage — a packaging plant, a pipe factory, a cable manufacturer — the most valuable thing you can do is keep the streams separate. Mixed-colour mixed-polymer material is worth a fraction of the same tonnage kept apart.'
+      ]
+    }
+  ],
+  faqs: [
+    ['Do you buy HDPE scrap in Pakistan?', 'Yes. We buy HDPE scrap across Pakistan — blow-moulding, injection, pipe, cable cover, film, off-grade and purge — and process it at our plant in the Shershah Industrial Area, Karachi.'],
+    ['How much is HDPE scrap worth per kg in Pakistan?', 'There is no single price: it depends on the grade, colour, contamination, moisture and volume. Natural blow-moulding scrap is worth several times mixed-colour purge. Send photographs and the quantity and we will quote against your actual material rather than a website range.'],
+    ['Which HDPE grade is worth the most?', 'Generally clean natural-colour blow-moulding scrap and known pipe-grade material (PE100 pipe offcuts in particular), because they can go back into high-value products. Mixed-colour, heavily filled material is worth the least.'],
+    ['Can you collect from my factory?', 'Yes, for viable quantities we arrange collection and can supply the vehicle. Send the location and approximate tonnage and we will confirm.'],
+    ['How is the weight agreed?', 'On a calibrated weighbridge, with the slip made available to you. We agree the basis in writing before dispatch so there is no dispute after the truck arrives.'],
+    ['Do you sell recycled HDPE regrind or pellets?', 'Yes — regrind, flakes and pellets from our own washing and pelletising lines, with the melt flow index and colour stated, and a sample available before you commit.'],
+    ['What is the difference between HDPE regrind and pellets?', 'Regrind is scrap that has been ground into flakes and used directly. Pellets have been melted, filtered and re-pelletised, which gives more consistent bulk density and dosing but costs more.'],
+    ['What contamination is not acceptable?', 'Metal, stone and other polymers reduce the price but do not necessarily disqualify a load. Hazardous or chemical-contaminated material, and heavily filled material, we will usually decline — and we will tell you why rather than waste your transport.']
+  ],
+  related: [
+    ['HDPE 100 Pipe Scrap', 'PE100 pipe scrap grades and buying specification.', '/materials-we-deal/hdpe-100-pipe-scrap/'],
+    ['HDPE 80 & 60 Pipe Scrap', 'Lower-grade PE pipe scrap for non-pressure uses.', '/materials-we-deal/hdpe-80-scrap/'],
+    ['HDPE Jerry Can Scrap', 'Blow-moulded container scrap.', '/materials-we-deal/hdpe-jerry-can-scrap/'],
+    ['HDPE Cable Cover Scrap', 'Cable sheath scrap grades.', '/materials-we-deal/hdpe-cable-cover-scrap/'],
+    ['LDPE Scrap in Pakistan', 'Film scrap, grades and pricing factors.', '/ldpe-scrap-pakistan/'],
+    ['HDPE 100 Pipes', 'PE100 pipe we manufacture in Karachi.', '/hdpe-pipes-pakistan/']
+  ]
+};
+
+export const LDPE_SCRAP = {
+  slug: 'ldpe-scrap-pakistan',
+  kicker: 'WE BUY AND SUPPLY · LDPE SCRAP',
+  h1: 'LDPE Scrap in Pakistan — Film Grades, Prices and How to Sell It',
+  lede: 'LDPE scrap in Pakistan is mostly film, and film behaves differently from rigid scrap: it is bulky, it holds moisture, and preparation decides the price. Here is what we buy, what moves the price per kg, and how to sell it properly.',
+  seoTitle: 'LDPE Scrap in Pakistan | Film Buyers & Grades',
+  seoDesc: 'LDPE scrap in Pakistan: which film and moulding grades we buy, how baling and moisture change the price per kg, inspection and payment, plus recycled LDPE supply.',
+  focus: 'ldpe scrap in pakistan',
+  category: 'LDPE scrap and recycled LDPE',
+  schemaMaterial: 'Low-density polyethylene (LDPE)',
+  chips: ['We buy scrap', 'Film specialists', 'Baled or loose', 'Nationwide collection', 'Karachi'],
+  sections: [
+    {
+      h2: 'What LDPE scrap is and why it behaves differently',
+      paras: [
+        'LDPE — low-density polyethylene, density around <strong>0.91 to 0.925 g/cm³</strong> — is the softer, more flexible polyethylene. In Pakistan the overwhelming majority of LDPE scrap is <strong>film</strong>: carrier bags, liners, shrink and stretch wrap, agricultural greenhouse film and packaging. Injection-moulded LDPE and cable insulation make up a much smaller share.',
+        'Film is a different business from rigid scrap. A tonne of film takes up many times the volume of a tonne of crates, so a truck carries far less polymer unless the material is baled. Film also holds surface moisture, dirt and product residue, and it is usually printed — all three affect what it is worth.'
+      ]
+    },
+    {
+      h2: 'LDPE scrap grades we buy',
+      table: [
+        ['Natural film', 'Unprinted or lightly printed clear and natural liner and packaging film. The highest value LDPE stream, because it can go back into light-coloured products.'],
+        ['Printed film', 'Carrier bags and printed packaging. The ink load limits how it can be reused, so it prices below natural.'],
+        ['Stretch and shrink wrap', 'Pallet wrap from warehouses and logistics. Consistent and clean if the cores and strapping are removed.'],
+        ['Agricultural film', 'Greenhouse and mulch film. Valuable tonnage, but usually carries soil, moisture and UV degradation — expect deductions.'],
+        ['Cable insulation', 'Clean, consistent LDPE from cable stripping, must be separated from the sheath.'],
+        ['Injection and moulding scrap', 'Caps, closures and moulded items, lower volume in Pakistan but straightforward material.'],
+        ['Off-grade and purge', 'Start-up lumps and factory rejects, priced on contamination and colour.']
+      ]
+    },
+    {
+      h2: 'What decides the price per kilogram',
+      table: [
+        ['Colour and print', 'Natural, unprinted film is worth most. Heavy print and mixed colour reduce the price, because the recycled material can only go into dark or non-visible products.'],
+        ['Moisture', 'Wet film is partly paid for as water. Material stored under cover is worth more for the same polymer.'],
+        ['Contamination', 'Soil, organic residue, paper labels, strapping, wood and other polymers all cost money to remove. Agricultural film is the classic case.'],
+        ['Baling', 'A pressed bale moves several times the polymer per truck compared with loose film. Unbaled film is usually priced lower because the freight is against you.'],
+        ['Cores, tapes and strapping', 'Cardboard cores and adhesive tape are not polymer. Remove them and the price rises without any change to the film itself.'],
+        ['MFI and grade', 'Film grades are not the same as injection grades. If the source application is known, say so.'],
+        ['Volume and regularity', 'A monthly tonnage from one factory is worth more per kilo than an occasional load, because it can be planned into production.']
+      ]
+    },
+    {
+      h2: 'How to prepare LDPE film scrap so it is worth more',
+      list: [
+        '<strong>Keep it dry.</strong> Cover the stock. Moisture is the single easiest deduction to avoid.',
+        '<strong>Remove cores, tapes and strapping</strong> before baling. These are the most common non-polymer contamination in film loads.',
+        '<strong>Bale it</strong> if you have volume — it cuts freight per tonne sharply and makes handling possible.',
+        '<strong>Keep natural and printed film separate</strong>, and keep greenhouse film away from clean liner film. Mixed loads get mixed prices.',
+        '<strong>Keep other polymers out.</strong> A little PVC film or PP woven sack in an LDPE load is expensive to remove and downgrades the whole bale.',
+        '<strong>Be straight about the source.</strong> Agricultural or post-consumer film is fine — we buy it — but it prices differently from factory offcuts.'
+      ]
+    },
+    {
+      h2: 'How selling LDPE scrap to us works',
+      list: [
+        '<strong>Send photographs</strong> of the material, the approximate tonnage, whether it is baled or loose, and the city.',
+        '<strong>We quote per kilogram</strong> and state the basis: which grade we are treating it as and what deductions apply.',
+        '<strong>Inspection and sampling</strong> for a first load, at our plant in the Shershah Industrial Area, Karachi.',
+        '<strong>Weighbridge weight</strong> with the slip available to you.',
+        '<strong>Payment terms agreed in writing before dispatch.</strong>'
+      ],
+      note: 'Freight is usually the deciding factor on film. For a distant load of low-bulk-density film the freight can exceed the material value, and no honest buyer can hide that — we will tell you when it is not worth moving.'
+    },
+    {
+      h2: 'What we supply back: recycled LDPE',
+      paras: [
+        'We supply recycled LDPE as regrind, agglomerate and pellets from our own processing lines. Agglomeration is often used for film because it raises bulk density without a full pelletising pass; pelletising gives the more consistent product and costs more.',
+        'When you buy, ask for the melt flow index, the colour, and whether the material is washed and dried, and take a sample before you commit to a monthly quantity.'
+      ]
+    },
+    {
+      h2: 'LDPE compared with HDPE and LLDPE',
+      table: [
+        ['LDPE', 'Density about 0.91–0.925. Soft, flexible, good clarity. Film, bags, liners, cable insulation.'],
+        ['LLDPE', 'Density about 0.915–0.925 but stronger and tougher than LDPE at the same density. Stretch film and heavy-duty bags.'],
+        ['HDPE', 'Density about 0.94–0.96. Stiff and strong. Jerry cans, crates, pipe, caps.']
+      ],
+      note: 'LLDPE and LDPE are often mixed in film streams and many recyclers accept them together, but tell us if you know which you have — it affects what the recycled material can be used for.'
+    }
+  ],
+  faqs: [
+    ['Do you buy LDPE scrap in Pakistan?', 'Yes. We buy LDPE film, stretch and shrink wrap, agricultural film, cable insulation and moulding scrap across Pakistan, and process it at our plant in the Shershah Industrial Area, Karachi.'],
+    ['How much is LDPE scrap worth per kg in Pakistan?', 'It depends on colour and print, moisture, contamination, whether it is baled and the tonnage. Natural unprinted film is worth the most and wet agricultural film the least. Send photographs and tonnage for a real quote.'],
+    ['Do you buy wet or dirty film?', 'We can, but it prices lower because the water and soil are paid for as part of the load and have to be removed. Keeping stock covered costs nothing and raises the price.'],
+    ['Do I need to bale the film?', 'Not necessarily, but for anything beyond a small load baling cuts freight per tonne sharply. Loose film is usually priced lower because the transport cost is against the load.'],
+    ['Can you collect from my factory or warehouse?', 'Yes, for viable quantities we arrange collection and can supply the vehicle. Send the location and approximate tonnage.'],
+    ['Do you supply recycled LDPE?', 'Yes — regrind, agglomerate and pellets from our own lines, with the melt flow index and colour stated and a sample available before you commit.'],
+    ['What is the difference between LDPE and LLDPE scrap?', 'Both are flexible polyethylenes and are often mixed in film streams. LLDPE is tougher at the same density and is common in stretch film. Tell us which you have if you know — it changes what the recycled material is suitable for.'],
+    ['What is not acceptable in an LDPE load?', 'PVC film, PP woven sacks and heavy metal or organic contamination downgrade or disqualify a load, because separating them is expensive. Hazardous or chemically contaminated material we decline.']
+  ],
+  related: [
+    ['HDPE Scrap in Pakistan', 'Rigid HDPE grades, pricing and how selling works.', '/hdpe-scrap-pakistan/'],
+    ['LDPE material page', 'What LDPE is and the grades we handle.', '/materials/ldpe/'],
+    ['Materials We Deal', 'Every polymer grade we buy and supply.', '/materials-we-deal/'],
+    ['HDPE 100 Pipes', 'PE100 pipe we manufacture in Karachi.', '/hdpe-pipes-pakistan/']
+  ]
+};
+
+export const GUIDES = [HDPE, PVC, HDPE_SCRAP, LDPE_SCRAP];
 
 export default render;

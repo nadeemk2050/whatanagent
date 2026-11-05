@@ -61,12 +61,23 @@ for (const p of GUIDES) {
   await new Promise(r => setTimeout(r, 300));
 }
 
-// ---- internal links: append a small block to the two hub pages, once ----
-const BLOCK = `<div class="q-section"><h2>Pipes we manufacture</h2>
+// ---- internal links: each block is appended once, tracked by its own marker ----
+const PIPES_BLOCK = `<div class="q-section"><h2>Pipes we manufacture</h2>
 <ul class="q-list">
 <li><a href="/pvc-pipes-pakistan/">PVC (uPVC) pipes in Pakistan</a> — types, pressure classes and how to verify a manufacturer.</li>
 <li><a href="/hdpe-pipes-pakistan/">HDPE 100 (PE100) pipes in Pakistan</a> — grades, SDR to PN ratings and supplier checks.</li>
 </ul></div>`;
+
+const SCRAP_BLOCK = `<div class="q-section"><h2>Scrap we buy</h2>
+<ul class="q-list">
+<li><a href="/hdpe-scrap-pakistan/">HDPE scrap in Pakistan</a> — grades, what decides the price per kg, and how selling works.</li>
+<li><a href="/ldpe-scrap-pakistan/">LDPE scrap in Pakistan</a> — film grades, baling, moisture and pricing.</li>
+</ul></div>`;
+
+const BLOCKS = [
+  { marker: '/pvc-pipes-pakistan/', html: PIPES_BLOCK, name: 'pipes' },
+  { marker: '/ldpe-scrap-pakistan/', html: SCRAP_BLOCK, name: 'scrap' }
+];
 
 const HUBS = ['services', 'materials-we-deal'];
 console.log('\n=== internal links from hub pages ===');
@@ -74,11 +85,17 @@ for (const slug of HUBS) {
   const pg = await findPage(slug);
   if (!pg) { console.log(`  ${slug}: not found`); continue; }
   const full = await (await fetch(`${SITE}/wp-json/wp/v2/pages/${pg.id}?context=edit&_fields=id,content`, { headers: H })).json();
-  const cur = full.content.raw || '';
-  if (cur.includes('/pvc-pipes-pakistan/')) { console.log(`  ${slug}: already linked`); continue; }
-  console.log(`  ${slug}: ${APPLY ? 'appending block' : 'would append block'} (${cur.length} chars)`);
+  let content = full.content.raw || '';
+  const added = [];
+  for (const b of BLOCKS) {
+    if (content.includes(b.marker)) continue;
+    added.push(b.name);
+    content = content + '\n\n' + b.html;
+  }
+  if (!added.length) { console.log(`  ${slug}: all blocks already present`); continue; }
+  console.log(`  ${slug}: ${APPLY ? 'appending' : 'would append'} ${added.join(' + ')}`);
   if (APPLY) {
-    const r = await fetch(`${SITE}/wp-json/wp/v2/pages/${pg.id}`, { method: 'POST', headers: H, body: JSON.stringify({ content: cur + '\n\n' + BLOCK }) });
+    const r = await fetch(`${SITE}/wp-json/wp/v2/pages/${pg.id}`, { method: 'POST', headers: H, body: JSON.stringify({ content }) });
     console.log(`    -> ${r.status}${r.ok ? '' : ' FAILED'}`);
   }
 }
