@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Commission Accounts — S.E. Engineering</title>
+<title>Commission Accounts — Qaryan Brokerage</title>
 <meta name="theme-color" content="#047857">
 <link rel="icon" type="image/png" href="/icon-192.png">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -37,9 +37,9 @@
 <div class="auth-wrap" id="authScreen">
   <section class="auth-hero">
     <div class="brand-row">
-      <div class="logo-mark">SE</div>
+      <div class="logo-mark">QB</div>
       <div style="line-height:1.25">
-        <b style="font-size:15px;letter-spacing:.04em">S.E. ENGINEERING (PVT) LTD</b>
+        <b style="font-size:15px;letter-spacing:.04em">QARYAN BROKERAGE</b>
         <div style="font-size:12px;color:rgba(231,246,239,.6)">Commission Accounts</div>
       </div>
     </div>
@@ -118,9 +118,17 @@
     </button>
     <div class="topbar-title">
       <b id="pageTitle">Commission Register</b>
-      <small id="pageSub">S.E. Engineering (Pvt) Ltd</small>
+      <small id="pageSub">Qaryan Brokerage</small>
     </div>
     <div class="topbar-spacer"></div>
+    <div class="topbar-exports" id="topbarExports">
+      <button class="icon-btn export-btn" id="exportXls" title="Download this list as Excel" aria-label="Download Excel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="m9 12 6 5M15 12l-6 5"/></svg>
+      </button>
+      <button class="icon-btn export-btn" id="exportPdf" title="Download this list as PDF" aria-label="Download PDF">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9v3M9 13v6M14 19v-6h1.5a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5z"/></svg>
+      </button>
+    </div>
     <button class="sync-chip" id="syncChip" title="Sync now">
       <span class="sync-dot"></span><span class="txt" id="syncTxt">Sync</span>
     </button>
@@ -133,10 +141,10 @@
 
   <aside class="drawer" id="drawer" aria-label="Main menu">
     <div class="drawer-head">
-      <div class="logo-mark">SE</div>
+      <div class="logo-mark">QB</div>
       <div class="titles">
         <b>Commission Accounts</b>
-        <small>S.E. Engineering (Pvt) Ltd</small>
+        <small>Qaryan Brokerage</small>
       </div>
       <button class="icon-btn" id="drawerClose" style="margin-left:auto" aria-label="Close menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -192,6 +200,14 @@
       <button class="menu-item" data-view="sales">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8"/><path d="M2 21h20"/></svg></span>
         Sales Register
+      </button>
+      <button class="menu-item" data-view="sellers">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M17 11h4m-2-2v4"/></svg></span>
+        Seller Register
+      </button>
+      <button class="menu-item" data-view="buyers">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="9" cy="7" r="3.2"/><path d="M17 8h4m-4 4h4m-4 4h4"/></svg></span>
+        Buyer Register
       </button>
       <button class="menu-item" data-view="dashboard">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10m6 10V4m6 16v-7"/><path d="M2 20h20"/></svg></span>

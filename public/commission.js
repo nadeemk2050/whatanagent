@@ -10,7 +10,11 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.2.0';
+// The brokerage whose books these are — shown wherever the app names itself.
+const COMPANY = 'Qaryan Brokerage';
+
+import { buildExcel, buildPdf, downloadFile } from './commission-export.js';
 
 /* ---------------------------------------------------------------- utilities */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -41,8 +45,7 @@ const monthKey = (iso) => String(iso || '').slice(0, 7);
 const uid = (prefix) => prefix + '-' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 20) : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
-const ICON = {
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+const ICON = {  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
   del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>',
@@ -63,9 +66,11 @@ const state = {
   lastSync: 0,
   online: navigator.onLine,
   view: 'register',
-  segment: 'ledger',
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
+  page: 1,
+  sort: { key: 'date', dir: 'desc' },
+  prevView: 'register',
   serverInfo: null,
   masterCache: null
 };
@@ -301,6 +306,12 @@ function partyByName(name) {
   const key = String(name || '').trim().toLowerCase();
   return parties().find(p => String(p.data.name || '').trim().toLowerCase() === key) || null;
 }
+// A party with role "both" counts as a seller and as a buyer.
+const sellerNames = () => parties().filter(p => (p.data.role || 'seller') !== 'buyer').map(p => p.data.name).filter(Boolean);
+const buyerNames = () => parties().filter(p => (p.data.role || 'seller') !== 'seller').map(p => p.data.name).filter(Boolean);
+// Both sides of a goods voucher, with the old single-`party` rows still readable.
+const voucherSeller = (d, type) => (d && (d.seller || (type === 'purchase' ? d.party : ''))) || '';
+const voucherBuyer = (d, type) => (d && (d.buyer || (type === 'sales' ? d.party : ''))) || '';
 function commissionPctFor(name) {
   const p = partyByName(name);
   if (p && num(p.data.commissionPct, 0) > 0) return num(p.data.commissionPct);
@@ -527,6 +538,105 @@ function registerTotals() {
 }
 
 /* ---------------------------------------------------------------- views: register */
+/* ---------------------------------------------------------------- sorting & pagination */
+const PAGE_SIZE = 40;
+
+function sortList(list, getters, sort) {
+  const get = getters[sort.key] || getters.date || Object.values(getters)[0];
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  if (!get) return list.slice();
+  return list.slice().sort((a, b) => {
+    const va = get(a);
+    const vb = get(b);
+    if (typeof va === 'number' || typeof vb === 'number') {
+      return ((Number(va) || 0) - (Number(vb) || 0)) * dir;
+    }
+    return String(va == null ? '' : va).localeCompare(String(vb == null ? '' : vb)) * dir;
+  });
+}
+
+const SORT_GETTERS = {
+  register: {
+    date: r => r.date || '', party: r => r.party || '', item: r => r.item || '',
+    qty: r => r.qty, amount: r => r.amount, gst: r => r.gstValue,
+    commission: r => r.commission, received: r => r.received, balance: r => r.balance
+  },
+  voucher: {
+    date: r => r.data.date || '', no: r => r.data.no || '',
+    party: r => r.data.seller || r.data.party || '', buyer: r => r.data.buyer || '',
+    amount: r => (typeof r.data.grandTotal === 'number' ? r.data.grandTotal : num(r.data.amount)),
+    gst: r => num(r.data.taxTotal), total: r => num(r.data.grandTotal)
+  },
+  master: { name: r => r.data.name || '', rate: r => num(r.data.commissionPct || r.data.rate || r.data.pct) }
+};
+
+function sortHeader(key, label, numeric) {
+  const on = state.sort.key === key;
+  const arrow = on ? (state.sort.dir === 'asc' ? '\u25B2' : '\u25BC') : '\u2195';
+  return `<th class="${numeric ? 'num ' : ''}sortable${on ? ' on' : ''}" data-sort="${key}" title="Sort by ${esc(label)}">${label}<span class="arrow">${arrow}</span></th>`;
+}
+
+function toggleSort(key) {
+  if (state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+  else state.sort = { key, dir: 'desc' };
+  state.page = 1;
+  render();
+}
+
+function pageSlice(list) {
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (state.page > pages) state.page = pages;
+  if (state.page < 1) state.page = 1;
+  const start = (state.page - 1) * PAGE_SIZE;
+  return { rows: list.slice(start, start + PAGE_SIZE), total, pages, start, end: Math.min(start + PAGE_SIZE, total) };
+}
+
+function pagerHtml(slice) {
+  if (!slice.total) return '';
+  const disabled = slice.pages === 1 ? 'disabled' : '';
+  return `<div class="pager">
+    <span class="info">${slice.start + 1}\u2013${slice.end} of ${slice.total}</span>
+    <span class="spacer"></span>
+    <button class="btn icon" data-pg="first" ${disabled} title="First page">\u00AB</button>
+    <button class="btn icon" data-pg="prev" ${disabled} title="Previous page">\u2039</button>
+    <span class="page-jump">Page
+      <input id="pgInput" type="number" min="1" max="${slice.pages}" value="${state.page}"> of ${slice.pages}</span>
+    <button class="btn icon" data-pg="next" ${disabled} title="Next page">\u203A</button>
+    <button class="btn icon" data-pg="last" ${disabled} title="Last page">\u00BB</button>
+  </div>`;
+}
+
+function scrollListTop() {
+  const w = document.querySelector('.table-wrap');
+  if (w) w.scrollTop = 0;
+}
+
+function wirePager(root, slice) {
+  $$('[data-pg]', root).forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.pg;
+    if (a === 'first') state.page = 1;
+    else if (a === 'last') state.page = slice.pages;
+    else if (a === 'prev') state.page = Math.max(1, state.page - 1);
+    else if (a === 'next') state.page = Math.min(slice.pages, state.page + 1);
+    render();
+    scrollListTop();
+  }));
+  const inp = $('#pgInput', root);
+  if (inp) inp.addEventListener('change', () => {
+    const p = Math.min(Math.max(1, Number(inp.value) || 1), slice.pages);
+    state.page = p;
+    render();
+    scrollListTop();
+  });
+}
+
+function wireSortHeaders(root) {
+  $$('th[data-sort]', root).forEach(th => {
+    th.addEventListener('click', () => toggleSort(th.dataset.sort));
+  });
+}
+
 /* ---------------------------------------------------------------- registers: day book & purchases */
 const TXN = {
   commission: { label: 'Commission', pill: 'both' },
@@ -557,7 +667,8 @@ function allTransactions() {
       const lines = Array.isArray(d.lines) ? d.lines : [];
       out.push({
         id: v.id, rec: v, kind: v.type,
-        date: d.date || '', no: d.no || '', party: d.party || '', against: '',
+        date: d.date || '', no: d.no || '', party: voucherSeller(d, v.type),
+        against: voucherBuyer(d, v.type),
         narration: d.narration || lines.map(l => (l.item || '') + ' x ' + money(l.qty, 0)).filter(Boolean).join(', '),
         item: lines.map(l => l.item).filter(Boolean).join(', '),
         hsCode: (lines[0] || {}).hsCode || '', lines,
@@ -641,7 +752,7 @@ function renderDayBook() {
               <tr>
                 <td data-label="Type"><span class="pill ${TXN[x.kind].pill}">${esc(TXN[x.kind].label)}</span></td>
                 <td class="mono strong" data-label="Voucher">${esc(x.no || '-')}</td>
-                <td class="wrap" data-label="Party">${esc(x.party || '-')}${x.account ? `<div class="muted sub">${esc(x.account)}</div>` : ''}</td>
+                <td class="wrap" data-label="Party">${esc(x.party || '-')}${x.against ? `<div class="muted sub">&#8594; ${esc(x.against)}</div>` : ''}${x.account ? `<div class="muted sub">${esc(x.account)}</div>` : ''}</td>
                 <td class="wrap" data-label="Particulars">
                   <div class="cell-val">
                     <div>${esc(x.narration || '-')}</div>
@@ -667,12 +778,13 @@ function renderDayBook() {
       </div>`;
   };
 
+  const blockSlice = pageSlice(days.map(dayBlock));
+
   $('#main').innerHTML = `
     <div class="view-head">
       <div><h2>Day Book</h2><p>Every entry, day by day: purchases, sales, receipts, payments, journals and commission.</p></div>
       <div class="actions">
         <button class="btn" data-act="range">${ICON.calendar} Date range</button>
-        <button class="btn" data-act="export">${ICON.download} Export CSV</button>
         <button class="btn primary" data-act="day">${ICON.calendar} View a day</button>
       </div>
     </div>
@@ -684,7 +796,7 @@ function renderDayBook() {
       <div class="kpi amber"><div class="label">Paid out</div><div class="value">${money0(totalAll.payment)}</div><div class="sub">expenses and deductions</div></div>
     </div>
 
-    <div class="card">
+    <div class="card flexcard">
       <div class="toolbar">
         <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, party, narration..." value="${esc(state.filter.q)}"></div>
         <select id="rType">
@@ -697,34 +809,24 @@ function renderDayBook() {
         ${(state.report.from || state.report.to || state.report.type) ? '<button class="btn sm" data-act="clear">Clear</button>' : ''}
         <span class="kbd-hint" title="Press F2 to open one day, Alt+F2 for a date range">F2 / Alt+F2</span>
       </div>
-      ${rows.length ? days.map(dayBlock).join('') : emptyState('No entries in this period', 'Change the dates, or add a voucher from Quick Vouchers.', '<button class="btn primary" data-act="day">View a day</button>')}
+      <div class="table-wrap" style="display:block">
+        ${rows.length ? blockSlice.rows.join('') : emptyState('No entries in this period', 'Change the dates, or add a voucher from Quick Vouchers.', '<button class="btn primary" data-act="day">View a day</button>')}
+      </div>
+      ${rows.length ? pagerHtml(blockSlice) : ''}
     </div>`;
 
   $('#main').querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
-  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; render(); }, 220));
-  $('#rType').addEventListener('change', (e) => { state.report.type = e.target.value; render(); });
-  $('#rFrom').addEventListener('change', (e) => { state.report.from = e.target.value; render(); });
-  $('#rTo').addEventListener('change', (e) => { state.report.to = e.target.value; render(); });
+  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  $('#rType').addEventListener('change', (e) => { state.report.type = e.target.value; state.page = 1; render(); });
+  $('#rFrom').addEventListener('change', (e) => { state.report.from = e.target.value; state.page = 1; render(); });
+  $('#rTo').addEventListener('change', (e) => { state.report.to = e.target.value; state.page = 1; render(); });
+  wirePager($('#main'), blockSlice);
   const acts = {
     day: () => openPeriodDialog('day'),
     range: () => openPeriodDialog('range'),
-    export: exportDayBookCsv,
-    clear: () => { state.report = { from: '', to: '', type: '', seller: '' }; render(); }
+    clear: () => { state.report = { from: '', to: '', type: '', seller: '' }; state.page = 1; render(); }
   };
   $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
-}
-
-function exportDayBookCsv() {
-  const rows = allTransactions().filter(x => inReportRange(x.date));
-  if (!rows.length) return toast('Nothing to export', 'err');
-  const head = ['Date', 'Type', 'Voucher', 'Party', 'Particulars', 'Item', 'Amount', 'GST', 'Value'];
-  const body = rows.map(x => [x.date, TXN[x.kind].label, x.no, x.party, x.narration, x.item, x.base, x.gst, x.value]);
-  const csv = [head, ...body].map(line => line.map(v => {
-    const s = String(v == null ? '' : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(',')).join('\r\n');
-  download('day-book-' + (state.report.from || 'all') + '.csv', '\ufeff' + csv, 'text/csv');
-  toast('Day book exported');
 }
 
 const GOODS_META = {
@@ -748,32 +850,38 @@ const GOODS_META = {
 
 function renderGoodsRegister(type) {
   const meta = GOODS_META[type] || GOODS_META.purchase;
-  const all = vouchers(type)
-    .filter(v => inReportRange(v.data.date))
-    .filter(v => !state.filter.q || JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()))
-    .sort((a, b) => (a.data.date || '').localeCompare(b.data.date || '') || String(a.data.no || '').localeCompare(String(b.data.no || '')));
+  let base = vouchers(type).filter(v => inReportRange(v.data.date));
+  if (state.filter.q) base = base.filter(v => JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()));
+  const sorted = sortList(base, SORT_GETTERS.voucher, state.sort);
+  const slice = pageSlice(sorted);
+  const all = sorted;
+  const pageRows = slice.rows;
 
   const sum = (k) => r2(all.reduce((a, v) => a + num(v.data[k]), 0));
   const totalQty = all.reduce((a, v) => a + (v.data.lines || []).reduce((s, l) => s + num(l.qty), 0), 0);
   const hasBrokerage = all.some(v => num((v.data.comm || {}).value) > 0);
-  const colspan = hasBrokerage ? 5 : 4;
+  const colspan = 5;
+  const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
 
-  const body = all.length ? `
+  const body = pageRows.length ? `
     <div class="table-wrap">
       <table class="rtable">
         <thead><tr>
-          <th>Date</th><th>Voucher</th><th>${esc(meta.partyHead)}</th><th>Items</th>
-          <th class="num">Qty</th><th class="num">Sub total</th><th class="num">GST</th><th class="num">Total</th>
+          ${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Items</th>
+          ${sortTh('qty', 'Qty', true)}${sortTh('gst', 'Sub total', true)}${sortTh('gst', 'GST', true)}${sortTh('total', 'Total', true)}
           ${hasBrokerage ? '<th class="num">Brokerage</th>' : ''}<th></th>
         </tr></thead>
-        <tbody>${all.map(v => {
+        <tbody>${pageRows.map(v => {
           const d = v.data;
           const qty = (d.lines || []).reduce((s, l) => s + num(l.qty), 0);
           const comm = num((d.comm || {}).value);
+          const seller = voucherSeller(d, type);
+          const buyer = voucherBuyer(d, type);
           return `<tr>
             <td class="mono nowrap" data-label="Date">${esc(fmtDate(d.date))}</td>
             <td class="mono strong" data-label="Voucher">${esc(d.no || '-')}</td>
-            <td class="wrap" data-label="${esc(meta.party)}"><div class="cell-val"><div class="strong">${esc(d.party || '-')}</div>${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</div></td>
+            <td class="wrap" data-label="Seller"><div class="cell-val"><div class="strong">${esc(seller || '-')}</div>${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</div></td>
+            <td class="wrap" data-label="Buyer"><div class="cell-val">${esc(buyer || '-')}</div></td>
             <td class="wrap" data-label="Items"><div class="cell-val">${(d.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)} @ ${money(l.rate, 0)}</span>${num(l.taxPct) ? ` <span class="muted">(${money(l.taxPct, 0)}% GST)</span>` : ''}`).join('<br>') || '-'}</div></td>
             <td class="num" data-label="Qty">${money(qty, 0)}</td>
             <td class="num" data-label="Sub total">${money(d.subTotal)}</td>
@@ -802,7 +910,6 @@ function renderGoodsRegister(type) {
       <div><h2>${esc(meta.title)}</h2><p>${esc(meta.sub)}</p></div>
       <div class="actions">
         <button class="btn" data-act="range">${ICON.calendar} Date range</button>
-        <button class="btn" data-act="export">${ICON.download} Export CSV</button>
         <button class="btn" data-act="print">${ICON.print} Print</button>
         <button class="btn primary" data-act="new">${ICON.plus} ${esc(meta.newLabel)}</button>
       </div>
@@ -815,7 +922,7 @@ function renderGoodsRegister(type) {
       <div class="kpi"><div class="label">Quantity</div><div class="value">${money0(totalQty)}</div><div class="sub">all items</div></div>
     </div>
 
-    <div class="card">
+    <div class="card flexcard">
       <div class="toolbar">
         <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, ${type === 'sales' ? 'buyer' : 'seller'}, item..." value="${esc(state.filter.q)}"></div>
         <input type="date" id="rFrom" value="${esc(state.report.from)}" title="From date">
@@ -825,40 +932,169 @@ function renderGoodsRegister(type) {
         <span class="kbd-hint" title="Press F2 to open one day, Alt+F2 for a date range">F2 / Alt+F2</span>
       </div>
       ${body}
+      ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; render(); }, 220));
-  $('#rFrom').addEventListener('change', e => { state.report.from = e.target.value; render(); });
-  $('#rTo').addEventListener('change', e => { state.report.to = e.target.value; render(); });
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  $('#rFrom').addEventListener('change', e => { state.report.from = e.target.value; state.page = 1; render(); });
+  $('#rTo').addEventListener('change', e => { state.report.to = e.target.value; state.page = 1; render(); });
   const acts = {
     range: () => openPeriodDialog('range'),
     print: () => window.print(),
-    export: () => exportGoodsCsv(type, all, meta),
     new: () => voucherModal(type),
-    clear: () => { state.report.from = ''; state.report.to = ''; render(); }
+    clear: () => { state.report.from = ''; state.report.to = ''; state.page = 1; render(); }
   };
   $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
 }
 
-function exportGoodsCsv(type, list, meta) {
-  if (!list.length) return toast('Nothing to export', 'err');
-  const head = ['Date', 'Voucher', meta.party, 'Items', 'Qty', 'Sub total', 'GST', 'Total', 'Brokerage', 'Narration'];
-  const body = list.map(v => {
+/* ---------------------------------------------------------------- seller / buyer registers */
+// One row per seller (or per buyer). Commission ledger entries carry the GST and the
+// commission; goods vouchers that never produced a commission entry still count as
+// deals, but only once — a voucher linked to a ledger entry is not counted twice.
+function partyRegisterRows(side) {
+  const isSeller = side === 'seller';
+  const groups = new Map();
+
+  const bump = (name, other, deal) => {
+    let g = groups.get(name);
+    if (!g) {
+      g = { name, deals: 0, others: new Map(), amount: 0, gst: 0, commission: 0, received: 0, balance: 0, last: '' };
+      groups.set(name, g);
+    }
+    g.deals += 1;
+    if (other && other !== name) g.others.set(other, (g.others.get(other) || 0) + 1);
+    g.amount = r2(g.amount + num(deal.amount));
+    g.gst = r2(g.gst + num(deal.gst));
+    g.commission = r2(g.commission + num(deal.commission));
+    if ((deal.date || '') > g.last) g.last = deal.date || '';
+  };
+
+  const linked = new Set();
+  for (const inv of invoices()) {
+    const d = inv.data;
+    if (d.voucherId) linked.add(d.voucherId);
+    const name = String((isSeller ? d.seller : d.buyer) || '').trim();
+    if (!name) continue;
+    const other = String((isSeller ? d.buyer : d.seller) || '').trim();
+    bump(name, other, { date: d.date, amount: d.amount, gst: d.gstValue, commission: d.commValue });
+  }
+
+  for (const v of allVouchers()) {
+    if (v.type !== 'purchase' && v.type !== 'sales') continue;
+    if (linked.has(v.id)) continue;
     const d = v.data;
-    const qty = (d.lines || []).reduce((s, l) => s + num(l.qty), 0);
-    return [
-      d.date, d.no, d.party,
-      (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}${num(l.taxPct) ? ' @' + l.taxPct + '%' : ''}`).join(' | '),
-      qty, num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''
-    ];
-  });
-  const csv = [head, ...body].map(line => line.map(v => {
-    const s = String(v == null ? '' : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(',')).join('\r\n');
-  download(meta.csv + '-' + (state.report.from || 'all') + '.csv', '\ufeff' + csv, 'text/csv');
-  toast(meta.title + ' exported');
+    const seller = String(voucherSeller(d, v.type)).trim();
+    const buyer = String(voucherBuyer(d, v.type)).trim();
+    const name = isSeller ? seller : buyer;
+    if (!name) continue;
+    bump(name, isSeller ? buyer : seller, { date: d.date, amount: d.subTotal, gst: d.taxTotal, commission: 0 });
+  }
+
+  // Receipt vouchers are commission money received from a company.
+  const paid = new Map();
+  for (const v of vouchers('receipt')) {
+    const key = String(v.data.party || '').trim().toLowerCase();
+    if (!key) continue;
+    paid.set(key, r2((paid.get(key) || 0) + num(v.data.amount)));
+  }
+  const rows = [...groups.values()];
+  for (const g of rows) {
+    g.received = paid.get(g.name.toLowerCase()) || 0;
+    g.balance = r2(g.commission - g.received);
+  }
+  return rows;
+}
+
+const PARTY_REG = {
+  seller: { head: 'Seller', otherHead: 'Buyers', side: 'seller', empty: 'No sellers yet', hint: 'Sellers appear here as soon as a deal carries their name.' },
+  buyer: { head: 'Buyer', otherHead: 'Sellers', side: 'buyer', empty: 'No buyers yet', hint: 'Buyers appear here as soon as a deal carries their name.' }
+};
+
+function renderPartyRegister(side) {
+  const cfg = PARTY_REG[side];
+  if (!cfg) return renderRegister();
+  const all = partyRegisterRows(side);
+  const q = state.filter.q.trim().toLowerCase();
+  const filtered = q
+    ? all.filter(r => (r.name + ' ' + [...r.others.keys()].join(' ')).toLowerCase().includes(q))
+    : all;
+  const getters = {
+    name: r => r.name, deals: r => r.deals, others: r => r.others.size,
+    amount: r => r.amount, gst: r => r.gst, commission: r => r.commission,
+    received: r => r.received, balance: r => r.balance
+  };
+  const sorted = sortList(filtered, getters, state.sort);
+  const slice = pageSlice(sorted);
+  const sum = (k) => r2(filtered.reduce((a, r) => a + r[k], 0));
+  const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
+  // Money is collected from the seller side, so only that register shows receipts.
+  const showMoney = side === 'seller';
+
+  const body = slice.rows.length ? `
+    <div class="table-wrap">
+      <table class="rtable">
+        <thead><tr>
+          ${sortTh('name', cfg.head)}${sortTh('deals', 'Deals', true)}<th>${cfg.otherHead}</th>
+          ${sortTh('amount', 'Amount', true)}${sortTh('gst', 'GST', true)}${sortTh('commission', 'Commission', true)}
+          ${showMoney ? sortTh('received', 'Received', true) + sortTh('balance', 'Balance', true) : ''}<th></th>
+        </tr></thead>
+        <tbody>${slice.rows.map(r => {
+          const names = [...r.others.keys()];
+          const shown = names.slice(0, 3).join(', ');
+          const more = names.length > 3 ? ' +' + (names.length - 3) + ' more' : '';
+          return `<tr>
+            <td class="wrap" data-label="${esc(cfg.head)}"><div class="cell-val"><div class="strong">${esc(r.name)}</div><div class="muted sub">last ${esc(fmtDate(r.last))}</div></div></td>
+            <td class="num" data-label="Deals">${r.deals}</td>
+            <td class="wrap" data-label="${esc(cfg.otherHead)}"><div class="cell-val"><div>${esc(shown || '-')}</div>${more ? `<div class="muted sub">${esc(more)}</div>` : ''}</div></td>
+            <td class="num" data-label="Amount">${money(r.amount, 0)}</td>
+            <td class="num" data-label="GST">${money(r.gst, 0)}</td>
+            <td class="num strong" style="color:var(--brand)" data-label="Commission">${money(r.commission)}</td>
+            ${showMoney ? `<td class="num" style="color:var(--amber)" data-label="Received">${r.received ? money(r.received) : '-'}</td>
+            <td class="num strong" data-label="Balance">${money(r.balance)}</td>` : ''}
+            <td class="cell-actions"><div class="row-actions">
+              <button class="icon-btn" data-open-party="${esc(r.name)}" title="Show the deals">${ICON.edit}</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr>
+          <td colspan="3" data-label="Total">Total (${filtered.length} ${side === 'seller' ? 'sellers' : 'buyers'})</td>
+          <td class="num" data-label="Amount">${money(sum('amount'), 0)}</td>
+          <td class="num" data-label="GST">${money(sum('gst'), 0)}</td>
+          <td class="num" data-label="Commission">${money(sum('commission'))}</td>
+          ${showMoney ? `<td class="num" data-label="Received">${money(sum('received'))}</td>
+          <td class="num" data-label="Balance">${money(sum('balance'))}</td>` : ''}
+          <td></td>
+        </tr></tfoot>
+      </table>
+    </div>` : emptyState(cfg.empty, cfg.hint, '');
+
+  $('#main').innerHTML = `
+    <div class="card flexcard">
+      <div class="toolbar">
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search ${side}, ${cfg.otherHead.toLowerCase()}..." value="${esc(state.filter.q)}"></div>
+        <span class="muted" style="font-size:12.5px;margin-left:auto">${filtered.length} of ${all.length}</span>
+      </div>
+      ${body}
+      ${pagerHtml(slice)}
+    </div>`;
+
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
+  $$('[data-open-party]').forEach(b => b.addEventListener('click', () => openPartyDeals(side, b.dataset.openParty)));
+}
+
+// Drills into the Commission Register already filtered to that company.
+function openPartyDeals(side, name) {
+  state.view = 'register';
+  state.page = 1;
+  state.filter.party = side === 'seller' ? name : '';
+  state.filter.q = side === 'buyer' ? name : '';
+  state.sort = { key: 'date', dir: 'desc' };
+  render();
 }
 
 /* ---------------------------------------------------------------- F2 / Alt+F2 period view */
@@ -957,153 +1193,98 @@ function matchesFilter(row) {
 }
 
 function renderRegister() {
-  const t = registerTotals();
   const all = ledgerRows();
-  const rows = all.filter(matchesFilter);
+  const filtered = all.filter(matchesFilter);
+  const sorted = sortList(filtered, SORT_GETTERS.register, state.sort);
+  const slice = pageSlice(sorted);
   const years = [...new Set(all.map(r => String(r.date || '').slice(0, 4)).filter(Boolean))].sort().reverse();
-  const filterSum = rows.reduce((a, r) => ({ commission: a.commission + r.commission, received: a.received + r.received }), { commission: 0, received: 0 });
-
   const partyList = parties().filter(p => p.data.role !== 'buyer');
-  const seg = state.segment;
+  const sum = (k) => r2(filtered.reduce((a, r) => a + r[k], 0));
 
-  let body = '';
-  if (seg === 'company') {
-    body = renderByCompany(rows);
-  } else {
-    const list = seg === 'invoice' ? rows.filter(r => r.kind === 'invoice') : rows;
-    body = list.length ? `
-      <div class="table-wrap">
-        <table class="ledger rtable">
-          <thead><tr>
-            <th>Date</th><th>Seller / Party</th><th>Item</th>
-            <th class="num col-opt">Qty × Rate</th><th class="num col-opt">Amount</th>
-            <th class="num">GST</th><th class="num">Commission</th>
-            <th class="num">Received</th><th class="num">Balance</th><th></th>
-          </tr></thead>
-          <tbody>
-          ${list.map(r => `
-            <tr>
-              <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
-              <td class="wrap" data-label="Party">
-                <div class="cell-val">
-                  <div class="strong">${esc(r.party || '—')}</div>
-                  <div class="muted sub">${r.invNo ? esc(r.invNo) : ''}${r.narration ? (r.invNo ? ' · ' : '') + esc(r.narration) : ''}</div>
-                </div>
-              </td>
-              <td class="wrap" data-label="Item">
-                <div class="cell-val">
-                  <div>${esc(r.item || '—')}</div>
-                  ${r.hsCode ? `<div class="muted sub">HS ${esc(r.hsCode)}</div>` : ''}
-                </div>
-              </td>
-              <td class="num sub-cell col-opt" data-label="Qty × Rate"><div class="cell-val">${r.qty ? `<div>${money(r.qty, 0)}</div><div class="muted sub">@ ${money(r.rate, 0)}</div>` : '—'}</div></td>
-              <td class="num col-opt" data-label="Amount">${r.amount ? money(r.amount, 0) : '—'}</td>
-              <td class="num sub-cell" data-label="GST"><div class="cell-val">${r.gstValue ? `<div>${money(r.gstValue, 0)}</div><div class="muted sub">${money(r.gstPct, 0)}%</div>` : '—'}</div></td>
-              <td class="num sub-cell" style="color:var(--brand)" data-label="Commission"><div class="cell-val"><div class="strong">${r.commission ? money(r.commission) : '—'}</div>${r.commPct ? `<div class="muted sub">${money(r.commPct, 0)}% of GST</div>` : ''}</div></td>
-              <td class="num" style="color:var(--amber)" data-label="Received">${r.received ? money(r.received) : '—'}</td>
-              <td class="num strong" data-label="Balance">${money(r.balance)}</td>
-              <td class="cell-actions">
-                <div class="row-actions">
-                  <button class="icon-btn" data-edit="${esc(r.id)}" title="Edit">${ICON.edit}</button>
-                  <button class="icon-btn del" data-del="${esc(r.id)}" title="Delete">${ICON.del}</button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-          <tfoot><tr>
-            <td colspan="3" data-label="Total">Total (${list.length} row${list.length === 1 ? '' : 's'})</td>
-            <td class="col-opt"></td>
-            <td class="num col-opt" data-label="Amount">${money(list.reduce((a, r) => a + r.amount, 0), 0)}</td>
-            <td class="num" data-label="GST">${money(list.reduce((a, r) => a + r.gstValue, 0), 0)}</td>
-            <td class="num" style="color:var(--brand)" data-label="Commission">${money(filterSum.commission)}</td>
-            <td class="num" style="color:var(--amber)" data-label="Received">${money(filterSum.received)}</td>
-            <td class="num" data-label="Balance">${money(r2(filterSum.commission - filterSum.received))}</td>
-            <td></td>
-          </tr></tfoot>
-        </table>
-      </div>` : emptyState(
-        'No entries yet',
-        'Add your first commission entry — seller, buyer, invoice and the GST share you earn are calculated automatically.',
-        '<button class="btn primary" data-new="invoice">Add commission entry</button>'
-      );
-  }
+  const body = slice.rows.length ? `
+    <div class="table-wrap">
+      <table class="ledger rtable">
+        <thead><tr>
+          ${sortHeader('date', 'Date')}
+          ${sortHeader('party', 'Seller / Party')}
+          ${sortHeader('item', 'Item')}
+          ${sortHeader('qty', 'Qty \u00d7 Rate', true)}
+          ${sortHeader('amount', 'Amount', true)}
+          ${sortHeader('gst', 'GST', true)}
+          ${sortHeader('commission', 'Commission', true)}
+          ${sortHeader('received', 'Received', true)}
+          ${sortHeader('balance', 'Balance', true)}
+          <th></th>
+        </tr></thead>
+        <tbody>
+        ${slice.rows.map(r => `
+          <tr>
+            <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
+            <td class="wrap" data-label="Party">
+              <div class="cell-val">
+                <div class="strong">${esc(r.party || '-')}</div>
+                <div class="muted sub">${r.counterparty ? '&#8594; ' + esc(r.counterparty) : ''}${r.counterparty && (r.invNo || r.narration) ? ' &middot; ' : ''}${r.invNo ? esc(r.invNo) : ''}${r.invNo && r.narration ? ' &middot; ' : ''}${r.narration ? esc(r.narration) : ''}</div>
+              </div>
+            </td>
+            <td class="wrap" data-label="Item">
+              <div class="cell-val">
+                <div>${esc(r.item || '-')}</div>
+                ${r.hsCode ? `<div class="muted sub">HS ${esc(r.hsCode)}</div>` : ''}
+              </div>
+            </td>
+            <td class="num sub-cell col-opt" data-label="Qty / Rate"><div class="cell-val">${r.qty ? `<div>${money(r.qty, 0)}</div><div class="muted sub">@ ${money(r.rate, 0)}</div>` : '-'}</div></td>
+            <td class="num col-opt" data-label="Amount">${r.amount ? money(r.amount, 0) : '-'}</td>
+            <td class="num sub-cell" data-label="GST"><div class="cell-val">${r.gstValue ? `<div>${money(r.gstValue, 0)}</div><div class="muted sub">${money(r.gstPct, 0)}%</div>` : '-'}</div></td>
+            <td class="num sub-cell" style="color:var(--brand)" data-label="Commission"><div class="cell-val"><div class="strong">${r.commission ? money(r.commission) : '-'}</div>${r.commPct ? `<div class="muted sub">${money(r.commPct, 0)}% of GST</div>` : ''}</div></td>
+            <td class="num" style="color:var(--amber)" data-label="Received">${r.received ? money(r.received) : '-'}</td>
+            <td class="num strong" data-label="Balance">${money(r.balance)}</td>
+            <td class="cell-actions">
+              <div class="row-actions">
+                <button class="icon-btn" data-edit="${esc(r.id)}" title="Edit">${ICON.edit}</button>
+                <button class="icon-btn del" data-del="${esc(r.id)}" title="Delete">${ICON.del}</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr>
+          <td colspan="3" data-label="Total">Total (${filtered.length} row${filtered.length === 1 ? '' : 's'})</td>
+          <td class="col-opt"></td>
+          <td class="num col-opt" data-label="Amount">${money(sum('amount'), 0)}</td>
+          <td class="num" data-label="GST">${money(sum('gstValue'), 0)}</td>
+          <td class="num" style="color:var(--brand)" data-label="Commission">${money(sum('commission'))}</td>
+          <td class="num" style="color:var(--amber)" data-label="Received">${money(sum('received'))}</td>
+          <td class="num" data-label="Balance">${money(r2(sum('commission') - sum('received')))}</td>
+          <td></td>
+        </tr></tfoot>
+      </table>
+    </div>` : emptyState(
+      'No entries yet',
+      'Record deals from Quick Vouchers (Sales) and money received from Quick Vouchers (Receipt) - they appear here automatically.',
+      ''
+    );
 
   $('#main').innerHTML = `
-    <div class="view-head">
-      <div>
-        <h2>Commission Register</h2>
-        <p>Every deal through S.E. Engineering — commission calculated on the GST amount.</p>
-      </div>
-      <div class="actions">
-        <button class="btn" data-act="export">${ICON.download} Export CSV</button>
-        <button class="btn" data-act="print">${ICON.print} Print</button>
-        <button class="btn" data-new="receipt">＋ Receive commission</button>
-        <button class="btn primary" data-new="invoice">${ICON.plus} New commission entry</button>
-      </div>
-    </div>
-
-    <div class="kpis">
-      <div class="kpi violet"><div class="label">Commission earned</div><div class="value">${money0(t.commission)}</div><div class="sub">${t.invoices} invoices</div></div>
-      <div class="kpi green"><div class="label">Received</div><div class="value">${money0(t.received)}</div><div class="sub">commission receipts</div></div>
-      <div class="kpi amber"><div class="label">Payments / deductions</div><div class="value">${money0(t.paid)}</div><div class="sub">paid out</div></div>
-      <div class="kpi ${t.balance > 0 ? 'red' : 'green'}"><div class="label">Balance receivable</div><div class="value">${money0(t.balance)}</div><div class="sub">${t.balance >= 0 ? 'still to receive' : 'over-received'}</div></div>
-    </div>
-
-    <div class="card">
+    <div class="card flexcard">
       <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, invoice, item…" value="${esc(state.filter.q)}"></div>
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, invoice, item..." value="${esc(state.filter.q)}"></div>
         <select id="fParty">
           <option value="">All companies</option>
           ${partyList.map(p => `<option value="${esc(p.data.name)}" ${state.filter.party === p.data.name ? 'selected' : ''}>${esc(p.data.name)}</option>`).join('')}
         </select>
         <select id="fYear"><option value="">All years</option>${years.map(y => `<option value="${y}" ${state.filter.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>
-        <div class="seg" style="margin-left:auto">
-          <button data-seg="ledger" class="${seg === 'ledger' ? 'on' : ''}">Ledger</button>
-          <button data-seg="invoice" class="${seg === 'invoice' ? 'on' : ''}">Commission only</button>
-          <button data-seg="company" class="${seg === 'company' ? 'on' : ''}">By company</button>
-        </div>
+        <span class="pill ok">${state.sort.key === 'date' && state.sort.dir === 'desc' ? 'Newest first' : state.sort.key === 'date' && state.sort.dir === 'asc' ? 'Oldest first' : 'Sorted by ' + state.sort.key}</span>
       </div>
       ${body}
+      ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; render(); }, 220));
-  $('#fParty').addEventListener('change', (e) => { state.filter.party = e.target.value; render(); });
-  $('#fYear').addEventListener('change', (e) => { state.filter.year = e.target.value; render(); });
-  $$('[data-seg]').forEach(b => b.addEventListener('click', () => { state.segment = b.dataset.seg; render(); }));
-  $$('[data-new]').forEach(b => b.addEventListener('click', () => {
-    if (b.dataset.new === 'invoice') commissionModal();
-    else if (b.dataset.new === 'receipt') voucherModal('receipt');
-  }));
+  $('#fQ').addEventListener('input', debounce((e) => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
+  $('#fParty').addEventListener('change', (e) => { state.filter.party = e.target.value; state.page = 1; render(); });
+  $('#fYear').addEventListener('change', (e) => { state.filter.year = e.target.value; state.page = 1; render(); });
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
   $$('[data-del]').forEach(b => b.addEventListener('click', () => askDelete(b.dataset.del)));
-  const ex = $('[data-act="export"]'); if (ex) ex.addEventListener('click', exportCSV);
-  const pr = $('[data-act="print"]'); if (pr) pr.addEventListener('click', () => window.print());
-}
-
-function renderByCompany(rows) {
-  const map = new Map();
-  for (const r of rows) {
-    const key = r.party || '—';
-    if (!map.has(key)) map.set(key, { name: key, commission: 0, received: 0, gst: 0, amount: 0, count: 0 });
-    const e = map.get(key);
-    e.commission += r.commission;
-    e.received += r.received;
-    e.gst += r.gstValue;
-    e.amount += r.amount;
-    if (r.kind === 'invoice') e.count++;
-  }
-  const list = [...map.values()].sort((a, b) => b.commission - a.commission);
-  if (!list.length) return emptyState('Nothing to summarise', 'Add commission entries to see the company-wise split.');
-  return `
-    <div class="party-summary">
-      ${list.map(e => `
-        <div class="party-sum-card">
-          <div class="top"><span class="pill seller">${e.count} inv</span><span class="name">${esc(e.name)}</span></div>
-          <div class="amt">${money(e.commission, 0)}</div>
-          <div class="meta">on GST ${money(e.gst, 0)} · received ${money(e.received, 0)}</div>
-          <div class="meta">business value ${money(e.amount, 0)}</div>
-        </div>`).join('')}
-    </div>`;
 }
 
 function emptyState(title, text, action = '') {
@@ -1176,16 +1357,20 @@ const MASTERS = {
 function renderMaster(type) {
   const cfg = MASTERS[type];
   if (!cfg) return renderRegister();
-  const list = records('master', type).sort((a, b) => String(a.data.name || '').localeCompare(String(b.data.name || '')));
+  const base = records('master', type);
   const q = state.filter.q.toLowerCase();
-  const shown = q ? list.filter(r => JSON.stringify(r.data).toLowerCase().includes(q)) : list;
+  const filtered = q ? base.filter(r => JSON.stringify(r.data).toLowerCase().includes(q)) : base;
+  const sorted = sortList(filtered, { name: r => r.data.name || '', rate: r => num(r.data.commissionPct || r.data.rate || r.data.pct) }, state.sort);
+  const slice = pageSlice(sorted);
 
-  const body = shown.length ? `
+  const body = slice.rows.length ? `
     <div class="table-wrap">
       <table class="rtable">
-        <thead><tr>${cfg.columns.map(c => `<th class="${c.num ? 'num' : ''}">${esc(c.t)}</th>`).join('')}<th></th></tr></thead>
+        <thead><tr>
+          <th class="sortable${state.sort.key === 'name' ? ' on' : ''}" data-sort="name" title="Sort by name">${esc(cfg.columns[0].t)}<span class="arrow">${state.sort.key === 'name' ? (state.sort.dir === 'asc' ? '\u25B2' : '\u25BC') : '\u2195'}</span></th>
+          ${cfg.columns.slice(1).map(c => `<th class="${c.num ? 'num' : ''}">${esc(c.t)}</th>`).join('')}<th></th></tr></thead>
         <tbody>
-        ${shown.map(r => `<tr>
+        ${slice.rows.map(r => `<tr>
           ${cfg.columns.map(c => `<td class="${c.num ? 'num' : ''} wrap" data-label="${esc(c.t)}">${c.cell(r.data)}</td>`).join('')}
           <td class="cell-actions"><div class="row-actions">
             <button class="icon-btn" data-edit="${esc(r.id)}" title="Edit">${ICON.edit}</button>
@@ -1203,16 +1388,19 @@ function renderMaster(type) {
         <button class="btn primary" data-add="1">${ICON.plus} ${esc(cfg.addLabel)}</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card flexcard">
       <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search…" value="${esc(state.filter.q)}"></div>
-        <span class="muted" style="font-size:12.5px;margin-left:auto">${shown.length} of ${list.length}</span>
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search..." value="${esc(state.filter.q)}"></div>
+        <span class="muted" style="font-size:12.5px;margin-left:auto">${filtered.length} of ${base.length}</span>
       </div>
       ${body}
+      ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; render(); }, 200));
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 200));
   $('[data-add]').addEventListener('click', () => masterModal(type));
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => masterModal(type, byId(b.dataset.edit))));
   $$('[data-del]').forEach(b => b.addEventListener('click', () => askDelete(b.dataset.del)));
 }
@@ -1334,12 +1522,12 @@ function masterModal(type, rec) {
 /* ---------------------------------------------------------------- commission entry modal */
 function commissionModal(rec) {
   const d = rec ? rec.data : {
-    date: today(), seller: '', buyer: 'S.E. ENGINEERING (PRIVATE) LIMITED', invNo: '',
+    date: today(), seller: '', buyer: '', invNo: '',
     item: '', hsCode: '', grade: '', qty: 0, rate: 0, amount: 0,
     gstPct: 18, gstValue: 0, commPct: 20, commValue: 0, notes: ''
   };
-  const sellerOpts = parties().filter(p => p.data.role !== 'buyer').map(p => p.data.name);
-  const buyerOpts = parties().filter(p => p.data.role !== 'seller').map(p => p.data.name);
+  const sellerOpts = sellerNames();
+  const buyerOpts = buyerNames();
 
   const modal = openModal(`
     <div class="modal-head">
@@ -1359,7 +1547,7 @@ function commissionModal(rec) {
           <datalist id="dlSeller">${sellerOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
         </div>
         <div class="field"><label for="cBuyer">Buyer (who receives)</label>
-          <input id="cBuyer" list="dlBuyer" value="${esc(d.buyer || '')}" placeholder="S.E. ENGINEERING (PRIVATE) LIMITED" autocomplete="off">
+          <input id="cBuyer" list="dlBuyer" value="${esc(d.buyer || '')}" placeholder="Buyer company" autocomplete="off">
           <datalist id="dlBuyer">${buyerOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
         </div>
       </div>
@@ -1476,59 +1664,64 @@ function renderVouchers(type) {
   const meta = VOUCHER_META[type];
   if (!meta) return renderRegister();
   const q = state.filter.q.toLowerCase();
-  let list = vouchers(type).sort((a, b) => (b.data.date || '').localeCompare(a.data.date || '') || (b.updatedAt - a.updatedAt));
-  if (q) list = list.filter(v => JSON.stringify(v.data).toLowerCase().includes(q));
+  let base = vouchers(type);
+  if (q) base = base.filter(v => JSON.stringify(v.data).toLowerCase().includes(q));
+  const sorted = sortList(base, SORT_GETTERS.voucher, state.sort);
+  const slice = pageSlice(sorted);
+  const list = slice.rows;
   const amountOf = (v) => (typeof v.data.grandTotal === 'number' ? v.data.grandTotal : num(v.data.amount));
-  const total = list.reduce((a, v) => a + amountOf(v), 0);
+  const total = sorted.reduce((a, v) => a + amountOf(v), 0);
+  const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
 
   const tableFor = () => {
     if (type === 'journal') {
       return `<table class="rtable">
-        <thead><tr><th>Date</th><th>Voucher</th><th>Debit account</th><th>Credit account</th><th class="num">Amount</th><th>Narration</th><th></th></tr></thead>
+        <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}<th>Debit account</th><th>Credit account</th>${sortTh('amount', 'Amount', true)}<th>Narration</th><th></th></tr></thead>
         <tbody>${list.map(v => `<tr>
           <td class="mono" data-label="Date">${esc(fmtDate(v.data.date))}</td>
-          <td class="mono strong" data-label="Voucher">${esc(v.data.no || '—')}</td>
-          <td data-label="Debit">${esc(v.data.debitAccount || '—')}</td>
-          <td data-label="Credit">${esc(v.data.creditAccount || '—')}</td>
+          <td class="mono strong" data-label="Voucher">${esc(v.data.no || '-')}</td>
+          <td data-label="Debit">${esc(v.data.debitAccount || '-')}</td>
+          <td data-label="Credit">${esc(v.data.creditAccount || '-')}</td>
           <td class="num strong" data-label="Amount">${money(v.data.amount)}</td>
           <td class="wrap muted" data-label="Narration">${esc(v.data.narration || '')}</td>
           <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(v.id)}">${ICON.edit}</button><button class="icon-btn del" data-del="${esc(v.id)}">${ICON.del}</button></div></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="4" data-label="Total">Total (${list.length})</td><td class="num" data-label="Amount">${money(total)}</td><td colspan="2"></td></tr></tfoot>
+        <tfoot><tr><td colspan="4" data-label="Total">Total (${sorted.length})</td><td class="num" data-label="Amount">${money(total)}</td><td colspan="2"></td></tr></tfoot>
       </table>`;
     }
     if (type === 'purchase' || type === 'sales') {
       return `<table class="rtable">
-        <thead><tr><th>Date</th><th>Voucher</th><th>${type === 'purchase' ? 'Seller' : 'Buyer'}</th><th>Items</th>
-          <th class="num">Sub total</th><th class="num">GST</th><th class="num">Total</th><th></th></tr></thead>
+        <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Items</th>
+          ${sortTh('gst', 'Sub total', true)}${sortTh('gst', 'GST', true)}${sortTh('total', 'Total', true)}<th></th></tr></thead>
         <tbody>${list.map(v => `<tr>
           <td class="mono" data-label="Date">${esc(fmtDate(v.data.date))}</td>
-          <td class="mono strong" data-label="Voucher">${esc(v.data.no || '—')}</td>
-          <td class="wrap" data-label="${type === 'purchase' ? 'Seller' : 'Buyer'}"><div class="strong">${esc(v.data.party || '—')}</div>${v.data.narration ? `<div class="muted sub">${esc(v.data.narration)}</div>` : ''}</td>
-          <td class="wrap" data-label="Items">${(v.data.lines || []).map(l => `${esc(l.item || '—')} <span class="muted">× ${money(l.qty, 0)}</span>`).join('<br>') || '—'}</td>
+          <td class="mono strong" data-label="Voucher">${esc(v.data.no || '-')}</td>
+          <td class="wrap" data-label="Seller"><div class="strong">${esc(voucherSeller(v.data, type) || '-')}</div>${v.data.narration ? `<div class="muted sub">${esc(v.data.narration)}</div>` : ''}</td>
+          <td class="wrap" data-label="Buyer">${esc(voucherBuyer(v.data, type) || '-')}</td>
+          <td class="wrap" data-label="Items">${(v.data.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)}</span>`).join('<br>') || '-'}</td>
           <td class="num" data-label="Sub total">${money(v.data.subTotal)}</td>
           <td class="num" data-label="GST">${money(v.data.taxTotal)}</td>
           <td class="num strong" data-label="Total">${money(v.data.grandTotal)}</td>
           <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(v.id)}">${ICON.edit}</button><button class="icon-btn del" data-del="${esc(v.id)}">${ICON.del}</button></div></td>
         </tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="4" data-label="Total">Total (${list.length})</td>
-          <td class="num" data-label="Sub total">${money(list.reduce((a, v) => a + num(v.data.subTotal), 0))}</td>
-          <td class="num" data-label="GST">${money(list.reduce((a, v) => a + num(v.data.taxTotal), 0))}</td>
-          <td class="num" data-label="Total">${money(list.reduce((a, v) => a + num(v.data.grandTotal), 0))}</td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="5" data-label="Total">Total (${sorted.length})</td>
+          <td class="num" data-label="Sub total">${money(sorted.reduce((a, v) => a + num(v.data.subTotal), 0))}</td>
+          <td class="num" data-label="GST">${money(sorted.reduce((a, v) => a + num(v.data.taxTotal), 0))}</td>
+          <td class="num" data-label="Total">${money(sorted.reduce((a, v) => a + num(v.data.grandTotal), 0))}</td><td></td></tr></tfoot>
       </table>`;
     }
     return `<table class="rtable">
-      <thead><tr><th>Date</th><th>Voucher</th><th>Party</th><th>${type === 'receipt' ? 'Received in' : 'Paid from'}</th><th class="num">Amount</th><th>Narration</th><th></th></tr></thead>
+      <thead><tr>${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Party')}<th>${type === 'receipt' ? 'Received in' : 'Paid from'}</th>${sortTh('amount', 'Amount', true)}<th>Narration</th><th></th></tr></thead>
       <tbody>${list.map(v => `<tr>
         <td class="mono" data-label="Date">${esc(fmtDate(v.data.date))}</td>
-        <td class="mono strong" data-label="Voucher">${esc(v.data.no || '—')}</td>
-        <td class="wrap strong" data-label="Party">${esc(v.data.party || '—')}</td>
-        <td class="wrap" data-label="${type === 'receipt' ? 'Received in' : 'Paid from'}">${esc(v.data.account || '—')}</td>
+        <td class="mono strong" data-label="Voucher">${esc(v.data.no || '-')}</td>
+        <td class="wrap strong" data-label="Party">${esc(v.data.party || '-')}</td>
+        <td class="wrap" data-label="${type === 'receipt' ? 'Received in' : 'Paid from'}">${esc(v.data.account || '-')}</td>
         <td class="num strong" style="color:${type === 'receipt' ? 'var(--brand)' : 'var(--amber)'}" data-label="Amount">${money(v.data.amount)}</td>
         <td class="wrap muted" data-label="Narration">${esc(v.data.narration || '')}</td>
         <td class="cell-actions"><div class="row-actions"><button class="icon-btn" data-edit="${esc(v.id)}">${ICON.edit}</button><button class="icon-btn del" data-del="${esc(v.id)}">${ICON.del}</button></div></td>
       </tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="4" data-label="Total">Total (${list.length})</td><td class="num" data-label="Amount">${money(total)}</td><td colspan="2"></td></tr></tfoot>
+      <tfoot><tr><td colspan="4" data-label="Total">Total (${sorted.length})</td><td class="num" data-label="Amount">${money(total)}</td><td colspan="2"></td></tr></tfoot>
     </table>`;
   };
 
@@ -1542,51 +1735,105 @@ function renderVouchers(type) {
     </div>
     <div class="kpis">
       <div class="kpi ${type === 'receipt' ? 'green' : type === 'payment' ? 'amber' : 'violet'}">
-        <div class="label">Total ${esc(type)}</div><div class="value">${money0(total)}</div><div class="sub">${list.length} vouchers</div>
+        <div class="label">Total ${esc(type)}</div><div class="value">${money0(total)}</div><div class="sub">${sorted.length} vouchers</div>
       </div>
       <div class="kpi"><div class="label">This month</div>
-        <div class="value">${money0(list.filter(v => monthKey(v.data.date) === monthKey(today())).reduce((a, v) => a + (v.data.grandTotal || v.data.amount || 0), 0))}</div>
+        <div class="value">${money0(sorted.filter(v => monthKey(v.data.date) === monthKey(today())).reduce((a, v) => a + (v.data.grandTotal || v.data.amount || 0), 0))}</div>
         <div class="sub">${MONTHS[new Date().getMonth()]} ${new Date().getFullYear()}</div></div>
       <div class="kpi"><div class="label">Latest voucher</div>
-        <div class="value" style="font-size:17px">${esc(list[0] ? fmtDate(list[0].data.date) : '—')}</div>
-        <div class="sub">${esc(list[0] ? (list[0].data.no || list[0].data.party || 'recorded') : 'none yet')}</div></div>
+        <div class="value" style="font-size:17px">${esc(sorted[0] ? fmtDate(sorted[0].data.date) : '-')}</div>
+        <div class="sub">${esc(sorted[0] ? (sorted[0].data.no || sorted[0].data.party || 'recorded') : 'none yet')}</div></div>
     </div>
-    <div class="card">
+    <div class="card flexcard">
       <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, voucher no, narration…" value="${esc(state.filter.q)}"></div>
-        <span class="muted" style="font-size:12.5px;margin-left:auto">${list.length} voucher${list.length === 1 ? '' : 's'}</span>
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search party, voucher no, narration..." value="${esc(state.filter.q)}"></div>
+        <span class="muted" style="font-size:12.5px;margin-left:auto">${sorted.length} voucher${sorted.length === 1 ? '' : 's'}</span>
       </div>
-      <div class="table-wrap" style="max-height:max(420px, calc(100vh - 400px))">${list.length ? tableFor() : emptyState('No ' + type + ' vouchers yet', meta.sub, '<button class="btn primary" data-new="1">Create the first one</button>')}</div>
+      <div class="table-wrap">${list.length ? tableFor() : emptyState('No ' + type + ' vouchers yet', meta.sub, '<button class="btn primary" data-new="1">Create the first one</button>')}</div>
+      ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; render(); }, 200));
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 200));
   $$('[data-new]').forEach(b => b.addEventListener('click', () => voucherModal(type)));
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => voucherModal(type, byId(b.dataset.edit))));
   $$('[data-del]').forEach(b => b.addEventListener('click', () => askDelete(b.dataset.del)));
   const pr = $('[data-act="print"]'); if (pr) pr.addEventListener('click', () => window.print());
 }
 
+/* A seller/buyer picker: a real drop-down of the master names, plus
+   "Add a new name..." for a company that is not in the master yet. */
+function partyPicker(id, label, value, names, required) {
+  const known = names.includes(value);
+  const opts = names.map(n => `<option value="${esc(n)}"${n === value ? ' selected' : ''}>${esc(n)}</option>`).join('');
+  const extra = value && !known ? `<option value="${esc(value)}" selected>${esc(value)}</option>` : '';
+  return `<div class="field">
+    <label for="${id}">${label}${required ? ' <span class="req">*</span>' : ''}</label>
+    <div class="combo">
+      <select id="${id}">
+        <option value="">— choose ${label.toLowerCase()} —</option>
+        ${opts}${extra}
+        <option value="__other__">＋ Add a new name…</option>
+      </select>
+      <input id="${id}New" data-combo-new hidden placeholder="Type the ${label.toLowerCase()} name" autocomplete="off">
+    </div>
+  </div>`;
+}
+
+function wirePartyPickers(root, ids) {
+  ids.forEach(id => {
+    const sel = $('#' + id, root);
+    const inp = $('#' + id + 'New', root);
+    if (!sel || !inp) return;
+    sel.addEventListener('change', () => {
+      const other = sel.value === '__other__';
+      inp.hidden = !other;
+      if (other) { inp.value = ''; inp.focus(); } else { inp.value = ''; }
+    });
+  });
+}
+
+function pickerValue(root, id) {
+  const sel = $('#' + id, root);
+  if (!sel) return '';
+  if (sel.value === '__other__') {
+    const inp = $('#' + id + 'New', root);
+    return inp ? inp.value.trim() : '';
+  }
+  return sel.value.trim();
+}
+
 function voucherModal(type, rec) {
   const meta = VOUCHER_META[type];
+  const isGoods = type === 'purchase' || type === 'sales';
   const d = rec ? rec.data : {
     date: today(), no: nextVoucherNo(type), party: '', account: banks()[0]?.data.name || 'Bank Account',
     amount: 0, narration: '', debitAccount: '', creditAccount: '',
+    seller: '', buyer: '',
     lines: [{ item: '', hsCode: '', qty: 0, rate: 0, amount: 0, taxPct: 18, taxAmt: 0, total: 0 }],
     subTotal: 0, taxTotal: 0, grandTotal: 0,
     comm: { enabled: false, pct: 20, value: 0 }
   };
   const accountOpts = banks().map(b => b.data.name);
   const partyOpts = parties().map(p => p.data.name);
+  // Goods vouchers name both sides of the deal: a seller always, a buyer on sales.
+  const sellerValue = isGoods ? (d.seller || (type === 'purchase' ? d.party : '')) : '';
+  const buyerValue = isGoods ? (d.buyer || (type === 'sales' ? d.party : '')) : '';
 
   const head = `
-    <div class="grid-3">
+    <div class="grid-${isGoods ? '2' : '3'}">
       <div class="field"><label for="vDate">Date</label><input id="vDate" type="date" value="${esc(d.date || today())}"></div>
       <div class="field"><label for="vNo">Voucher no.</label><input id="vNo" value="${esc(d.no || '')}"></div>
-      <div class="field"><label for="vPartyLabel">${type === 'purchase' ? 'Seller' : type === 'sales' ? 'Buyer' : 'Party'}${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
+      ${isGoods ? '' : `<div class="field"><label for="vParty">Party${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
         <input id="vParty" list="dlVP" value="${esc(d.party || '')}" autocomplete="off" placeholder="Company name">
         <datalist id="dlVP">${partyOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-      </div>
-    </div>`;
+      </div>`}
+    </div>
+    ${isGoods ? `<div class="grid-2">
+      ${partyPicker('vSeller', 'Seller', sellerValue, sellerNames(), true)}
+      ${partyPicker('vBuyer', 'Buyer', buyerValue, buyerNames(), type === 'sales')}
+    </div>` : ''}`;
 
   let body = '';
   if (type === 'payment' || type === 'receipt') {
@@ -1761,6 +2008,7 @@ function voucherModal(type, rec) {
   if (type === 'purchase' || type === 'sales') {
     bindLines();
     calcLines();
+    wirePartyPickers(modal, ['vSeller', 'vBuyer']);
     get('vAddLine').addEventListener('click', () => {
       lines.push({ item: '', hsCode: '', qty: 0, rate: 0, amount: 0, taxPct: 18, taxAmt: 0, total: 0 });
       redrawLines();
@@ -1770,18 +2018,22 @@ function voucherModal(type, rec) {
       calcLines();
     });
     get('vCommPct').addEventListener('input', calcLines);
-    get('vParty').addEventListener('change', () => {
-      const name = get('vParty').value.trim();
+    // The commission % follows the seller — that is whose GST you are sharing.
+    const applySellerPct = () => {
+      const name = pickerValue(modal, 'vSeller').trim();
       if (name && !rec) get('vCommPct').value = commissionPctFor(name);
       calcLines();
-    });
+    };
+    get('vSeller').addEventListener('change', applySellerPct);
+    get('vSellerNew').addEventListener('input', applySellerPct);
   }
 
   $('#vSave', modal).addEventListener('click', async () => {
     const date = get('vDate').value || today();
     const no = get('vNo').value.trim() || nextVoucherNo(type);
-    const party = get('vParty').value.trim();
     const narration = get('vNarr').value.trim();
+    const isGoodsType = type === 'purchase' || type === 'sales';
+    const party = isGoodsType ? '' : get('vParty').value.trim();
 
     let data;
     if (type === 'payment' || type === 'receipt') {
@@ -1799,14 +2051,20 @@ function voucherModal(type, rec) {
       calcLines();
       const clean = lines.filter(l => num(l.qty) && num(l.rate));
       if (!clean.length) { toast('Add at least one line with quantity and rate', 'err'); return; }
-      if (!party) { toast(type === 'purchase' ? 'Seller is required' : 'Buyer is required', 'err'); return; }
+      const seller = pickerValue(modal, 'vSeller').trim();
+      const buyer = pickerValue(modal, 'vBuyer').trim();
+      if (!seller) { toast('Seller is required', 'err'); return; }
+      if (type === 'sales' && !buyer) { toast('Buyer is required', 'err'); return; }
       const subTotal = r2(clean.reduce((a, l) => a + l.amount, 0));
       const taxTotal = r2(clean.reduce((a, l) => a + l.taxAmt, 0));
       const grandTotal = r2(subTotal + taxTotal);
       const commOn = get('vCommOn').checked;
       const commPct = num(get('vCommPct').value);
       data = {
-        date, no, party, narration,
+        date, no, narration,
+        seller, buyer,
+        // `party` keeps its old meaning: the seller on a purchase, the buyer on a sale.
+        party: type === 'purchase' ? seller : buyer,
         lines: clean, subTotal, taxTotal, grandTotal,
         comm: { enabled: commOn, pct: commPct, value: commOn ? r2(taxTotal * commPct / 100) : 0 }
       };
@@ -1822,10 +2080,14 @@ function voucherModal(type, rec) {
       const linked = saved ? invoices().find(i => i.data.voucherId === saved.id) : null;
       const wantsCommission = data.comm.enabled && data.comm.value > 0;
       if (wantsCommission) {
+        // The register keeps both sides of the deal so a seller-wise register can be
+        // built from it: who sold, to whom, and what GST the brokerage shared.
+        const dealSeller = data.seller || (type === 'purchase' ? data.party : '') || COMPANY;
+        const dealBuyer = data.buyer || (type === 'sales' ? data.party : '') || COMPANY;
         await saveRecord('invoice', 'commission', {
           date: data.date,
-          seller: type === 'purchase' ? data.party : 'S.E. ENGINEERING (PRIVATE) LIMITED',
-          buyer: type === 'purchase' ? 'S.E. ENGINEERING (PRIVATE) LIMITED' : data.party,
+          seller: dealSeller,
+          buyer: dealBuyer,
           invNo: data.no,
           item: (data.lines[0] || {}).item || '',
           hsCode: (data.lines[0] || {}).hsCode || '',
@@ -1875,21 +2137,161 @@ function openEntry(id) {
   if (rec.kind === 'master') return masterModal(rec.type, rec);
 }
 
-/* ---------------------------------------------------------------- export */
-function exportCSV() {
-  const rows = ledgerRows().filter(matchesFilter);
-  if (!rows.length) return toast('Nothing to export', 'err');
-  const head = ['Date', 'Party', 'Counterparty', 'Invoice', 'Item', 'HS Code', 'Qty', 'Rate', 'Amount', 'GST %', 'GST Value', 'Comm %', 'Commission', 'Received', 'Balance', 'Narration'];
-  const body = rows.map(r => [
-    r.date, r.party, r.counterparty, r.invNo, r.item, r.hsCode, r.qty, r.rate, r.amount,
-    r.gstPct, r.gstValue, r.commPct, r.commission, r.received, r.balance, r.narration
-  ]);
-  const csv = [head, ...body].map(line => line.map(v => {
-    const s = String(v == null ? '' : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(',')).join('\r\n');
-  download('commission-register-' + today() + '.csv', '\ufeff' + csv, 'text/csv');
-  toast('CSV exported');
+/* ---------------------------------------------------------------- export (top bar) */
+// Builds { title, columns, rows, filename } for whatever list is on screen.
+function exportDocument() {
+  const [kind, sub] = String(state.view).split(':');
+  const stamp = today();
+
+  if (state.view === 'register') {
+    const rows = sortList(ledgerRows().filter(matchesFilter), SORT_GETTERS.register, state.sort);
+    return {
+      filename: 'commission-register-' + stamp,
+      title: 'Commission Register',
+      subtitle: COMPANY + ' - ' + rows.length + ' rows - ' + reportLabel(),
+      sheetName: 'Commission Register',
+      columns: [
+        { label: 'Date' }, { label: 'Seller / Party' }, { label: 'Buyer' }, { label: 'Invoice' },
+        { label: 'Item' }, { label: 'HS' }, { label: 'Qty', num: true }, { label: 'Rate', num: true },
+        { label: 'Amount', num: true }, { label: 'GST %', num: true }, { label: 'GST', num: true },
+        { label: 'Comm %', num: true }, { label: 'Commission', num: true },
+        { label: 'Received', num: true }, { label: 'Balance', num: true }, { label: 'Narration' }
+      ],
+      rows: rows.map(r => [r.date, r.party, r.counterparty, r.invNo, r.item, r.hsCode,
+        r.qty, r.rate, r.amount, r.gstPct, r.gstValue, r.commPct, r.commission, r.received, r.balance, r.narration])
+    };
+  }
+
+  if (kind === 'voucher') {
+    const meta = VOUCHER_META[sub] || {};
+    let base = vouchers(sub);
+    if (state.filter.q) base = base.filter(v => JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()));
+    const rows = sortList(base, SORT_GETTERS.voucher, state.sort);
+    if (sub === 'purchase' || sub === 'sales') {
+      return {
+        filename: sub + '-register-' + stamp,
+        title: meta.title || sub, subtitle: rows.length + ' vouchers', sheetName: meta.title,
+        columns: [
+          { label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Items' },
+          { label: 'Qty', num: true }, { label: 'Sub total', num: true },
+          { label: 'GST', num: true }, { label: 'Total', num: true }, { label: 'Brokerage', num: true },
+          { label: 'Narration' }
+        ],
+        rows: rows.map(v => {
+          const d = v.data;
+          return [d.date, d.no, voucherSeller(d, sub), voucherBuyer(d, sub),
+            (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}`).join(' | '),
+            (d.lines || []).reduce((s, l) => s + num(l.qty), 0),
+            num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''];
+        })
+      };
+    }
+    return {
+      filename: sub + '-vouchers-' + stamp,
+      title: meta.title || sub, subtitle: rows.length + ' vouchers', sheetName: meta.title,
+      columns: [{ label: 'Date' }, { label: 'Voucher' }, { label: 'Party' }, { label: 'Account' },
+        { label: 'Amount', num: true }, { label: 'Narration' }],
+      rows: rows.map(v => [v.data.date, v.data.no, v.data.party,
+        v.data.account || [v.data.debitAccount, v.data.creditAccount].filter(Boolean).join(' -> '),
+        num(v.data.amount), v.data.narration || ''])
+    };
+  }
+
+  if (kind === 'master') {
+    const cfg = MASTERS[sub];
+    if (!cfg) return null;
+    const base = records('master', sub);
+    const rows = sortList(base, { name: r => r.data.name || '' }, state.sort);
+    const cols = ['name', 'role', 'commissionPct', 'hsCode', 'gstPct', 'unit', 'rate', 'accountNo', 'kind', 'phone', 'notes'];
+    const used = cols.filter(k => rows.some(r => r.data[k] !== undefined));
+    return {
+      filename: 'master-' + sub + '-' + stamp,
+      title: cfg.title, subtitle: rows.length + ' entries', sheetName: cfg.title,
+      columns: used.map(k => ({ label: k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()), num: ['commissionPct', 'gstPct', 'rate'].includes(k) })),
+      rows: rows.map(r => used.map(k => r.data[k] === undefined ? '' : r.data[k]))
+    };
+  }
+
+  if (state.view === 'sellers' || state.view === 'buyers') {
+    const side = state.view === 'sellers' ? 'seller' : 'buyer';
+    const cfg = PARTY_REG[side];
+    const getters = {
+      name: r => r.name, deals: r => r.deals, others: r => r.others.size,
+      amount: r => r.amount, gst: r => r.gst, commission: r => r.commission,
+      received: r => r.received, balance: r => r.balance
+    };
+    const rows = sortList(partyRegisterRows(side), getters, state.sort);
+    const moneyCols = side === 'seller'
+      ? [{ label: 'Received', num: true }, { label: 'Balance', num: true }]
+      : [];
+    return {
+      filename: side + '-register-' + stamp,
+      title: cfg.head + ' Register', subtitle: rows.length + ' ' + side + 's', sheetName: cfg.head + ' Register',
+      columns: [
+        { label: cfg.head }, { label: 'Deals', num: true }, { label: cfg.otherHead },
+        { label: 'Amount', num: true }, { label: 'GST', num: true }, { label: 'Commission', num: true },
+        ...moneyCols
+      ],
+      rows: rows.map(r => {
+        const base = [r.name, r.deals, [...r.others.keys()].join(', '), r.amount, r.gst, r.commission];
+        return side === 'seller' ? base.concat([r.received, r.balance]) : base;
+      })
+    };
+  }
+
+  if (state.view === 'purchases' || state.view === 'sales') {
+    const type = state.view === 'sales' ? 'sales' : 'purchase';
+    const meta = GOODS_META[type];
+    let base = vouchers(type).filter(v => inReportRange(v.data.date));
+    if (state.filter.q) base = base.filter(v => JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()));
+    const rows = sortList(base, SORT_GETTERS.voucher, state.sort);
+    return {
+      filename: type + '-register-' + (state.report.from || 'all'),
+      title: meta.title, subtitle: rows.length + ' vouchers - ' + reportLabel(), sheetName: meta.title,
+      columns: [{ label: 'Date' }, { label: 'Voucher' }, { label: 'Seller' }, { label: 'Buyer' }, { label: 'Items' },
+        { label: 'Qty', num: true }, { label: 'Sub total', num: true }, { label: 'GST', num: true },
+        { label: 'Total', num: true }, { label: 'Brokerage', num: true }, { label: 'Narration' }],
+      rows: rows.map(v => {
+        const d = v.data;
+        return [d.date, d.no, voucherSeller(d, type), voucherBuyer(d, type),
+          (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}`).join(' | '),
+          (d.lines || []).reduce((s, l) => s + num(l.qty), 0),
+          num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''];
+      })
+    };
+  }
+
+  if (state.view === 'daybook') {
+    const rows = allTransactions().filter(x => inReportRange(x.date) && (!state.report.type || x.kind === state.report.type));
+    return {
+      filename: 'day-book-' + (state.report.from || 'all'),
+      title: 'Day Book', subtitle: rows.length + ' entries - ' + reportLabel(), sheetName: 'Day Book',
+      columns: [{ label: 'Date' }, { label: 'Type' }, { label: 'Voucher' }, { label: 'Party' },
+        { label: 'Buyer / Contra' }, { label: 'Particulars' }, { label: 'Item' }, { label: 'Amount', num: true },
+        { label: 'GST', num: true }, { label: 'Value', num: true }],
+      rows: rows.map(x => [x.date, TXN[x.kind].label, x.no, x.party, x.against || x.account || '', x.narration, x.item, x.base, x.gst, x.value])
+    };
+  }
+
+  return null;
+}
+
+function exportCurrent(format) {
+  const doc = exportDocument();
+  if (!doc || !doc.rows.length) return toast('Nothing to export on this screen', 'err');
+  const stamp = today();
+  try {
+    if (format === 'xls') {
+      downloadFile(doc.filename + '.xls', buildExcel(doc), 'application/vnd.ms-excel');
+      toast('Excel file downloaded');
+    } else {
+      const footer = COMPANY + '  |  ' + (state.user && state.user.name ? state.user.name : '');
+      downloadFile(doc.filename + '.pdf', buildPdf({ ...doc, footer }), 'application/pdf');
+      toast('PDF downloaded');
+    }
+  } catch (e) {
+    toast('Export failed: ' + (e.message || e), 'err');
+  }
 }
 
 function download(filename, text, mime) {
@@ -2093,17 +2495,26 @@ function userModal() {
 
 /* ---------------------------------------------------------------- router */
 function navigate(view) {
+  const changedView = String(state.view).split(':')[0] !== String(view).split(':')[0];
   state.view = view;
   state.filter.q = '';
+  state.page = 1;
+  if (changedView) {
+    if (view === 'sellers' || view === 'buyers') state.sort = { key: 'commission', dir: 'desc' };
+    else if (view === 'sales' || view === 'purchases' || view === 'register') state.sort = { key: 'date', dir: 'desc' };
+    else state.sort = { key: 'date', dir: 'asc' };
+  }
   closeDrawer();
   render();
 }
 
 const VIEW_TITLES = {
-  register: ['Commission Register', 'S.E. Engineering (Pvt) Ltd'],
+  register: ['Commission Register', COMPANY],
   daybook: ['Day Book', 'All entries, day by day'],
   purchases: ['Purchase Register', 'Every purchase, with GST'],
   sales: ['Sales Register', 'Every sale, with GST'],
+  sellers: ['Seller Register', 'Seller-wise sales, GST and commission'],
+  buyers: ['Buyer Register', 'Buyer-wise purchases, GST and commission'],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
 };
@@ -2123,11 +2534,22 @@ function render() {
   document.title = titles[0] + ' — Commission Accounts';
   updateDrawerMeta();
 
+  // The register is a pure list: no second heading, no action buttons - the whole
+  // window is the list, with a pager at the bottom.
+  const isList = kind === 'master' || kind === 'voucher' || ['register', 'daybook', 'purchases', 'sales', 'sellers', 'buyers'].includes(state.view);
+  const main = $('#main');
+  main.className = 'main' + (isList ? ' fill' : ' scroll');
+  main.scrollTop = 0;
+  const exports = $('#topbarExports');
+  if (exports) exports.hidden = !isList;
+
   if (kind === 'master') return renderMaster(sub);
   if (kind === 'voucher') return renderVouchers(sub);
   if (state.view === 'daybook') return renderDayBook();
   if (state.view === 'purchases') return renderGoodsRegister('purchase');
   if (state.view === 'sales') return renderGoodsRegister('sales');
+  if (state.view === 'sellers') return renderPartyRegister('seller');
+  if (state.view === 'buyers') return renderPartyRegister('buyer');
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
   return renderRegister();
@@ -2142,7 +2564,13 @@ function wireChrome() {
   $('#qvToggle').addEventListener('click', (e) => toggleSubmenu('qv', e.currentTarget));
   $$('.menu-item[data-view]').forEach(b => b.addEventListener('click', () => navigate(b.dataset.view)));
   $('#syncChip').addEventListener('click', () => syncNow({ quiet: false }));
-  $('#userChip').addEventListener('click', () => navigate('settings'));
+  const xls = $('#exportXls'); if (xls) xls.addEventListener('click', () => exportCurrent('xls'));
+  const pdf = $('#exportPdf'); if (pdf) pdf.addEventListener('click', () => exportCurrent('pdf'));
+  // Profile chip: opens your account, and closes it again when clicked a second time.
+  $('#userChip').addEventListener('click', () => {
+    if (state.view === 'settings') navigate(state.prevView || 'register');
+    else { state.prevView = state.view; navigate('settings'); }
+  });
   $('#drawerLogout').addEventListener('click', () => { closeDrawer(); signOut(); });
   $('#modalBackdrop').addEventListener('click', (e) => { if (e.target.id === 'modalBackdrop') closeModal(); });
   document.addEventListener('keydown', (e) => {

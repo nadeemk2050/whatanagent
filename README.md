@@ -89,7 +89,7 @@ the Firestore settings document.
 
 A separate, self-contained ledger app for a commission broker: one company sells material to
 another through us, and we keep a percentage of the **GST amount** of that deal. It replaces
-`S.E.ENGINEERING GST SHEET-2.xlsx`.
+`S.E.ENGINEERING GST SHEET-2.xlsx` and is branded for **Qaryan Brokerage**.
 
 Open it at **`/commission`** (also `/commission-accounts`). It has its own sign-up/sign-in and
 does not use the dashboard admin token.
@@ -109,14 +109,27 @@ fills it in automatically and the form shows the working as you type.
 
 | Menu | What it does |
 | --- | --- |
-| Commission Register | One ledger: seller, invoice, item, GST, commission, received, running balance. Filter by company/year, switch to company-wise summary, export CSV, print. |
+| Commission Register | One ledger: seller, the buyer it went to, invoice, item, GST, commission, received, running balance. Search, filter by company/year, sort by any column, 40 rows a page. |
 | Manage Master → Customers & Companies · Items · Expenses · Taxes · Cash / Banks · Commission Rates | Add, edit and remove every master name. |
 | Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. Purchase and Sales carry a line-by-line table with GST per line, and an optional "record commission from this deal" box that writes the matching entry into the register. Editing the voucher updates that entry; switching the box off removes it. |
 | Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |
-| Purchase Register | Every purchase voucher with its items, quantity, sub total, GST and total, plus period totals. |
-| Sales Register | Every sale voucher with buyer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
+| Purchase Register | Every purchase voucher with its seller, buyer, items, quantity, sub total, GST and total, plus period totals. |
+| Sales Register | Every sale voucher with its seller and buyer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
+| Seller Register | Seller-wise control: for each seller, how many deals, which buyers they went to, the value, the GST, the commission earned, what has been received and what is still outstanding. |
+| Buyer Register | The same position from the buyer side: how many deals, which sellers supplied them, value, GST and commission. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
+
+### Seller and buyer on a voucher
+
+This is a brokerage book, so a **Purchase or Sales voucher names both sides of the deal**. Each
+voucher stores `seller` and `buyer`; `party` keeps its old meaning (the seller on a purchase, the
+buyer on a sale) so older rows and the registers still read correctly. The pickers are real
+drop-downs of the master companies, with **＋ Add a new name…** for a company that is not in the
+master yet. Selecting a seller also fills in that company's commission %.
+
+The Seller and Buyer registers are built from the commission ledger plus any goods voucher that
+never produced a commission entry, so a deal is never counted twice.
 
 ### F2 and Alt+F2
 

@@ -1,7 +1,7 @@
 // Commission Accounts — offline shell cache.
 // Scoped to /commission only, so the rest of the dashboard is untouched.
-const CACHE = 'commission-shell-v2';
-const SHELL = ['/commission', '/commission.html', '/commission.css', '/commission.js', '/commission.webmanifest', '/icon-192.png'];
+const CACHE = 'commission-shell-v3';
+const SHELL = ['/commission', '/commission.html', '/commission.css', '/commission.js', '/commission-export.js', '/commission.webmanifest', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

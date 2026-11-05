@@ -184,7 +184,7 @@ registerAlignRoutes(app);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
     // Commission Accounts is a money app: never let a browser run a stale bundle.
-    if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.includes('commission.')) {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.includes('commission')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
