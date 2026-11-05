@@ -59,31 +59,54 @@ if (!res.ok) {
 const pages = await res.json();
 console.log(`${pages.length} pages from ${SITE} ${APPLY ? '(APPLYING)' : '(dry run)'}`);
 
+// Pages whose slug is not a usable keyword, or that would collide with another page.
+// Rank Math reports 'You have already used this Focus Keyword' when two pages share one, so
+// every keyword below must be unique across the site.
+const OVERRIDES = {
+  '/': 'plastic recycling',
+  '/services/plastic-recycling/': 'plastic recycling services',
+  '/services/pvc-pipes-supply/': 'pvc pipes supply',
+  '/materials/abs-ps/': 'abs and ps plastic',
+  '/about/': 'plastic recycling company'
+};
+
+// Titles that must contain the keyword AND stay short enough for Rank Math's Title Readability.
+const TITLE_OVERRIDE = {
+  '/': 'Plastic Recycling & PVC Pipes | Al Qaryan Industries'
+};
+
 const plan = [];
+const usedKeywords = new Map();
 for (const pg of pages) {
   const path = (() => { try { return new URL(pg.link).pathname; } catch (e) { return '/' + pg.slug; } })();
   const title = clean(pg.title.raw);
   const body = norm(pg.content.raw).slice(0, 8000);
   const titleN = norm(title);
 
-  const cands = [];
+  // Slug-based keywords: a slug is unique per page by definition, which is what stops the
+  // 'already used this Focus Keyword' error. OVERRIDES covers the pages where the slug is not a
+  // usable phrase (e.g. the homepage slug is just 'home').
   const slugPhrase = pg.slug.replace(/-/g, ' ').trim();
-  if (slugPhrase) cands.push(slugPhrase);
-  title.split(/\s+[-–—|]\s+/).forEach(seg => { const n = norm(seg); if (n) cands.push(n); });
-  const tw = titleN.split(' ').filter(Boolean);
-  for (let n = Math.min(5, tw.length); n >= 2; n--) cands.push(tw.slice(0, n).join(' '));
+  let keyword = OVERRIDES[path] || slugPhrase;
 
-  const uniq = [...new Set(cands)].filter(c => c.length >= 3 && c.split(' ').length <= 6);
-  const inBoth = uniq.filter(c => titleN.includes(c) && body.includes(c));
-  const inBody = uniq.filter(c => body.includes(c));
-  const keyword = (inBoth.length ? inBoth : (inBody.length ? inBody : uniq))[0] || slugPhrase;
+  // never two pages on the same keyword
+  if (usedKeywords.has(keyword)) {
+    const tail = path.split('/').filter(Boolean).slice(-1)[0] || 'page';
+    keyword = keyword + ' ' + tail;
+  }
+  usedKeywords.set(keyword, path);
 
   let newTitle = title, writeTitle = false;
-  if (title.length > 62 || title.length < 25) {
+  if (TITLE_OVERRIDE[path]) {
     writeTitle = true;
-    newTitle = title.length > 62
-      ? title.slice(0, 60).replace(/[\s,–—-]+$/, '')
-      : title + ' | ' + clean(pg.link).replace(/^https?:\/\/[^/]+/, '');
+    newTitle = TITLE_OVERRIDE[path];
+  } else if (!titleN.includes(norm(keyword))) {
+    // the SEO title has to contain the keyword, or Rank Math fails that check
+    writeTitle = true;
+    newTitle = (cap(keyword) + ' | Al Qaryan Industries').slice(0, 60);
+  } else if (title.length > 62) {
+    writeTitle = true;
+    newTitle = title.slice(0, 60).replace(/[\s,–—-]+$/, '');
   }
 
   const curDesc = clean(pg.meta && pg.meta.rank_math_description);
