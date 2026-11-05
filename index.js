@@ -17,6 +17,7 @@ import { registerNewsRoutes } from './newsAgent.mjs';
 import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
+import { registerCommissionRoutes } from './commissionApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -163,6 +164,8 @@ const goldAgent = registerGoldRoutes(app, db);
 const brainEngine = registerBrainRoutes(app, db);
 // 📊 Trade Accounts Data (Purchases & Sales Ledger for TT, Gold, and Items)
 registerTradeAccountsRoutes(app, db);
+// 🧾 Commission Accounts (offline-first broker ledger: sellers → buyers, commission on GST)
+registerCommissionRoutes(app);
 // 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
 // 📇 Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
@@ -180,7 +183,8 @@ registerBusinessRoutes(app, db);
 registerAlignRoutes(app);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+    // Commission Accounts is a money app: never let a browser run a stale bundle.
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.includes('commission.')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -196,6 +200,11 @@ app.get('/live', (req, res) => {
 // Clean route for Trade Accounts Data Portal
 app.get(['/trade', '/trade-accounts', '/trades'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'trade.html'));
+});
+
+// Clean route for the Commission Accounts portal (own login, offline-first)
+app.get(['/commission', '/commission-accounts', '/commission-account'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'commission.html'));
 });
 
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state

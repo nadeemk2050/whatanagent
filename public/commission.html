@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Commission Accounts — S.E. Engineering</title>
+<meta name="theme-color" content="#047857">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="manifest" href="/commission.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/commission.css">
+<script>
+  // The page can be opened from the VPS itself (relative API) or from a static copy
+  // (Firebase Hosting). Only the static copy needs to be pointed at the API host.
+  (function () {
+    var API_HOST = 'https://whatanagent.duckdns.org';
+    if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return;
+    if (location.origin === API_HOST) return;
+    if (/\.(web\.app|firebaseapp\.com)$/.test(location.hostname) || location.protocol === 'file:') {
+      var origFetch = window.fetch.bind(window);
+      window.fetch = function (input, init) {
+        try {
+          if (typeof input === 'string' && input.indexOf('/api/') === 0) input = API_HOST + input;
+        } catch (e) { /* keep original */ }
+        return origFetch(input, init);
+      };
+    }
+  })();
+</script>
+</head>
+<body>
+
+<!-- ============================== SIGN IN / SIGN UP ============================== -->
+<div class="auth-wrap" id="authScreen">
+  <section class="auth-hero">
+    <div class="brand-row">
+      <div class="logo-mark">SE</div>
+      <div style="line-height:1.25">
+        <b style="font-size:15px;letter-spacing:.04em">S.E. ENGINEERING (PVT) LTD</b>
+        <div style="font-size:12px;color:rgba(231,246,239,.6)">Commission Accounts</div>
+      </div>
+    </div>
+    <div>
+      <h1>Every deal.<br>Every <span>rupee of GST</span>.<br>Accounted.</h1>
+      <p class="lede">The commission register that replaces the Excel sheet — seller to buyer, invoice by invoice, with the GST share you earn tracked to the last rupee.</p>
+      <div class="hero-points">
+        <div class="hero-point"><i>✓</i><span>Works fully offline — entries save on your device first, then sync.</span></div>
+        <div class="hero-point"><i>✓</i><span>Commission % per company, calculated on the GST amount automatically.</span></div>
+        <div class="hero-point"><i>✓</i><span>Purchase &amp; sales vouchers with tax, receipts, payments and journals.</span></div>
+        <div class="hero-point"><i>✓</i><span>Automatic daily backups — no more fear of a corrupt file.</span></div>
+      </div>
+    </div>
+    <div class="foot">Storage: your device → VPS database → all your other devices.</div>
+  </section>
+
+  <section class="auth-panel">
+    <div class="auth-card">
+      <div class="auth-tabs" role="tablist">
+        <button id="tabLogin" class="on" type="button">Sign in</button>
+        <button id="tabSignup" type="button">Create account</button>
+      </div>
+
+      <div id="authMsg" class="auth-msg"></div>
+
+      <!-- login -->
+      <form id="loginForm" autocomplete="on">
+        <h2>Welcome back</h2>
+        <p class="sub">Sign in with the username and password you created for this app.</p>
+        <div class="field">
+          <label for="loginUser">Username</label>
+          <input id="loginUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="e.g. raheel" required>
+        </div>
+        <div class="field">
+          <label for="loginPass">Password</label>
+          <input id="loginPass" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <button class="btn primary block" type="submit" id="loginBtn">Sign in</button>
+        <div class="auth-offline-note">
+          Already signed in on this device? Offline mode still opens your last synced books.
+        </div>
+      </form>
+
+      <!-- signup -->
+      <form id="signupForm" hidden>
+        <h2>Create your login</h2>
+        <p class="sub" id="signupSub">The first account becomes the administrator. After that, new accounts need the invite code from the admin.</p>
+        <div class="field">
+          <label for="suName">Your name <span class="req">*</span></label>
+          <input id="suName" autocomplete="name" placeholder="Raheel" required>
+        </div>
+        <div class="field">
+          <label for="suUser">Username <span class="req">*</span></label>
+          <input id="suUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="raheel" required>
+          <div class="hint">Letters, numbers, dot, dash or underscore (3+).</div>
+        </div>
+        <div class="field">
+          <label for="suPass">Password <span class="req">*</span></label>
+          <input id="suPass" type="password" autocomplete="new-password" placeholder="At least 6 characters" required>
+        </div>
+        <div class="field" id="suInviteField" hidden>
+          <label for="suInvite">Invite code</label>
+          <input id="suInvite" placeholder="From the admin" autocapitalize="none">
+        </div>
+        <button class="btn primary block" type="submit" id="signupBtn">Create account</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<!-- ============================== APP SHELL ============================== -->
+<div class="shell" id="appShell" hidden>
+  <header class="topbar">
+    <button class="icon-btn" id="menuBtn" aria-label="Open menu" title="Menu">
+      <span class="hamburger-lines"><span></span><span></span><span></span></span>
+    </button>
+    <div class="topbar-title">
+      <b id="pageTitle">Commission Register</b>
+      <small id="pageSub">S.E. Engineering (Pvt) Ltd</small>
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="sync-chip" id="syncChip" title="Sync now">
+      <span class="sync-dot"></span><span class="txt" id="syncTxt">Sync</span>
+    </button>
+    <button class="user-chip" id="userChip" title="Account">
+      <span class="avatar" id="userAvatar">S</span><span class="uname" id="userName">Sign in</span>
+    </button>
+  </header>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+  <aside class="drawer" id="drawer" aria-label="Main menu">
+    <div class="drawer-head">
+      <div class="logo-mark">SE</div>
+      <div class="titles">
+        <b>Commission Accounts</b>
+        <small>S.E. Engineering (Pvt) Ltd</small>
+      </div>
+      <button class="icon-btn" id="drawerClose" style="margin-left:auto" aria-label="Close menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="drawer-label">Books</div>
+      <button class="menu-item" data-view="register">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+        Commission Register
+      </button>
+
+      <div class="drawer-label">Setup</div>
+      <button class="menu-item" data-toggle="mm" id="mmToggle">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/><circle cx="12" cy="12" r="3.4"/></svg></span>
+        Manage Master
+        <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+      </button>
+      <div class="submenu" id="sub-mm">
+        <button class="menu-item" data-view="master:party">Customers &amp; Companies</button>
+        <button class="menu-item" data-view="master:item">Items</button>
+        <button class="menu-item" data-view="master:expense">Expenses</button>
+        <button class="menu-item" data-view="master:tax">Taxes</button>
+        <button class="menu-item" data-view="master:bank">Cash / Banks</button>
+        <button class="menu-item" data-view="master:rate">Commission Rates</button>
+      </div>
+
+      <div class="drawer-label">Entries</div>
+      <button class="menu-item" data-toggle="qv" id="qvToggle">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12l1-8.5Z"/></svg></span>
+        Quick Vouchers
+        <span class="caret"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></span>
+      </button>
+      <div class="submenu" id="sub-qv">
+        <button class="menu-item" data-view="voucher:payment">Payment</button>
+        <button class="menu-item" data-view="voucher:receipt">Receipt</button>
+        <button class="menu-item" data-view="voucher:journal">Journal</button>
+        <button class="menu-item" data-view="voucher:purchase">Purchase</button>
+        <button class="menu-item" data-view="voucher:sales">Sales</button>
+      </div>
+
+      <div class="drawer-label">Reports</div>
+      <button class="menu-item" data-view="dashboard">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10m6 10V4m6 16v-7"/><path d="M2 20h20"/></svg></span>
+        Register Dashboard
+        <span class="soon">Soon</span>
+      </button>
+      <button class="menu-item" data-view="settings">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.05A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6h.09A1.7 1.7 0 0 0 10 3.05V3a2 2 0 1 1 4 0v.05A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.09a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.05a1.7 1.7 0 0 0-1.55 1Z"/></svg></span>
+        Settings &amp; Sync
+      </button>
+    </div>
+
+    <div class="drawer-foot">
+      <div class="meta"><span id="drawerStore">Storage</span><span id="drawerCount"></span></div>
+      <button class="btn sm block" id="drawerLogout" type="button">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script type="module" src="/commission.js"></script>
+</body>
+</html>

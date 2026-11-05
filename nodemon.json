@@ -29,7 +29,8 @@
                   "mediaPrep.mjs",
                   "alignAuth.mjs",
                   "alignApi.mjs",
-                  "alignAdmin.mjs"
+                  "alignAdmin.mjs",
+                  "commissionApi.mjs"
               ],
     "ext":  "js,mjs,json",
     "ignore":  [

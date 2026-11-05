@@ -1,0 +1,120 @@
+// ============================================================================
+// 🧾 COMMISSION ACCOUNTS — API smoke test
+// ============================================================================
+// Runs the whole API surface against a throwaway database in a temp folder, so
+// the real books are never touched:
+//   node scripts/commission-smoke-test.mjs
+// Checks auth, the Excel import, delta sync (including conflict resolution),
+// validation, permissions and the backup endpoint.
+// ============================================================================
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'commission-smoke-'));
+process.env.COMMISSION_DATA_DIR = TMP;
+process.env.COMMISSION_SIGNUP_CODE = 'testcode';
+
+const express = (await import('express')).default;
+const { registerCommissionRoutes } = await import('../commissionApi.mjs');
+
+const app = express();
+app.use(express.json({ limit: '30mb' }));
+registerCommissionRoutes(app);
+
+const PORT = 4599;
+const server = app.listen(PORT, async () => {
+  const base = `http://127.0.0.1:${PORT}/api/commission`;
+  let failed = 0;
+  const check = (name, ok, extra = '') => {
+    console.log((ok ? 'PASS  ' : 'FAIL  ') + name + (extra ? '  -> ' + extra : ''));
+    if (!ok) failed++;
+  };
+  const post = (p, body, headers) => fetch(base + p, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+    body: JSON.stringify(body)
+  });
+
+  try {
+    const health = await (await fetch(base + '/health')).json();
+    check('health + seeded history', health.ok && health.records > 180, health.records + ' records, mode=' + health.mode);
+
+    const signup = await (await post('/auth/signup', { name: 'Raheel', username: 'raheel', password: 'secret123' })).json();
+    check('first signup becomes admin', signup.ok && signup.user.role === 'admin', signup.error || '');
+    const H = { Authorization: 'Bearer ' + signup.token };
+
+    const noCode = await (await post('/auth/signup', { name: 'X', username: 'someone', password: 'secret123' })).json();
+    check('later signup needs the invite code', noCode.ok === false, noCode.error);
+
+    const withCode = await (await post('/auth/signup', { name: 'Staff', username: 'staff1', password: 'secret123', inviteCode: 'testcode' })).json();
+    check('signup with invite code', withCode.ok && withCode.user.role === 'staff', withCode.error || '');
+
+    const login = await (await post('/auth/login', { username: 'raheel', password: 'secret123' })).json();
+    check('login', login.ok === true, login.error || '');
+
+    const badPass = await post('/auth/login', { username: 'raheel', password: 'nope' });
+    check('wrong password rejected', badPass.status === 401, String(badPass.status));
+
+    const noAuth = await fetch(base + '/bootstrap');
+    check('bootstrap needs a token', noAuth.status === 401, String(noAuth.status));
+
+    const tampered = await fetch(base + '/bootstrap', { headers: { Authorization: 'Bearer ' + signup.token.slice(0, -4) + 'aaaa' } });
+    check('tampered token rejected', tampered.status === 401, String(tampered.status));
+
+    const boot = await (await fetch(base + '/bootstrap', { headers: H })).json();
+    const kinds = {};
+    boot.records.forEach(r => { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
+    check('history imported: 132 commission invoices', kinds.invoice === 132, JSON.stringify(kinds));
+    check('history imported: 57 vouchers', kinds.voucher === 57, JSON.stringify(kinds));
+    check('masters imported', (kinds.master || 0) >= 13, String(kinds.master));
+    check('every history row has a date', boot.records.filter(r => r.kind !== 'master').every(r => !!r.data.date));
+    check('every imported voucher has a number', boot.records.filter(r => r.kind === 'voucher').every(r => !!r.data.no));
+
+    const stats = (await (await fetch(base + '/stats', { headers: H })).json()).stats;
+    check('commission matches the Excel sheet (17,360,600)', stats.commission === 17360600, JSON.stringify(stats));
+    check('balance matches the Excel sheet (5,700,126)', stats.balance === 5700126, JSON.stringify(stats));
+
+    const rec = {
+      id: 'invoice-test-1', kind: 'invoice', type: 'commission',
+      data: { date: '2026-11-05', seller: 'Chagani', buyer: 'S.E. ENGINEERING (PRIVATE) LIMITED', invNo: 'T-1', item: 'ABS DANA', qty: 100, rate: 400, amount: 40000, gstPct: 18, gstValue: 7200, commPct: 20, commValue: 1440 },
+      updatedAt: Date.now(), deleted: false
+    };
+    const push = await (await post('/sync', { cursor: boot.cursor, changes: [rec], limit: 5000 }, H)).json();
+    check('sync accepts a new record', push.ok && push.applied === 1, JSON.stringify({ applied: push.applied, invalid: push.invalid }));
+    check('sync moves the cursor', push.cursor > boot.cursor, push.cursor + ' > ' + boot.cursor);
+
+    const pull = await (await post('/sync', { cursor: 0, changes: [], limit: 5000 }, H)).json();
+    check('delta pull returns the new record', pull.changes.some(c => c.id === 'invoice-test-1'), pull.changes.length + ' changes');
+
+    const stale = await (await post('/sync', { cursor: pull.cursor, changes: [{ ...rec, data: { ...rec.data, invNo: 'OLD' }, updatedAt: rec.updatedAt - 5000 }] }, H)).json();
+    check('older write is ignored (last-writer-wins)', stale.ignored === 1, JSON.stringify({ applied: stale.applied, ignored: stale.ignored }));
+
+    const fresh = await (await post('/sync', { cursor: stale.cursor, changes: [{ ...rec, data: { ...rec.data, invNo: 'NEW' }, updatedAt: Date.now() + 1000 }] }, H)).json();
+    check('newer write is applied', fresh.applied === 1, JSON.stringify({ applied: fresh.applied }));
+
+    const del = await fetch(base + '/records/invoice-test-1', { method: 'DELETE', headers: H });
+    check('delete works', del.ok, String(del.status));
+
+    const junk = await (await post('/sync', { cursor: 0, changes: [{ id: 'x1', kind: 'hack', type: 'x', data: {} }] }, H)).json();
+    check('unknown record kinds rejected', junk.invalid === 1, JSON.stringify(junk.invalid));
+
+    const backup = await fetch(base + '/backup', { headers: H });
+    check('admin can download a backup', backup.status === 200, String(backup.status));
+
+    const staffBackup = await fetch(base + '/backup', { headers: { Authorization: 'Bearer ' + withCode.token } });
+    check('staff cannot download a backup', staffBackup.status === 403, String(staffBackup.status));
+
+    const users = (await (await fetch(base + '/users', { headers: H })).json()).users;
+    const selfDelete = await fetch(base + '/users/' + users.find(u => u.username === 'raheel').id, { method: 'DELETE', headers: H });
+    check('cannot remove your own login', selfDelete.status === 400, String(selfDelete.status));
+  } catch (e) {
+    console.error('ERROR', e);
+    failed++;
+  } finally {
+    console.log(failed ? `\n${failed} FAILURE(S)` : '\nALL CHECKS PASSED');
+    server.close();
+    try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* Windows may hold the file briefly */ }
+    process.exitCode = failed ? 1 : 0;
+  }
+});

@@ -13,6 +13,8 @@
     "devall": "nodemon index.js",
     "dev:crm": "node scripts/crm-dev.mjs",
     "parity:android": "node scripts/android-parity.mjs",
+    "test:commission": "node scripts/commission-smoke-test.mjs",
+    "commission:repair": "node scripts/commission-repair-from-seed.mjs",
     "build": "echo 'No build step required - plain JavaScript project'"
   },
   "dependencies": {
