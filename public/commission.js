@@ -727,70 +727,97 @@ function exportDayBookCsv() {
   toast('Day book exported');
 }
 
-function renderPurchases() {
-  const all = vouchers('purchase')
+const GOODS_META = {
+  purchase: {
+    title: 'Purchase Register', sub: 'Every material purchase, with the GST you paid on it.',
+    party: 'Seller', partyHead: 'Seller',
+    totalKpi: 'Purchases', gstKpi: 'GST paid', gstSub: 'input tax',
+    withTaxSub: 'what you owe', empty: 'No purchases in this period',
+    emptyHint: 'Purchase vouchers you save will appear here, with GST on every line.',
+    newLabel: 'New purchase', csv: 'purchase-register'
+  },
+  sales: {
+    title: 'Sales Register', sub: 'Every material sale, with the GST you charged on it.',
+    party: 'Buyer', partyHead: 'Buyer',
+    totalKpi: 'Sales', gstKpi: 'GST charged', gstSub: 'output tax',
+    withTaxSub: 'what your buyer owes', empty: 'No sales in this period',
+    emptyHint: 'Sales vouchers you save will appear here, with GST on every line.',
+    newLabel: 'New sale', csv: 'sales-register'
+  }
+};
+
+function renderGoodsRegister(type) {
+  const meta = GOODS_META[type] || GOODS_META.purchase;
+  const all = vouchers(type)
     .filter(v => inReportRange(v.data.date))
     .filter(v => !state.filter.q || JSON.stringify(v.data).toLowerCase().includes(state.filter.q.toLowerCase()))
     .sort((a, b) => (a.data.date || '').localeCompare(b.data.date || '') || String(a.data.no || '').localeCompare(String(b.data.no || '')));
 
   const sum = (k) => r2(all.reduce((a, v) => a + num(v.data[k]), 0));
   const totalQty = all.reduce((a, v) => a + (v.data.lines || []).reduce((s, l) => s + num(l.qty), 0), 0);
+  const hasBrokerage = all.some(v => num((v.data.comm || {}).value) > 0);
+  const colspan = hasBrokerage ? 5 : 4;
 
   const body = all.length ? `
     <div class="table-wrap">
       <table class="rtable">
         <thead><tr>
-          <th>Date</th><th>Voucher</th><th>Seller</th><th>Items</th>
-          <th class="num">Qty</th><th class="num">Sub total</th><th class="num">GST</th><th class="num">Total</th><th></th>
+          <th>Date</th><th>Voucher</th><th>${esc(meta.partyHead)}</th><th>Items</th>
+          <th class="num">Qty</th><th class="num">Sub total</th><th class="num">GST</th><th class="num">Total</th>
+          ${hasBrokerage ? '<th class="num">Brokerage</th>' : ''}<th></th>
         </tr></thead>
         <tbody>${all.map(v => {
           const d = v.data;
           const qty = (d.lines || []).reduce((s, l) => s + num(l.qty), 0);
+          const comm = num((d.comm || {}).value);
           return `<tr>
             <td class="mono nowrap" data-label="Date">${esc(fmtDate(d.date))}</td>
             <td class="mono strong" data-label="Voucher">${esc(d.no || '-')}</td>
-            <td class="wrap strong" data-label="Seller">${esc(d.party || '-')}${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</td>
-            <td class="wrap" data-label="Items">${(d.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)} @ ${money(l.rate, 0)}</span>`).join('<br>') || '-'}</td>
+            <td class="wrap" data-label="${esc(meta.party)}"><div class="cell-val"><div class="strong">${esc(d.party || '-')}</div>${d.narration ? `<div class="muted sub">${esc(d.narration)}</div>` : ''}</div></td>
+            <td class="wrap" data-label="Items"><div class="cell-val">${(d.lines || []).map(l => `${esc(l.item || '-')} <span class="muted">x ${money(l.qty, 0)} @ ${money(l.rate, 0)}</span>${num(l.taxPct) ? ` <span class="muted">(${money(l.taxPct, 0)}% GST)</span>` : ''}`).join('<br>') || '-'}</div></td>
             <td class="num" data-label="Qty">${money(qty, 0)}</td>
             <td class="num" data-label="Sub total">${money(d.subTotal)}</td>
             <td class="num" data-label="GST">${money(d.taxTotal)}</td>
             <td class="num strong" data-label="Total">${money(d.grandTotal)}</td>
+            ${hasBrokerage ? `<td class="num" data-label="Brokerage" style="color:var(--violet)">${comm ? money(comm) : '-'}</td>` : ''}
             <td class="cell-actions"><div class="row-actions">
               <button class="icon-btn" data-edit="${esc(v.id)}" title="Open voucher">${ICON.edit}</button>
             </div></td>
           </tr>`;
         }).join('')}</tbody>
         <tfoot><tr>
-          <td colspan="4" data-label="Total">Total (${all.length} voucher${all.length === 1 ? '' : 's'})</td>
+          <td colspan="${colspan}" data-label="Total">Total (${all.length} voucher${all.length === 1 ? '' : 's'})</td>
           <td class="num" data-label="Qty">${money(totalQty, 0)}</td>
           <td class="num" data-label="Sub total">${money(sum('subTotal'))}</td>
           <td class="num" data-label="GST">${money(sum('taxTotal'))}</td>
           <td class="num" data-label="Total">${money(sum('grandTotal'))}</td>
+          ${hasBrokerage ? `<td class="num" data-label="Brokerage">${money(r2(all.reduce((a, v) => a + num((v.data.comm || {}).value), 0)))}</td>` : ''}
           <td></td>
         </tr></tfoot>
       </table>
-    </div>` : emptyState('No purchases in this period', 'Purchase vouchers you save will appear here, with GST on every line.', '<button class="btn primary" data-act="new">New purchase voucher</button>');
+    </div>` : emptyState(meta.empty, meta.emptyHint, `<button class="btn primary" data-act="new">${esc(meta.newLabel)} voucher</button>`);
 
   $('#main').innerHTML = `
     <div class="view-head">
-      <div><h2>Purchase Register</h2><p>Every material purchase, with the GST you paid on it.</p></div>
+      <div><h2>${esc(meta.title)}</h2><p>${esc(meta.sub)}</p></div>
       <div class="actions">
         <button class="btn" data-act="range">${ICON.calendar} Date range</button>
+        <button class="btn" data-act="export">${ICON.download} Export CSV</button>
         <button class="btn" data-act="print">${ICON.print} Print</button>
-        <button class="btn primary" data-act="new">${ICON.plus} New purchase</button>
+        <button class="btn primary" data-act="new">${ICON.plus} ${esc(meta.newLabel)}</button>
       </div>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><div class="label">Purchases</div><div class="value">${money0(sum('subTotal'))}</div><div class="sub">${all.length} voucher${all.length === 1 ? '' : 's'}</div></div>
-      <div class="kpi amber"><div class="label">GST paid</div><div class="value">${money0(sum('taxTotal'))}</div><div class="sub">input tax</div></div>
-      <div class="kpi violet"><div class="label">Total with tax</div><div class="value">${money0(sum('grandTotal'))}</div><div class="sub">what you owe</div></div>
+      <div class="kpi"><div class="label">${esc(meta.totalKpi)}</div><div class="value">${money0(sum('subTotal'))}</div><div class="sub">${all.length} voucher${all.length === 1 ? '' : 's'}</div></div>
+      <div class="kpi amber"><div class="label">${esc(meta.gstKpi)}</div><div class="value">${money0(sum('taxTotal'))}</div><div class="sub">${esc(meta.gstSub)}</div></div>
+      <div class="kpi violet"><div class="label">Total with tax</div><div class="value">${money0(sum('grandTotal'))}</div><div class="sub">${esc(meta.withTaxSub)}</div></div>
       <div class="kpi"><div class="label">Quantity</div><div class="value">${money0(totalQty)}</div><div class="sub">all items</div></div>
     </div>
 
     <div class="card">
       <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, seller, item..." value="${esc(state.filter.q)}"></div>
+        <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, ${type === 'sales' ? 'buyer' : 'seller'}, item..." value="${esc(state.filter.q)}"></div>
         <input type="date" id="rFrom" value="${esc(state.report.from)}" title="From date">
         <input type="date" id="rTo" value="${esc(state.report.to)}" title="To date">
         <span class="pill ok">${esc(reportLabel())}</span>
@@ -806,11 +833,32 @@ function renderPurchases() {
   const acts = {
     range: () => openPeriodDialog('range'),
     print: () => window.print(),
-    new: () => voucherModal('purchase'),
+    export: () => exportGoodsCsv(type, all, meta),
+    new: () => voucherModal(type),
     clear: () => { state.report.from = ''; state.report.to = ''; render(); }
   };
   $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+}
+
+function exportGoodsCsv(type, list, meta) {
+  if (!list.length) return toast('Nothing to export', 'err');
+  const head = ['Date', 'Voucher', meta.party, 'Items', 'Qty', 'Sub total', 'GST', 'Total', 'Brokerage', 'Narration'];
+  const body = list.map(v => {
+    const d = v.data;
+    const qty = (d.lines || []).reduce((s, l) => s + num(l.qty), 0);
+    return [
+      d.date, d.no, d.party,
+      (d.lines || []).map(l => `${l.item || ''} ${l.qty || ''} x ${l.rate || ''}${num(l.taxPct) ? ' @' + l.taxPct + '%' : ''}`).join(' | '),
+      qty, num(d.subTotal), num(d.taxTotal), num(d.grandTotal), num((d.comm || {}).value), d.narration || ''
+    ];
+  });
+  const csv = [head, ...body].map(line => line.map(v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }).join(',')).join('\r\n');
+  download(meta.csv + '-' + (state.report.from || 'all') + '.csv', '\ufeff' + csv, 'text/csv');
+  toast(meta.title + ' exported');
 }
 
 /* ---------------------------------------------------------------- F2 / Alt+F2 period view */
@@ -2055,6 +2103,7 @@ const VIEW_TITLES = {
   register: ['Commission Register', 'S.E. Engineering (Pvt) Ltd'],
   daybook: ['Day Book', 'All entries, day by day'],
   purchases: ['Purchase Register', 'Every purchase, with GST'],
+  sales: ['Sales Register', 'Every sale, with GST'],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
 };
@@ -2077,7 +2126,8 @@ function render() {
   if (kind === 'master') return renderMaster(sub);
   if (kind === 'voucher') return renderVouchers(sub);
   if (state.view === 'daybook') return renderDayBook();
-  if (state.view === 'purchases') return renderPurchases();
+  if (state.view === 'purchases') return renderGoodsRegister('purchase');
+  if (state.view === 'sales') return renderGoodsRegister('sales');
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
   return renderRegister();

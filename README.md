@@ -114,6 +114,7 @@ fills it in automatically and the form shows the working as you type.
 | Quick Vouchers → Payment · Receipt · Journal · Purchase · Sales | Normal vouchers. Purchase and Sales carry a line-by-line table with GST per line, and an optional "record commission from this deal" box that writes the matching entry into the register. Editing the voucher updates that entry; switching the box off removes it. |
 | Day Book | Every entry in the books, grouped by day: purchases, sales, receipts, payments, journals and commission. Each day shows its own totals, and you can filter by type or date. |
 | Purchase Register | Every purchase voucher with its items, quantity, sub total, GST and total, plus period totals. |
+| Sales Register | Every sale voucher with buyer, items, quantity, sub total, GST charged and total; a Brokerage column appears when any sale carries commission. |
 | Register Dashboard | Placeholder ("coming soon") for ageing, GST register and monthly position. |
 | Settings & Sync | Password change, team logins (admin), manual sync, JSON backup, full re-download. |
 
