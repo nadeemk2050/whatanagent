@@ -549,7 +549,7 @@ function migrateDealsToSalesVouchers() {
 // vouchers (in this book a sales voucher IS the commission voucher) and the money the
 // dealer paid lands as receipts, which is what makes his register balance.
 const WORKBOOK_SEEDS = [
-  { file: 'commission-zubairee-seed.json', company: 'Zubairee Parties' }
+  { file: 'commission-zubairee-seed.json', company: 'Zubairee Parties', previousDealer: 'ZOHAIB WALI' }
 ];
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -567,7 +567,21 @@ function importWorkbookSeed(entry) {
   const dealer = sstr(seed.dealer || '', 80);
   const source = sstr(seed.sourceFile || entry.file, 120);
   const stamp = nowMs();
-  const counts = { file: entry.file, dealer, sales: 0, receipts: 0, masters: 0, present: 0 };
+  const counts = { file: entry.file, dealer, sales: 0, receipts: 0, masters: 0, present: 0, renamed: 0 };
+
+  // A book whose dealer was named differently on the first import: move the rows over
+  // instead of bringing the whole book in a second time.
+  if (entry.previousDealer && String(entry.previousDealer).trim().toLowerCase() !== dealer.toLowerCase()) {
+    const oldKey = String(entry.previousDealer).trim().toLowerCase();
+    for (const r of store.all()) {
+      if (r.kind === 'voucher' && String(r.data.dealer || '').trim().toLowerCase() === oldKey) {
+        store.putRecord({ ...r, data: { ...r.data, dealer }, updatedAt: stamp, deleted: false, updatedBy: 'import', seq: store.nextSeq() });
+        counts.renamed++;
+      } else if (r.kind === 'master' && r.type === 'dealer' && String(r.data.name || '').trim().toLowerCase() === oldKey) {
+        store.putRecord({ ...r, deleted: true, updatedAt: stamp, updatedBy: 'import', seq: store.nextSeq() });
+      }
+    }
+  }
 
   // One pass over the book to know which masters already exist (they may have been
   // created by hand in the app before the sheet was imported).
@@ -645,7 +659,7 @@ function importWorkbookSeeds() {
   const out = [];
   for (const entry of WORKBOOK_SEEDS) {
     const r = importWorkbookSeed(entry);
-    if (r && (r.sales || r.receipts || r.masters)) out.push(r);
+    if (r && (r.sales || r.receipts || r.masters || r.renamed)) out.push(r);
   }
   return out;
 }
@@ -684,7 +698,8 @@ export function initCommissionStore() {
   if (seeded.seeded) console.log('[COMMISSION] 🧾 seeded ' + seeded.records + ' records from the Excel history');
   for (const w of importWorkbookSeeds()) {
     console.log('[COMMISSION] 🧾 imported ' + w.sales + ' sales vouchers + ' + w.receipts + ' receipts + '
-      + w.masters + ' masters from ' + w.file + ' (dealer ' + w.dealer + ')');
+      + w.masters + ' masters from ' + w.file + ' (dealer ' + w.dealer + ')'
+      + (w.renamed ? ', moved ' + w.renamed + ' rows to the dealer' : ''));
   }
   const numbered = backfillVoucherNumbers();
   if (numbered) console.log('[COMMISSION] 🧾 numbered ' + numbered + ' imported vouchers');

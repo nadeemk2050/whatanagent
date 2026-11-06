@@ -163,7 +163,7 @@ merged block, receipts whose year is wrong for where they sit in the sheet, `MUS
 `MUSAB PACKAGES`, names split over several lines, HS codes pasted as long descriptions. Every repair
 is printed when the seed is generated, so nothing is fixed silently.
 
-The second book already imported is **ZOHAIB WALI** (Zubairee Parties): 572 deals, 67 receipts,
+The second book already imported is **ZUBAIRI** (Zubairee Parties): 572 deals, 67 receipts,
 5,717,330 qty, 737,066,855 amount, 132,613,788.10 GST, **13,261,378.81 commission**, 10,261,351.00
 received — closing balance **3,000,027.81**, which is the sheet's own control total. The smoke test
 (`node scripts/commission-smoke-test.mjs`) re-checks those figures against the seed on every run.
