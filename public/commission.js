@@ -2602,7 +2602,8 @@ function userModal() {
       <button class="icon-btn x" data-close>✕</button></div>
     <div class="modal-body">
       <div class="field"><label for="uName">Name</label><input id="uName" placeholder="Name"></div>
-      <div class="field"><label for="uUser">Username</label><input id="uUser" placeholder="username" autocapitalize="none"></div>
+      <div class="field"><label for="uUser">Username</label><input id="uUser" placeholder="username or e-mail" autocapitalize="none" autocomplete="off">
+       <div class="hint">Anything works — letters, numbers, e-mail address. Just no spaces.</div></div>
       <div class="field"><label for="uPass">Password</label><input id="uPass" type="password" placeholder="6+ characters"></div>
       <div class="field"><label for="uRole">Role</label><select id="uRole"><option value="staff">Staff</option><option value="admin">Admin</option></select></div>
     </div>

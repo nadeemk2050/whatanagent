@@ -309,6 +309,9 @@ function noteFailure(key) {
 }
 
 const publicUser = (u) => ({ id: u.id, username: u.username, name: u.name, role: u.role, disabled: !!u.disabled, createdAt: u.created_at });
+// Any non-space characters are fine — people use e-mail addresses as the username.
+const USERNAME_RX = /^[^\s]{1,80}$/;
+const USERNAME_HINT = 'Username is required and cannot contain spaces.';
 
 // --------------------------------------------------------------------------- records
 function sanitizeRecord(raw, user) {
@@ -617,11 +620,11 @@ export function registerCommissionRoutes(app) {
     try {
       const body = req.body || {};
       const name = sstr(body.name, 60).trim();
-      const username = sstr(body.username, 40).trim().toLowerCase();
+      const username = sstr(body.username, 80).trim().toLowerCase();
       const password = String(body.password || '');
       const invite = sstr(body.inviteCode, 80).trim();
       if (!name) return res.status(400).json({ ok: false, error: 'Enter your name.' });
-      if (!/^[a-z0-9._-]{3,40}$/.test(username)) return res.status(400).json({ ok: false, error: 'Username: 3+ letters, numbers, dot, dash or underscore.' });
+      if (!USERNAME_RX.test(username)) return res.status(400).json({ ok: false, error: USERNAME_HINT });
       if (password.length < 6) return res.status(400).json({ ok: false, error: 'Password must be at least 6 characters.' });
       if (store.userByName(username)) return res.status(409).json({ ok: false, error: 'That username is already taken.' });
 
@@ -655,7 +658,7 @@ export function registerCommissionRoutes(app) {
   app.post(api + '/auth/login', (req, res) => {
     try {
       const body = req.body || {};
-      const username = sstr(body.username, 40).trim().toLowerCase();
+      const username = sstr(body.username, 80).trim().toLowerCase();
       const password = String(body.password || '');
       const key = clientIp(req) + '|' + username;
       const wait = lockedMs(key);
@@ -720,9 +723,10 @@ export function registerCommissionRoutes(app) {
     try {
       const body = req.body || {};
       const name = sstr(body.name, 60).trim();
-      const username = sstr(body.username, 40).trim().toLowerCase();
+      const username = sstr(body.username, 80).trim().toLowerCase();
       const password = String(body.password || '');
-      if (!name || !/^[a-z0-9._-]{3,40}$/.test(username)) return res.status(400).json({ ok: false, error: 'Name and a 3+ character username are required.' });
+      if (!name) return res.status(400).json({ ok: false, error: 'Enter the name for this login.' });
+      if (!USERNAME_RX.test(username)) return res.status(400).json({ ok: false, error: USERNAME_HINT });
       if (password.length < 6) return res.status(400).json({ ok: false, error: 'Password must be at least 6 characters.' });
       if (store.userByName(username)) return res.status(409).json({ ok: false, error: 'That username already exists.' });
       const user = {
