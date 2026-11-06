@@ -70,7 +70,7 @@ const state = {
   view: 'reports',
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
-  rep: { tab: 'dealers', key: '', from: '', to: '' },
+  rep: { tab: 'dealers', key: '', month: '', from: '', to: '' },
   page: 1,
   sort: { key: 'date', dir: 'desc' },
   prevView: 'reports',
@@ -1405,6 +1405,33 @@ function reportMonths(mode, key) {
   return rows;
 }
 
+// The vouchers behind one month of one tab: the deals plus, for a dealer, what he paid.
+function reportMonthRows(mode, key, ym) {
+  const want = String(key || '').trim().toLowerCase();
+  if (mode === 'dealers') {
+    return dealerLedger(key)
+      .filter(r => String(r.date || '').slice(0, 7) === ym)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
+  }
+  const rows = [];
+  for (const inv of invoices()) {
+    const d = inv.data;
+    if (String(d.date || '').slice(0, 7) !== ym) continue;
+    const asSeller = String(d.seller || '').trim().toLowerCase() === want;
+    const asBuyer = String(d.buyer || '').trim().toLowerCase() === want;
+    if (!asSeller && !asBuyer) continue;
+    rows.push({
+      id: inv.id, kind: 'deal', date: d.date || '', no: d.invNo || '', dealer: d.dealer || '',
+      seller: d.seller || '', buyer: d.buyer || '',
+      role: asSeller && asBuyer ? 'both' : (asSeller ? 'seller' : 'buyer'),
+      item: d.item || '', hsCode: d.hsCode || '', qty: num(d.qty), amount: num(d.amount),
+      gstPct: num(d.gstPct), gstValue: num(d.gstValue), commPct: num(d.commPct), commValue: num(d.commValue),
+      received: 0
+    });
+  }
+  return rows.sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
+}
+
 function renderReports() {
   const mode = state.rep.tab === 'companies' ? 'companies' : 'dealers';
   const cfg = REPORTS[mode];
@@ -1412,6 +1439,8 @@ function renderReports() {
   const list = isDealer ? reportDealerRows() : reportCompanyRows();
   const cur = list.find(x => x.key === state.rep.key) || null;
   const months = cur ? reportMonths(mode, cur.key) : [];
+  const month = cur && state.rep.month ? state.rep.month : '';
+  const monthRows = month ? reportMonthRows(mode, cur.key, month) : [];
   const sum = (k) => r2(months.reduce((a, r) => a + num(r[k]), 0));
   const deals = months.reduce((a, r) => a + r.deals, 0);
   // What the dealers owe us against what we owe them — the position the broker watches.
@@ -1441,15 +1470,60 @@ function renderReports() {
     </button>`;
   }).join('');
 
-  // ---- one account open: the month-wise report
-  const table = cur && months.length ? `
+  // ---- one account open: the month-wise report, and under it that month's vouchers
+  const monthTable = cur && month ? `
+    <div class="table-wrap">
+      <table class="rtable dense">
+        <thead><tr>
+          ${isDealer
+            ? '<th>Date</th><th>Inv No.</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>'
+              + '<th class="num">Qty</th><th class="num">Amount</th><th class="num">GST %</th><th class="num">GST value</th>'
+              + '<th class="num">Comm %</th><th class="num">Commission (Dr.)</th><th class="num">Received (Cr.)</th><th class="num">Balance</th>'
+            : '<th>Date</th><th>Inv No.</th><th>Dealer</th><th>As</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>'
+              + '<th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th><th class="num">Commission</th>'}
+        </tr></thead>
+        <tbody>${monthRows.map(r => (isDealer
+          ? `<tr class="${r.kind === 'receipt' ? 'row-cr' : ''}">
+            <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
+            <td class="mono strong" data-label="Inv No.">${r.kind === 'receipt' ? '<span class="pill ok">Rcpt</span> ' : ''}${esc(r.no || '-')}</td>
+            <td class="wrap" data-label="Seller">${esc(r.seller || '-')}</td>
+            <td class="wrap" data-label="Buyer">${esc(r.buyer || '-')}</td>
+            <td class="wrap" data-label="Item">${r.kind === 'receipt' ? esc(r.item || 'Commission received') : esc(r.item || '-')}</td>
+            <td class="mono muted" data-label="HS">${r.kind === 'receipt' ? '-' : esc(r.hsCode || '-')}</td>
+            <td class="num" data-label="Qty">${r.qty ? money0(r.qty) : '-'}</td>
+            <td class="num" data-label="Amount">${r.amount ? money0(r.amount) : '-'}</td>
+            <td class="num" data-label="GST %">${r.gstPct ? money(r.gstPct, 0) + '%' : '-'}</td>
+            <td class="num" data-label="GST value">${r.gstValue ? money0(r.gstValue) : '-'}</td>
+            <td class="num" data-label="Comm %">${r.commPct ? money(r.commPct, 0) + '%' : '-'}</td>
+            <td class="num strong" style="color:var(--brand)" data-label="Commission (Dr.)">${r.commValue ? money(r.commValue) : '-'}</td>
+            <td class="num strong" style="color:var(--amber)" data-label="Received (Cr.)">${r.received ? money(r.received) : '-'}</td>
+            <td class="num strong" data-label="Balance">${money(r.balance)}</td>
+          </tr>`
+          : `<tr>
+            <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
+            <td class="mono strong" data-label="Inv No.">${esc(r.no || '-')}</td>
+            <td class="wrap" data-label="Dealer">${esc(r.dealer || '-')}</td>
+            <td data-label="As"><span class="pill ${r.role === 'buyer' ? 'buyer' : r.role === 'both' ? 'both' : 'seller'}">${r.role}</span></td>
+            <td class="wrap" data-label="Seller">${esc(r.seller || '-')}</td>
+            <td class="wrap" data-label="Buyer">${esc(r.buyer || '-')}</td>
+            <td class="wrap" data-label="Item">${esc(r.item || '-')}</td>
+            <td class="mono muted" data-label="HS">${esc(r.hsCode || '-')}</td>
+            <td class="num" data-label="Qty">${r.qty ? money0(r.qty) : '-'}</td>
+            <td class="num" data-label="Amount">${r.amount ? money0(r.amount) : '-'}</td>
+            <td class="num" data-label="GST value">${r.gstValue ? money0(r.gstValue) : '-'}</td>
+            <td class="num strong" style="color:var(--brand)" data-label="Commission">${r.commValue ? money(r.commValue) : '-'}</td>
+          </tr>`)).join('')}</tbody>
+      </table>
+    </div>` : '';
+
+  const table = cur && months.length ? (month ? monthTable : `
     <div class="table-wrap">
       <table class="rtable dense">
         <thead><tr>
           <th>Month</th><th class="num">Deals</th><th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th>
-          <th class="num">${cfg.monthIn}</th><th class="num">${cfg.monthOut}</th><th class="num">${cfg.monthBal}</th>
+          <th class="num">${cfg.monthIn}</th><th class="num">${cfg.monthOut}</th><th class="num">${cfg.monthBal}</th><th></th>
         </tr></thead>
-        <tbody>${months.map(r => `<tr>
+        <tbody>${months.map(r => `<tr class="clickable" data-rep-month="${esc(r.ym)}" title="Open every transaction of ${esc(fmtMonth(r.ym))}">
           <td class="mono nowrap" data-label="Month">${esc(fmtMonth(r.ym))}</td>
           <td class="num" data-label="Deals">${r.deals || '-'}</td>
           <td class="num" data-label="Qty">${r.qty ? money0(r.qty) : '-'}</td>
@@ -1458,18 +1532,41 @@ function renderReports() {
           <td class="num strong" style="color:var(--brand)" data-label="${cfg.monthIn}">${r.inVal ? money(r.inVal) : '-'}</td>
           <td class="num" style="color:var(--amber)" data-label="${cfg.monthOut}">${r.outVal ? money(r.outVal) : '-'}</td>
           <td class="num strong" data-label="${cfg.monthBal}">${money(r.balance)}</td>
+          <td class="mono muted" style="width:26px;text-align:right">\u203A</td>
         </tr>`).join('')}</tbody>
       </table>
-    </div>` : emptyState(cfg.empty, cfg.hint, '');
+    </div>`) : emptyState(cfg.empty, cfg.hint, '');
 
-  const strip = cur ? `
+  const monthSum = (k) => r2(monthRows.reduce((a, r) => a + num(r[k]), 0));
+  const mDeals = monthRows.filter(r => r.kind !== 'receipt').length;
+  const mClosing = monthRows.length ? num(monthRows[monthRows.length - 1].balance) : 0;
+  const mBought = r2(monthRows.filter(r => r.role !== 'seller').reduce((a, r) => a + num(r.amount), 0));
+  const mSold = r2(monthRows.filter(r => r.role !== 'buyer').reduce((a, r) => a + num(r.amount), 0));
+
+  const strip = cur ? (month
+    ? (isDealer
+      ? `<span class="sum"><i>Deals</i><b>${mDeals}</b></span>
+         <span class="sum"><i>Qty</i><b>${money0(monthSum('qty'))}</b></span>
+         <span class="sum"><i>Amount</i><b>${money0(monthSum('amount'))}</b></span>
+         <span class="sum"><i>GST value</i><b>${money0(monthSum('gstValue'))}</b></span>
+         <span class="sum cr"><i>Commission</i><b>${money(monthSum('commValue'))}</b></span>
+         <span class="sum dr"><i>Received</i><b>${money(monthSum('received'))}</b></span>
+         <span class="sum rem"><i>Balance</i><b>${money(mClosing)}</b></span>`
+      : `<span class="sum"><i>Deals</i><b>${monthRows.length}</b></span>
+         <span class="sum"><i>Qty</i><b>${money0(monthSum('qty'))}</b></span>
+         <span class="sum"><i>Amount</i><b>${money0(monthSum('amount'))}</b></span>
+         <span class="sum"><i>GST value</i><b>${money0(monthSum('gstValue'))}</b></span>
+         <span class="sum cr"><i>Bought (In)</i><b>${money(mBought)}</b></span>
+         <span class="sum dr"><i>Sold (Out)</i><b>${money(mSold)}</b></span>
+         <span class="sum rem"><i>Net</i><b>${money(r2(mSold - mBought))}</b></span>`)
+    : `
       <span class="sum"><i>Deals</i><b>${deals}</b></span>
       <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
       <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
       <span class="sum"><i>GST value</i><b>${money0(sum('gst'))}</b></span>
       <span class="sum cr"><i>${cfg.inLabel}</i><b>${money(sum('inVal'))}</b></span>
       <span class="sum dr"><i>${cfg.outLabel}</i><b>${money(sum('outVal'))}</b></span>
-      <span class="sum rem"><i>${cfg.balLabel}</i><b>${money(cur.balance)}</b></span>`
+      <span class="sum rem"><i>${cfg.balLabel}</i><b>${money(cur.balance)}</b></span>`)
     : (isDealer
       ? `<span class="sum"><i>Dealers</i><b>${list.length}</b></span>
          <span class="sum"><i>Deals</i><b>${list.reduce((a, x) => a + x.deals, 0)}</b></span>
@@ -1489,7 +1586,8 @@ function renderReports() {
     <div class="card flexcard">
       ${cur ? `<div class="repbar">
         <button type="button" class="btn sm" id="repBack">\u2190 All ${isDealer ? 'dealers' : 'companies'}</button>
-        <span class="repname">${esc(cur.name)}</span>
+        ${month ? `<button type="button" class="btn sm" id="repMonths">\u2190 Months</button>` : ''}
+        <span class="repname">${esc(cur.name)}${month ? ` <span class="muted">\u00b7 ${esc(fmtMonth(month))}</span>` : ''}</span>
         <button type="button" class="btn sm repopen" data-open-report="${esc(cur.key)}">Open full ${isDealer ? 'ledger' : 'register'}</button>
       </div>${table}`
       : (list.length ? `<div class="repgrid">${cards}</div>` : emptyState(cfg.empty, cfg.hint, ''))}
@@ -1515,16 +1613,24 @@ function renderReports() {
     if (state.rep.tab === b.dataset.repTab) return;
     state.rep.tab = b.dataset.repTab;
     state.rep.key = '';
+    state.rep.month = '';
     render();
   }));
   const rangeBtn = $('#fRange');
   if (rangeBtn) rangeBtn.addEventListener('click', () => openRangeDialog('rep'));
   $$('[data-rep-key]').forEach(b => b.addEventListener('click', () => {
     state.rep.key = b.dataset.repKey;
+    state.rep.month = '';
+    render();
+  }));
+  $$('[data-rep-month]').forEach(tr => tr.addEventListener('click', () => {
+    state.rep.month = tr.dataset.repMonth;
     render();
   }));
   const back = $('#repBack');
-  if (back) back.addEventListener('click', () => { state.rep.key = ''; render(); });
+  if (back) back.addEventListener('click', () => { state.rep.key = ''; state.rep.month = ''; render(); });
+  const monthsBtn = $('#repMonths');
+  if (monthsBtn) monthsBtn.addEventListener('click', () => { state.rep.month = ''; render(); });
   const open = $('[data-open-report]');
   if (open && cur) open.addEventListener('click', () => {
     if (isDealer) openDealerRegister(cur.key);

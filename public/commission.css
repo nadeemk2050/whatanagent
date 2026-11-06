@@ -636,6 +636,10 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
 .repcard .rfig b { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .repcard .rfig.in b { color: var(--brand); }
 .repcard .rfig.out b { color: var(--amber); }
+/* a month row opens that month's vouchers */
+table.rtable tr.clickable { cursor: pointer; }
+table.rtable tr.clickable:hover td { background: #f1f7f4; }
+table.rtable tr.clickable:hover td:last-child { color: var(--brand); }
 @media (max-width: 640px) {
   .repbar { padding: 7px 10px; }
   .repgrid { padding: 10px; grid-template-columns: 1fr; gap: 10px; }
