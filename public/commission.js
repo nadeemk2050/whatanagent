@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -740,13 +740,13 @@ function renderGoodsRegister(type) {
 
   const sum = (k) => r2(all.reduce((a, v) => a + num(v.data[k]), 0));
   const totalQty = all.reduce((a, v) => a + (v.data.lines || []).reduce((s, l) => s + num(l.qty), 0), 0);
-  const hasBrokerage = all.some(v => num((v.data.comm || {}).value) > 0);
-  const colspan = 6;
+  const totalComm = r2(all.reduce((a, v) => a + num((v.data.comm || {}).value), 0));
+  const hasBrokerage = totalComm > 0 || all.some(v => num((v.data.comm || {}).value) > 0);
   const sortTh = (key, label, numeric) => sortHeader(key, label, numeric);
 
   const body = pageRows.length ? `
     <div class="table-wrap">
-      <table class="rtable">
+      <table class="rtable dense">
         <thead><tr>
           ${sortTh('date', 'Date')}${sortTh('no', 'Voucher')}${sortTh('party', 'Seller')}<th>Buyer</th><th>Dealer</th><th>Items</th>
           ${sortTh('qty', 'Qty', true)}${sortTh('gst', 'Sub total', true)}${sortTh('gst', 'GST', true)}${sortTh('total', 'Total', true)}
@@ -775,58 +775,47 @@ function renderGoodsRegister(type) {
             </div></td>
           </tr>`;
         }).join('')}</tbody>
-        <tfoot><tr>
-          <td colspan="${colspan}" data-label="Total">Total (${all.length} voucher${all.length === 1 ? '' : 's'})</td>
-          <td class="num" data-label="Qty">${money(totalQty, 0)}</td>
-          <td class="num" data-label="Sub total">${money(sum('subTotal'))}</td>
-          <td class="num" data-label="GST">${money(sum('taxTotal'))}</td>
-          <td class="num" data-label="Total">${money(sum('grandTotal'))}</td>
-          ${hasBrokerage ? `<td class="num" data-label="Brokerage">${money(r2(all.reduce((a, v) => a + num((v.data.comm || {}).value), 0)))}</td>` : ''}
-          <td></td>
-        </tr></tfoot>
       </table>
-    </div>` : emptyState(meta.empty, meta.emptyHint, `<button class="btn primary" data-act="new">${esc(meta.newLabel)} voucher</button>`);
+    </div>` : emptyState(meta.empty, meta.emptyHint, '');
 
   $('#main').innerHTML = `
-    <div class="view-head">
-      <div><h2>${esc(meta.title)}</h2><p>${esc(meta.sub)}</p></div>
-      <div class="actions">
-        <button class="btn" data-act="print">${ICON.print} Print</button>
-        <button class="btn primary" data-act="new">${ICON.plus} ${esc(meta.newLabel)}</button>
-      </div>
-    </div>
-
-    <div class="kpis">
-      <div class="kpi"><div class="label">${esc(meta.totalKpi)}</div><div class="value">${money0(sum('subTotal'))}</div><div class="sub">${all.length} voucher${all.length === 1 ? '' : 's'}</div></div>
-      <div class="kpi amber"><div class="label">${esc(meta.gstKpi)}</div><div class="value">${money0(sum('taxTotal'))}</div><div class="sub">${esc(meta.gstSub)}</div></div>
-      <div class="kpi violet"><div class="label">Total with tax</div><div class="value">${money0(sum('grandTotal'))}</div><div class="sub">${esc(meta.withTaxSub)}</div></div>
-      <div class="kpi"><div class="label">Quantity</div><div class="value">${money0(totalQty)}</div><div class="sub">all items</div></div>
-    </div>
-
     <div class="card flexcard">
-      <div class="toolbar">
-        <div class="search">${ICON.search}<input id="fQ" placeholder="Search voucher, ${type === 'sales' ? 'buyer' : 'seller'}, item..." value="${esc(state.filter.q)}"></div>
-        <input type="date" id="rFrom" value="${esc(state.report.from)}" title="From date">
-        <input type="date" id="rTo" value="${esc(state.report.to)}" title="To date">
-        <span class="pill ok">${esc(reportLabel())}</span>
-        ${(state.report.from || state.report.to) ? '<button class="btn sm" data-act="clear">Clear</button>' : ''}
-      </div>
       ${body}
+      <div class="sumstrip">
+        <span class="sum"><i>Vouchers</i><b>${all.length}</b></span>
+        <span class="sum"><i>Qty</i><b>${money0(totalQty)}</b></span>
+        <span class="sum"><i>Sub total</i><b>${money0(sum('subTotal'))}</b></span>
+        <span class="sum"><i>GST value</i><b>${money0(sum('taxTotal'))}</b></span>
+        <span class="sum"><i>Total</i><b>${money0(sum('grandTotal'))}</b></span>
+        <span class="sum rem"><i>Commission</i><b>${money(totalComm)}</b></span>
+      </div>
       ${pagerHtml(slice)}
     </div>`;
 
-  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; render(); }, 220));
-  $('#rFrom').addEventListener('change', e => { state.report.from = e.target.value; state.page = 1; render(); });
-  $('#rTo').addEventListener('change', e => { state.report.to = e.target.value; state.page = 1; render(); });
-  const acts = {
-    print: () => window.print(),
-    new: () => voucherModal(type),
-    clear: () => { state.report.from = ''; state.report.to = ''; state.page = 1; render(); }
-  };
-  $$('[data-act]').forEach(b => { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); });
+  // Search and the date range live in the top bar, so the list gets the whole window.
+  const filters = $('#topbarFilters');
+  if (filters) {
+    filters.hidden = false;
+    filters.innerHTML = `
+      <div class="search" data-permanent="1">${ICON.search}<input id="fQ" placeholder="Search voucher, ${type === 'sales' ? 'buyer' : 'seller'}, dealer, item..." value="${esc(state.filter.q)}"></div>
+      <button class="range-chip" id="fRange" title="Choose a date range">
+        ${ICON.calendar}<span>${esc(dateRangeLabel('report'))}</span>
+      </button>
+      <span class="count-chip" title="${all.length} voucher${all.length === 1 ? '' : 's'}">${all.length} <small>vch</small></span>`;
+    $('.topbar')?.classList.add('has-filters');
+  }
+
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; refocusSearch = true; render(); }, 220));
+  const rangeBtn = $('#fRange');
+  if (rangeBtn) rangeBtn.addEventListener('click', () => openRangeDialog('report'));
   wireSortHeaders($('#main'));
   wirePager($('#main'), slice);
   $$('[data-edit]').forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+  if (refocusSearch) {
+    refocusSearch = false;
+    const i = $('#fQ');
+    if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) { /* ignore */ } }
+  }
 }
 
 /* ---------------------------------------------------------------- seller / buyer registers */
@@ -1249,8 +1238,12 @@ function dealerRowMatches(r, q) {
 
 /* ---------------------------------------------------------------- views: register */
 // What the top-bar date chip says: the whole book, one day, or a range.
-function dateRangeLabel() {
-  const { from, to } = state.filter;
+// `which` picks where the range lives: the commission register uses state.filter,
+// the purchase/sales registers keep theirs in state.report.
+function dateRangeLabel(which = 'filter') {
+  const box = which === 'report' ? state.report : state.filter;
+  const from = box.from || '';
+  const to = box.to || '';
   if (from && to) return from === to ? fmtDate(from) : fmtDate(from) + ' \u2013 ' + fmtDate(to);
   if (from) return 'From ' + fmtDate(from);
   if (to) return 'Up to ' + fmtDate(to);
@@ -1262,9 +1255,10 @@ const isoOf = (d) => d.toLocaleDateString('en-CA');
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 // The smart range calendar behind the top-bar date chip.
-function openRangeDialog() {
-  let from = state.filter.from || '';
-  let to = state.filter.to || '';
+function openRangeDialog(which = 'filter') {
+  const box = which === 'report' ? state.report : state.filter;
+  let from = box.from || '';
+  let to = box.to || '';
   const start = from ? new Date(from + 'T00:00:00') : new Date();
   let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
   const firstOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
@@ -1373,17 +1367,19 @@ function openRangeDialog() {
 
   $$('[data-close]', modal).forEach(b => b.addEventListener('click', closeModal));
   $('#calClear', modal).addEventListener('click', () => {
-    state.filter.from = '';
-    state.filter.to = '';
-    state.filter.year = '';
+    box.from = '';
+    box.to = '';
+    box.year = '';
+    box.type = '';
     state.page = 1;
     closeModal();
     render();
   });
   $('#calApply', modal).addEventListener('click', () => {
-    state.filter.from = from;
-    state.filter.to = to;
-    state.filter.year = '';
+    box.from = from;
+    box.to = to;
+    box.year = '';
+    box.type = '';
     state.page = 1;
     closeModal();
     render();
