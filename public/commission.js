@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -431,11 +431,26 @@ function openDrawer() {
 function closeDrawer() {
   $('#drawer').classList.remove('open');
   $('#drawerBackdrop').classList.remove('open');
+  // Leaving the menu folds its sections away, so it opens tidy next time.
+  collapseSubmenus();
+}
+// Only one section stays open at a time.
+function collapseSubmenus(except = '') {
+  for (const id of ['mm', 'qv']) {
+    if (id === except) continue;
+    const sub = $('#sub-' + id);
+    if (sub) sub.classList.remove('open');
+    const btn = $(`[data-toggle="${id}"]`);
+    if (btn) btn.classList.remove('expanded');
+  }
 }
 function toggleSubmenu(id, btn) {
   const sub = $('#sub-' + id);
-  const open = sub.classList.toggle('open');
-  btn.classList.toggle('expanded', open);
+  if (!sub) return;
+  const willOpen = !sub.classList.contains('open');
+  collapseSubmenus(id);
+  sub.classList.toggle('open', willOpen);
+  btn.classList.toggle('expanded', willOpen);
 }
 
 /* ---------------------------------------------------------------- auth */
@@ -2620,6 +2635,14 @@ function userModal() {
 }
 
 /* ---------------------------------------------------------------- router */
+// Every Quick Vouchers item opens its form immediately; the screen behind it is the
+// place where that entry will show up, so saving lands you straight on the result.
+function openNewVoucher(type) {
+  const behind = type === 'journal' ? 'voucher:journal' : 'register';
+  navigate(behind);
+  voucherModal(type);
+}
+
 function navigate(view) {
   const changedView = String(state.view).split(':')[0] !== String(view).split(':')[0];
   state.view = view;
@@ -2728,6 +2751,8 @@ function wireChrome() {
   $('#mmToggle').addEventListener('click', (e) => toggleSubmenu('mm', e.currentTarget));
   $('#qvToggle').addEventListener('click', (e) => toggleSubmenu('qv', e.currentTarget));
   $$('.menu-item[data-view]').forEach(b => b.addEventListener('click', () => navigate(b.dataset.view)));
+  // Quick Vouchers goes straight to the form, not to the register behind it.
+  $$('[data-new-voucher]').forEach(b => b.addEventListener('click', () => openNewVoucher(b.dataset.newVoucher)));
   $('#syncChip').addEventListener('click', () => syncNow({ quiet: false }));
   const searchBtn = $('#searchToggle');
   if (searchBtn) searchBtn.addEventListener('click', focusSearch);
