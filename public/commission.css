@@ -510,6 +510,21 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
   border: 1px solid var(--line); animation: pop .18s ease-out;
 }
 .modal.wide { max-width: 940px; }
+/* a voucher is a page, not a pop-up: it takes the whole window */
+.modal-backdrop.full { padding: 0; align-items: stretch; }
+.modal.full {
+  max-width: none; width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0;
+  display: flex; flex-direction: column; animation: none;
+}
+.modal.full .modal-head { flex: none; padding: 14px 22px; }
+.modal.full .modal-body { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px 28px; }
+.modal.full .modal-foot { flex: none; border-radius: 0; }
+.modal.full .voucher-lines { overflow-x: visible; }
+@media (max-width: 760px) {
+  .modal.full .modal-head { padding: 12px 14px; }
+  .modal.full .modal-body { padding: 14px 14px 24px; }
+  .modal.full .modal-foot { padding: 12px 14px; flex-wrap: wrap; }
+}
 @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
 .modal-head { display: flex; align-items: center; gap: 12px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { font-size: 17px; font-weight: 700; }
@@ -599,11 +614,15 @@ table.ledger .row-actions .icon-btn { width: 27px; height: 27px; }
 .seg button { border: 0; background: transparent; padding: 7px 13px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
 
-/* reports section: the report choice + date range sit in the top bar, accounts are boxes */
-.repbar { padding: 8px 14px; border-bottom: 1px solid var(--line); background: #fcfdff; flex: none; display: flex; align-items: center; gap: 10px; }
-.repname { font-size: 13px; font-weight: 700; letter-spacing: -.01em; }
-.repopen { margin-left: auto; }
+/* reports section: the report choice + date range + breadcrumb in the top bar, accounts are boxes */
 #repSeg button { white-space: nowrap; padding: 6px 12px; }
+.crumbs { display: inline-flex; align-items: center; gap: 5px; }
+.crumb { display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 10px; border-radius: 999px; background: #f1f5f9; border: 1px solid var(--line); color: var(--ink-2); font-family: var(--mono); font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.crumb small { font-family: var(--body, inherit); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.crumb:hover { border-color: var(--brand-600); color: var(--brand); }
+.crumb.on { background: var(--brand-50); border-color: var(--brand-100); color: var(--brand); cursor: default; }
+.crumb.on small { color: #4b7d6c; }
+.crumb-sep { color: #cbd5e1; font-size: 13px; font-weight: 700; }
 /* total position with the dealers, in the top bar */
 .bal-chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
 .bal-chip i { font-style: normal; font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
@@ -641,7 +660,6 @@ table.rtable tr.clickable { cursor: pointer; }
 table.rtable tr.clickable:hover td { background: #f1f7f4; }
 table.rtable tr.clickable:hover td:last-child { color: var(--brand); }
 @media (max-width: 640px) {
-  .repbar { padding: 7px 10px; }
   .repgrid { padding: 10px; grid-template-columns: 1fr; gap: 10px; }
   .repcard { padding: 12px 13px; }
   .repcard .rbig b { font-size: 17.5px; }

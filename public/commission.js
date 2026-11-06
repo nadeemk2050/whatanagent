@@ -70,7 +70,7 @@ const state = {
   view: 'reports',
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
-  rep: { tab: 'dealers', key: '', month: '', from: '', to: '' },
+  rep: { tab: 'dealers', key: '', month: '', from: '', to: '', sort: { month: 'asc', rows: 'asc' } },
   page: 1,
   sort: { key: 'date', dir: 'desc' },
   prevView: 'reports',
@@ -397,12 +397,13 @@ function toast(message, kind = 'ok') {
   setTimeout(() => el.remove(), 3000);
 }
 
-function openModal(html, { wide = false } = {}) {
+function openModal(html, { wide = false, full = false } = {}) {
   const backdrop = $('#modalBackdrop');
   const modal = $('#modal');
-  modal.className = 'modal' + (wide ? ' wide' : '');
-  modal.innerHTML = html;
+  modal.className = 'modal' + (wide ? ' wide' : '') + (full ? ' full' : '');
+  backdrop.className = 'modal-backdrop' + (full ? ' full' : '');
   backdrop.classList.add('open');
+  modal.innerHTML = html;
   return modal;
 }
 function closeModal() {
@@ -1471,18 +1472,24 @@ function renderReports() {
   }).join('');
 
   // ---- one account open: the month-wise report, and under it that month's vouchers
+  const repSort = state.rep.sort || { month: 'asc', rows: 'asc' };
+  const sortTh = (key, label) => `<th class="sortable${repSort[key] === 'asc' ? ' on' : ''}" data-rep-sort="${key}"
+      title="Sort by ${label} — click for ${repSort[key] === 'asc' ? 'newest' : 'oldest'} first">${label}<span class="arrow">${repSort[key] === 'asc' ? '\u25B2' : '\u25BC'}</span></th>`;
+  const monthsView = repSort.month === 'desc' ? months.slice().reverse() : months;
+  const monthView = repSort.rows === 'desc' ? monthRows.slice().reverse() : monthRows;
+
   const monthTable = cur && month ? `
     <div class="table-wrap">
       <table class="rtable dense">
         <thead><tr>
           ${isDealer
-            ? '<th>Date</th><th>Inv No.</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>'
+            ? `${sortTh('rows', 'Date')}<th>Inv No.</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>`
               + '<th class="num">Qty</th><th class="num">Amount</th><th class="num">GST %</th><th class="num">GST value</th>'
               + '<th class="num">Comm %</th><th class="num">Commission (Dr.)</th><th class="num">Received (Cr.)</th><th class="num">Balance</th>'
-            : '<th>Date</th><th>Inv No.</th><th>Dealer</th><th>As</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>'
+            : `${sortTh('rows', 'Date')}<th>Inv No.</th><th>Dealer</th><th>As</th><th>Seller</th><th>Buyer</th><th>Item</th><th>HS</th>`
               + '<th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th><th class="num">Commission</th>'}
         </tr></thead>
-        <tbody>${monthRows.map(r => (isDealer
+        <tbody>${monthView.map(r => (isDealer
           ? `<tr class="${r.kind === 'receipt' ? 'row-cr' : ''}">
             <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
             <td class="mono strong" data-label="Inv No.">${r.kind === 'receipt' ? '<span class="pill ok">Rcpt</span> ' : ''}${esc(r.no || '-')}</td>
@@ -1520,10 +1527,10 @@ function renderReports() {
     <div class="table-wrap">
       <table class="rtable dense">
         <thead><tr>
-          <th>Month</th><th class="num">Deals</th><th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th>
+          ${sortTh('month', 'Month')}<th class="num">Deals</th><th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th>
           <th class="num">${cfg.monthIn}</th><th class="num">${cfg.monthOut}</th><th class="num">${cfg.monthBal}</th><th></th>
         </tr></thead>
-        <tbody>${months.map(r => `<tr class="clickable" data-rep-month="${esc(r.ym)}" title="Open every transaction of ${esc(fmtMonth(r.ym))}">
+        <tbody>${monthsView.map(r => `<tr class="clickable" data-rep-month="${esc(r.ym)}" title="Open every transaction of ${esc(fmtMonth(r.ym))}">
           <td class="mono nowrap" data-label="Month">${esc(fmtMonth(r.ym))}</td>
           <td class="num" data-label="Deals">${r.deals || '-'}</td>
           <td class="num" data-label="Qty">${r.qty ? money0(r.qty) : '-'}</td>
@@ -1580,17 +1587,21 @@ function renderReports() {
          <span class="sum dr"><i>Sold</i><b>${money(list.reduce((a, x) => a + x.outVal, 0))}</b></span>
          <span class="sum rem"><i>GST</i><b>${money(list.reduce((a, x) => a + x.gst, 0))}</b></span>`);
 
-  // The list takes the whole window: the two reports and the date range live in the top
-  // bar, everything else (boxes or the open report, totals) is the page itself.
+  // The page itself is only the list: the report choice, the date range, the breadcrumb
+  // (how many dealers → which dealer → which month) and the totals all live in the bars.
+  const level = cur ? (month ? 'rows' : 'months') : 'boxes';
+  const crumbSep = '<span class="crumb-sep">\u203A</span>';
+  const crumbBoxes = `<button type="button" class="crumb${level === 'boxes' ? ' on' : ''}" data-rep-boxes="1"
+      title="All ${cfg.unit}">${list.length} <small>${cfg.unit}</small></button>`;
+  const crumbAccount = cur ? `${crumbSep}<button type="button" class="crumb${level === 'months' ? ' on' : ''}" data-rep-account="1"
+      title="${esc(cur.name)} — month by month">${esc(cur.name)}</button>` : '';
+  const crumbMonth = month ? `${crumbSep}<span class="crumb on" title="${esc(fmtMonth(month))} — every transaction">${esc(fmtMonth(month))}</span>` : '';
+
   $('#main').innerHTML = `
     <div class="card flexcard">
-      ${cur ? `<div class="repbar">
-        <button type="button" class="btn sm" id="repBack">\u2190 All ${isDealer ? 'dealers' : 'companies'}</button>
-        ${month ? `<button type="button" class="btn sm" id="repMonths">\u2190 Months</button>` : ''}
-        <span class="repname">${esc(cur.name)}${month ? ` <span class="muted">\u00b7 ${esc(fmtMonth(month))}</span>` : ''}</span>
-        <button type="button" class="btn sm repopen" data-open-report="${esc(cur.key)}">Open full ${isDealer ? 'ledger' : 'register'}</button>
-      </div>${table}`
-      : (list.length ? `<div class="repgrid">${cards}</div>` : emptyState(cfg.empty, cfg.hint, ''))}
+      ${level === 'boxes'
+        ? (list.length ? `<div class="repgrid">${cards}</div>` : emptyState(cfg.empty, cfg.hint, ''))
+        : table}
       <div class="sumstrip">${strip}</div>
     </div>`;
 
@@ -1603,7 +1614,7 @@ function renderReports() {
         <button type="button" data-rep-tab="companies" class="${isDealer ? '' : 'on'}">Companies</button>
       </div>
       <button class="range-chip" id="fRange" title="Choose a date range">${ICON.calendar}<span>${esc(dateRangeLabel('rep'))}</span></button>
-      <span class="count-chip">${list.length} <small>${cfg.unit}</small></span>
+      <span class="crumbs">${crumbBoxes}${crumbAccount}${crumbMonth}</span>
       ${isDealer && receivable > 0 ? `<span class="bal-chip recv" title="Commission still to come in from the dealers shown"><i>Receivable</i><b>${money(receivable)}</b></span>` : ''}
       ${isDealer && payable > 0 ? `<span class="bal-chip pay" title="Commission already paid to the dealers shown"><i>Payable</i><b>${money(payable)}</b></span>` : ''}`;
     $('.topbar')?.classList.add('has-filters');
@@ -1627,15 +1638,15 @@ function renderReports() {
     state.rep.month = tr.dataset.repMonth;
     render();
   }));
-  const back = $('#repBack');
-  if (back) back.addEventListener('click', () => { state.rep.key = ''; state.rep.month = ''; render(); });
-  const monthsBtn = $('#repMonths');
-  if (monthsBtn) monthsBtn.addEventListener('click', () => { state.rep.month = ''; render(); });
-  const open = $('[data-open-report]');
-  if (open && cur) open.addEventListener('click', () => {
-    if (isDealer) openDealerRegister(cur.key);
-    else openPartyDeals(cur.asSeller >= cur.asBuyer ? 'seller' : 'buyer', cur.key);
-  });
+  $$('[data-rep-sort]').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.repSort;
+    state.rep.sort[k] = state.rep.sort[k] === 'asc' ? 'desc' : 'asc';
+    render();
+  }));
+  const boxesBtn = $('[data-rep-boxes]');
+  if (boxesBtn) boxesBtn.addEventListener('click', () => { state.rep.key = ''; state.rep.month = ''; render(); });
+  const acctBtn = $('[data-rep-account]');
+  if (acctBtn) acctBtn.addEventListener('click', () => { state.rep.month = ''; render(); });
 }
 
 /* ---------------------------------------------------------------- views: register */
@@ -2480,7 +2491,7 @@ function voucherModal(type, rec) {
       ${rec ? '<button class="btn danger left" id="vDelete">Delete</button>' : ''}
       <button class="btn" data-close>Cancel</button>
       <button class="btn primary" id="vSave">Save voucher</button>
-    </div>`, { wide: type === 'purchase' || type === 'sales' });
+    </div>`, { full: true });
 
   const get = (id) => $('#' + id, modal);
   $$('[data-close]', modal).forEach(b => b.addEventListener('click', closeModal));
