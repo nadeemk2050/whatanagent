@@ -67,13 +67,13 @@ const state = {
   syncing: false,
   lastSync: 0,
   online: navigator.onLine,
-  view: 'register',
+  view: 'reports',
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
   rep: { tab: 'dealers', key: '', from: '', to: '' },
   page: 1,
   sort: { key: 'date', dir: 'desc' },
-  prevView: 'register',
+  prevView: 'reports',
   serverInfo: null,
   masterCache: null
 };
@@ -1414,6 +1414,9 @@ function renderReports() {
   const months = cur ? reportMonths(mode, cur.key) : [];
   const sum = (k) => r2(months.reduce((a, r) => a + num(r[k]), 0));
   const deals = months.reduce((a, r) => a + r.deals, 0);
+  // What the dealers owe us against what we owe them — the position the broker watches.
+  const receivable = r2(list.reduce((a, x) => a + (x.balance > 0 ? x.balance : 0), 0));
+  const payable = r2(list.reduce((a, x) => a + (x.balance < 0 ? -x.balance : 0), 0));
 
   // ---- the boxes: one card per dealer / company, all of them at a glance
   const cards = list.map(x => {
@@ -1498,11 +1501,13 @@ function renderReports() {
     filters.hidden = false;
     filters.innerHTML = `
       <div class="seg" id="repSeg">
-        <button type="button" data-rep-tab="dealers" class="${isDealer ? 'on' : ''}">Dealers Report</button>
-        <button type="button" data-rep-tab="companies" class="${isDealer ? '' : 'on'}">Companies Report</button>
+        <button type="button" data-rep-tab="dealers" class="${isDealer ? 'on' : ''}">Dealers</button>
+        <button type="button" data-rep-tab="companies" class="${isDealer ? '' : 'on'}">Companies</button>
       </div>
       <button class="range-chip" id="fRange" title="Choose a date range">${ICON.calendar}<span>${esc(dateRangeLabel('rep'))}</span></button>
-      <span class="count-chip">${list.length} <small>${cfg.unit}</small></span>`;
+      <span class="count-chip">${list.length} <small>${cfg.unit}</small></span>
+      ${isDealer && receivable > 0 ? `<span class="bal-chip recv" title="Commission still to come in from the dealers shown"><i>Receivable</i><b>${money(receivable)}</b></span>` : ''}
+      ${isDealer && payable > 0 ? `<span class="bal-chip pay" title="Commission already paid to the dealers shown"><i>Payable</i><b>${money(payable)}</b></span>` : ''}`;
     $('.topbar')?.classList.add('has-filters');
   }
 
@@ -3075,7 +3080,7 @@ function wireChrome() {
   const pdf = $('#exportPdf'); if (pdf) pdf.addEventListener('click', () => exportCurrent('pdf'));
   // Profile chip: opens your account, and closes it again when clicked a second time.
   $('#userChip').addEventListener('click', () => {
-    if (state.view === 'settings') navigate(state.prevView || 'register');
+    if (state.view === 'settings') navigate(state.prevView || 'reports');
     else { state.prevView = state.view; navigate('settings'); }
   });
   $('#drawerLogout').addEventListener('click', () => { closeDrawer(); signOut(); });
