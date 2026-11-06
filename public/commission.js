@@ -10,7 +10,7 @@
    ========================================================================== */
 
 const API = '/api/commission';
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 // The brokerage whose books these are — shown wherever the app names itself.
 const COMPANY = 'Qaryan Brokerage';
 
@@ -70,6 +70,7 @@ const state = {
   view: 'register',
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
+  rep: { tab: 'dealers', key: '', from: '', to: '' },
   page: 1,
   sort: { key: 'date', dir: 'desc' },
   prevView: 'register',
@@ -1226,8 +1227,7 @@ function renderDealerRegister(name) {
 }
 
 // Everything on the page is searchable: dates, numbers as shown, names and narration.
-function dealerRowMatches(r, q) {
-  const hay = [
+function dealerRowMatches(r, q) {  const hay = [
     r.date, fmtDate(r.date), r.no, r.seller, r.buyer, r.item, r.hsCode,
     r.qty, money0(r.qty), r.amount, money0(r.amount), r.gstPct, r.gstValue, money0(r.gstValue),
     r.commPct, r.commValue, money(r.commValue), r.received, money(r.received), r.balance, money(r.balance),
@@ -1236,12 +1236,285 @@ function dealerRowMatches(r, q) {
   return q.split(/\s+/).filter(Boolean).every(part => hay.includes(part));
 }
 
+/* ---------------------------------------------------------------- reports section */
+// Two reports in one page. Every dealer (or company) is a tab that already carries its
+// own position — money in, money out, what is left — and the panel under the tabs breaks
+// the same figures down month by month, which is how the books are actually read.
+const REPORTS = {
+  dealers: {
+    title: 'Dealers Report', unit: 'dealers',
+    inLabel: 'Commission', outLabel: 'Received', balLabel: 'Balance',
+    monthIn: 'Commission (In)', monthOut: 'Received (Out)', monthBal: 'Running balance',
+    empty: 'No dealers yet', hint: 'Add your dealers in Manage Master \u2192 Dealer Names, then pick one on a sales voucher.'
+  },
+  companies: {
+    title: 'Companies Report', unit: 'companies',
+    inLabel: 'Bought (In)', outLabel: 'Sold (Out)', balLabel: 'Net',
+    monthIn: 'Bought (In)', monthOut: 'Sold (Out)', monthBal: 'Net (Out \u2212 In)',
+    empty: 'No companies yet', hint: 'Add companies in Manage Master \u2192 Customers & Companies.'
+  }
+};
+
+function fmtMonth(ym) {
+  const [y, m] = String(ym || '').split('-');
+  const name = MONTHS[Number(m) - 1];
+  return name ? name + ' ' + y : (ym || 'No date');
+}
+
+// Dealer side: commission earned (money in) against what the dealer has paid (money out).
+function inRepRange(date) {
+  const { from, to } = state.rep;
+  if (from && (date || '') < from) return false;
+  if (to && (date || '') > to) return false;
+  return true;
+}
+
+function reportDealerRows() {
+  const groups = new Map();
+  const touch = (name) => {
+    let g = groups.get(name);
+    if (!g) {
+      g = { key: name, name, deals: 0, last: '', qty: 0, gst: 0, inVal: 0, outVal: 0, balance: 0, asSeller: 0, asBuyer: 0, volume: 0 };
+      groups.set(name, g);
+    }
+    return g;
+  };
+  for (const d of dealers()) {
+    const name = String(d.data.name || '').trim();
+    if (name) touch(name);
+  }
+  for (const inv of invoices()) {
+    const d = inv.data;
+    if (!inRepRange(d.date)) continue;
+    const name = String(d.dealer || '').trim();
+    if (!name) continue;
+    const g = touch(name);
+    g.deals++;
+    g.qty += num(d.qty);
+    g.gst = r2(g.gst + num(d.gstValue));
+    g.inVal = r2(g.inVal + num(d.commValue));
+    if ((d.date || '') > g.last) g.last = d.date || '';
+  }
+  for (const v of vouchers('receipt')) {
+    if (!inRepRange(v.data.date)) continue;
+    const name = String(v.data.dealer || v.data.party || '').trim();
+    if (!name) continue;
+    const g = touch(name);
+    g.outVal = r2(g.outVal + num(v.data.amount));
+    if ((v.data.date || '') > g.last) g.last = v.data.date || '';
+  }
+  for (const g of groups.values()) {
+    g.balance = r2(g.inVal - g.outVal);
+    g.volume = r2(g.inVal + g.outVal);
+  }
+  return [...groups.values()]
+    .filter(g => g.deals || g.outVal)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Company side: what they supplied us (out) against what they took (in), with the
+// quantity and GST that moved with it.
+function reportCompanyRows() {
+  const groups = new Map();
+  const touch = (name) => {
+    let g = groups.get(name);
+    if (!g) {
+      g = { key: name, name, deals: 0, asSeller: 0, asBuyer: 0, qty: 0, last: '', inVal: 0, outVal: 0, gst: 0, balance: 0, volume: 0 };
+      groups.set(name, g);
+    }
+    return g;
+  };
+  for (const p of parties()) {
+    const name = String(p.data.name || '').trim();
+    if (name) touch(name);
+  }
+  for (const inv of invoices()) {
+    const d = inv.data;
+    if (!inRepRange(d.date)) continue;
+    const amount = num(d.amount);
+    if (d.seller) {
+      const g = touch(String(d.seller).trim());
+      g.deals++;
+      g.asSeller++;
+      g.qty += num(d.qty);
+      g.gst = r2(g.gst + num(d.gstValue));
+      g.outVal = r2(g.outVal + amount);
+      if ((d.date || '') > g.last) g.last = d.date || '';
+    }
+    if (d.buyer) {
+      const g = touch(String(d.buyer).trim());
+      g.deals++;
+      g.asBuyer++;
+      g.qty += num(d.qty);
+      g.gst = r2(g.gst + num(d.gstValue));
+      g.inVal = r2(g.inVal + amount);
+      if ((d.date || '') > g.last) g.last = d.date || '';
+    }
+  }
+  for (const g of groups.values()) {
+    g.balance = r2(g.outVal - g.inVal);
+    g.volume = r2(g.outVal + g.inVal);
+  }
+  return [...groups.values()]
+    .filter(g => g.deals || g.volume)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// One row per calendar month for the selected tab, oldest first.
+function reportMonths(mode, key) {
+  const want = String(key || '').trim().toLowerCase();
+  const groups = new Map();
+  const touch = (date) => {
+    const ym = String(date || '').slice(0, 7) || '-';
+    let g = groups.get(ym);
+    if (!g) { g = { ym, deals: 0, qty: 0, amount: 0, gst: 0, inVal: 0, outVal: 0, balance: 0 }; groups.set(ym, g); }
+    return g;
+  };
+  for (const inv of invoices()) {
+    const d = inv.data;
+    if (!inRepRange(d.date)) continue;
+    let hit = false;
+    if (mode === 'dealers') hit = String(d.dealer || '').trim().toLowerCase() === want;
+    else hit = String(d.seller || '').trim().toLowerCase() === want || String(d.buyer || '').trim().toLowerCase() === want;
+    if (!hit) continue;
+    const g = touch(d.date);
+    g.deals++;
+    g.qty += num(d.qty);
+    g.amount = r2(g.amount + num(d.amount));
+    g.gst = r2(g.gst + num(d.gstValue));
+    if (mode === 'dealers') g.inVal = r2(g.inVal + num(d.commValue));
+    else {
+      if (String(d.seller || '').trim().toLowerCase() === want) g.outVal = r2(g.outVal + num(d.amount));
+      if (String(d.buyer || '').trim().toLowerCase() === want) g.inVal = r2(g.inVal + num(d.amount));
+    }
+  }
+  if (mode === 'dealers') {
+    for (const v of vouchers('receipt')) {
+      if (!inRepRange(v.data.date)) continue;
+      if (String(v.data.dealer || v.data.party || '').trim().toLowerCase() !== want) continue;
+      const g = touch(v.data.date);
+      g.outVal = r2(g.outVal + num(v.data.amount));
+    }
+  }
+  const rows = [...groups.values()].sort((a, b) => a.ym.localeCompare(b.ym));
+  let running = 0;
+  for (const r of rows) {
+    running = r2(running + r.inVal - r.outVal);
+    r.balance = mode === 'dealers' ? running : r2(r.outVal - r.inVal);
+  }
+  return rows;
+}
+
+function renderReports() {
+  const mode = state.rep.tab === 'companies' ? 'companies' : 'dealers';
+  const cfg = REPORTS[mode];
+  const isDealer = mode === 'dealers';
+  const list = isDealer ? reportDealerRows() : reportCompanyRows();
+  if (!list.some(x => x.key === state.rep.key)) state.rep.key = list.length ? list[0].key : '';
+  const cur = list.find(x => x.key === state.rep.key) || null;
+  const months = cur ? reportMonths(mode, cur.key) : [];
+  const sum = (k) => r2(months.reduce((a, r) => a + num(r[k]), 0));
+  const deals = months.reduce((a, r) => a + r.deals, 0);
+
+  const tabs = list.map(x => {
+    const meta = isDealer
+      ? `<span class="tmeta in"><i>Comm</i>${money0(x.inVal)}</span>
+         <span class="tmeta out"><i>Recd</i>${money0(x.outVal)}</span>
+         <span class="tmeta bal"><i>Bal</i>${money0(x.balance)}</span>`
+      : `<span class="tmeta"><i>Qty</i>${money0(x.qty)}</span>
+         <span class="tmeta"><i>Value</i>${money0(x.volume)}</span>
+         <span class="tmeta in"><i>Purch</i>${money0(x.inVal)}</span>
+         <span class="tmeta out"><i>Sold</i>${money0(x.outVal)}</span>
+         <span class="tmeta bal"><i>GST</i>${money0(x.gst)}</span>`;
+    return `<button type="button" class="reptab${x.key === state.rep.key ? ' on' : ''}" data-rep-key="${esc(x.key)}"
+      title="${esc(x.name)} — ${isDealer ? 'commission' : 'value'} ${money(isDealer ? x.inVal : x.volume)}">
+      <span class="tname">${esc(x.name)}</span>${meta}
+    </button>`;
+  }).join('');
+
+  const table = cur && months.length ? `
+    <div class="table-wrap">
+      <table class="rtable dense">
+        <thead><tr>
+          <th>Month</th><th class="num">Deals</th><th class="num">Qty</th><th class="num">Amount</th><th class="num">GST value</th>
+          <th class="num">${cfg.monthIn}</th><th class="num">${cfg.monthOut}</th><th class="num">${cfg.monthBal}</th>
+        </tr></thead>
+        <tbody>${months.map(r => `<tr>
+          <td class="mono nowrap" data-label="Month">${esc(fmtMonth(r.ym))}</td>
+          <td class="num" data-label="Deals">${r.deals || '-'}</td>
+          <td class="num" data-label="Qty">${r.qty ? money0(r.qty) : '-'}</td>
+          <td class="num" data-label="Amount">${r.amount ? money0(r.amount) : '-'}</td>
+          <td class="num" data-label="GST value">${r.gst ? money0(r.gst) : '-'}</td>
+          <td class="num strong" style="color:var(--brand)" data-label="${cfg.monthIn}">${r.inVal ? money(r.inVal) : '-'}</td>
+          <td class="num" style="color:var(--amber)" data-label="${cfg.monthOut}">${r.outVal ? money(r.outVal) : '-'}</td>
+          <td class="num strong" data-label="${cfg.monthBal}">${money(r.balance)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : emptyState(cfg.empty, cfg.hint, '');
+
+  // The list takes the whole window: the two reports and the date range live in the top
+  // bar, everything else (tabs, table, totals) is the page itself.
+  $('#main').innerHTML = `
+    <div class="card flexcard">
+      ${list.length ? `<div class="repbar">
+        <div class="reptabs">${tabs}</div>
+        ${cur ? `<button type="button" class="btn sm repopen" data-open-report="${esc(cur.key)}">Open full ${isDealer ? 'ledger' : 'register'}</button>` : ''}
+      </div>${table}` : emptyState(cfg.empty, cfg.hint, '')}
+      <div class="sumstrip">
+        <span class="sum"><i>Deals</i><b>${deals}</b></span>
+        <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
+        <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
+        <span class="sum"><i>GST value</i><b>${money0(sum('gst'))}</b></span>
+        <span class="sum cr"><i>${cfg.inLabel}</i><b>${money(sum('inVal'))}</b></span>
+        <span class="sum dr"><i>${cfg.outLabel}</i><b>${money(sum('outVal'))}</b></span>
+        <span class="sum rem"><i>${cfg.balLabel}</i><b>${money(cur ? cur.balance : 0)}</b></span>
+      </div>
+    </div>`;
+
+  const filters = $('#topbarFilters');
+  if (filters) {
+    filters.hidden = false;
+    filters.innerHTML = `
+      <div class="seg" id="repSeg">
+        <button type="button" data-rep-tab="dealers" class="${isDealer ? 'on' : ''}">Dealers Report</button>
+        <button type="button" data-rep-tab="companies" class="${isDealer ? '' : 'on'}">Companies Report</button>
+      </div>
+      <button class="range-chip" id="fRange" title="Choose a date range">${ICON.calendar}<span>${esc(dateRangeLabel('rep'))}</span></button>
+      <span class="count-chip">${list.length} <small>${cfg.unit}</small></span>`;
+    $('.topbar')?.classList.add('has-filters');
+  }
+
+  $$('#repSeg [data-rep-tab]').forEach(b => b.addEventListener('click', () => {
+    if (state.rep.tab === b.dataset.repTab) return;
+    state.rep.tab = b.dataset.repTab;
+    state.rep.key = '';
+    render();
+  }));
+  const rangeBtn = $('#fRange');
+  if (rangeBtn) rangeBtn.addEventListener('click', () => openRangeDialog('rep'));
+  $$('[data-rep-key]').forEach(b => b.addEventListener('click', () => {
+    state.rep.key = b.dataset.repKey;
+    render();
+  }));
+  const open = $('[data-open-report]');
+  if (open && cur) open.addEventListener('click', () => {
+    if (isDealer) openDealerRegister(cur.key);
+    else openPartyDeals(cur.asSeller >= cur.asBuyer ? 'seller' : 'buyer', cur.key);
+  });
+}
+
 /* ---------------------------------------------------------------- views: register */
 // What the top-bar date chip says: the whole book, one day, or a range.
 // `which` picks where the range lives: the commission register uses state.filter,
 // the purchase/sales registers keep theirs in state.report.
+function rangeBox(which) {
+  if (which === 'report') return state.report;
+  if (which === 'rep') return state.rep;
+  return state.filter;
+}
+
 function dateRangeLabel(which = 'filter') {
-  const box = which === 'report' ? state.report : state.filter;
+  const box = rangeBox(which);
   const from = box.from || '';
   const to = box.to || '';
   if (from && to) return from === to ? fmtDate(from) : fmtDate(from) + ' \u2013 ' + fmtDate(to);
@@ -1256,7 +1529,7 @@ const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 // The smart range calendar behind the top-bar date chip.
 function openRangeDialog(which = 'filter') {
-  const box = which === 'report' ? state.report : state.filter;
+  const box = rangeBox(which);
   let from = box.from || '';
   let to = box.to || '';
   const start = from ? new Date(from + 'T00:00:00') : new Date();
@@ -2409,6 +2682,26 @@ function exportDocument() {
     };
   }
 
+  if (state.view === 'reports') {
+    const mode = state.rep.tab === 'companies' ? 'companies' : 'dealers';
+    const cfg = REPORTS[mode];
+    const list = mode === 'dealers' ? reportDealerRows() : reportCompanyRows();
+    const cur = list.find(x => x.key === state.rep.key) || list[0];
+    if (!cur) return null;
+    const months = reportMonths(mode, cur.key);
+    return {
+      filename: (mode === 'dealers' ? 'dealer-report-' : 'company-report-')
+        + cur.key.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + stamp,
+      title: cfg.title + ' - ' + cur.name,
+      subtitle: COMPANY + ' - ' + months.length + ' months',
+      sheetName: mode === 'dealers' ? 'Dealer Report' : 'Company Report',
+      columns: [{ label: 'Month' }, { label: 'Deals', num: true }, { label: 'Qty', num: true }, { label: 'Amount', num: true },
+        { label: 'GST value', num: true }, { label: cfg.monthIn, num: true },
+        { label: cfg.monthOut, num: true }, { label: cfg.monthBal, num: true }],
+      rows: months.map(r => [fmtMonth(r.ym), r.deals, r.qty, r.amount, r.gst, r.inVal, r.outVal, r.balance])
+    };
+  }
+
   return null;
 }
 
@@ -2661,6 +2954,7 @@ const VIEW_TITLES = {
   sellers: ['Seller Register', 'Seller-wise sales, GST and commission'],
   buyers: ['Buyer Register', 'Buyer-wise purchases, GST and commission'],
   dealers: ['Dealers Register', 'Dealer-wise deals, commission and receipts'],
+  reports: ['Reports Section', ''],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
 };
@@ -2687,14 +2981,14 @@ function render() {
   // The register is a pure list: no second heading, no action buttons - the whole
   // window is the list, with a pager at the bottom.
   const isList = kind === 'master' || kind === 'voucher' || kind === 'dealer'
-    || ['register', 'purchases', 'sales', 'sellers', 'buyers', 'dealers'].includes(state.view);
+    || ['register', 'purchases', 'sales', 'sellers', 'buyers', 'dealers', 'reports'].includes(state.view);
   const main = $('#main');
   main.className = 'main' + (isList ? ' fill' : ' scroll');
   main.scrollTop = 0;
   const exports = $('#topbarExports');
   if (exports) exports.hidden = !isList;
   const sBtn = $('#searchToggle');
-  if (sBtn) sBtn.hidden = !isList;
+  if (sBtn) sBtn.hidden = !isList || state.view === 'reports';
   // Views that keep their filters in the top bar (the register) fill this in themselves.
   const topFilters = $('#topbarFilters');
   if (topFilters) { topFilters.hidden = true; topFilters.innerHTML = ''; topFilters.classList.remove('search-closed'); }
@@ -2709,6 +3003,7 @@ function render() {
   if (state.view === 'sellers') return renderPartyRegister('seller');
   if (state.view === 'buyers') return renderPartyRegister('buyer');
   if (state.view === 'dealers') return renderDealers();
+  if (state.view === 'reports') return renderReports();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
   return renderRegister();
