@@ -11884,8 +11884,7 @@
       if (!noteCurrent) return;
       const safeTitle = String(noteCurrent.title || 'note').replace(/[^A-Za-z0-9._-]+/g, '_').substring(0, 50) || 'note';
       const json = JSON.stringify({ app: 'WhatAnAgent NoteBook', exportFormatVersion: 1, exportedAt: new Date().toISOString(), note: noteCurrent, blocks: noteBlocks }, null, 1);
-      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(noteCurrent.title || 'Note') + '</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:860px;margin:30px auto;padding:0 18px;color:#1f2937;line-height:1.7}h1{margin-bottom:4px}.meta{color:#6b7280;font-size:12px;margin-bottom:18px}.b{padding:10px 0;border-bottom:1px dashed #e5e7eb;white-space:pre-wrap;font-size:14.5px}.tag{font-size:11px;color:#7c3aed}</style></head><body><h1>' + escapeHtml(noteCurrent.title || 'Note') + '</h1><div class="meta">Exported ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai) · ' + noteBlocks.length + ' blocks</div>' + noteBlocks.map(b => '<div class="b">' + escapeHtml(b.text || '') + (b.source === 'audio' ? '<div class="tag">🎤 AI-written from voice' + (b.instruction ? ' · ' + escapeHtml(String(b.instruction).substring(0, 60)) : '') + '</div>' : '') + '</div>').join('') + '<script src="/cloudflare-lab.js"></script>
-</body></html>';
+      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + escapeHtml(noteCurrent.title || 'Note') + '</title><style>body{font-family:Segoe UI,Arial,sans-serif;max-width:860px;margin:30px auto;padding:0 18px;color:#1f2937;line-height:1.7}h1{margin-bottom:4px}.meta{color:#6b7280;font-size:12px;margin-bottom:18px}.b{padding:10px 0;border-bottom:1px dashed #e5e7eb;white-space:pre-wrap;font-size:14.5px}.tag{font-size:11px;color:#7c3aed}</style></head><body><h1>' + escapeHtml(noteCurrent.title || 'Note') + '</h1><div class="meta">Exported ' + new Date().toLocaleString('en-GB', { timeZone: 'Asia/Dubai' }) + ' (Dubai) · ' + noteBlocks.length + ' blocks</div>' + noteBlocks.map(b => '<div class="b">' + escapeHtml(b.text || '') + (b.source === 'audio' ? '<div class="tag">🎤 AI-written from voice' + (b.instruction ? ' · ' + escapeHtml(String(b.instruction).substring(0, 60)) : '') + '</div>' : '') + '</div>').join('') + '</body></html>';
       const d1 = document.createElement('a');
       d1.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
       d1.download = safeTitle + '.html';
@@ -15056,5 +15055,6 @@
     });
 })();
 </script>
+<script src="/cloudflare-lab.js"></script>
 </body>
 </html>
