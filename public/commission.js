@@ -71,6 +71,7 @@ const state = {
   filter: { q: '', party: '', from: '', to: '', year: '' },
   report: { from: '', to: '', type: '', seller: '' },
   rep: { tab: 'dealers', key: '', month: '', from: '', to: '', sort: { month: 'asc', rows: 'asc' } },
+  exp: { from: '', to: '' },
   page: 1,
   sort: { key: 'date', dir: 'desc' },
   prevView: 'reports',
@@ -1649,6 +1650,100 @@ function renderReports() {
   if (acctBtn) acctBtn.addEventListener('click', () => { state.rep.month = ''; render(); });
 }
 
+/* ---------------------------------------------------------------- expenses register */
+// Every payment that went out — commission to a dealer or an indirect expense.
+function expenseRows() {
+  return vouchers('payment').map(v => {
+    const d = v.data || {};
+    const head = d.head || (String(d.partyType || '') === 'expense' ? d.party : '') || '';
+    return {
+      id: v.id, rec: v,
+      date: d.date || '', no: d.no || '',
+      payee: d.party || d.dealer || '', head,
+      account: d.account || '', amount: num(d.amount), narration: d.narration || '',
+      isExpense: !!head
+    };
+  });
+}
+
+function renderExpenses() {
+  const box = rangeBox('exp');
+  const all = expenseRows().filter(r => (!box.from || (r.date || '') >= box.from) && (!box.to || (r.date || '') <= box.to));
+  const q = state.filter.q.trim().toLowerCase();
+  const rows = q
+    ? all.filter(r => [r.date, fmtDate(r.date), r.no, r.payee, r.head, r.account, r.narration, r.amount, money(r.amount)]
+      .join(' ').toLowerCase().includes(q))
+    : all;
+  const getters = { date: r => r.date || '', no: r => r.no || '', payee: r => r.payee || '', head: r => r.head || '', amount: r => r.amount };
+  const slice = pageSlice(sortList(rows, getters, state.sort));
+  const sum = (k) => r2(rows.reduce((a, r) => a + num(r[k]), 0));
+  const expenseCount = rows.filter(r => r.isExpense).length;
+
+  const body = slice.rows.length ? `
+    <div class="table-wrap">
+      <table class="rtable dense">
+        <thead><tr>
+          ${sortHeader('date', 'Date')}${sortHeader('no', 'Voucher')}${sortHeader('payee', 'Paid to')}<th>Kind</th>
+          <th>Paid from</th><th>Narration</th>${sortHeader('amount', 'Amount', true)}<th></th>
+        </tr></thead>
+        <tbody>${slice.rows.map(r => `<tr>
+          <td class="mono nowrap" data-label="Date">${esc(fmtDate(r.date))}</td>
+          <td class="mono strong" data-label="Voucher">${esc(r.no || '-')}</td>
+          <td class="wrap" data-label="Paid to"><div class="cell-val">
+            <div class="strong">${esc(r.isExpense ? (r.head || r.payee) : (r.payee || '-'))}</div>
+            ${r.isExpense && r.payee && r.payee !== r.head ? `<div class="muted sub">paid via ${esc(r.payee)}</div>` : ''}
+          </div></td>
+          <td data-label="Kind"><span class="pill ${r.isExpense ? 'cash' : 'seller'}">${r.isExpense ? 'expense' : 'dealer'}</span></td>
+          <td class="wrap" data-label="Paid from">${esc(r.account || '-')}</td>
+          <td class="wrap muted" data-label="Narration">${esc(r.narration || '-')}</td>
+          <td class="num strong" style="color:var(--amber)" data-label="Amount">${money(r.amount)}</td>
+          <td class="cell-actions"><div class="row-actions">
+            <button class="icon-btn" data-edit="${esc(r.id)}" title="Open payment">${ICON.edit}</button>
+          </div></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : emptyState(
+      'No payments in this period',
+      'Pay an indirect expense from Quick Vouchers \u2192 Payment and it appears here.',
+      '<button class="btn primary" data-new-voucher="payment">New payment</button>'
+    );
+
+  $('#main').innerHTML = `
+    <div class="card flexcard">
+      ${body}
+      <div class="sumstrip">
+        <span class="sum"><i>Payments</i><b>${rows.length}</b></span>
+        <span class="sum"><i>Expenses</i><b>${expenseCount}</b></span>
+        <span class="sum"><i>To dealers</i><b>${rows.length - expenseCount}</b></span>
+        <span class="sum rem"><i>Total paid</i><b>${money(sum('amount'))}</b></span>
+      </div>
+      ${pagerHtml(slice)}
+    </div>`;
+
+  const filters = $('#topbarFilters');
+  if (filters) {
+    filters.hidden = false;
+    filters.innerHTML = `
+      <div class="search" data-permanent="1">${ICON.search}<input id="fQ" placeholder="Search expense, dealer, voucher, narration..." value="${esc(state.filter.q)}"></div>
+      <button class="range-chip" id="fRange" title="Choose a date range">${ICON.calendar}<span>${esc(dateRangeLabel('exp'))}</span></button>
+      <span class="count-chip">${rows.length}${rows.length === all.length ? '' : ' <small>/ ' + all.length + '</small>'} <small>payments</small></span>`;
+    $('.topbar')?.classList.add('has-filters');
+  }
+
+  $('#fQ').addEventListener('input', debounce(e => { state.filter.q = e.target.value; state.page = 1; refocusSearch = true; render(); }, 220));
+  const rangeBtn = $('#fRange');
+  if (rangeBtn) rangeBtn.addEventListener('click', () => openRangeDialog('exp'));
+  wireSortHeaders($('#main'));
+  wirePager($('#main'), slice);
+  $$('[data-edit]', $('#main')).forEach(b => b.addEventListener('click', () => openEntry(b.dataset.edit)));
+  $$('[data-new-voucher]', $('#main')).forEach(b => b.addEventListener('click', () => openNewVoucher(b.dataset.newVoucher)));
+  if (refocusSearch) {
+    refocusSearch = false;
+    const i = $('#fQ');
+    if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (e) { /* ignore */ } }
+  }
+}
+
 /* ---------------------------------------------------------------- views: register */
 // What the top-bar date chip says: the whole book, one day, or a range.
 // `which` picks where the range lives: the commission register uses state.filter,
@@ -1656,6 +1751,7 @@ function renderReports() {
 function rangeBox(which) {
   if (which === 'report') return state.report;
   if (which === 'rep') return state.rep;
+  if (which === 'exp') return state.exp;
   return state.filter;
 }
 
@@ -1967,8 +2063,8 @@ const MASTERS = {
     ]
   },
   expense: {
-    title: 'Expenses', sub: 'Expense heads used in payment vouchers (chalaan fees, wakeel, audit…).',
-    addLabel: 'Add expense head',
+    title: 'Indirect Expenses', sub: 'Expense heads you can pay from a payment voucher (chalaan fees, wakeel, audit…).',
+    addLabel: 'Add indirect expense',
     columns: [
       { k: 'name', t: 'Head', cell: (d) => `<div class="strong">${esc(d.name || '—')}</div><div class="muted" style="font-size:11.5px">${esc(d.notes || '')}</div>` },
       { k: 'defaultAmount', t: 'Default amount', num: true, cell: (d) => num(d.defaultAmount) ? money(d.defaultAmount, 0) : '—' }
@@ -2388,9 +2484,14 @@ function voucherModal(type, rec) {
     <div class="grid-${isMoney ? '2' : isGoods ? '2' : '3'}">
       <div class="field"><label for="vDate">Date</label><input id="vDate" type="date" value="${esc(d.date || today())}"></div>
       <div class="field"><label for="vNo">Voucher no.</label><input id="vNo" value="${esc(d.no || '')}"></div>
-      ${isGoods ? '' : `<div class="field"><label for="vParty">${isMoney ? 'Dealer' : 'Party'}${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
-        <input id="vParty" list="dlVP" value="${esc(d.party || '')}" autocomplete="off" placeholder="${isMoney ? 'Dealer name' : 'Company name'}">
-        <datalist id="dlVP">${partyOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      ${isGoods ? '' : `<div class="field"><label for="vParty">${type === 'payment' ? 'Paid to' : isMoney ? 'Dealer' : 'Party'}${type === 'journal' ? ' (optional)' : ' <span class="req">*</span>'}</label>
+        ${type === 'payment'
+          ? `<select id="vParty"><option value="">— choose dealer or expense —</option>
+              <optgroup label="Dealers">${dealerNames().map(n => `<option value="${esc(n)}" ${d.party === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>
+              <optgroup label="Indirect Expenses">${expenseHeads().map(e => `<option value="${esc(e.data.name)}" ${d.party === e.data.name ? 'selected' : ''}>${esc(e.data.name)}</option>`).join('')}</optgroup>
+            </select>`
+          : `<input id="vParty" list="dlVP" value="${esc(d.party || '')}" autocomplete="off" placeholder="${isMoney ? 'Dealer name' : 'Company name'}">
+             <datalist id="dlVP">${partyOpts.map(n => `<option value="${esc(n)}">`).join('')}</datalist>`}
       </div>`}
     </div>
     ${isGoods ? `<div class="grid-3">
@@ -2408,9 +2509,7 @@ function voucherModal(type, rec) {
         </div>
         <div class="field"><label for="vAmount">Amount <span class="req">*</span></label><input id="vAmount" type="number" step="0.01" value="${num(d.amount) || ''}" placeholder="0"></div>
       </div>
-      ${type === 'payment' ? `<div class="field"><label for="vHead">Expense head</label>
-        <select id="vHead"><option value="">— none —</option>${expenseHeads().map(e => `<option ${d.head === e.data.name ? 'selected' : ''}>${esc(e.data.name)}</option>`).join('')}</select>
-      </div>` : ''}
+      ${type === 'payment' ? '' : ''}
       <div class="field"><label for="vNarr">Narration</label><input id="vNarr" value="${esc(d.narration || '')}" placeholder="${type === 'receipt' ? 'Commission received against invoice…' : 'Chalaan fees, wakeel charges…'}"></div>`;
   } else if (type === 'journal') {
     body = `
@@ -2603,8 +2702,16 @@ function voucherModal(type, rec) {
     if (type === 'payment' || type === 'receipt') {
       const amount = num(get('vAmount').value);
       if (!amount) { toast('Amount is required', 'err'); return; }
-      if (!party) { toast('Dealer is required', 'err'); return; }
-      data = { date, no, party, account: get('vAccount').value, amount, narration, head: get('vHead') ? get('vHead').value : '', partyType: 'dealer' };
+      if (!party) { toast(type === 'payment' ? 'Choose the dealer or the expense you paid' : 'Dealer is required', 'err'); return; }
+      // A payment is either commission paid to a dealer or an indirect expense paid out.
+      const isExpense = type === 'payment'
+        && expenseHeads().some(e => String(e.data.name || '').trim().toLowerCase() === party.toLowerCase());
+      data = {
+        date, no, party, account: get('vAccount').value, amount, narration,
+        head: isExpense ? party : '',
+        dealer: isExpense ? '' : party,
+        partyType: isExpense ? 'expense' : 'dealer'
+      };
     } else if (type === 'journal') {
       const amount = num(get('vAmount').value);
       const debitAccount = get('vDebit').value.trim();
@@ -2845,6 +2952,22 @@ function exportDocument() {
         { label: 'GST value', num: true }, { label: cfg.monthIn, num: true },
         { label: cfg.monthOut, num: true }, { label: cfg.monthBal, num: true }],
       rows: months.map(r => [fmtMonth(r.ym), r.deals, r.qty, r.amount, r.gst, r.inVal, r.outVal, r.balance])
+    };
+  }
+
+  if (state.view === 'expenses') {
+    const box = rangeBox('exp');
+    const rows = expenseRows()
+      .filter(r => (!box.from || (r.date || '') >= box.from) && (!box.to || (r.date || '') <= box.to))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.no).localeCompare(String(b.no)));
+    return {
+      filename: 'expenses-register-' + stamp,
+      title: 'Expenses Register',
+      subtitle: COMPANY + ' - ' + rows.length + ' payments - ' + dateRangeLabel('exp'),
+      sheetName: 'Expenses',
+      columns: [{ label: 'Date' }, { label: 'Voucher' }, { label: 'Paid to' }, { label: 'Kind' },
+        { label: 'Paid from' }, { label: 'Narration' }, { label: 'Amount', num: true }],
+      rows: rows.map(r => [r.date, r.no, r.payee, r.isExpense ? 'expense' : 'dealer', r.account, r.narration, r.amount])
     };
   }
 
@@ -3100,6 +3223,7 @@ const VIEW_TITLES = {
   sellers: ['Seller Register', 'Seller-wise sales, GST and commission'],
   buyers: ['Buyer Register', 'Buyer-wise purchases, GST and commission'],
   dealers: ['Dealers Register', 'Dealer-wise deals, commission and receipts'],
+  expenses: ['Expenses Register', 'Every payment out, expense-wise'],
   reports: ['Reports Section', ''],
   dashboard: ['Register Dashboard', 'Coming soon'],
   settings: ['Settings & Sync', 'Account, devices and backups']
@@ -3127,7 +3251,7 @@ function render() {
   // The register is a pure list: no second heading, no action buttons - the whole
   // window is the list, with a pager at the bottom.
   const isList = kind === 'master' || kind === 'voucher' || kind === 'dealer'
-    || ['register', 'purchases', 'sales', 'sellers', 'buyers', 'dealers', 'reports'].includes(state.view);
+    || ['register', 'purchases', 'sales', 'sellers', 'buyers', 'dealers', 'reports', 'expenses'].includes(state.view);
   const main = $('#main');
   main.className = 'main' + (isList ? ' fill' : ' scroll');
   main.scrollTop = 0;
@@ -3149,6 +3273,7 @@ function render() {
   if (state.view === 'sellers') return renderPartyRegister('seller');
   if (state.view === 'buyers') return renderPartyRegister('buyer');
   if (state.view === 'dealers') return renderDealers();
+  if (state.view === 'expenses') return renderExpenses();
   if (state.view === 'reports') return renderReports();
   if (state.view === 'dashboard') return renderDashboard();
   if (state.view === 'settings') return renderSettings();
