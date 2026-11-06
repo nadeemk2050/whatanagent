@@ -541,6 +541,115 @@ function migrateDealsToSalesVouchers() {
   return { moved, dealerAdded, tagged };
 }
 
+// ------------------------------------------------------- further dealer workbooks
+// Each dealer that hands us a sheet gets one seed file, produced by
+// `python scripts/commission-xlsx-to-seed.py <book.xlsx> scripts/commission-<dealer>-seed.json`.
+// Rows keep the ids derived from their sheet row, so a restart re-checks them and writes
+// nothing twice, while anything typed in the app is never touched. Deals land as sales
+// vouchers (in this book a sales voucher IS the commission voucher) and the money the
+// dealer paid lands as receipts, which is what makes his register balance.
+const WORKBOOK_SEEDS = [
+  { file: 'commission-zubairee-seed.json', company: 'Zubairee Parties' }
+];
+const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+function importWorkbookSeed(entry) {
+  const file = path.join(__dirname, 'scripts', entry.file);
+  if (!fs.existsSync(file)) return { file: entry.file, missing: true, sales: 0, receipts: 0, masters: 0 };
+  let seed = null;
+  try {
+    seed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.warn('[COMMISSION] workbook seed unreadable (' + entry.file + '): ' + sstr(e.message || e, 160));
+    return { file: entry.file, error: true, sales: 0, receipts: 0, masters: 0 };
+  }
+
+  const dealer = sstr(seed.dealer || '', 80);
+  const source = sstr(seed.sourceFile || entry.file, 120);
+  const stamp = nowMs();
+  const counts = { file: entry.file, dealer, sales: 0, receipts: 0, masters: 0, present: 0 };
+
+  // One pass over the book to know which masters already exist (they may have been
+  // created by hand in the app before the sheet was imported).
+  const known = new Set();
+  for (const r of store.all()) {
+    if (r.kind === 'master') known.add(r.type + '|' + String(r.data.name || '').trim().toLowerCase());
+  }
+  const write = (id, kind, type, data) => {
+    if (store.getRecord(id)) { counts.present++; return false; }
+    store.putRecord({ id, kind, type, data, updatedAt: stamp, deleted: false, updatedBy: 'import', seq: store.nextSeq() });
+    return true;
+  };
+  const addMaster = (type, id, data) => {
+    const key = type + '|' + String(data.name).trim().toLowerCase();
+    if (known.has(key)) return;
+    if (write(id, 'master', type, data)) { known.add(key); counts.masters++; }
+  };
+
+  addMaster('dealer', 'dealer-' + slugify(dealer), {
+    name: dealer, company: entry.company || '', phone: '', commissionPct: 10,
+    notes: 'Dealer for the imported ' + source, active: true
+  });
+  for (const name of seed.sellers || []) {
+    addMaster('party', 'party-' + slugify(name), {
+      name, role: 'seller', commissionPct: 10, gstNo: '', phone: '', email: '', opening: 0,
+      notes: 'Imported from ' + source, active: true
+    });
+  }
+  for (const name of seed.buyers || []) {
+    addMaster('party', 'party-' + slugify(name), {
+      name, role: 'buyer', commissionPct: 0, gstNo: '', phone: '', email: '', opening: 0,
+      notes: 'Imported from ' + source, active: true
+    });
+  }
+  for (const it of seed.items || []) {
+    addMaster('item', 'item-' + slugify(it.name) + (it.hsCode ? '-' + it.hsCode : ''), {
+      name: it.name, hsCode: it.hsCode || '', unit: 'KG', rate: 0, gstPct: 18, active: true
+    });
+  }
+
+  for (const d of seed.sales || []) {
+    const amount = round2(d.amount);
+    const gstValue = round2(d.gstValue);
+    const ok = write(d.id, 'voucher', 'sales', {
+      date: d.date || '', no: String(d.invNo == null ? '' : d.invNo),
+      seller: d.seller || '', buyer: d.buyer || '', dealer,
+      lines: [{
+        item: d.item || '', hsCode: d.hsCode || '',
+        qty: Number(d.qty) || 0, rate: Number(d.rate) || 0, amount,
+        taxPct: Number(d.gstPct) || 0, taxAmt: gstValue, total: round2(amount + gstValue)
+      }],
+      subTotal: amount, taxTotal: gstValue, grandTotal: round2(amount + gstValue),
+      comm: { enabled: Number(d.commValue) > 0, pct: Number(d.commPct) || 0, value: round2(d.commValue) },
+      narration: d.notes || '', source: d.source || 'dealer-import'
+    });
+    if (ok) counts.sales++;
+  }
+
+  for (const p of seed.receipts || []) {
+    const ok = write(p.id, 'voucher', 'receipt', {
+      date: p.date || '', no: '',
+      party: dealer, dealer, amount: round2(p.amount),
+      mode: p.mode || 'Bank',
+      account: (p.mode || '') === 'Cash' ? 'Cash in Hand' : 'Bank Account',
+      narration: p.notes || 'Commission received',
+      auto: 'dealer-import', partyType: 'dealer', source: p.source || 'dealer-import'
+    });
+    if (ok) counts.receipts++;
+  }
+
+  return counts;
+}
+
+function importWorkbookSeeds() {
+  const out = [];
+  for (const entry of WORKBOOK_SEEDS) {
+    const r = importWorkbookSeed(entry);
+    if (r && (r.sales || r.receipts || r.masters)) out.push(r);
+  }
+  return out;
+}
+
 // Vouchers created before numbering existed (an already-deployed database) get a
 // number on the next start, so every receipt/payment is referenceable like in Tally.
 function backfillVoucherNumbers() {
@@ -573,6 +682,10 @@ export function initCommissionStore() {
   store = openSqliteStore() || openJsonStore();
   const seeded = seedIfEmpty();
   if (seeded.seeded) console.log('[COMMISSION] 🧾 seeded ' + seeded.records + ' records from the Excel history');
+  for (const w of importWorkbookSeeds()) {
+    console.log('[COMMISSION] 🧾 imported ' + w.sales + ' sales vouchers + ' + w.receipts + ' receipts + '
+      + w.masters + ' masters from ' + w.file + ' (dealer ' + w.dealer + ')');
+  }
   const numbered = backfillVoucherNumbers();
   if (numbered) console.log('[COMMISSION] 🧾 numbered ' + numbered + ' imported vouchers');
   const migrated = migrateDealsToSalesVouchers();

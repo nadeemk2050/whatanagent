@@ -141,6 +141,33 @@ so each device picks the change up through the normal delta sync, and it takes a
 first. The client still reads old `invoice` rows, so the books look right even before the server is
 restarted.
 
+### Importing another dealer's Excel
+
+Every dealer's sheet can be brought in the same way. The workbook is converted once into a seed
+file, and the server imports that seed at start-up:
+
+```bash
+python scripts/commission-xlsx-to-seed.py "C:/path/DEALER BOOK.xlsx" \
+       scripts/commission-<dealer>-seed.json --dealer="DEALER NAME"
+```
+
+Then add one line to `WORKBOOK_SEEDS` in [commissionApi.mjs](./commissionApi.mjs) and restart. The
+import is **idempotent** — each row keeps the id derived from its sheet row, so a restart writes
+nothing twice and never touches an entry typed in the app. Deals land as **sales vouchers** (in this
+book a sales voucher *is* the commission voucher) that carry the dealer, and the money the dealer
+paid lands as **receipts**, which is exactly what the dealer register balances against.
+
+The converter reads the columns by their header text (so a shifted sheet still works) and repairs
+the typos a hand-typed sheet always has: `29..02.2024`, `02.09.20204`, `25.02.206`, blank dates in a
+merged block, receipts whose year is wrong for where they sit in the sheet, `MUSAB PACKGES` vs
+`MUSAB PACKAGES`, names split over several lines, HS codes pasted as long descriptions. Every repair
+is printed when the seed is generated, so nothing is fixed silently.
+
+The second book already imported is **ZOHAIB WALI** (Zubairee Parties): 572 deals, 67 receipts,
+5,717,330 qty, 737,066,855 amount, 132,613,788.10 GST, **13,261,378.81 commission**, 10,261,351.00
+received — closing balance **3,000,027.81**, which is the sheet's own control total. The smoke test
+(`node scripts/commission-smoke-test.mjs`) re-checks those figures against the seed on every run.
+
 ### Date ranges
 
 The All Commission Transactions Register carries the date range in its top bar: click the chip to

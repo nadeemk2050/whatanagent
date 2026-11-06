@@ -10,10 +10,27 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'commission-smoke-'));
 process.env.COMMISSION_DATA_DIR = TMP;
 process.env.COMMISSION_SIGNUP_CODE = 'testcode';
+
+// Every dealer workbook seed in scripts/ is imported on boot, so the expected totals are
+// the old Excel history plus whatever those books add up to.
+const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
+const BOOKS = fs.readdirSync(SCRIPTS)
+  .filter(f => /^commission-.+-seed\.json$/.test(f))
+  .map(f => JSON.parse(fs.readFileSync(path.join(SCRIPTS, f), 'utf8')))
+  .reduce((a, s) => {
+    a.deals += (s.sales || []).length;
+    a.receipts += (s.receipts || []).length;
+    a.commission += Number((s.control || {}).commission) || 0;
+    a.received += Number((s.control || {}).received) || 0;
+    a.dealers.push(s.dealer);
+    return a;
+  }, { deals: 0, receipts: 0, commission: 0, received: 0, dealers: [] });
+const close = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
 
 const express = (await import('express')).default;
 const { registerCommissionRoutes } = await import('../commissionApi.mjs');
@@ -66,17 +83,18 @@ const server = app.listen(PORT, async () => {
     const kinds = {};
     boot.records.forEach(r => { kinds[r.kind] = (kinds[r.kind] || 0) + 1; });
     check('history imported as sales vouchers (no commission invoices left)', !kinds.invoice, JSON.stringify(kinds));
-    check('history imported: 132 deals + 57 receipts/payments', kinds.voucher === 189, JSON.stringify(kinds));
+    check('history imported: old Excel + every dealer book', kinds.voucher === 189 + BOOKS.deals + BOOKS.receipts, JSON.stringify(kinds));
     check('masters imported', (kinds.master || 0) >= 14, String(kinds.master));
     check('every history row has a date', boot.records.filter(r => r.kind !== 'master').every(r => !!r.data.date));
     check('every imported voucher has a number', boot.records.filter(r => r.kind === 'voucher').every(r => !!r.data.no));
     const deals = boot.records.filter(r => r.kind === 'voucher' && r.data.comm && r.data.comm.value > 0);
-    check('every deal carries the dealer name', deals.length === 132 && deals.every(r => r.data.dealer === 'S.E. ENGINEERING'), deals.length + ' deals');
+    check('every deal carries a dealer name', deals.length === 132 + BOOKS.deals && deals.every(r => !!r.data.dealer), deals.length + ' deals');
     check('a dealer master exists', boot.records.some(r => r.kind === 'master' && r.type === 'dealer' && r.data.name === 'S.E. ENGINEERING'));
+    check('dealer books brought their own dealer master', BOOKS.dealers.every(n => boot.records.some(r => r.kind === 'master' && r.type === 'dealer' && r.data.name === n)), BOOKS.dealers.join(', '));
 
     const stats = (await (await fetch(base + '/stats', { headers: H })).json()).stats;
-    check('commission matches the Excel sheet (17,360,600)', stats.commission === 17360600, JSON.stringify(stats));
-    check('balance matches the Excel sheet (5,700,126)', stats.balance === 5700126, JSON.stringify(stats));
+    check('commission matches the sheets', close(stats.commission, 17360600 + BOOKS.commission), JSON.stringify(stats));
+    check('balance matches the sheets', close(stats.balance, 5700126 + BOOKS.commission - BOOKS.received), JSON.stringify(stats));
 
     const rec = {
       id: 'deal-test-1', kind: 'voucher', type: 'sales',
