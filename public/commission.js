@@ -1410,28 +1410,35 @@ function renderReports() {
   const cfg = REPORTS[mode];
   const isDealer = mode === 'dealers';
   const list = isDealer ? reportDealerRows() : reportCompanyRows();
-  if (!list.some(x => x.key === state.rep.key)) state.rep.key = list.length ? list[0].key : '';
   const cur = list.find(x => x.key === state.rep.key) || null;
   const months = cur ? reportMonths(mode, cur.key) : [];
   const sum = (k) => r2(months.reduce((a, r) => a + num(r[k]), 0));
   const deals = months.reduce((a, r) => a + r.deals, 0);
 
-  const tabs = list.map(x => {
-    const meta = isDealer
-      ? `<span class="tmeta in"><i>Comm</i>${money0(x.inVal)}</span>
-         <span class="tmeta out"><i>Recd</i>${money0(x.outVal)}</span>
-         <span class="tmeta bal"><i>Bal</i>${money0(x.balance)}</span>`
-      : `<span class="tmeta"><i>Qty</i>${money0(x.qty)}</span>
-         <span class="tmeta"><i>Value</i>${money0(x.volume)}</span>
-         <span class="tmeta in"><i>Purch</i>${money0(x.inVal)}</span>
-         <span class="tmeta out"><i>Sold</i>${money0(x.outVal)}</span>
-         <span class="tmeta bal"><i>GST</i>${money0(x.gst)}</span>`;
-    return `<button type="button" class="reptab${x.key === state.rep.key ? ' on' : ''}" data-rep-key="${esc(x.key)}"
-      title="${esc(x.name)} — ${isDealer ? 'commission' : 'value'} ${money(isDealer ? x.inVal : x.volume)}">
-      <span class="tname">${esc(x.name)}</span>${meta}
+  // ---- the boxes: one card per dealer / company, all of them at a glance
+  const cards = list.map(x => {
+    const fig = (label, value, cls) => `<span class="rfig ${cls || ''}"><i>${label}</i><b>${money0(value)}</b></span>`;
+    const big = isDealer ? x.balance : x.volume;
+    const sub = isDealer
+      ? `${x.deals} deal${x.deals === 1 ? '' : 's'}${x.last ? ' · last ' + fmtDate(x.last) : ''}`
+      : `${x.deals} deal${x.deals === 1 ? '' : 's'}${x.last ? ' · last ' + fmtDate(x.last) : ''}`;
+    const figs = isDealer
+      ? fig('Commission', x.inVal, 'in') + fig('Received', x.outVal, 'out')
+      : fig('Qty', x.qty) + fig('GST', x.gst, 'out') + fig('Purchased', x.inVal, 'in') + fig('Sold', x.outVal, 'out');
+    return `<button type="button" class="repcard" data-rep-key="${esc(x.key)}">
+      <span class="rtop">
+        <span class="rname">${esc(x.name)}</span>
+        <span class="rsub">${esc(sub)}</span>
+      </span>
+      <span class="rbig">
+        <i>${isDealer ? cfg.balLabel : 'Value'}</i>
+        <b>${money(big)}</b>
+      </span>
+      <span class="rfigs">${figs}</span>
     </button>`;
   }).join('');
 
+  // ---- one account open: the month-wise report
   const table = cur && months.length ? `
     <div class="table-wrap">
       <table class="rtable dense">
@@ -1452,23 +1459,38 @@ function renderReports() {
       </table>
     </div>` : emptyState(cfg.empty, cfg.hint, '');
 
+  const strip = cur ? `
+      <span class="sum"><i>Deals</i><b>${deals}</b></span>
+      <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
+      <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
+      <span class="sum"><i>GST value</i><b>${money0(sum('gst'))}</b></span>
+      <span class="sum cr"><i>${cfg.inLabel}</i><b>${money(sum('inVal'))}</b></span>
+      <span class="sum dr"><i>${cfg.outLabel}</i><b>${money(sum('outVal'))}</b></span>
+      <span class="sum rem"><i>${cfg.balLabel}</i><b>${money(cur.balance)}</b></span>`
+    : (isDealer
+      ? `<span class="sum"><i>Dealers</i><b>${list.length}</b></span>
+         <span class="sum"><i>Deals</i><b>${list.reduce((a, x) => a + x.deals, 0)}</b></span>
+         <span class="sum cr"><i>Commission</i><b>${money(list.reduce((a, x) => a + x.inVal, 0))}</b></span>
+         <span class="sum dr"><i>Received</i><b>${money(list.reduce((a, x) => a + x.outVal, 0))}</b></span>
+         <span class="sum rem"><i>Balance</i><b>${money(list.reduce((a, x) => a + x.balance, 0))}</b></span>`
+      : `<span class="sum"><i>Companies</i><b>${list.length}</b></span>
+         <span class="sum"><i>Qty</i><b>${money0(list.reduce((a, x) => a + x.qty, 0))}</b></span>
+         <span class="sum"><i>Value</i><b>${money0(list.reduce((a, x) => a + x.volume, 0))}</b></span>
+         <span class="sum cr"><i>Purchased</i><b>${money(list.reduce((a, x) => a + x.inVal, 0))}</b></span>
+         <span class="sum dr"><i>Sold</i><b>${money(list.reduce((a, x) => a + x.outVal, 0))}</b></span>
+         <span class="sum rem"><i>GST</i><b>${money(list.reduce((a, x) => a + x.gst, 0))}</b></span>`);
+
   // The list takes the whole window: the two reports and the date range live in the top
-  // bar, everything else (tabs, table, totals) is the page itself.
+  // bar, everything else (boxes or the open report, totals) is the page itself.
   $('#main').innerHTML = `
     <div class="card flexcard">
-      ${list.length ? `<div class="repbar">
-        <div class="reptabs">${tabs}</div>
-        ${cur ? `<button type="button" class="btn sm repopen" data-open-report="${esc(cur.key)}">Open full ${isDealer ? 'ledger' : 'register'}</button>` : ''}
-      </div>${table}` : emptyState(cfg.empty, cfg.hint, '')}
-      <div class="sumstrip">
-        <span class="sum"><i>Deals</i><b>${deals}</b></span>
-        <span class="sum"><i>Qty</i><b>${money0(sum('qty'))}</b></span>
-        <span class="sum"><i>Amount</i><b>${money0(sum('amount'))}</b></span>
-        <span class="sum"><i>GST value</i><b>${money0(sum('gst'))}</b></span>
-        <span class="sum cr"><i>${cfg.inLabel}</i><b>${money(sum('inVal'))}</b></span>
-        <span class="sum dr"><i>${cfg.outLabel}</i><b>${money(sum('outVal'))}</b></span>
-        <span class="sum rem"><i>${cfg.balLabel}</i><b>${money(cur ? cur.balance : 0)}</b></span>
-      </div>
+      ${cur ? `<div class="repbar">
+        <button type="button" class="btn sm" id="repBack">\u2190 All ${isDealer ? 'dealers' : 'companies'}</button>
+        <span class="repname">${esc(cur.name)}</span>
+        <button type="button" class="btn sm repopen" data-open-report="${esc(cur.key)}">Open full ${isDealer ? 'ledger' : 'register'}</button>
+      </div>${table}`
+      : (list.length ? `<div class="repgrid">${cards}</div>` : emptyState(cfg.empty, cfg.hint, ''))}
+      <div class="sumstrip">${strip}</div>
     </div>`;
 
   const filters = $('#topbarFilters');
@@ -1496,6 +1518,8 @@ function renderReports() {
     state.rep.key = b.dataset.repKey;
     render();
   }));
+  const back = $('#repBack');
+  if (back) back.addEventListener('click', () => { state.rep.key = ''; render(); });
   const open = $('[data-open-report]');
   if (open && cur) open.addEventListener('click', () => {
     if (isDealer) openDealerRegister(cur.key);
