@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
-import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook } from './contactBrain.mjs';
+import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook, buildBrainPromptSection, isFamilyRelationship, isBusinessRelationship } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
@@ -3245,7 +3245,74 @@ export async function ensureNoDevanagari(text) {
   return stripped || 'Reminder message';
 }
 
+// ================= LANGUAGE LOCK (reply side) =================
+// The contact brain stores a reply language per person. A prompt instruction alone is not enough
+// — models mirror the sender. This checks the finished reply against the setting and rewrites it
+// when it drifted: "Pure Urdu text" answered in English, or Roman Urdu answered in Urdu script.
+const ARABIC_SCRIPT = /[\u0600-\u06FF]/;
+const LATIN_LETTERS = /[A-Za-z]/;
+const languageFixCache = new Map();
+export async function ensureReplyLanguage(text, language) {
+  const src = String(text == null ? '' : text);
+  const lang = String(language || '').trim();
+  if (!src || !lang || /^auto$/i.test(lang)) return src;
+  const wantsUrduScript = /urdu/i.test(lang) && !/roman/i.test(lang);
+  const wantsRoman = /roman urdu/i.test(lang);
+  const wantsEnglish = /english/i.test(lang);
+  const hasUrduScript = ARABIC_SCRIPT.test(src);
+  const hasLatin = LATIN_LETTERS.test(src);
+  // Already correct?
+  if (wantsUrduScript && hasUrduScript) return src;
+  if (wantsRoman && hasLatin && !hasUrduScript) return src;
+  if (wantsEnglish && hasLatin && !hasUrduScript) return src;
+  if (!wantsUrduScript && !wantsRoman && !wantsEnglish) return src;
+  const key = lang + '||' + src;
+  const cached = languageFixCache.get(key);
+  if (cached) return cached;
+  const target = wantsUrduScript
+    ? 'URDU SCRIPT (اردو). Every word in Urdu letters. Do not use Roman Urdu and do not use English — only names, numbers and dates may stay in Latin.'
+    : wantsRoman
+      ? 'ROMAN URDU (Urdu written with English letters, e.g. "aap ka order kal bhej denge"). Do not use Urdu script, do not use Devanagari and do not answer in plain English.'
+      : 'ENGLISH. Every word in English.';
+  try {
+    const q = await getQwenCfg();
+    if (q && q.key) {
+      const res = await fetch(q.base.replace(/\/+$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + q.key },
+        body: JSON.stringify({
+          model: 'qwen3.8-flash',
+          temperature: 0,
+          max_tokens: 700,
+          messages: [
+            { role: 'system', content: 'Rewrite the user\'s WhatsApp message in ' + target + ' Keep the meaning, every emoji, the line breaks and the formatting exactly. Return ONLY the rewritten message.' },
+            { role: 'user', content: src }
+          ]
+        }),
+        signal: AbortSignal.timeout(12000)
+      });
+      if (res.ok) {
+        const j = await res.json();
+        const out = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
+        if (out && !hasDevanagari(out)) {
+          if (languageFixCache.size > 200) languageFixCache.clear();
+          languageFixCache.set(key, out);
+          console.log('[LANGUAGE LOCK] Converted a reply to "' + lang + '"');
+          return out;
+        }
+      }
+    }
+  } catch (e) { /* keep the original reply rather than losing it */ }
+  return src;
+}
+
 // Qwen3-ASR-Flash (sync DashScope): base64 audio in -> plain transcript out
+// LANGUAGE RULE (company-wide): a transcript is ALWAYS Roman Urdu or English. Hindi/Devanagari
+// is never produced, not even when the speaker uses Hindi words — the ASR is told so up front
+// and the result is checked again afterwards.
+const ASR_LANGUAGE_RULE = 'Transcribe verbatim. If the speaker uses Urdu or Hindi, write it in ROMAN URDU ' +
+  '(Urdu/Hindi words in English letters, exactly as spoken). If English, English. If Arabic, Arabic script. ' +
+  'NEVER write Devanagari / Hindi script. Never translate and never summarise — only the spoken words.';
 async function transcribeWithQwenAsr(audioBuffer, mimeType) {
   const q = await getQwenCfg();
   if (!q.key || !audioBuffer || !audioBuffer.length) return '';
@@ -3254,7 +3321,15 @@ async function transcribeWithQwenAsr(audioBuffer, mimeType) {
   const r = await fetch(q.nativeBase + '/services/aigc/multimodal-generation/generation', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + q.key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: q.asr, input: { messages: [{ role: 'user', content: [{ audio: dataUri }] }] } })
+    body: JSON.stringify({
+      model: q.asr,
+      input: {
+        messages: [
+          { role: 'system', content: [{ text: ASR_LANGUAGE_RULE }] },
+          { role: 'user', content: [{ audio: dataUri }] }
+        ]
+      }
+    })
   });
   const raw = await r.text();
   if (!r.ok) {
@@ -3269,6 +3344,16 @@ async function transcribeWithQwenAsr(audioBuffer, mimeType) {
 }
 
 export async function transcribeAudioBuffer(audioBuffer, mimeType) {
+  const raw = await transcribeAudioRaw(audioBuffer, mimeType);
+  const clean = await ensureNoDevanagari(raw);
+  if (clean !== raw) console.log('[WA-WEB AUDIO] 🔤 Hindi script found in the transcript — rewritten in Roman Urdu');
+  // The conversion fallback returns a placeholder when nothing survived; a transcript must never
+  // become that placeholder, so treat it as "could not transcribe".
+  if (clean === 'Reminder message') return '';
+  return clean;
+}
+
+async function transcribeAudioRaw(audioBuffer, mimeType) {
   if (!audioBuffer || !audioBuffer.length) return '';
   // 1) Qwen3-ASR-Flash first (independent of Gemini's audio quota)
   try {
@@ -3301,7 +3386,10 @@ export async function transcribeAudioBuffer(audioBuffer, mimeType) {
         contents: [{
           role: 'user',
           parts: [
-            { text: 'Transcribe this voice note / audio accurately into text. If the language is Hindi or Urdu, transcribe in clean Roman Urdu (Urdu written in English letters); if Arabic, Arabic script; if English, English; other languages in their spoken language (prefer English/Latin letters for Indic languages). Output only the plain transcribed words.' },
+            { text: 'Transcribe this voice note / audio accurately into text. The speaker uses Urdu, Hindi or English. ' +
+                'Write Urdu and Hindi words in ROMAN URDU only (English letters, e.g. "aaj mausam acha hai"). ' +
+                'NEVER use Devanagari / Hindi script. If the audio is Arabic use Arabic script; if English use English. ' +
+                'Do not translate, do not summarise. Output only the plain transcribed words.' },
             {
               inlineData: {
                 mimeType: mimeType || 'audio/ogg; codecs=opus',
@@ -5072,7 +5160,11 @@ export async function initWaWeb(db = null) {
                   // 📖 Rule Book guard: never send Devanagari (Hindi script). Romanise instead.
                   const scriptFixed = romaniseScript(replyText.trim());
                   if (scriptFixed.changed) console.log('[WA-WEB RULEBOOK] 🔤 Devanagari detected in the reply — converted to Roman script.');
-                  const finalReply = scriptFixed.text.trim();
+                  // 🔒 Language lock backstop: the brain card's language wins over whatever
+                  // language the model drifted into (e.g. "Pure Urdu text" answered in English).
+                  const lockedReply = await ensureReplyLanguage(scriptFixed.text.trim(), brain && brain.language);
+                  if (lockedReply !== scriptFixed.text.trim()) console.log('[WA-WEB BRAIN] 🔒 Reply re-written in the contact\'s set language (' + (brain && brain.language) + ')');
+                  const finalReply = lockedReply.trim();
                   // 👥 Group etiquette: the AI may decide the message needs no answer from it
                   if (/^\[?\s*NO[_ ]?REPLY\s*\]?\.?$/i.test(finalReply)) {
                     console.log('[WA-WEB GROUP] 🤫 No reply needed in ' + remoteJid + ' (AI chose to stay silent)');
@@ -6136,9 +6228,20 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     const contactName = chatContext?.name || '';
     const isUnsaved = !contactName || contactName.trim() === '' || contactName === 'Customer' || contactName === cleanPhone || /^[0-9+]+$/.test(contactName.trim());
 
+    // 🧠 The brain card decides whether this is family or business — loaded once, cached, and
+    // used to guard the intake questionnaire and the Business Data Tank below.
+    let brainProfile = null;
+    if (!overridePrompt) {
+      try { brainProfile = await getBrain(jid); } catch (e) { /* brain is optional */ }
+    }
+    const brainIsFamily = !!(brainProfile && isFamilyRelationship(brainProfile.relationship));
+
     let specialGuidance = '';
-    if (isUnsaved && !String(jid).endsWith('@g.us')) {
+    if (isUnsaved && !String(jid).endsWith('@g.us') && !brainIsFamily) {
       specialGuidance += '\n⚠️ NOTE: This sender is an UNSAVED / NEW contact (' + cleanPhone + '). Per Rule #2, politely and gently ask for their Name, Company Name, Country, and Business Activity so we can register them in our records.';
+    }
+    if (brainIsFamily) {
+      specialGuidance += '\n⚠️ This person is FAMILY (' + brainProfile.relationship + '), not a customer. Never ask for a company name, country, business activity, GST/NTN or "business tafseel" — talk to him like family.';
     }
     // 👥 Group chats: talk like a member of the group, never like a helpdesk, and stay silent
     // when the message is clearly not for the owner.
@@ -6165,7 +6268,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
 '4. Synthesize the whole conversation and formulate the most intelligent, helpful, natural WhatsApp response.');
 
     // Contact Book duty: ask Mr. Zaheer's missing data naturally (max one item per reply)
-    if (!overridePrompt) {
+    // — never for family (the duty prompt itself also checks, this is the second belt).
+    if (!overridePrompt && !brainIsFamily) {
       try {
         const ci = await import('./contactIntel.mjs');
         const duty = await ci.contactDutyPrompt(jid);
@@ -6173,11 +6277,39 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       } catch (e) { /* optional */ }
     }
 
+    // 🏭 BUSINESS ENQUIRY → the Business Data Tank answers, and the contact becomes a customer.
+    // Only on the customer side of the book: family never gets the tank dumped into his reply.
+    if (!overridePrompt && !brainIsFamily) {
+      try {
+        const ci = await import('./contactIntel.mjs');
+        const askedBusiness = ci.looksLikeBusinessEnquiry(customerMessage);
+        const businessPerson = !!(brainProfile && isBusinessRelationship(brainProfile.relationship));
+        if (askedBusiness || businessPerson) {
+          const tb = await import('./businessTank.mjs');
+          const tank = tb.tankPromptText();
+          if (tank && askedBusiness) {
+            systemPrompt += '\n\n--- 🏭 BUSINESS DATA TANK (the ONLY source of truth for company, products, rates, capacity, certifications, contacts) ---\n' +
+              tank +
+              '\n--- END BUSINESS DATA TANK ---\n' +
+              'RULES FOR BUSINESS ANSWERS: answer the business question from the tank above, in the contact\'s reply language. ' +
+              'If a figure (price, stock, lead time) is NOT in the tank, say plainly that you will confirm and send it — never invent a rate, a quantity or a delivery date. ' +
+              'Prices are quoted per the tank only; do not add discounts that are not written there.\n';
+            console.log('[WA-WEB TANK] 🏭 Business enquiry detected for ' + jid + ' — Business Data Tank injected');
+          }
+          if (askedBusiness && !String(jid).endsWith('@g.us')) {
+            // Asking about material/rates/orders makes him a customer; an order-sized ask makes him VIP.
+            const vip = /(order|quantity|qty|ton|tons|moq|container|shipment|invoice|regular|monthly)/i.test(customerMessage);
+            ci.markBusinessContact(cleanPhone, { vip }).catch(() => {});
+          }
+        }
+      } catch (e) { console.warn('[WA-WEB TANK] business intent step skipped:', (e.message || '').slice(0, 120)); }
+    }
+
     // 🧠 CONTACT BRAIN: per-contact personality, relationship rules, learned style + persona blend
     // (never applied to internal override prompts, e.g. the Boss command brain)
     if (!overridePrompt) {
       try {
-        const brainSection = await brainPromptSectionForJid(jid);
+        const brainSection = brainProfile ? buildBrainPromptSection(brainProfile) : await brainPromptSectionForJid(jid);
         if (brainSection) {
           systemPrompt += brainSection;
           console.log('[WA-WEB BRAIN] 🧠 Brain rules applied for ' + jid);

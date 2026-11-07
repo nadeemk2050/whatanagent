@@ -83,6 +83,35 @@ See [aiProviders.mjs](./aiProviders.mjs).
 Credentials belong in the hosting environment (Render → Environment), never in the repository or
 the Firestore settings document.
 
+## 🧠 Contact Brain — who is family, who is a customer, and which language
+
+The per-contact brain card ([contactBrain.mjs](./contactBrain.mjs)) is the highest-priority block
+in the WhatsApp reply prompt, so four rules live there and are enforced in
+[waWebClient.js](./waWebClient.js):
+
+1. **Family is never a customer.** If the card's *Relationship* is family
+   (`mother`, `father`, `son`, `sister`, `wife`, `relative`, `friend`, … —
+   `isFamilyRelationship()`), the reply prompt forbids asking for company, country, business
+   activity, GST/NTN or "business tafseel". The Contact Book intake nudge
+   (`contactIntel.contactDutyPrompt`) and the "unsaved number → ask for their details" guidance are
+   both suppressed for that contact, whatever the Contact Book type says.
+2. **The owner's language setting wins.** The brain prompt ends with a **LANGUAGE LOCK** that
+   explicitly overrides the generic "mirror the sender's language" rule, and
+   `ensureReplyLanguage()` re-checks the finished reply — "Pure Urdu text" answered in English (or
+   Roman Urdu answered in Urdu script) is rewritten before it is sent.
+3. **A business enquiry makes a customer.** `contactIntel.looksLikeBusinessEnquiry()` scores the
+   inbound text (products, rates, quantity, MOQ, orders, GST…). When it fires, the Contact Book
+   entry is promoted to **Customer**, or to **VIP Customer** for an order-sized ask, and the
+   **Business Data Tank** is injected into the prompt as the only source of truth for company,
+   products, rates and capacity. A figure that is not in the tank is never invented.
+4. **No Hindi, ever — including transcripts.** Voice notes are transcribed straight into Roman
+   Urdu or English: the ASR is told so up front, and every transcript passes
+   `ensureNoDevanagari()` afterwards. Devanagari can never reach a prompt, a stored message or an
+   outbound reply.
+
+Family contacts are exempt from rules 3 and 4's business part: if they raise business themselves the
+AI answers plainly as family would, without the tank dump.
+
 ---
 
 ## 🧾 Commission Accounts (`/commission`)

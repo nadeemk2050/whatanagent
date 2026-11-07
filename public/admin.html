@@ -3410,6 +3410,8 @@
                     </select>
                     <select onchange="cbType=this.value; renderContactBook()" style="padding:10px 15px; border:1px solid var(--border); border-radius:8px; font-size:14px;">
                         <option value="all">All Types</option>
+                        <option value="Customer">Customer</option>
+                        <option value="VIP Customer">VIP Customer</option>
                         <option value="Buyer">Buyer</option>
                         <option value="Seller">Seller / Supplier</option>
                         <option value="Info only">Info needed</option>
@@ -4130,7 +4132,7 @@
                 <div class="form-group"><label>🏙️ City</label><input type="text" id="cCity" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                 <div class="form-group"><label>🏠 Address</label><input type="text" id="cAddress" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                 <div class="form-group"><label>📦 Products / Material (general)</label><input type="text" id="cProducts" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
-                <div class="form-group"><label>🔥 Contact Type</label><select id="cType" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option value="">- Select -</option><option value="Buyer">Buyer (wants to purchase)</option><option value="Seller">Seller / Supplier (wants to sell)</option><option value="Info only">Just info needed</option><option value="Relative">Relative / friend</option><option value="Partner">Partner</option><option value="Other">Other</option></select></div>
+                <div class="form-group"><label>🔥 Contact Type</label><select id="cType" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option value="">- Select -</option><option value="Customer">Customer</option><option value="VIP Customer">VIP Customer</option><option value="Buyer">Buyer (wants to purchase)</option><option value="Seller">Seller / Supplier (wants to sell)</option><option value="Info only">Just info needed</option><option value="Relative">Relative / friend</option><option value="Partner">Partner</option><option value="Other">Other</option></select></div>
                 <div class="form-group"><label>🛒 Materials they want to BUY</label><input type="text" id="cWantsToBuy" placeholder="e.g. copper wire, HMS scrap" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                 <div class="form-group"><label>📤 Materials they want to SELL</label><input type="text" id="cWantsToSell" placeholder="e.g. aluminium ingots" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"></div>
                 <div class="form-group"><label>📊 Lead Status</label><select id="cLeadStatus" style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; box-sizing:border-box;"><option>New</option><option>Contacted</option><option>Interested</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
@@ -5597,7 +5599,9 @@
         function normTypeJs(t) {
             var s = String(t || '').trim().toLowerCase();
             if (!s) return '';
-            if (s === 'buyer' || s === 'customer') return 'Buyer';
+            if (s.indexOf('vip') === 0) return 'VIP Customer';
+            if (s === 'customer' || s === 'client') return 'Customer';
+            if (s === 'buyer') return 'Buyer';
             if (s === 'seller' || s === 'supplier' || s === 'vendor') return 'Seller';
             if (s.indexOf('info') === 0) return 'Info only';
             if (s === 'relative' || s === 'family') return 'Relative';
@@ -5616,7 +5620,7 @@
                 return m;
             }
             ['company', 'country', 'city', 'address', 'website', 'email'].forEach(function(k) { if (!has(k)) m.push(k); });
-            if (type === 'Buyer') { if (!has('wantsToBuy') && !has('products')) m.push('wantsToBuy'); }
+            if (type === 'Buyer' || type === 'Customer' || type === 'VIP Customer') { if (!has('wantsToBuy') && !has('products')) m.push('wantsToBuy'); }
             else if (type === 'Seller') { if (!has('wantsToSell') && !has('products')) m.push('wantsToSell'); }
             else if (!has('wantsToBuy') && !has('wantsToSell') && !has('products')) m.push('materials');
             return m;
@@ -5858,7 +5862,7 @@
                 if (c.isLead) badges.push('<span style="background:#fff3e0; color:#ef6c00; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">🎯 Lead</span>');
                 if (c.aiPaused) badges.push('<span style="background:#fbe9e7; color:#c62828; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">⏸️ AI Paused</span>');
                 const tType = normTypeJs(c.type);
-                if (tType) badges.push('<span style="background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">' + (tType === 'Buyer' ? '🛒' : tType === 'Seller' ? '📤' : tType === 'Relative' ? '👨‍👩‍👧' : tType === 'Info only' ? 'ℹ️' : '🔖') + ' ' + esc(tType) + '</span>');
+                if (tType) badges.push('<span style="background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">' + (tType === 'VIP Customer' ? '⭐' : tType === 'Customer' ? '🤝' : tType === 'Buyer' ? '🛒' : tType === 'Seller' ? '📤' : tType === 'Relative' ? '👨‍👩‍👧' : tType === 'Info only' ? 'ℹ️' : '🔖') + ' ' + esc(tType) + '</span>');
                 const miss = c.fromBook ? missingFieldsJs(c) : [];
                 if (miss.length) badges.push('<span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:bold;">🧩 ' + miss.length + ' missing</span>');
                 const row = function(icon, val) { return val ? '<div>' + icon + ' ' + esc(val) + '</div>' : ''; };

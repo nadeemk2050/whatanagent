@@ -79,6 +79,13 @@ export const FORMALITY_LEVELS = ['very_casual', 'casual', 'normal', 'formal', 'v
 export const ADDRESS_STYLES = ['auto', 'tu', 'tum', 'aap'];
 const FRIENDLY_RELATIONSHIPS = ['family', 'wife', 'husband', 'son', 'daughter', 'mother', 'father', 'child', 'brother', 'sister', 'parent', 'relative', 'close friend', 'friend', 'partner'];
 const RESPECT_PERSONAS = ['Respect', 'ElderRespect'];
+// Blood / family / friendship: these people are NEVER treated as a customer, and the AI must
+// never run the business-intake questionnaire on them (no company, country, NTN, "business
+// tafseel"). Exported because contactIntel and the WhatsApp reply builder both need the test.
+export const FAMILY_RELATIONSHIPS = ['family', 'wife', 'husband', 'son', 'daughter', 'mother', 'father', 'child', 'brother', 'sister', 'parent', 'relative', 'close friend', 'friend'];
+export const isFamilyRelationship = (rel) => FAMILY_RELATIONSHIPS.includes(String(rel || '').trim().toLowerCase());
+// The business side of the book: these DO get business answers (from the Business Data Tank).
+export const isBusinessRelationship = (rel) => ['customer', 'vip customer', 'supplier', 'partner', 'colleague'].includes(String(rel || '').trim().toLowerCase());
 
 const FORMALITY_TEXT = {
   very_casual: 'VERY CASUAL — talk like best friends / close family: short, relaxed, everyday words. Absolutely NO stiff or formal wording.',
@@ -198,12 +205,22 @@ export function buildBrainPromptSection(profile, opts = {}) {
   s += 'Contact: ' + (profile.name || opts.name || 'this person') +
        (profile.relationship ? ' (' + profile.relationship + ')' : '') +
        (profile.age ? ', age ~' + profile.age : '') + (profile.gender ? ', ' + profile.gender : '') + '\n';
+  if (profile.relationship) {
+    const rel = String(profile.relationship).trim().toLowerCase();
+    if (isFamilyRelationship(rel)) {
+      s += '⚠️ THIS PERSON IS FAMILY / A CLOSE PERSONAL CONTACT (' + rel + ') — NOT a customer, NOT a client, NOT a supplier.\n';
+      s += 'FAMILY RULE (overrides every business instruction above): talk like family talk. Never ask about a company, country, city, business activity, GST/NTN, products, prices, orders, invoices or "business tafseel". ' +
+           'Never run any customer-intake questionnaire. If a business template or another rule below says to ask for those details, IGNORE it for this person. ' +
+           'If HE himself brings up business, answer him plainly and briefly as family would — then go back to normal talk.\n';
+    } else if (isBusinessRelationship(rel)) {
+      s += 'This person is on the BUSINESS side (' + rel + '). Business questions are welcome and expected — answer them from the business data provided below, never from guesswork.\n';
+    }
+  }
   if (profile.nickname) s += 'You call him: "' + profile.nickname + '".' + (profile.callsYou ? ' He calls you: "' + profile.callsYou + '".' : '') + '\n';
   s += 'MAIN PERSONALITY (' + main.weight + '%): ' + main.name + ' — ' + (PERSONAS[main.name] || {}).desc + '\n';
   for (const f of flavors) s += 'FLAVOR (' + f.weight + '%): ' + f.name + ' — ' + (PERSONAS[f.name] || {}).desc + '\n';
   s += 'Blend these naturally into every message. Higher % = stronger influence. If two styles clash, the higher % wins — but NEVER break respect or safety rules.\n';
-  s += 'Language: ' + (profile.language || 'Roman Urdu') + ' (never Devanagari script). Reply length: ' + (profile.length || 'short') + '. Emojis: ' + (profile.emojiLevel || 'low') + '.\n';
-  // Formality style: level (explicit) or slider fine-tuning
+  s += 'Language: ' + (profile.language || 'Roman Urdu') + ' (never Devanagari script). Reply length: ' + (profile.length || 'short') + '. Emojis: ' + (profile.emojiLevel || 'low') + '.\n';  // Formality style: level (explicit) or slider fine-tuning
   if (profile.formalityLevel) {
     s += 'FORMALITY STYLE: ' + (FORMALITY_TEXT[profile.formalityLevel] || FORMALITY_TEXT.normal) + '\n';
   }
@@ -241,6 +258,23 @@ export function buildBrainPromptSection(profile, opts = {}) {
   }
   s += 'SITUATION AWARENESS: read his last message — if he is angry, sad, stressed or it is an emergency: raise Caring, drop jokes to 0, be gentle. Match his energy; mirror his greeting style.\n';
   s += 'ESCALATION RULE: if the message involves real money problems, a fight, an emergency, sickness or death — reply with exactly: ESCALATE\n';
+  // LANGUAGE LOCK — last in the block on purpose: the generic knowledge prompt above tells the
+  // model to mirror the sender's language, and the owner's own choice must win over that.
+  const lang = String(profile.language || '').trim();
+  if (lang && !/^auto$/i.test(lang)) {
+    s += '\n🔒 LANGUAGE LOCK (MANDATORY — overrides every language instruction written above):\n';
+    s += 'The owner has set the reply language for THIS person to: "' + lang + '".\n';
+    if (/urdu/i.test(lang) && !/roman/i.test(lang)) {
+      s += 'Write EVERY word in Urdu script (اردو). Do NOT answer in English and do NOT answer in Roman Urdu, even if he writes in English or Roman Urdu. Product names, numbers and dates may stay as they are.\n';
+    } else if (/roman urdu/i.test(lang)) {
+      s += 'Write EVERY word in Roman Urdu (Urdu in English letters). Do NOT answer in English, Urdu script or Devanagari.\n';
+    } else if (/english/i.test(lang)) {
+      s += 'Write EVERY word in English, even if he writes in Urdu or Roman Urdu.\n';
+    } else {
+      s += 'Reply only in ' + lang + '.\n';
+    }
+    s += 'Ignore any earlier rule that says "mirror the sender\'s language", "reply in the same language he used" or "detect and match the language" — for this contact this setting wins.\n';
+  }
   s += '[END CONTACT BRAIN]\n';
   return s;
 }

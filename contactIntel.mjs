@@ -12,7 +12,7 @@ import { DEFAULT_AGENT } from './agentTemplates.mjs';
 import { listContacts, getContact, setContact, bulkSetContacts, contactPhones } from './contactStore.mjs';
 
 let DB = null;
-const TYPES = ['Buyer', 'Seller', 'Info only', 'Relative', 'Partner', 'Other'];
+const TYPES = ['Customer', 'VIP Customer', 'Buyer', 'Seller', 'Info only', 'Relative', 'Partner', 'Other'];
 const FIELD_LABEL = {
   name: 'full name', type: 'contact type (buyer / seller / just info / relative)', company: 'company name',
   country: 'country', city: 'city', address: 'address', website: 'website', email: 'email',
@@ -26,7 +26,9 @@ const clean = (v, n = 300) => String(v == null ? '' : v).replace(/\s+/g, ' ').tr
 export function normType(t) {
   const s = String(t || '').trim().toLowerCase();
   if (!s) return '';
-  if (s === 'buyer' || s === 'customer') return 'Buyer';
+  if (s.startsWith('vip')) return 'VIP Customer';
+  if (s === 'customer' || s === 'client') return 'Customer';
+  if (s === 'buyer') return 'Buyer';
   if (s === 'seller' || s === 'supplier' || s === 'vendor') return 'Seller';
   if (s.startsWith('info')) return 'Info only';
   if (s === 'relative' || s === 'family') return 'Relative';
@@ -47,7 +49,7 @@ export function missingFields(c) {
     return m;
   }
   ['company', 'country', 'city', 'address', 'website', 'email'].forEach(k => { if (!has(k)) m.push(k); });
-  if (type === 'Buyer') { if (!has('wantsToBuy') && !has('products')) m.push('wantsToBuy'); }
+  if (type === 'Buyer' || type === 'Customer' || type === 'VIP Customer') { if (!has('wantsToBuy') && !has('products')) m.push('wantsToBuy'); }
   else if (type === 'Seller') { if (!has('wantsToSell') && !has('products')) m.push('wantsToSell'); }
   else if (!has('wantsToBuy') && !has('wantsToSell') && !has('products')) m.push('materials');
   return m;
@@ -201,6 +203,13 @@ export async function fillBatch({ limit = 5, force = false } = {}) {
 export async function contactDutyPrompt(jid) {
   try {
     if (!DB || String(jid).endsWith('@g.us')) return '';
+    // A family / close-personal contact (brain card relationship) is never run through the
+    // business-intake questionnaire, whatever the Contact Book type happens to say.
+    try {
+      const cb = await import('./contactBrain.mjs');
+      const profile = await cb.getBrain(jid);
+      if (profile && cb.isFamilyRelationship(profile.relationship)) return '';
+    } catch (e) { /* brain is optional: never block the reply on it */ }
     const s = await getIntelSettings();
     if (!s.nudge) return '';
     const wa = await loadWa();
@@ -221,6 +230,61 @@ export async function contactDutyPrompt(jid) {
       'While helping them, you MAY ask for at most ONE of these per reply, only when it fits the flow of the conversation. ' +
       'Never interrogate, never ask twice for something already answered or refused, never mention "records", "database" or the Contact Book, and answer their actual question first.\n';
   } catch (e) { return ''; }
+}
+
+// --------------------------------------------------------------------------- business intent
+// When somebody starts asking about material, rates, quantity, supply or orders, he is no
+// longer an "unknown number" — he is a customer. Detected from the text of the message only
+// (no AI call), then the Contact Book is promoted and the Business Data Tank answers him.
+const BUSINESS_WORDS = [
+  'price', 'rate', 'rates', 'quotation', 'quote', 'qoute', 'offer', 'offer rate', 'per kg', 'per ton',
+  'quantity', 'qty', 'ton', 'tons', 'tonne', 'mt', 'kg', 'moq', 'stock', 'available', 'availability',
+  'supply', 'supplier', 'order', 'purchase', 'buy', 'sell', 'sale', 'delivery', 'shipment', 'container',
+  'export', 'import', 'invoice', 'payment', 'advance', 'credit', 'deal', 'business', 'company',
+  'scrap', 'dana', 'granule', 'granules', 'regrind', 'flake', 'pellet', 'pellets', 'purge', 'bale',
+  'pvc', 'hdpe', 'ldpe', 'pp', 'abs', 'pipe', 'resin', 'polymer', 'plastic', 'material', 'grade',
+  'gst', 'ntn', 'hs code', 'specification', 'specs', 'datasheet', 'sample', 'mill', 'factory',
+  'rate kya', 'rate kia', 'kitne ka', 'kitna hai', 'kitne mein', 'price kya', 'qemat', 'keemat',
+  'tijarat', 'karobar', 'maal', 'samaan', 'supply kar', 'chahiye'
+];
+const BUSINESS_STRONG = [
+  'price', 'rate', 'quotation', 'quote', 'qty', 'quantity', 'ton', 'tons', 'tonne', 'moq', 'stock',
+  'supply', 'order', 'purchase', 'invoice', 'gst', 'ntn', 'hs code', 'scrap', 'dana', 'granule',
+  'regrind', 'flake', 'pellet', 'pvc', 'hdpe', 'ldpe', 'resin', 'polymer', 'kitne ka', 'rate kya', 'rate kia'
+];
+export function businessIntentScore(text) {
+  const t = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06FF ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  if (t.trim().length < 3) return 0;
+  let score = 0;
+  for (const w of BUSINESS_STRONG) if (t.includes(' ' + w + ' ') || t.includes(' ' + w + 's ')) { score += 2; break; }
+  for (const w of BUSINESS_WORDS) if (t.includes(' ' + w + ' ')) { score += 1; break; }
+  if (/\?/.test(String(text || ''))) score += 1;
+  return score;
+}
+export const looksLikeBusinessEnquiry = (text) => businessIntentScore(text) >= 2;
+
+// Promote the Contact Book entry to Customer / VIP Customer. Relative and "Info only" are
+// never touched, and a manual choice always wins.
+export async function markBusinessContact(phoneIn, { vip = false } = {}) {
+  try {
+    const phone = digits(phoneIn);
+    if (phone.length < 8) return null;
+    const cur = (await readBookDoc(phone)) || {};
+    const type = normType(cur.type);
+    if (type === 'Relative' || type === 'Info only') return null;
+    if (type === 'VIP Customer') return cur;                       // already the highest tier
+    // Seller / Partner / Buyer are already business types — do not downgrade them.
+    const keep = (type === 'Seller' || type === 'Partner' || type === 'Buyer' || type === 'Customer') && !vip;
+    const next = keep ? type : (vip ? 'VIP Customer' : 'Customer');
+    if (type === next) return cur;
+    const saved = await setContact(phone, { ...cur, type: next, typeSource: 'auto-business-intent', typeAt: Date.now() }, { merge: true });
+    invalidate(phone);
+    console.log('[CONTACT-INTEL] ⬆️ ' + phone + ' promoted to ' + next + ' (business enquiry)');
+    return saved || { ...cur, type: next };
+  } catch (e) {
+    console.warn('[CONTACT-INTEL] promote failed:', e.message);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- auto-collect (debounced per chat)
