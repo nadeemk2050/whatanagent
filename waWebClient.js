@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch, query, orderBy, limit, startAfter, where, onSnapshot } from 'firebase/firestore';
-import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook, buildBrainPromptSection, isFamilyRelationship, isBusinessRelationship } from './contactBrain.mjs';
+import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook, buildBrainPromptSection, isFamilyRelationship, isBusinessRelationship, maybeLearnVoice } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
@@ -6233,6 +6233,10 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     let brainProfile = null;
     if (!overridePrompt) {
       try { brainProfile = await getBrain(jid); } catch (e) { /* brain is optional */ }
+      // 🎭 Re-read the owner's own writing style in this chat once every few of his replies, so
+      // the next answer copies the register he is using right now. Fire-and-forget: this must
+      // never slow a reply down, and it uses the cached brain above on the next message.
+      maybeLearnVoice(jid).catch(() => {});
     }
     const brainIsFamily = !!(brainProfile && isFamilyRelationship(brainProfile.relationship));
 

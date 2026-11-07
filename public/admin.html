@@ -3360,7 +3360,10 @@
                             <div style="max-width:800px; margin:0 auto;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
                                     <b>🎓 What the AI learned about this person (from YOUR own past messages + his)</b>
-                                    <button onclick="brainLearnNow()" id="brLearnBtn" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🔄 Learn now</button>
+                                    <span style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        <button onclick="brainLearnVoiceNow()" id="brVoiceBtn" style="padding:9px 16px; background:#7c3aed; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;" title="Reads your last few replies and copies that exact style (mode, tone, phrases)">🎭 Read my style now</button>
+                                        <button onclick="brainLearnNow()" id="brLearnBtn" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">🔄 Learn now</button>
+                                    </span>
                                 </div>
                                 <div id="brLearnConfirm" style="display:none; margin-bottom:10px;"></div>
                                 <div id="brLearnedBox" style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px;"></div>
@@ -12313,7 +12316,8 @@
             const mem = d.learnedPreserved
                 ? 'Learned memory kept: ' + (d.facts || 0) + ' facts'
                 : 'No learned memory yet (use 🔄 Learn now in Learned Memory)';
-            brainSetSaveStatus('✅ Card saved ' + when + '\n' + mem, '#86efac');
+            const voice = d.liveVoiceLabel ? '\n🎭 Voice: ' + d.liveVoiceLabel : '';
+            brainSetSaveStatus('✅ Card saved ' + when + '\n' + mem + voice, '#86efac');
             toastMsg('💾 Saved — card rules are now active for this contact. ' + mem);
         } catch (e) { toastMsg('❌ ' + e.message); brainSetSaveStatus('❌ Not saved — ' + e.message, '#fca5a5'); }
         finally { if (btn) { btn.disabled = false; btn.innerText = '💾 Save Card'; } }
@@ -12446,14 +12450,33 @@
         el.style.display = html ? 'block' : 'none';
     }
 
+    function brainLiveVoiceHtml(live) {
+        if (!live || !live.mode) return '';
+        const chip = (txt, bg, bd, fg) => '<span style="font-size:12px; background:' + bg + '; border:1px solid ' + bd + '; color:' + fg + '; padding:2px 8px; border-radius:10px; margin:0 4px 4px 0; display:inline-block;">' + escapeHtml(txt) + '</span>';
+        return '<div style="margin-top:12px; padding:12px 14px; background:#faf5ff; border:1px solid #e9d5ff; border-radius:10px;">' +
+            '<b>🎭 Live voice — how you are writing to him right now</b>' +
+            '<div style="margin:8px 0 6px;">' + chip(live.mode, '#f3e8ff', '#d8b4fe', '#6b21a8') + (live.tone ? chip(live.tone, '#fff', '#e9d5ff', '#6b21a8') : '') + (live.register ? chip(live.register, '#fff', '#e9d5ff', '#6b21a8') : '') + '</div>' +
+            (live.habits ? '<div style="font-size:13px; margin-bottom:6px;"><b>Typing habits:</b> ' + escapeHtml(live.habits) + '</div>' : '') +
+            ((live.phrases && live.phrases.length) ? '<div style="font-size:13px; margin-bottom:6px;"><b>Your words:</b> ' + live.phrases.map(x => '<code style="background:#fff; border:1px solid #e9d5ff; padding:1px 6px; border-radius:6px; margin-right:4px; font-size:12px;">' + escapeHtml(x) + '</code>').join('') + '</div>' : '') +
+            ((live.sampleLines && live.sampleLines.length) ? '<div style="font-size:13px; margin-bottom:6px;"><b>Your own lines it copies:</b><ul style="margin:5px 0 0 18px;">' + live.sampleLines.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
+            (live.avoid ? '<div style="font-size:12.5px; color:#7c3aed;"><b>Never does:</b> ' + escapeHtml(live.avoid) + '</div>' : '') +
+            '<div style="font-size:11px; color:#94a3b8; margin-top:8px;">Read ' + (live.at ? new Date(live.at).toLocaleString() : '—') + ' · refreshes by itself after every 3 of your replies · until your style changes</div>' +
+            '</div>';
+    }
+
     function brainRenderLearned(p) {
         const el = document.getElementById('brLearnedBox');
         if (!el) return;
         const l = (p && p.learned) || null;
-        if (!l || !l.style) {
+        if (!l || (!l.style && !l.live)) {
             brainShowLearnConfirm('');
             el.innerHTML = '<p class="subtitle">Nothing learned yet for this person. Press 🔄 Learn now — the AI reads your last messages to him and imitates your exact style (language mix, length, emojis, tone). The result is <b>saved to this contact\'s KB immediately</b> — no Save Card needed for it.</p>' +
                 (brainCurrent && brainCurrent.msgCount ? '<div style="font-size:12px; color:#94a3b8; margin-top:8px;">Messages available: ' + brainCurrent.msgCount + '</div>' : '');
+            return;
+        }
+        if (!l.style) {
+            // Only a live read exists so far (🎭 Read my style now) — show it.
+            el.innerHTML = '<p class="subtitle">Only the live voice has been read so far. Press 🔄 Learn now for the long-term memory (facts, topics, promises).</p>' + brainLiveVoiceHtml(l.live);
             return;
         }
         const lFacts = (l.facts || []).length, lTopics = (l.topics || []).length;
@@ -12465,7 +12488,25 @@
             ((l.facts && l.facts.length) ? '<div style="margin-bottom:10px;"><b>🧩 Facts remembered:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.facts.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
             ((l.topics && l.topics.length) ? '<div style="margin-bottom:10px;"><b>💬 Usual topics:</b> ' + l.topics.map(x => '<span style="font-size:12px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; padding:2px 8px; border-radius:10px; margin-right:4px;">' + escapeHtml(x) + '</span>').join('') + '</div>' : '') +
             ((l.promises && l.promises.length) ? '<div><b>🤞 Open promises / pending things:</b><ul style="margin:6px 0 0 18px; font-size:13.5px;">' + l.promises.map(x => '<li>' + escapeHtml(x) + '</li>').join('') + '</ul></div>' : '') +
+            brainLiveVoiceHtml(l.live) +
             '<div style="font-size:11px; color:#94a3b8; margin-top:10px;">Last learned: ' + (l.at ? new Date(l.at).toLocaleString() : '—') + '</div>';
+    }
+
+    async function brainLearnVoiceNow() {
+        if (!brainCurrent) return;
+        const btn = document.getElementById('brVoiceBtn');
+        if (btn) { btn.disabled = true; btn.innerText = '🎭 Reading your last replies…'; }
+        try {
+            const r = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid) + '/voice', { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || 'failed');
+            if (!brainCurrent.profile.learned) brainCurrent.profile.learned = {};
+            brainCurrent.profile.learned.live = d.live;
+            brainRenderLearned(brainCurrent.profile);
+            toastMsg('🎭 Voice read: ' + (d.reading || d.live.mode) + ' — the AI will copy this until your style changes');
+            brainSetSaveStatus('🎭 Live voice: ' + (d.reading || d.live.mode), '#86efac');
+        } catch (e) { toastMsg('❌ ' + e.message); }
+        if (btn) { btn.disabled = false; btn.innerText = '🎭 Read my style now'; }
     }
 
     async function brainLearnNow() {

@@ -112,6 +112,25 @@ in the WhatsApp reply prompt, so four rules live there and are enforced in
 Family contacts are exempt from rules 3 and 4's business part: if they raise business themselves the
 AI answers plainly as family would, without the tank dump.
 
+### 🎭 Live voice — the AI copies how you are writing right now
+
+The long-term `learned.style` is an average of up to 90 of your messages, so a bargaining tone and a
+payment-chasing tone blur together. The **live voice** read is separate and fast:
+
+- after **every 3 of your own replies** in a chat (`VOICE_LEARN_EVERY`), `maybeLearnVoice()` reads your
+  latest 12 messages plus the contact's last 8 and stores `learned.live`: **mode** ("payment chasing
+  (wusooli)", "business bargaining", "informal chat", "family/personal"…), **register** (does he use
+  aap or tum), **tone**, **typing habits**, the **words he actually uses**, 3–5 **verbatim sample lines**
+  and a list of things he never does;
+- the reply prompt then carries a **LIVE VOICE MATCH** block with an explicit *no rakh-rakhao* rule —
+  no extra "sir"/"please", no longer sentences, no extra emojis, no upgrading the register — and it is
+  told to press for payment when the mode is wusooli;
+- it costs one small call, is skipped for 90 seconds after a read, never runs twice at once, and is
+  fire-and-forget so it cannot slow a reply. It stays in force until your next 3 replies show a
+  different style;
+- **🎭 Read my style now** in *Brain Card → Learned Memory* forces a read immediately and shows the
+  result (`POST /api/brain/:jid/voice`).
+
 ---
 
 ## 🧾 Commission Accounts (`/commission`)

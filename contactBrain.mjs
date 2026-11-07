@@ -199,7 +199,6 @@ export function buildBrainPromptSection(profile, opts = {}) {
   const perms = profile.permissions || {};
   const dials = profile.dials || {};
   const learned = profile.learned || {};
-
   let s = '\n\n[🧠 CONTACT BRAIN — PERSONALITY & RELATIONSHIP RULES (highest priority after safety)]\n';
   s += 'You are replying AS the OWNER of this WhatsApp account. NEVER reveal you are an AI.\n';
   s += 'Contact: ' + (profile.name || opts.name || 'this person') +
@@ -241,6 +240,23 @@ export function buildBrainPromptSection(profile, opts = {}) {
        '; price talk: ' + (perms.canTalkPrice ? 'allowed' : 'NOT allowed') + '.\n';
   if (profile.neverSay && profile.neverSay.length) s += 'NEVER write these phrases: ' + profile.neverSay.join(' | ') + '\n';
   if (learned.style) s += 'GROUND TRUTH — this is exactly how the owner really talks to him (auto-learned from the owner\'s own sent messages). Reply according to THIS summary precisely — it overrides generic style rules: ' + sstr(learned.style, 500) + '\n';
+  // 🎭 LIVE VOICE — refreshed every few of the owner's own replies, so the AI copies the
+  // register he is using RIGHT NOW (plain, bargaining, chasing payment) instead of an average.
+  if (learned.live && learned.live.mode) {
+    const lv = learned.live;
+    s += '\n🎭 LIVE VOICE MATCH — this is how the owner is writing to him AT THIS MOMENT (' + sstr(lv.mode, 60) + '):\n';
+    if (lv.register) s += 'Register: ' + sstr(lv.register, 200) + '\n';
+    if (lv.tone) s += 'Tone: ' + sstr(lv.tone, 200) + '\n';
+    if (lv.habits) s += 'How he actually types: ' + sstr(lv.habits, 260) + '\n';
+    if (Array.isArray(lv.phrases) && lv.phrases.length) s += 'Words/phrases he uses (reuse these, do not invent new ones): ' + lv.phrases.slice(0, 10).map(x => sstr(x, 60)).join(' | ') + '\n';
+    if (Array.isArray(lv.sampleLines) && lv.sampleLines.length) {
+      s += 'Real examples of HIS OWN lines — copy this exact style:\n' + lv.sampleLines.slice(0, 5).map(x => '   • ' + sstr(x, 200)).join('\n') + '\n';
+    }
+    s += 'COPY THIS EXACTLY. Do NOT add rakh-rakhao: no extra "Dear", "sir", "please", no added politeness, no longer sentences than his, no extra emojis he would not use, no signature. ' +
+         'If he writes plainly, write plainly. If he is bargaining, bargain the same way; if he is chasing a payment (wusooli), press for the payment with the same firmness and the same words. ' +
+         'If the mode above is informal, be informal — do not upgrade the register.\n';
+    if (lv.avoid) s += 'NEVER do this (it would break the imitation): ' + sstr(lv.avoid, 200) + '\n';
+  }
   if (learned.mood) s += 'His usual mood / way of talking: ' + sstr(learned.mood, 200) + '\n';
   if (learned.topics && learned.topics.length) s += 'Usual topics between you two: ' + learned.topics.slice(0, 6).map(t => sstr(t, 60)).join(', ') + '\n';
   if (learned.facts && learned.facts.length) s += 'Remember about him: ' + learned.facts.slice(0, 8).map(f => sstr(f, 120)).join('; ') + '\n';
@@ -686,6 +702,127 @@ function transcriptFrom(messages, limitEach = 90) {
 // ---------------------------------------------------------------------------
 // 🎓 STYLE LEARNING — the AI studies YOUR OWN messages and imitates you
 // ---------------------------------------------------------------------------
+// ============================================================================
+// 🎭 LIVE VOICE — how the owner is writing in THIS chat right now
+// ============================================================================
+// The long-term `learned.style` is an average of up to 90 owner messages, so a bargaining tone
+// and a payment-chasing tone blur into each other. This learns the CURRENT register instead:
+// the last handful of the owner's own replies (plus the contact's last few) produce a mode
+// ("informal chat", "business bargaining", "payment chasing / wusooli", "formal", "angry"…),
+// the phrases he actually uses, and a few verbatim sample lines to copy.
+//
+// It refreshes after every VOICE_LEARN_EVERY owner replies (3 by default — one or two replies is
+// noise, and the mode must track him, not lag behind), and it is deliberately cheap: one small
+// call, at most once per VOICE_MIN_GAP_MS per contact, skipped entirely while a call is running.
+const VOICE_LEARN_EVERY = 3;
+const VOICE_MIN_GAP_MS = 90 * 1000;
+const voiceInFlight = new Set();
+
+export async function learnContactVoice(jid, { force = false } = {}) {
+  const profile = await getBrain(jid, { fresh: true });
+  if (!profile) return { ok: false, error: 'No brain card for this contact yet.' };
+  if (profile.learnEnabled === false && !force) return { ok: false, error: 'Learning is switched off for this contact.' };
+  const conf = await getBrainConfig();
+  if (!conf.learningEnabled && !force) return { ok: false, error: 'Global style learning is switched off.' };
+
+  const messages = await fetchChatMessages(jid, 60);
+  if (!messages.length) return { ok: false, error: 'No messages found for this contact yet.' };
+  const owner = messages.filter(m => m.fromMe && m.text && String(m.text).trim().length > 1);
+  if (owner.length < VOICE_LEARN_EVERY) {
+    return { ok: false, error: 'Need at least ' + VOICE_LEARN_EVERY + ' of your own messages to read your style.' };
+  }
+  // Recency wins: the latest 12 owner lines define the register, the contact's last 8 the context.
+  const mine = owner.slice(-12).map(m => sstr(m.text, 300));
+  const theirs = messages.filter(m => !m.fromMe && m.text).slice(-8).map(m => sstr(m.text, 200));
+
+  const system = 'You analyse how ONE person writes on WhatsApp, so another AI can copy him exactly.\n' +
+    'Study the OWNER\'S OWN latest messages (newest last) and the contact\'s messages for context.\n' +
+    'Judge the CURRENT mode from the newest messages — not the average of the whole chat. Modes include: ' +
+    '"informal chat", "casual business", "business bargaining", "payment chasing (wusooli)", "order/rate discussion", ' +
+    '"angry / complaining", "family/personal", "formal".\n' +
+    'Output ONLY this JSON object (no fences, no commentary):\n' +
+    '{ "mode": "the mode right now, 1-4 words", ' +
+    '"register": "how formal: e.g. very informal / plain / semi-formal / formal — say whether he uses aap or tum", ' +
+    '"tone": "the emotional tone right now: e.g. soft, direct, firm, irritated, warm", ' +
+    '"habits": "how he types: message length, line breaks, punctuation, emojis and which ones, English/Roman-Urdu mix, slang, spelling habits, does he greet or jump straight to the point", ' +
+    '"phrases": ["6-10 words or short phrases he actually uses in these messages — copy them verbatim"], ' +
+    '"sampleLines": ["3-5 of HIS OWN complete lines, verbatim, that best show the style"], ' +
+    '"avoid": "what the AI must NOT do to sound like him (things he never does — e.g. never says sir/please, never writes long paragraphs)" }';
+  const user = 'OWNER\'S OWN latest messages (oldest first, newest LAST — this is the style to copy):\n' +
+    mine.map((t, i) => (i + 1) + '. ' + t).join('\n') +
+    '\n\nCONTACT\'S messages (context only):\n' + (theirs.join('\n') || '(none)') +
+    (profile.learned && profile.learned.live && profile.learned.live.mode
+      ? '\n\nPrevious live read (only keep it if the new messages still show it): mode=' + sstr(profile.learned.live.mode, 60) + ', tone=' + sstr(profile.learned.live.tone, 80)
+      : '');
+
+  const out = await callBrainAI(system, user, { maxTokens: 700, temperature: 0.2 });
+  if (!out) return { ok: false, error: 'AI could not read the style right now.' };
+  let parsed = null;
+  try {
+    const a = out.indexOf('{'), b = out.lastIndexOf('}');
+    if (a >= 0 && b > a) parsed = JSON.parse(out.substring(a, b + 1));
+  } catch (e) { parsed = null; }
+  if (!parsed || !parsed.mode) return { ok: false, error: 'AI returned an unreadable style read — try again.' };
+
+  const live = {
+    mode: sstr(parsed.mode, 60),
+    register: sstr(parsed.register, 200),
+    tone: sstr(parsed.tone, 200),
+    habits: sstr(parsed.habits, 300),
+    phrases: (Array.isArray(parsed.phrases) ? parsed.phrases : []).map(x => sstr(x, 60)).filter(Boolean).slice(0, 10),
+    sampleLines: (Array.isArray(parsed.sampleLines) ? parsed.sampleLines : []).map(x => sstr(x, 220)).filter(Boolean).slice(0, 5),
+    avoid: sstr(parsed.avoid, 200),
+    ownerMsgs: owner.length,
+    at: Date.now()
+  };
+  const key = brainKeyFor(jid);
+  try {
+    // Keep the long-term summary/facts intact — only the live read is replaced.
+    await setDoc(doc(brainDb, BRAINS, key), { learned: { ...(profile.learned || {}), live } }, { merge: true });
+  } catch (e) {
+    console.warn('[BRAIN] live voice save failed:', e.message);
+    return { ok: false, error: 'Could not save the style read.' };
+  }
+  console.log('[BRAIN] 🎭 Live voice updated for ' + (profile.name || key) + ': ' + live.mode +
+    (live.register ? ' · ' + live.register : ''));
+  return { ok: true, live };
+}
+
+// Plain-language one-liner for the dashboard: "Payment chasing (wusooli) · firm · Roman Urdu".
+export function describeVoice(live) {
+  if (!live || !live.mode) return 'No style read yet';
+  return [live.mode, live.tone, live.register].filter(Boolean).join(' \u00b7 ');
+}
+
+// Called from the reply path: re-read the owner's style once every few of his own replies.
+// Fire-and-forget — never blocks or delays a WhatsApp reply.
+export async function maybeLearnVoice(jid) {
+  try {
+    if (!brainDb || !jid || String(jid).endsWith('@g.us')) return;
+    if (voiceInFlight.has(jid)) return;
+    const conf = await getBrainConfig();
+    if (!conf.learningEnabled) return;
+    const profile = await getBrain(jid);
+    if (!profile || profile.learnEnabled === false) return;
+    const live = profile.learned && profile.learned.live;
+    if (live && (Date.now() - (live.at || 0)) < VOICE_MIN_GAP_MS) return;
+    const messages = await fetchChatMessages(jid, 40);
+    const owner = messages.filter(m => m.fromMe && m.text && String(m.text).trim().length > 1);
+    if (owner.length < VOICE_LEARN_EVERY) return;
+    const seen = live ? (live.ownerMsgs || 0) : 0;
+    const newestOwnerAt = owner.length ? (owner[owner.length - 1].timestamp || 0) : 0;
+    const learnedAt = live ? (live.at || 0) : 0;
+    // Count only the owner messages that arrived since the last read.
+    const fresh = owner.filter(m => (m.timestamp || 0) > learnedAt).length;
+    if (fresh < VOICE_LEARN_EVERY && !(seen === 0 && owner.length >= VOICE_LEARN_EVERY)) return;
+    if (newestOwnerAt && learnedAt && newestOwnerAt <= learnedAt) return;
+    voiceInFlight.add(jid);
+    learnContactVoice(jid, { force: true })
+      .catch(() => {})
+      .finally(() => voiceInFlight.delete(jid));
+  } catch (e) { /* style learning must never break a reply */ }
+}
+
 export async function learnContactStyle(jid, { force = false } = {}) {
   const profile = await getBrain(jid, { fresh: true });
   if (!profile) return { ok: false, error: 'No brain card for this contact yet.' };
@@ -719,6 +856,9 @@ export async function learnContactStyle(jid, { force = false } = {}) {
   if (!parsed || typeof parsed !== 'object') return { ok: false, error: 'AI returned an unreadable analysis — try again.' };
 
   const learned = {
+    // keep the live voice read (and anything else already learned) — only the long-term
+    // summary is replaced here
+    ...(profile.learned || {}),
     style: sstr(parsed.style, 600),
     facts: (Array.isArray(parsed.facts) ? parsed.facts : []).map(f => sstr(f, 160)).slice(0, 8),
     topics: (Array.isArray(parsed.topics) ? parsed.topics : []).map(f => sstr(f, 80)).slice(0, 6),
@@ -936,7 +1076,10 @@ export function registerBrainRoutes(app, db) {
         profile,
         savedAt: profile.updatedAt,
         learnedPreserved: !!(profile.learned && profile.learned.style),
-        facts: (profile.learned && Array.isArray(profile.learned.facts)) ? profile.learned.facts.length : 0
+        facts: (profile.learned && Array.isArray(profile.learned.facts)) ? profile.learned.facts.length : 0,
+        // 🎭 What the AI currently thinks the owner's writing style is in this chat.
+        liveVoice: (profile.learned && profile.learned.live) || null,
+        liveVoiceLabel: describeVoice(profile.learned && profile.learned.live)
       });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -957,6 +1100,17 @@ export function registerBrainRoutes(app, db) {
       const r = await learnContactStyle(decodeURIComponent(req.params.jid), { force: true });
       res.json(r.ok
         ? { ok: true, learned: r.learned, verified: r.verified, savedAt: r.savedAt, facts: r.facts, topics: r.topics }
+        : { ok: false, error: r.error });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // 🎭 Live voice: read the owner's current writing style in this chat right now (mode, tone,
+  // phrases, sample lines). Also runs by itself every few of the owner's own replies.
+  app.post('/api/brain/:jid/voice', async (req, res) => {
+    try {
+      const r = await learnContactVoice(decodeURIComponent(req.params.jid), { force: true });
+      res.json(r.ok
+        ? { ok: true, live: r.live, reading: describeVoice(r.live) }
         : { ok: false, error: r.error });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
