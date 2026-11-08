@@ -2114,6 +2114,21 @@
                             <div style="font-size:11px; color:#8696a0; margin-top:4px;">If a customer sends any of these words, the AI Bot pauses auto-replying so you can answer manually.</div>
                         </div>
 
+                        <!-- NEW-CONTACT ENQUIRY LANE -->
+                        <div style="background:#202c33; padding:14px; border-radius:10px; border:1px solid #2a3942;">
+                            <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:bold; color:#e9edef; margin-bottom:8px; cursor:pointer;">
+                                <input id="waWebKbNewContactEnabled" type="checkbox" checked style="width:16px; height:16px; cursor:pointer;">
+                                🆕 Reply to NEW / unsaved contacts (first-time enquiries)
+                            </label>
+                            <div style="font-size:11px; color:#8696a0; margin-bottom:10px;">
+                                Saved contacts keep your normal rules and knowledge. Unknown numbers (and chats with a hidden phone number) follow the playbook below.
+                            </div>
+                            <label style="display:block; font-size:12px; font-weight:bold; color:#e9edef; margin-bottom:6px;">
+                                📥 New-Contact Playbook <span style="font-weight:normal; color:#8696a0;">(leave empty to use the built-in default)</span>
+                            </label>
+                            <textarea id="waWebKbNewContactPrompt" rows="6" placeholder="This is a FIRST-TIME enquiry. Be warm, brief and professional. Ask for material / grade, quantity (tons) and destination country. Ask for their name and company. Do NOT quote prices, stock or lead times - say you will confirm and send the offer. Close with one clear next step." style="width:100%; background:#111b21; border:1px solid #2a3942; color:#e9edef; padding:8px 10px; border-radius:6px; font-size:12px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+                        </div>
+
                     </div>
 
                     <!-- TAB 5: TEST SANDBOX -->
@@ -10345,6 +10360,12 @@
             const handoverInput = document.getElementById('waWebKbHandoverKeywords');
             if (handoverInput) handoverInput.value = kb.humanHandoverKeywords || 'human, agent, urgent, owner, speak to person, call me';
 
+            // 🆕 New-contact enquiry lane
+            const ncEnabled = document.getElementById('waWebKbNewContactEnabled');
+            if (ncEnabled) ncEnabled.checked = kb.newContactReplyEnabled !== false;
+            const ncPrompt = document.getElementById('waWebKbNewContactPrompt');
+            if (ncPrompt) ncPrompt.value = kb.newContactPrompt || '';
+
             // Top Bar Badge update
             const badge = document.getElementById('waWebAutoReplyStatusBadge');
             if (badge) {
@@ -10553,7 +10574,7 @@
         }
 
         async function saveWaWebKnowledgeBaseFromModal() {
-            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'gemini-2.5-flash';
+            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'gemini-3.8-flash';
             const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
             const custom = document.getElementById('waWebKbCustomText')?.value || '';
             const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '+971529244592';
@@ -10605,6 +10626,8 @@
                 autoReplyScope: scope,
                 cooldownSeconds: cooldown,
                 humanHandoverKeywords: handover,
+                newContactReplyEnabled: Boolean(document.getElementById('waWebKbNewContactEnabled')?.checked),
+                newContactPrompt: document.getElementById('waWebKbNewContactPrompt')?.value || '',
                 faqs: faqs,
                 productsCatalog: products
             };
