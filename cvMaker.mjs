@@ -71,7 +71,7 @@ export async function generateCvDraft({ name = '', role, gender = 'neutral', cat
     system,
     messages: [{ role: 'user', content: user }],
     model: modelId,
-    fallbackModel: modelId === 'gemini-2.5-flash' ? 'qwen3.8-flash' : 'gemini-2.5-flash',
+    fallbackModel: modelId === 'gemini-3.8-flash' ? 'qwen3.8-flash' : 'gemini-3.8-flash',
     temperature: 0.6,
     maxTokens: 3500,
     agentName: DEFAULT_AGENT.name,

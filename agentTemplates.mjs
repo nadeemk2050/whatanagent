@@ -359,8 +359,8 @@ export const DEFAULT_AGENT = {
     escalation: ['Payment or refund authority is required', 'Legal, medical or emergency wording', 'The owner is addressed directly'],
     disclaimers: []
   },
-  model: 'qwen3.8-flash',
-  fallbackModel: 'gemini-2.5-flash',
+  model: 'gemini-3.8-flash',
+  fallbackModel: 'qwen3.8-flash',
   useBusinessKb: true,
   allowedTools: [],
   readyThreshold: 80,

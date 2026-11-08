@@ -125,7 +125,7 @@ export async function fillContact(phoneIn, { auto = false } = {}) {
   try {
     r = await callAgentModel({
       system, messages: [{ role: 'user', content: user }],
-      model: 'qwen3.8-flash', fallbackModel: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
       temperature: 0.1, maxTokens: 700, agentName: DEFAULT_AGENT.name, purpose: auto ? 'contact-intel-auto' : 'contact-intel'
     });
   } catch (e) {

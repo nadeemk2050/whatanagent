@@ -88,8 +88,8 @@ export function sanitizeAgent(raw = {}, existing = {}) {
     disclaimers: arr(rg.disclaimers != null ? rg.disclaimers : eg.disclaimers, 200, 6)
   };
 
-  a.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'qwen3.8-flash';
-  a.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'gemini-2.5-flash';
+  a.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'gemini-3.8-flash';
+  a.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'qwen3.8-flash';
   a.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);
   a.useBusinessTank = asBool(raw.useBusinessTank != null ? raw.useBusinessTank : existing.useBusinessTank, false);
   a.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);
@@ -604,7 +604,7 @@ export function sanitizeCv(raw = {}, existing = {}) {
   };
 
   c.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'qwen3.8-flash';
-  c.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'gemini-2.5-flash';
+  c.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'qwen3.8-flash';
   c.readyThreshold = clamp(raw.readyThreshold != null ? raw.readyThreshold : existing.readyThreshold, 0, 100) || 80;
   c.dailyBudgetUsd = Number(raw.dailyBudgetUsd != null ? raw.dailyBudgetUsd : existing.dailyBudgetUsd) || 0.5;
   c.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);

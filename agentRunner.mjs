@@ -298,7 +298,7 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
   throw new Error('Unsupported model: ' + model);
 }
 
-const DEFAULT_CHAIN = ['qwen3.8-flash', 'gemini-2.5-flash'];
+const DEFAULT_CHAIN = ['gemini-3.8-flash', 'qwen3.8-flash'];
 
 export async function callAgentModel({
   system, messages, model, fallbackModel, temperature = 0.4, maxTokens = 1200,
@@ -403,7 +403,7 @@ export async function judgeAnswer({ question, expected, criteria, answer }) {
   try {
     const r = await callAgentModel({
       system, messages: [{ role: 'user', content: user }],
-      model: 'qwen3.8-flash', fallbackModel: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
       temperature: 0, maxTokens: 200,
       agentName: 'Evaluator', purpose: 'judge'
     });

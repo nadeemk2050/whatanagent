@@ -471,7 +471,7 @@ async function askModel(system, user, { maxTokens = 900, purpose = 'briefing' } 
   const { callAgentModel } = await import('./agentRunner.mjs');
   const r = await callAgentModel({
     system, messages: [{ role: 'user', content: user }],
-    model: 'qwen3.8-flash', fallbackModel: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
     temperature: 0.2, maxTokens, agentName: 'Business Data Tank', purpose
   });
   return r.text;
