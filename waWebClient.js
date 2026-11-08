@@ -3175,10 +3175,10 @@ async function getGeminiKey() {
 // 1) Qwen3-ASR-Flash (Alibaba Model Studio, synchronous DashScope API) - runs on the Qwen key and is
 //    NOT limited by Gemini's free-tier AUDIO quota (Gemini returns 429 for audio while text still works).
 // 2) Gemini chain fallback - used only if Qwen ASR is unavailable or fails.
-const AUDIO_MODEL_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
-// Current Flash models, newest first. `gemini-flash-latest` is a rolling alias, so this chain keeps
-// working even when Google retires a version (gemini-2.5-flash is already gone for newer projects).
-const GEMINI_TEXT_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
+const AUDIO_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
+// Current Flash models. 2.5-flash first: it answers in ~1.6s, while 3.8-flash measured **248s** with
+// thinking tokens eating the output budget. 3.5/3.6 are ~2s and stay as fallbacks.
+const GEMINI_TEXT_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
 const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
 
 // Rotation counters: share the load between providers - the FIRST fallback alternates
@@ -6268,7 +6268,13 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     // Authoritative classification (address-book check), not the display name - the display name is
     // often just the person's WhatsApp profile name, which made every stranger look "saved".
     const aiStateForChat = getContactAiState(jid);
-    const isUnsaved = aiStateForChat.kind === 'new';
+    // "New enquiry" = nobody has ever replied to them. This node does not receive the phone's address
+    // book, so a long-standing customer would otherwise be re-treated as a stranger on every message.
+    // Once we have written to the chat at least once, it is no longer a first-time enquiry.
+    const liveChat = waWebState.chats.get(jid);
+    const priorOwnerMessages = (liveChat && Array.isArray(liveChat.messages) ? liveChat.messages : [])
+      .filter(m => m && m.key && m.key.fromMe).length;
+    const isUnsaved = aiStateForChat.kind === 'new' && priorOwnerMessages === 0;
 
     // 🧠 The brain card decides whether this is family or business — loaded once, cached, and
     // used to guard the intake questionnaire and the Business Data Tank below.

@@ -81,9 +81,8 @@ const db = getFirestore(firebaseApp);
 installBandwidthTracker();
 
 // Gemini model used by the dashboard features (KB test, AI assistant, OCR, suggest ...).
-// `gemini-flash-latest` is Google's rolling alias for the current Flash model, so this keeps
-// working when a version is retired (gemini-2.5-flash already returns 404 for newer API keys).
-const GEMINI_FLASH_DEFAULT = process.env.GEMINI_FLASH_MODEL || 'gemini-flash-latest';
+// 2.5-flash is the fastest (~1.6s); 3.8-flash measured 248s in testing, so it is NOT the default.
+const GEMINI_FLASH_DEFAULT = process.env.GEMINI_FLASH_MODEL || 'gemini-2.5-flash';
 
 // Give waWebClient Firestore access on ALL nodes (staging skips initWaWeb, but Notebook audio /
 // backups / key resolution inside waWebClient must still work there).
@@ -4119,7 +4118,7 @@ app.get('/webhook', (req, res) => {
 
 // Gemini media chain - the automatic fallback when Qwen cannot handle the media
 // (Gemini 3.6 Flash first: it is the most reliable Gemini model for audio/images right now)
-const GEMINI_MEDIA_CHAIN = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+const GEMINI_MEDIA_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
 async function geminiMediaAnalyze(buffer, mimeType, prompt, settings) {
   const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('Gemini API key is not configured.');
