@@ -240,11 +240,11 @@ Each product can be linked to the matching page on the site.
 
 | Field | Value |
 |---|---|
-| Name | Al Qaryan Industries LLC |
+| Name | Al Qaryan Industries |
 | LinkedIn public URL | linkedin.com/company/al-qaryan-industries |
 | Tagline (93 / 120 chars) | Plastic trading, recycling and PVC pipe manufacturing in Karachi, Pakistan. Established 2007. |
 | Industry | Plastics Manufacturing |
-| Company size | 11-50 employees |
+| Company size | **51-200 employees** |
 | Type | Privately Held |
 | Founded | 2007 |
 | Website | https://alqaryangroup.com |
