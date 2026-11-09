@@ -497,6 +497,86 @@ app.get('/api/wa-web/ai-chain', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ---------------------------------------------------------------------------
+// 🌐 Public website lead intake — the quote form on alqaryangroup.com /
+// alshaabalwaseem.com posts here. Public by design (no admin token), but with
+// an origin allow-list, a honeypot field and a per-IP throttle. Every lead is
+// stored in Firestore and pushed onto the boss's WhatsApp notification queue.
+// ---------------------------------------------------------------------------
+const LEAD_ORIGINS = [
+  'https://alqaryangroup.com', 'https://www.alqaryangroup.com',
+  'https://alshaabalwaseem.com', 'https://www.alshaabalwaseem.com'
+];
+const leadHits = new Map();
+function leadCors(req, res) {
+  const o = String(req.headers.origin || '');
+  if (LEAD_ORIGINS.includes(o)) res.set('Access-Control-Allow-Origin', o);
+  res.set('Vary', 'Origin');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+}
+app.options('/api/lead', (req, res) => { leadCors(req, res); res.sendStatus(204); });
+app.post('/api/lead', async (req, res) => {
+  leadCors(req, res);
+  try {
+    const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+    const now = Date.now();
+    const rec = leadHits.get(ip) || { at: now, n: 0 };
+    if (now - rec.at > 10 * 60 * 1000) { rec.at = now; rec.n = 0; }
+    rec.n++; leadHits.set(ip, rec);
+    if (leadHits.size > 5000) leadHits.clear();
+    if (rec.n > 6) return res.status(429).json({ ok: false, error: 'Too many submissions. Please try again in a few minutes.' });
+
+    const b = req.body || {};
+    if (String(b._hp || '').trim()) return res.json({ ok: true });   // honeypot: pretend it worked
+
+    const clean = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+    const lead = {
+      id: 'lead-' + now + '-' + Math.random().toString(36).slice(2, 7),
+      name: clean(b.name, 120),
+      company: clean(b.company, 160),
+      country: clean(b.country, 80),
+      phone: clean(b.phone, 60),
+      email: clean(b.email, 160),
+      material: clean(b.material, 160),
+      quantity: clean(b.quantity, 80),
+      message: clean(b.message, 1200),
+      source: clean(b.source, 60) || 'website',
+      page: clean(b.page, 300),
+      ip, ua: clean(req.headers['user-agent'], 220),
+      createdAt: now
+    };
+    if (!lead.name || (!lead.phone && !lead.email)) {
+      return res.status(400).json({ ok: false, error: 'Please enter your name and a phone number or email.' });
+    }
+    const ref = doc(db, 'appData', 'websiteLeads');
+    const snap = await getDoc(ref);
+    const items = snap.exists() ? (snap.data().items || []) : [];
+    items.push(lead);
+    await setDoc(ref, { items: items.slice(-500), updatedAt: now }, { merge: true });
+
+    try {
+      const line = (k, v) => (v ? '\n• ' + k + ': ' + v : '');
+      const text = '🌐 *New website enquiry*\n• Name: ' + lead.name +
+        line('Company', lead.company) + line('Country', lead.country) +
+        line('Phone', lead.phone) + line('Email', lead.email) +
+        line('Material', lead.material) + line('Quantity', lead.quantity) +
+        line('Message', lead.message) + line('Page', lead.page);
+      const nRef = doc(db, 'appData', 'bossNotifications');
+      const nSnap = await getDoc(nRef);
+      const notes = nSnap.exists() ? (nSnap.data().items || []) : [];
+      notes.push({ id: 'ntf-' + lead.id, text, createdAt: now, status: 'pending', source: 'website-lead' });
+      await setDoc(nRef, { items: notes.slice(-200) }, { merge: true });
+    } catch (e) { console.warn('[LEAD] boss notification skipped:', e.message); }
+
+    console.log('[LEAD] 🌐 new enquiry from ' + (lead.company || lead.name) + ' (' + (lead.country || 'n/a') + ')');
+    res.json({ ok: true, id: lead.id });
+  } catch (err) {
+    console.error('[LEAD] failed:', err.message);
+    res.status(500).json({ ok: false, error: 'Could not save the enquiry. Please WhatsApp us instead.' });
+  }
+});
+
 app.post('/api/wa-web/manager/status', async (req, res) => {
   try {
     const { jids, status } = req.body || {};
