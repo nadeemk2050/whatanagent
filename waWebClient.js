@@ -5965,6 +5965,30 @@ export function isContactAiPaused(jid) {
 
 export function getAiDefaultMode() { return aiContactStore.defaultMode; }
 
+// Live order of the engines that will answer a WhatsApp message - shown in the Knowledge Base modal
+// so the boss never has to guess which AI is 1st, 2nd or 3rd.
+export function getAiReplyChainInfo() {
+  const labels = { gemini: 'Gemini', qwen: 'Qwen', deepseek: 'DeepSeek', openai: 'OpenAI' };
+  const qwenModel = process.env.QWEN_MODEL || 'qwen3.8-flash';
+  const primary = String(waWebKnowledgeBase.aiModel || GEMINI_TEXT_CHAIN[0] || 'gemini-2.5-flash');
+  const p = /^gemini/i.test(primary) ? 'gemini' : (/^qwen/i.test(primary) ? 'qwen' : 'deepseek');
+
+  const steps = [{ order: 1, provider: p, model: primary }];
+  if (p === 'gemini') steps.push({ order: 2, provider: 'qwen', model: qwenModel }, { order: 3, provider: 'deepseek', model: 'deepseek-chat' });
+  else if (p === 'qwen') steps.push({ order: 2, provider: 'gemini', model: GEMINI_TEXT_CHAIN[0] }, { order: 3, provider: 'deepseek', model: 'deepseek-chat' });
+  else steps.push({ order: 2, provider: 'gemini', model: GEMINI_TEXT_CHAIN[0] }, { order: 3, provider: 'qwen', model: qwenModel });
+
+  return {
+    steps: steps.map(s => ({ ...s, label: labels[s.provider] || s.provider, healthy: providerHealthy(s.provider) })),
+    geminiChain: GEMINI_TEXT_CHAIN,
+    autoReplyEnabled: !!waWebKnowledgeBase.autoReplyEnabled,
+    scope: waWebKnowledgeBase.autoReplyScope || 'all',
+    cooldownSeconds: waWebKnowledgeBase.cooldownSeconds || 30,
+    defaultMode: aiContactStore.defaultMode,
+    newContactReplyEnabled: waWebKnowledgeBase.newContactReplyEnabled !== false
+  };
+}
+
 async function persistAiContactStore(patch) {
   if (!globalDb) return;
   try {

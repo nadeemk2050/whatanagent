@@ -489,6 +489,14 @@ app.get('/api/wa-web/manager', async (req, res) => {
   }
 });
 
+// Which AI answers WhatsApp: 1st / 2nd / 3rd (live, for the dashboard)
+app.get('/api/wa-web/ai-chain', async (req, res) => {
+  try {
+    const wa = await import('./waWebClient.js');
+    res.json(wa.getAiReplyChainInfo());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/wa-web/manager/status', async (req, res) => {
   try {
     const { jids, status } = req.body || {};

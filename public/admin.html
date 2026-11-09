@@ -1911,6 +1911,13 @@
                                 <option value="qwen3.8-omni-flash">🎧 Qwen3.8-Omni-Flash (text + image + audio understanding)</option>
                             </select>
                         </div>
+                        <div id="waWebKbAiChainCard" style="background:linear-gradient(135deg,#0b1220,#111b21); border:1px solid #2a3942; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                <div style="font-size:12px; font-weight:bold; color:#93c5fd;">🔀 Who answers your WhatsApp messages (live order)</div>
+                                <button onclick="loadWaWebAiChain()" style="background:#1f2c34; border:1px solid #2a3942; color:#8696a0; font-size:10px; padding:3px 8px; border-radius:6px; cursor:pointer;">↻ refresh</button>
+                            </div>
+                            <div id="waWebKbAiChainBody" style="margin-top:8px; font-size:12px; color:#e9edef;">Loading…</div>
+                        </div>
                         <div>
                             <div id="waWebKbMultilingualBanner" style="background:linear-gradient(135deg, #064e3b 0%, #065f46 100%); border:1px solid #10b981; border-radius:10px; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 4px 12px rgba(16,185,129,0.15); margin-bottom:14px;">
                                 <div style="display:flex; align-items:center; gap:10px;">
@@ -10264,6 +10271,32 @@
             if (!modal) return;
             modal.style.display = 'flex';
             await loadWaWebKnowledgeBase();
+            loadWaWebAiChain();
+        }
+
+        // 🔀 Live 1st / 2nd / 3rd engine order for WhatsApp auto-replies
+        async function loadWaWebAiChain() {
+            const el = document.getElementById('waWebKbAiChainBody');
+            if (!el) return;
+            el.innerText = 'Loading…';
+            try {
+                const r = await fetch('/api/wa-web/ai-chain');
+                const j = await r.json();
+                if (!r.ok) { el.innerText = 'Could not read the AI order: ' + (j.error || r.status); return; }
+                const medal = ['🥇', '🥈', '🥉'];
+                el.innerHTML = (j.steps || []).map(function (s) {
+                    return '<div style="display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid #1f2c34;">' +
+                        '<span>' + (medal[s.order - 1] || '•') + ' <b>' + s.label + '</b> <span style="color:#8696a0;">' + s.model + '</span></span>' +
+                        '<span style="color:' + (s.healthy ? '#22c55e' : '#f59e0b') + '; font-size:10px;">' + (s.healthy ? 'READY' : 'PAUSED') + '</span>' +
+                        '</div>';
+                }).join('') +
+                    '<div style="margin-top:8px; font-size:11px; color:#8696a0;">Auto-reply ' +
+                    '<b style="color:' + (j.autoReplyEnabled ? '#22c55e' : '#ef4444') + ';">' + (j.autoReplyEnabled ? 'ON' : 'OFF') + '</b>' +
+                    ' · scope <b>' + (j.scope || '') + '</b> · cooldown ' + (j.cooldownSeconds || 0) + 's' +
+                    ' · unknown numbers <b>' + (j.newContactReplyEnabled ? 'answered' : 'ignored') + '</b></div>';
+            } catch (e) {
+                el.innerText = 'Error: ' + e.message;
+            }
         }
 
         function closeWaWebKnowledgeBaseModal() {
