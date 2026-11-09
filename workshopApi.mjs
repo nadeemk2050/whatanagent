@@ -447,7 +447,30 @@ const PROCESS_STEPS = [
   { id: 'linkedin',        group: 'Off-site',  label: 'LinkedIn company page',             owner: 'owner',    why: 'A second corroborating source, and a sameAs target for the Organization schema.' },
   { id: 'directories',     group: 'Off-site',  label: 'Tier-1 directory citations',        owner: 'owner',    why: 'Same NAP everywhere. Inconsistent name/address/phone suppresses entity confidence.' },
   { id: 'reviews',         group: 'Off-site',  label: 'Google reviews collected',          owner: 'owner',    why: 'A verified profile with no reviews ranks poorly regardless of everything else.' },
-  { id: 'case-studies',    group: 'Content',   label: 'Case study pages published',        owner: 'owner',    why: 'Wins the long-tail queries product pages cannot. Needs real project facts — never invented.' }
+  { id: 'case-studies',    group: 'Content',   label: 'Case study pages published',        owner: 'owner',    why: 'Wins the long-tail queries product pages cannot. Needs real project facts — never invented.' },
+
+  // ---- Performance & technical health (added for the Al Saham Al Ahmar rebuild) ----
+  { id: 'core-web-vitals', group: 'Performance', label: 'Core Web Vitals measured (LCP < 2.5s)',   owner: 'workshop', why: 'Measure with PageSpeed on mobile first. LCP is almost always the hero image or a render-blocking font.' },
+  { id: 'image-optimisation', group: 'Performance', label: 'Images compressed → WebP/AVIF',        owner: 'workshop', why: 'Photographs are the heaviest asset on a scrap-trading site. Serve the right size, never a 4000px photo in a 600px box.' },
+  { id: 'caching-cdn',     group: 'Performance', label: 'Page cache + CDN headers verified',       owner: 'workshop', why: 'A cached HTML response should land in well under 300ms. Confirm the cache HIT header, not just "it feels fast".' },
+  { id: 'plugin-audit',    group: 'Performance', label: 'Unused plugins/scripts removed',          owner: 'workshop', why: 'Every plugin ships CSS and JS to every page. Deleting three unused plugins usually cuts more weight than any theme tweak.' },
+  { id: 'mobile-ux',       group: 'Performance', label: 'Mobile layout + tap targets checked',     owner: 'workshop', why: 'Most WhatsApp-sourced buyers arrive on a phone. Buttons under 44px and text under 16px lose the enquiry.' },
+  { id: 'https-mixed',     group: 'Performance', label: 'HTTPS everywhere, no mixed content',      owner: 'workshop', why: 'Mixed content silently breaks the padlock and some embedded forms. Check the console on every template.' },
+
+  // ---- On-page content quality ----
+  { id: 'homepage-copy',   group: 'Content', label: 'Homepage H1 + title + meta description',       owner: 'workshop', why: 'One H1 that names the company and the trade, a title under 60 characters and a description that reads like a sentence.' },
+  { id: 'material-meta',   group: 'Content', label: 'Unique title/H1 on every material page',        owner: 'workshop', why: 'Duplicate titles across material pages make Google pick one and ignore the rest.' },
+  { id: 'faq-schema',      group: 'Content', label: 'FAQ block + FAQPage schema on key pages',       owner: 'workshop', why: 'Buyer questions (minimum quantity, pickup area, payment terms) are the cheapest rich result you can win.' },
+  { id: 'alt-text',        group: 'Content', label: 'Alt text on every material photo',               owner: 'workshop', why: 'Describes the grade to a blind user and to image search. "IMG_2381" helps nobody.' },
+
+  // ---- Trust & local presence ----
+  { id: 'nap-consistency', group: 'Off-site', label: 'Same NAP on every page and profile',           owner: 'workshop', why: 'Name, address and phone must match the Google Business Profile character for character.' },
+  { id: 'contact-page',    group: 'Structure', label: 'Contact page: map, phone, WhatsApp',          owner: 'workshop', why: 'One page that proves the business is real and reachable. Link it from the main menu and the footer.' },
+  { id: 'legal-pages',     group: 'Structure', label: 'Privacy, terms and cookie notice',            owner: 'owner',    why: 'Required in the UAE for analytics cookies, and Google uses the pages as a trust signal for lead-gen sites.' },
+
+  // ---- Conversion ----
+  { id: 'whatsapp-cta',    group: 'Conversion', label: 'WhatsApp CTA on every page',                 owner: 'workshop', why: 'A scrap enquiry starts with a photo on WhatsApp. Put the button where the thumb already is.' },
+  { id: 'lead-form',       group: 'Conversion', label: 'Quote form with spam protection',              owner: 'workshop', why: 'Some buyers will not use WhatsApp. A short form (material, quantity, country) catches them without a phone number exposed.' }
 ];
 
 const PROCESS_SEED = {
@@ -482,6 +505,30 @@ const PROCESS_SEED = {
       'directories':    { status: 'todo', note: 'Citation pack ready · PPMA, FPCCI, Karachi Chamber', at: 0 },
       'reviews':        { status: 'todo', note: 'Blocked until GBP is verified — then ask 5 buyers', at: 0 },
       'case-studies':   { status: 'todo', note: 'Waiting on real project facts from owner', at: 0 }
+    }
+  },
+  'www.alshaabalwaseem.com': {
+    name: 'Al Saham Al Ahmar Metal Scrap Trading',
+    url: 'https://alshaabalwaseem.com',
+    facts: {
+      stack: 'WordPress · Astra · Rank Math',
+      host: 'Hostinger (hcdn edge cache)',
+      sitemap: '23 published pages',
+      notes: 'Homepage rebuilt 9 Nov 2026: company name as H1, inline CSS only, Organization + LocalBusiness + Service schema, WhatsApp CTA.'
+    },
+    steps: {
+      'homepage-copy':  { status: 'done', note: 'New H1 “AL SAHAM AL AHMAR METAL SCRAP TRADING” + Rank Math title/description set', at: 1762700000000 },
+      'schema':         { status: 'done', note: 'Organization + LocalBusiness + Service + WebSite JSON-LD on the home page', at: 1762700000000 },
+      'whatsapp-cta':   { status: 'done', note: 'WhatsApp + call buttons in hero, mid-page band and footer', at: 1762700000000 },
+      'canonicals':     { status: 'todo', note: 'Verify Rank Math canonical on home + material pages', at: 0 },
+      'www-redirect':   { status: 'todo', note: 'Confirm www → non-www (or the reverse) is a single 301', at: 0 },
+      'robots-txt':     { status: 'todo', note: 'Check robots.txt declares the sitemap and does not block material pages', at: 0 },
+      'sitemap-google': { status: 'todo', note: 'Rank Math sitemap → Search Console, status must be Success', at: 0 },
+      'index-follow':   { status: 'todo', note: 'Confirm Reading → “Discourage search engines” is OFF', at: 0 },
+      'internal-links': { status: 'todo', note: 'Home now links to 10 material pages — add the reverse links', at: 0 },
+      'material-meta':  { status: 'todo', note: 'Nine material pages still share generic titles', at: 0 },
+      'core-web-vitals': { status: 'todo', note: 'Baseline measured, mobile LCP still to be captured', at: 0 },
+      'plugin-audit':   { status: 'todo', note: 'Audit plugins and remove anything not used on the front end', at: 0 }
     }
   }
 };
