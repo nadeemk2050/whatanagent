@@ -1,0 +1,32 @@
+[
+ {
+  "page": "/gallery/",
+  "src": "/wp-content/uploads/2026/11/plant-shredder-line.webp",
+  "alt": "Shredding and washing line with conveyor at the Al Qaryan Industries facility, Karachi",
+  "w": 374,
+  "h": 320,
+  "loading": "lazy",
+  "fetchpriority": null,
+  "hasSrcset": false,
+  "decoding": "async",
+  "bytes": 23684,
+  "type": "image/webp",
+  "ext": "webp",
+  "issues": []
+ },
+ {
+  "page": "/",
+  "src": "/wp-content/uploads/2026/11/plant-shredder-line.webp",
+  "alt": "Shredding and washing line at the Al Qaryan Industries plastics facility, Shershah Industrial Area, Karachi",
+  "w": 374,
+  "h": 320,
+  "loading": "lazy",
+  "fetchpriority": null,
+  "hasSrcset": true,
+  "decoding": "async",
+  "bytes": 23684,
+  "type": "image/webp",
+  "ext": "webp",
+  "issues": []
+ }
+]
