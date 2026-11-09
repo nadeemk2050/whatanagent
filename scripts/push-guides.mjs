@@ -66,6 +66,9 @@ const PIPES_BLOCK = `<div class="q-section"><h2>Pipes we manufacture</h2>
 <ul class="q-list">
 <li><a href="/pvc-pipes-pakistan/">PVC (uPVC) pipes in Pakistan</a> — types, pressure classes and how to verify a manufacturer.</li>
 <li><a href="/hdpe-pipes-pakistan/">HDPE 100 (PE100) pipes in Pakistan</a> — grades, SDR to PN ratings and supplier checks.</li>
+<li><a href="/pipe-sellers-pakistan/">PVC and HDPE pipe sellers in Pakistan</a> — how to choose a seller, and the six lines every quote must state.</li>
+<li><a href="/pvc-vs-hdpe-pipes-pakistan/">PVC vs HDPE pipe</a> — which material to specify, and where each one fails.</li>
+<li><a href="/pipe-price-guide-pakistan/">Pipe price in Pakistan</a> — what actually drives the rate per metre.</li>
 </ul></div>`;
 
 const SCRAP_BLOCK = `<div class="q-section"><h2>Scrap we buy</h2>
@@ -75,8 +78,12 @@ const SCRAP_BLOCK = `<div class="q-section"><h2>Scrap we buy</h2>
 </ul></div>`;
 
 const BLOCKS = [
-  { marker: '/pvc-pipes-pakistan/', html: PIPES_BLOCK, name: 'pipes' },
-  { marker: '/ldpe-scrap-pakistan/', html: SCRAP_BLOCK, name: 'scrap' }
+  {
+    marker: '/pipe-sellers-pakistan/', html: PIPES_BLOCK, name: 'pipes',
+    // hubs already carry the older two-link version — replace it rather than skip
+    legacy: /<div class="q-section"><h2>Pipes we manufacture<\/h2>[\s\S]*?<\/ul><\/div>/
+  },
+  { marker: '/ldpe-scrap-pakistan/', html: SCRAP_BLOCK, name: 'scrap', legacy: null }
 ];
 
 const HUBS = ['services', 'materials-we-deal'];
@@ -89,6 +96,11 @@ for (const slug of HUBS) {
   const added = [];
   for (const b of BLOCKS) {
     if (content.includes(b.marker)) continue;
+    if (b.legacy && b.legacy.test(content)) {
+      content = content.replace(b.legacy, b.html);
+      added.push(b.name + ' (upgraded in place)');
+      continue;
+    }
     added.push(b.name);
     content = content + '\n\n' + b.html;
   }

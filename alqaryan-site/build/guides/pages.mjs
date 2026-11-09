@@ -537,6 +537,286 @@ export const LDPE_SCRAP = {
   ]
 };
 
-export const GUIDES = [HDPE, PVC, HDPE_SCRAP, LDPE_SCRAP];
+// ---------------------------------------------------------------------------
+export const SELLERS = {
+  slug: 'pipe-sellers-pakistan',
+  kicker: 'BUYING GUIDE · PVC AND HDPE',
+  h1: 'PVC and HDPE Pipe Sellers in Pakistan — How to Choose One',
+  lede: 'Most pipe problems in Pakistan are not manufacturing failures; they are buying mistakes — the wrong pressure class, an unlicensed seller, or a quote that leaves out freight and fittings. This page is the checklist we would want a buyer to run before ordering from anyone, including us.',
+  seoTitle: 'PVC & HDPE Pipe Sellers in Pakistan | Buyer Checklist',
+  seoDesc: 'How to choose a PVC or HDPE pipe seller in Pakistan: manufacturer vs dealer, PSQCA licence, SDR and PN, quote traps and delivery. Al Qaryan Industries, Karachi.',
+  focus: 'pvc pipe sellers in pakistan',
+  category: 'PVC and HDPE pipe supply',
+  schemaMaterial: 'PVC-U and Polyethylene PE100',
+  chips: ['Manufacturer vs dealer', 'PSQCA licence', 'SDR / PN explained', 'Quote checklist', 'Karachi since 2007'],
+  sections: [
+    {
+      h2: 'Seller, dealer, manufacturer — why the word matters',
+      paras: [
+        'In Pakistan the words "seller", "dealer", "supplier" and "manufacturer" are used almost interchangeably in listings, but they are not the same business. A <strong>manufacturer</strong> extrudes the pipe and owns the formulation and the wall thickness. A <strong>dealer or distributor</strong> resells someone else\'s pipe, often without knowing which plant made which length. A <strong>trader</strong> may hold no stock at all and buy against your order.',
+        'None of these is dishonest, but they answer different questions. A dealer can be the right choice for a small mixed order from stock. A manufacturer is the right choice when you need a specific pressure class, a consistent monthly programme, or someone accountable when a batch is out of specification.',
+        'The practical test is one question: <strong>"Which plant made this pipe, and will you name it in writing?"</strong> A manufacturer answers immediately. A dealer who cannot answer is telling you what your recourse will look like if something goes wrong.'
+      ]
+    },
+    {
+      h2: 'Check the PSQCA licence, not the brochure',
+      paras: [
+        'Pipe sold in Pakistan against a Pakistan Standard carries a PSQCA licence, and the licence number is tied to a specific product and a specific plant. Ask for the licence number and check it, rather than accepting a logo printed on a catalogue cover.',
+        'The same applies to quality management certification. ISO 9001 covers the plant\'s process control, not the pipe in your hand. A certificate is a starting point for a conversation, never a substitute for a test report against the standard you specified.'
+      ],
+      list: [
+        'Ask for the <strong>PSQCA licence number</strong> and the plant address it belongs to — they should match.',
+        'Ask which <strong>standard</strong> the pipe is made to: ISO 1452 or ASTM D1785/D2241 for PVC-U, ISO 4427 or DIN 8074/8075 for PE100.',
+        'Ask for a <strong>batch test report</strong>: wall thickness, outside diameter and hydrostatic test result for the lot you are buying.',
+        'Ask whether the pipe will be <strong>marked</strong> with the size, pressure class, standard and manufacturer — unmarked pipe cannot be traced.'
+      ]
+    },
+    {
+      h2: 'Get the pressure class right before you compare prices',
+      paras: [
+        'A price per metre is meaningless without the pressure class attached to it. The same outside diameter in the same material can carry very different pressures depending on wall thickness, and the cheap quote is usually the thinner wall.',
+        'For HDPE the class is set by SDR — standard dimension ratio. A lower SDR means a thicker wall and a higher pressure rating, so <strong>SDR 17 in PE100 is PN 10 while SDR 11 in the same resin is PN 16</strong>. For PVC-U the equivalent classes run PN 6, PN 10, PN 12.5 and PN 16, and Schedule 40 and Schedule 80 describe wall thickness rather than pressure directly.',
+        'If two quotes differ sharply, compare the SDR or Schedule lines before the totals. A difference of one SDR step is often the whole gap.'
+      ],
+      table: [
+        ['HDPE PE100 — SDR 26', 'PN 6'],
+        ['HDPE PE100 — SDR 21', 'PN 8'],
+        ['HDPE PE100 — SDR 17', 'PN 10'],
+        ['HDPE PE100 — SDR 13.6', 'PN 12.5'],
+        ['HDPE PE100 — SDR 11', 'PN 16'],
+        ['PVC-U — SDR 41', 'PN 6'],
+        ['PVC-U — SDR 26', 'PN 10'],
+        ['PVC-U — SDR 21', 'PN 12.5'],
+        ['PVC-U — SDR 17', 'PN 16']
+      ],
+      note: 'These are standard pressure classes at 20 °C for water. Both materials lose pressure capability as temperature rises, so a line running warm must be derated against the standard you are specifying.'
+    },
+    {
+      h2: 'The six things a pipe quote must state',
+      paras: [
+        'A quote that gives only a rate per metre cannot be compared with another one. Ask every seller to put the same six lines in writing — the ones who cannot are usually the ones whose rate will change after you have committed.'
+      ],
+      list: [
+        '<strong>Material and class</strong> — PVC-U PN 10, or PE100 SDR 17 / PN 10. Not just "HDPE pipe".',
+        '<strong>Size basis</strong> — outside diameter in mm, and whether you are being quoted on OD or bore.',
+        '<strong>Length</strong> — 6 m lengths, 12 m lengths or coils, and whether cut lengths are available.',
+        '<strong>Fittings and jointing</strong> — are bends, tees, couplers and solvent cement included or extra?',
+        '<strong>Freight</strong> — delivered to site, or ex-plant? This is the most common hidden addition.',
+        '<strong>Validity and payment terms</strong> — polymer prices move, so a rate with no validity date is not a rate.'
+      ]
+    },
+    {
+      h2: 'Where Al Qaryan Industries fits',
+      paras: [
+        'We are a manufacturer, not a reseller. Al Qaryan Industries LLC extrudes PVC (uPVC) and HDPE (PE100) pipe at our own plant in the Shershah Industrial Area, Karachi, and supplies <strong>500 tons per month</strong> of each family with room to scale for scheduled programmes. The plant is ISO 9001 and ISO 14001 certified and pipe production is PSQCA licensed.',
+        'We have traded plastics from Karachi since 2007, and the pipe lines sit beside our recycling division — so the compound is produced and controlled in-house rather than bought in and taken on trust. We also buy pipe scrap and offcuts back from fabricators and contractors, which keeps the material in the same loop.',
+        'We do not publish a rate per metre, because the honest inputs are your size, your pressure class, your quantity and your delivery point. Send those four and you get a written price with a validity date, freight included and stated separately.'
+      ]
+    },
+    {
+      h2: 'Mistakes that cost buyers the most',
+      paras: [
+        'These come up repeatedly in enquiries, and every one of them is avoidable at the quotation stage.'
+      ],
+      list: [
+        '<strong>Comparing PN 6 with PN 10.</strong> Both are "PVC pipe"; one is half the wall. Check the class before the price.',
+        '<strong>Ignoring temperature.</strong> PVC-U is a cold-water product. Running it hot, or specifying it for a line that will see hot discharge, is a failure waiting to happen.',
+        '<strong>Buying on outside diameter alone.</strong> Two pipes of the same OD can have different wall thickness and pressure ratings.',
+        '<strong>Forgetting fittings in the budget.</strong> On short runs, fittings and jointing can be a meaningful share of the cost.',
+        '<strong>No written validity.</strong> Polymer prices move; a verbal rate from three weeks ago is not a quote.',
+        '<strong>Unmarked pipe.</strong> If the size, class and maker are not printed on the pipe, you cannot prove what you were sold.'
+      ]
+    }
+  ],
+  faqs: [
+    ['How do I know if a pipe seller in Pakistan is a manufacturer?', 'Ask which plant made the pipe and whether they will name it in writing, then ask for the PSQCA licence number and the plant address it belongs to. A manufacturer answers both immediately. A dealer may be perfectly legitimate, but you should know which one you are dealing with before you rely on them for a specification.'],
+    ['What is the difference between PVC and uPVC pipe?', 'They are the same product. uPVC stands for unplasticised polyvinyl chloride, written PVC-U in the standards. The "u" means no plasticiser was added, which is what makes rigid pressure pipe possible. It is not a grade, a brand or a premium version.'],
+    ['What does SDR mean in HDPE pipe?', 'SDR is the standard dimension ratio — the outside diameter divided by the wall thickness. A lower SDR means a thicker wall and a higher pressure rating: in PE100, SDR 17 is PN 10 and SDR 11 is PN 16. Quoting without the SDR is quoting without the pressure class.'],
+    ['Which is cheaper, PVC or HDPE pipe?', 'It depends on size, pressure class, quantity and delivery point, and we will not pretend otherwise with a headline figure. As a general rule PVC-U is the more economical choice for cold-water and drainage work, while HDPE competes where flexibility, coiled lengths, trenchless installation or chemical resistance matter. Send the requirement and we will quote both so you can compare like for like.'],
+    ['Do you deliver outside Karachi?', 'Yes. We deliver across Pakistan and confirm freight and lead time in the quotation. Give us the delivery location with the enquiry so the freight line is real rather than estimated.'],
+    ['Can you supply both PVC and HDPE on one order?', 'Yes. Both families are extruded at the same plant, so a mixed order ships on one schedule with one point of accountability instead of two suppliers blaming each other.']
+  ],
+  related: [
+    ['PVC Pipes in Pakistan', 'uPVC pressure classes, Schedule 40 and 80, and how to check a manufacturer.', '/pvc-pipes-pakistan/'],
+    ['HDPE 100 Pipes in Pakistan', 'PE100 grades, SDR to PN ratings and supplier checks.', '/hdpe-pipes-pakistan/'],
+    ['PVC vs HDPE Pipe', 'Which material to specify, and where each one fails.', '/pvc-vs-hdpe-pipes-pakistan/'],
+    ['Pipe Price Guide', 'What actually drives the rate per metre in Pakistan.', '/pipe-price-guide-pakistan/']
+  ]
+};
+
+// ---------------------------------------------------------------------------
+export const COMPARE = {
+  slug: 'pvc-vs-hdpe-pipes-pakistan',
+  kicker: 'BUYING GUIDE · CHOOSING A MATERIAL',
+  h1: 'PVC vs HDPE Pipe in Pakistan — Which Should You Specify?',
+  lede: 'Both are plastic pressure pipes, both are sold by the metre, and neither is universally better. The right answer depends on temperature, ground conditions, jointing skill on site and whether the line will be buried, coiled or run overhead. This page sets out where each material wins and where it fails.',
+  seoTitle: 'PVC vs HDPE Pipe in Pakistan | Which to Choose',
+  seoDesc: 'PVC or HDPE pipe for your project in Pakistan? Compare pressure classes, jointing, temperature limits, flexibility, chemical resistance and cost drivers.',
+  focus: 'pvc vs hdpe pipe',
+  category: 'PVC-U and PE100 pipe comparison',
+  schemaMaterial: 'PVC-U and Polyethylene PE100',
+  chips: ['Pressure classes', 'Jointing methods', 'Temperature limits', 'Cost drivers', 'Karachi manufacturer'],
+  sections: [
+    {
+      h2: 'The short answer',
+      paras: [
+        'Choose <strong>PVC-U</strong> for cold-water distribution, drainage and sewer lines, where the route is fixed, the ground is stable and the budget is tight. Choose <strong>HDPE (PE100)</strong> where the line must flex — unstable or settling ground, trenchless crossing, rocky backfill — where long coiled lengths save joints, where the fluid is aggressive, or where the pipe will be handled roughly before installation.',
+        'If a single sentence has to decide it: <strong>PVC is cheaper to buy and stiffer to install; HDPE is more forgiving and more expensive to buy at the same pressure class.</strong>'
+      ]
+    },
+    {
+      h2: 'Pressure rating is not comparable between the two',
+      paras: [
+        'Both materials express pressure capability through wall thickness, but the class systems differ, which is where comparisons go wrong. HDPE uses SDR; PVC-U uses PN classes directly, and Schedule 40 and 80 describe wall thickness rather than a pressure figure.',
+        'A PE100 SDR 17 pipe and a PVC-U SDR 17 pipe are not equivalent products even though the SDR number matches — the resins have different design stresses. Compare <em>pressure class at your design temperature</em>, never the SDR number alone.'
+      ],
+      table: [
+        ['HDPE PE100 SDR 26', 'PN 6', 'Low-pressure irrigation, gravity mains'],
+        ['HDPE PE100 SDR 17', 'PN 10', 'Water distribution, common default'],
+        ['HDPE PE100 SDR 11', 'PN 16', 'High-pressure mains, pumping lines'],
+        ['PVC-U SDR 41', 'PN 6', 'Low-pressure distribution'],
+        ['PVC-U SDR 26', 'PN 10', 'Standard municipal water lines'],
+        ['PVC-U SDR 17', 'PN 16', 'High-pressure cold water'],
+        ['PVC-U Schedule 40', 'Wall-thickness class', 'Common in process and plumbing work'],
+        ['PVC-U Schedule 80', 'Heavier wall', 'Higher pressure, thicker wall']
+      ],
+      note: 'All values are standard classes at 20 °C for water. Above 20 °C both materials must be derated against the standard you are specifying — never assume the 20 °C figure holds on a warm line.'
+    },
+    {
+      h2: 'Joining: where most site problems come from',
+      paras: [
+        'The joint is usually the weakest point in a plastic pipeline, and the two materials demand completely different skills from the crew.'
+      ],
+      list: [
+        '<strong>PVC-U</strong> joins by solvent cement, rubber-ring push-fit or flange. Solvent cement is fast and cheap but unforgiving: the cut must be square, the surface clean and the cement applied evenly. A hurried joint fails months later, not on the day.',
+        '<strong>HDPE</strong> joins by butt fusion, electrofusion, compression fittings or flange. Butt fusion produces a joint as strong as the pipe wall, but it needs a properly calibrated fusion machine and an operator who follows the cycle — a cold or contaminated joint will pass a visual check and fail in service.',
+        'If your site has no fusion equipment and no trained operator, HDPE\'s advantages disappear quickly. That single practical point decides many projects.'
+      ]
+    },
+    {
+      h2: 'Temperature, sunlight and chemical resistance',
+      paras: [
+        'PVC-U is a cold-water material. Its pressure capability falls away as temperature rises, and it should not be specified for hot-water service at all — that is CPVC or PPR territory. It is also vulnerable to some solvents and to prolonged UV exposure, which is why black or UV-stabilised compounds are used outdoors.',
+        'HDPE handles higher temperatures than PVC-U, but only with derating, and it must be protected from sustained direct sun in thin-wall sizes. Against chemicals, HDPE generally tolerates a wider range — which is why it dominates industrial and effluent lines — while PVC-U is excellent against many acids and is often the cheaper answer for those specific duties.',
+        'Neither material is a general-purpose answer to "will it survive this chemical". Always check the specific concentration and temperature against a chemical resistance table before specifying.'
+      ]
+    },
+    {
+      h2: 'Movement, ground conditions and installation',
+      paras: [
+        'HDPE expands and contracts considerably more than PVC-U with temperature change — roughly a few times more per degree — so long runs need expansion provision, and snaking or looped laying is normal practice. PVC-U moves less but is rigid, so it transmits load and cannot be deflected around an obstruction.',
+        'HDPE can be supplied in long coils in the smaller diameters, which removes most joints from a buried run and is the main reason it wins on long rural mains. PVC-U comes in rigid lengths, needs more joints, and needs trench bedding that will not point-load the pipe.',
+        'In settling ground, HDPE\'s flexibility is decisive. In stable ground with a skilled crew, PVC-U\'s stiffness and lower cost usually win.'
+      ]
+    },
+    {
+      h2: 'What actually drives the cost difference',
+      paras: [
+        'The gap between a PVC and an HDPE quote is rarely one number. It comes from four places: the resin and compound (virgin versus recycled content, and the grade), the wall thickness your pressure class demands, the diameter, and the jointing method including fittings and labour.',
+        'HDPE is lighter per metre for the same duty, so freight and handling can favour it on long runs even where the pipe rate is higher. PVC-U is heavier, so transport cost matters more on distant deliveries.',
+        'We quote both families from the same plant, which means you can compare them on one sheet instead of two suppliers\' incompatible formats.'
+      ]
+    }
+  ],
+  faqs: [
+    ['Is HDPE better than PVC pipe?', 'Not universally. HDPE is more flexible, tolerates rougher handling and a wider range of chemicals, and can be supplied in long coils that remove joints. PVC-U is stiffer, cheaper at the same duty, and easier to join without specialist equipment. The right choice depends on ground conditions, temperature, fluid and the skill available on site.'],
+    ['Can I use PVC pipe for hot water?', 'No. PVC-U is a cold-water material and its pressure capability falls sharply as temperature rises. Hot-water service needs CPVC or PPR. Specifying PVC on a hot line is one of the most common and most expensive mistakes we see.'],
+    ['Which pipe is better for underground water supply in Pakistan?', 'Both are used widely. PVC-U is the usual choice for stable ground and municipal distribution because it is economical and stiff. HDPE is preferred where ground moves, where the route crosses under roads or obstacles, or where long coiled lengths reduce the number of joints.'],
+    ['How long do PVC and HDPE pipes last?', 'Both are designed for a 50-year service life when specified, installed and operated within the standard conditions the class assumes. Pressure class, temperature, bedding, joint quality and UV exposure in service all affect that figure — a 50-year rating at 20 °C does not transfer to a warm, poorly bedded line.'],
+    ['Is HDPE pipe more expensive than PVC?', 'Usually the pipe rate is higher for HDPE at the same pressure class, but the total installed cost often narrows: HDPE is lighter to freight, coils remove joints, and trenchless installation can avoid excavation entirely. Compare installed cost, not just rate per metre.'],
+    ['Do you manufacture both?', 'Yes. Al Qaryan Industries extrudes both PVC (uPVC) and HDPE (PE100) pipe at our plant in Shershah Industrial Area, Karachi, at 500 tons per month of each family, with room to scale for scheduled programmes.']
+  ],
+  related: [
+    ['PVC Pipes in Pakistan', 'uPVC pressure classes and how to verify a manufacturer.', '/pvc-pipes-pakistan/'],
+    ['HDPE 100 Pipes in Pakistan', 'PE100 grades and the SDR to PN table.', '/hdpe-pipes-pakistan/'],
+    ['Pipe Sellers in Pakistan', 'How to choose a seller and what a quote must state.', '/pipe-sellers-pakistan/'],
+    ['Pipe Price Guide', 'What drives the rate per metre.', '/pipe-price-guide-pakistan/']
+  ]
+};
+
+// ---------------------------------------------------------------------------
+export const PRICE = {
+  slug: 'pipe-price-guide-pakistan',
+  kicker: 'BUYING GUIDE · UNDERSTANDING PRICE',
+  h1: 'PVC and HDPE Pipe Price in Pakistan — What Drives the Rate',
+  lede: 'A published rate per metre for plastic pipe is out of date the moment polymer prices move, which is why we do not print one. What we can do is show you exactly which variables decide the number, so that two quotes become comparable and nothing appears after you commit.',
+  seoTitle: 'PVC & HDPE Pipe Price in Pakistan | Rate Factors',
+  seoDesc: 'What sets PVC and HDPE pipe price per metre in Pakistan: resin grade, SDR and wall thickness, diameter, quantity and delivery. Get a written quote from Karachi.',
+  focus: 'pvc pipe price in pakistan',
+  category: 'PVC and HDPE pipe pricing',
+  schemaMaterial: 'PVC-U and Polyethylene PE100',
+  chips: ['No stale price list', 'SDR drives wall', 'Freight stated', 'Written validity', 'Karachi plant'],
+  sections: [
+    {
+      h2: 'Why we do not publish a price list',
+      paras: [
+        'Plastic pipe is priced off resin, and resin is a commodity that moves with oil, import parity and the rupee. A price list published this month is a complaint next month — either it is above the market and you overpay, or it is below and the seller quietly substitutes a thinner wall or a lower grade to protect the margin.',
+        'The second reason is that "per metre" hides the only variable that matters: the pressure class. The same diameter in PN 6 and PN 16 is not the same product and not the same price. Any published single figure for "PVC pipe" is therefore either an assumption or a marketing number.',
+        'What you should ask for instead is a written rate with the class, size, length and validity date printed on it. That is comparable. A headline figure is not.'
+      ]
+    },
+    {
+      h2: 'The seven variables that set your price',
+      paras: [
+        'Every pipe quotation is a function of these. Change one and the number moves — which is also why two quotes that look different are often both correct.'
+      ],
+      list: [
+        '<strong>Material and grade.</strong> PE100 costs more than PE80 or PE63. In PVC, the compound and the additive package matter, and recycled content changes both price and the applications it is suitable for.',
+        '<strong>Pressure class.</strong> Lower SDR or higher PN means more wall, more material per metre. This is usually the biggest single driver.',
+        '<strong>Diameter.</strong> Material per metre rises with diameter faster than most buyers expect, because both the circumference and the wall increase.',
+        '<strong>Quantity.</strong> A single length and a full truckload are different transactions — one is picked from stock, the other is scheduled on the line.',
+        '<strong>Length and form.</strong> Standard 6 m or 12 m lengths versus cut lengths; coils versus straight lengths in HDPE. Coils cost more to produce and to freight.',
+        '<strong>Delivery distance.</strong> Plastic pipe is bulky and, in PVC\'s case, heavy. Karachi to Lahore is a real cost, not a rounding error.',
+        '<strong>Payment terms and validity.</strong> A rate held for 30 days carries a different risk to a rate held for 90. Say which you need.'
+      ]
+    },
+    {
+      h2: 'Additives and colour are not decoration',
+      paras: [
+        'For HDPE, carbon black is added for UV resistance and is normally specified at around two per cent by the standards — it is a performance requirement, not a colour choice, and pipe intended for outdoor exposure should state it.',
+        'For PVC-U, the stabiliser system and any UV package affect both the price and how the pipe behaves in sun. Colour is usually functional: grey or white for water, other colours for specific services, and colour changes mean a separate production run at small quantities.',
+        'If a quote is materially below others for the same stated class, the difference is usually in the compound, the additive package or the wall thickness. Ask which.'
+      ]
+    },
+    {
+      h2: 'How to compare two pipe quotes properly',
+      paras: [
+        'Put both quotes side by side on these six lines. If a seller cannot fill them in, the comparison is not real yet.'
+      ],
+      table: [
+        ['Material + class', 'PVC-U PN 10 / PE100 SDR 17 — not "PVC pipe"'],
+        ['Size basis', 'Outside diameter in mm, stated explicitly'],
+        ['Lengths + form', '6 m, 12 m or coils; cut lengths or standard'],
+        ['Fittings', 'Included or extra, and which jointing method'],
+        ['Freight', 'Delivered or ex-plant, stated as its own line'],
+        ['Validity', 'Number of days the rate holds']
+      ],
+      note: 'If one quote is dramatically cheaper, compare the pressure class line first. A one-step SDR difference usually explains the entire gap.'
+    },
+    {
+      h2: 'What we need to quote you accurately',
+      paras: [
+        'Four things, and we can answer the same day in most cases: the <strong>size</strong> (outside diameter), the <strong>pressure class or SDR</strong>, the <strong>quantity</strong> in metres or tons, and the <strong>delivery location</strong>. Add the application if you have it — buried main, irrigation, effluent, process line — because it sometimes changes the recommendation.',
+        'Al Qaryan Industries manufactures both PVC (uPVC) and HDPE (PE100) pipe at our plant in the Shershah Industrial Area, Karachi, at <strong>500 tons per month</strong> of each family. Because we extrude rather than resell, the quote you receive is tied to our own line and our own compound, with a stated validity — not a rate passed down a chain.'
+      ]
+    }
+  ],
+  faqs: [
+    ['Why is there no price list on your website?', 'Because plastic pipe is priced off a moving commodity. A published rate goes stale within weeks and encourages sellers to protect margin by thinning the wall or downgrading the compound. We quote in writing against your size, pressure class, quantity and delivery point, with a validity date.'],
+    ['What is the biggest factor in pipe price?', 'The pressure class, because it sets the wall thickness and therefore how much material is in every metre. A lower SDR or higher PN class can move the price more than any other single variable. Diameter and quantity come next.'],
+    ['Does recycled content make pipe cheaper?', 'It can reduce the material cost, but the application decides whether it is acceptable at all. Pressure pipe is specified against a standard and a class, and the compound must meet it. Ask any supplier to state the recycled content and the standard the pipe is made to, then decide whether that combination suits your duty.'],
+    ['How quickly can you quote?', 'Same day in most cases once we have the size, pressure class, quantity and delivery location. Add the application and we can also tell you if a different class would serve you better.'],
+    ['Do you quote delivered or ex-plant?', 'Both, and the freight is shown as its own line so you can see what delivery costs. Give us the site location with the enquiry and the freight figure is real rather than a placeholder.'],
+    ['Can I get both PVC and HDPE priced together?', 'Yes. Both families are extruded at the same plant, so you receive one comparable sheet instead of two formats from two suppliers.']
+  ],
+  related: [
+    ['Pipe Sellers in Pakistan', 'How to choose a seller and the six lines every quote needs.', '/pipe-sellers-pakistan/'],
+    ['PVC vs HDPE Pipe', 'Which material to specify for your duty.', '/pvc-vs-hdpe-pipes-pakistan/'],
+    ['PVC Pipes in Pakistan', 'uPVC classes, Schedule 40 and 80.', '/pvc-pipes-pakistan/'],
+    ['HDPE 100 Pipes in Pakistan', 'PE100 grades and SDR to PN.', '/hdpe-pipes-pakistan/']
+  ]
+};
+
+export const GUIDES = [HDPE, PVC, HDPE_SCRAP, LDPE_SCRAP, SELLERS, COMPARE, PRICE];
 
 export default render;
