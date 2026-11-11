@@ -133,6 +133,23 @@ payment-chasing tone blur together. The **live voice** read is separate and fast
 
 ---
 
+## 🏗️ Websites Workshop — auditing a site from the repo
+
+Two scripts let the workshop be driven from VS Code instead of the dashboard:
+
+- **`scripts/alqaryan-audit.mjs`** — reads a site's sitemap and checks every page for the things the
+  workshop tracks: mixed content, alt text, unique titles/H1s, canonicals, `noindex`, viewport,
+  cache/CDN headers, structured data, WhatsApp/tel/form presence and the www + trailing-slash
+  redirects. Read-only; prints a summary and can dump JSON.
+- **`scripts/workshop-set-step.mjs`** — writes one process step (or a to-do task) into the same
+  Firestore document the dashboard uses (`appData/websitesWorkshop`), then reads it back to prove it
+  saved. `--show` prints what is still open, with the seed default used where the DB has no override.
+
+A "done" note should always carry the evidence that closed it (how many pages, what was measured),
+because the next engineer reads the note, not the audit log.
+
+---
+
 ## 🧾 Commission Accounts (`/commission`)
 
 A separate, self-contained ledger app for a commission broker: one company sells material to
@@ -279,6 +296,14 @@ node scripts/commission-repair-from-seed.mjs --user <admin> --password <pw>
 
 # Rebuild scripts/commission-seed.json from the spreadsheet
 python scripts/commission-seed-from-excel.py "C:\path\to\S.E.ENGINEERING GST SHEET-2.xlsx"
+
+# Websites Workshop — audit a live site, then record a verified step without opening the browser
+node scripts/alqaryan-audit.mjs
+node scripts/workshop-set-step.mjs --site alqaryangroup.com --show
+node scripts/workshop-set-step.mjs --site alqaryangroup.com --step https-mixed \
+     --status done --note "Checked 44/44 pages: no http:// asset references"
+node scripts/workshop-set-step.mjs --site alqaryangroup.com --todo "Photograph the plant — 24 photos" \
+     --suggestion "Shot list in alqaryan-site/image-plan.md"
 ```
 
 The repair script removes only rows that came from the sheet (they carry a `source` row) and keeps
