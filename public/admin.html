@@ -1769,10 +1769,8 @@
                             <div>
                                 <label style="display:block; font-size:11px; color:#94a3b8; margin-bottom:4px; font-weight:bold;">⚡ Boss AI Executive Model:</label>
                                 <select id="bossKbModelSelect" style="width:100%; background:#0f172a; border:1px solid #f59e0b; color:#fbbf24; padding:8px 8px; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer;">
-                                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (Voice, Orders & Multimodal - Recommended)</option>
-                                    <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash (Newest Generation)</option>
-                                    <option value="gemini-3.5-flash">💡 Gemini 3.5 Flash (Fast & Balanced)</option>
-                                    <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro (Deep Complex Reasoning)</option>
+                                    <option value="qwen3.8-flash">🟠 Qwen3.8-Flash (Cheapest, multilingual - Recommended)</option>
+                                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (Voice, Orders & Multimodal)</option>
                                     <option value="deepseek-v4.1-flash">🌌 DeepSeek V4.1 Flash (Executive Chat)</option>
                                 </select>
                             </div>
@@ -1902,13 +1900,10 @@
                                 </div>
                             </div>
                             <select id="waWebKbModelSelect" style="background:#0f172a; border:1px solid #3b82f6; color:#93c5fd; padding:8px 12px; border-radius:8px; font-size:12px; font-weight:bold; outline:none; cursor:pointer; min-width:280px;">
-                                <option value="gemini-2.5-flash">🎙️ Google Gemini 2.5 Flash (VOICE/AUDIO + Images + PDF engine - best for voice notes)</option>
-                                <option value="gemini-3.6-flash">🚀 Google Gemini 3.6 Flash (Newest Generation, Ultra Low Latency)</option>
-                                <option value="gemini-3.5-flash">💡 Google Gemini 3.5 Flash (Fast & Balanced)</option>
-                                <option value="gemini-2.5-pro">🧠 Google Gemini 2.5 Pro (Deep Context & Complex Reasoning)</option>
-                                <option value="deepseek-v4.1-flash">⚡ DeepSeek V4.1 Flash (best for strict JSON)</option>
-                                <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (Alibaba · smart multilingual · 1M context · new)</option>
+                                <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (Alibaba · smart multilingual · cheapest - recommended)</option>
                                 <option value="qwen3.8-omni-flash">🎧 Qwen3.8-Omni-Flash (text + image + audio understanding)</option>
+                                <option value="deepseek-v4.1-flash">⚡ DeepSeek V4.1 Flash (best for strict JSON)</option>
+                                <option value="gemini-2.5-flash">🎙️ Google Gemini 2.5 Flash (VOICE/AUDIO + PDF engine)</option>
                             </select>
                         </div>
                         <div id="waWebKbAiChainCard" style="background:linear-gradient(135deg,#0b1220,#111b21); border:1px solid #2a3942; border-radius:10px; padding:12px 14px; margin-bottom:14px;">
@@ -2353,15 +2348,11 @@
                     <b style="color:#e9edef;">Copilot AI Model:</b>
                 </div>
                 <select id="waWebCopilotModelSelect" onchange="changeWaWebCopilotModel(this.value)" style="background:#0f172a; border:1px solid #00a884; color:#34d399; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; outline:none;">
-                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
-                    <option value="gemini-3.6-flash">🚀 Gemini 3.6 Flash</option>
-                    <option value="gemini-3.5-flash">💡 Gemini 3.5 Flash</option>
-                    <option value="gemini-2.5-pro">🧠 Gemini 2.5 Pro</option>
-                    <option value="deepseek-v4.1-flash">🌌 DeepSeek V4.1 Flash</option>
-                    <option value="gpt-4o-mini">⚡ GPT-4o Mini</option>
-                    <option value="gpt-4o">🤖 GPT-4o</option>
-                    <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (Alibaba · 1M context)</option>
+                    <option value="qwen3.8-flash">🟣 Qwen3.8-Flash (cheapest)</option>
                     <option value="qwen3.8-omni-flash">🎧 Qwen3.8-Omni-Flash (audio + vision)</option>
+                    <option value="deepseek-v4.1-flash">🌌 DeepSeek V4.1 Flash</option>
+                    <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
+                    <option value="gpt-4o-mini">⚡ GPT-4o Mini</option>
                 </select>
             </div>
             <div id="waWebAiContextBanner" style="background:#182229; padding:8px 16px; border-bottom:1px solid #2a3942; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
@@ -10645,7 +10636,7 @@
         }
 
         async function saveWaWebKnowledgeBaseFromModal() {
-            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'gemini-3.8-flash';
+            const chosenModel = document.getElementById('waWebKbModelSelect')?.value || 'qwen3.8-flash';
             const sys = document.getElementById('waWebKbSystemPrompt')?.value || '';
             const custom = document.getElementById('waWebKbCustomText')?.value || '';
             const bossPhone = document.getElementById('waWebKbBossPhone')?.value.trim() || '+971529244592';
@@ -13704,8 +13695,7 @@
         ['qwen3.8-flash', 'Qwen3.8-Flash (fast, cheapest)'],
         ['qwen3.8-omni-flash', 'Qwen3.8-Omni-Flash (text + image + audio)'],
         ['deepseek-v4.1-flash', 'DeepSeek V4.1 Flash (strict reasoning)'],
-        ['gemini-2.5-flash', 'Gemini 2.5 Flash'],
-        ['gemini-3.8-flash', 'Gemini 3.8 Flash']
+        ['gemini-2.5-flash', 'Gemini 2.5 Flash (PDF + audio)']
     ];
 
     function $(id) { return document.getElementById(id); }

@@ -67,13 +67,27 @@ Meta requires your webhook to be accessible via `https`.
 
 ## 🤖 AI model routing
 
-| Job | Model |
-| --- | --- |
-| WhatsApp text replies, Contact Brain, notes, meeting copilot | `qwen3.8-flash` (Alibaba) |
-| Voice notes | `qwen3-asr-flash` (Alibaba), Gemini audio fallback |
-| Images / cards / OCR | `qwen3.8-omni-flash` (Alibaba) |
-| Strict JSON (gold actuals, trade extractor) | `deepseek-v4.1-flash` (via Alibaba) |
-| PDF / documents | `gemini-2.5-flash` (extraction only — the reply is written by the cheap text engine) |
+**Three providers only, cheapest first.** Model ids live in exactly one place —
+[aiProviders.mjs](./aiProviders.mjs) (`QWEN_TEXT_MODEL`, `QWEN_VISION_MODEL`, `GEMINI_TEXT_MODEL`,
+`GEMINI_TEXT_CHAIN`, `DEFAULT_TEXT_MODEL`, `CHEAP_TEXT_ORDER`). Never hard-code a model id
+elsewhere; import it.
+
+| Job | Model | Price (in / out per 1M) |
+| --- | --- | --- |
+| WhatsApp text replies, Contact Brain, notes, meeting copilot, AI staff | `qwen3.8-flash` (Alibaba) | $0.16 / $0.47 |
+| Voice notes | `qwen3-asr-flash` (Alibaba), Gemini audio fallback | — |
+| Images / cards / OCR | `qwen3.8-omni-flash` (Alibaba) | $0.16 / $0.47 |
+| Strict JSON (gold actuals, trade extractor) | `deepseek-v4.1-flash` (via Alibaba) | $0.30 / $1.20 |
+| PDF / documents / audio | `gemini-2.5-flash` (extraction only — the reply is written by the cheap text engine) | $0.30 / $2.50 |
+
+Gemini **3.x was removed from routing**: `gemini-3.5-flash` cost $9.00/M output (19× Qwen) and
+`gemini-3.6` / `3.8` cost $3.75/M. Gemini 2.5 Flash is the cheapest Gemini and the only one this
+stack needs, because Gemini is here for media reading, not for writing replies. Fallback order for
+text is `qwen → deepseek → gemini`. Stored documents that still name a retired id (AI staff agents,
+the WhatsApp knowledge base) are rewritten on read by `normaliseModelId()` to `gemini-2.5-flash`.
+
+If Gemini 2.5 Flash is ever retired, set `GEMINI_FALLBACK_MODELS=gemini-3.8-flash` — that is the
+only supported way to re-enable a pricier Gemini.
 
 DeepSeek runs through the Alibaba (DashScope) key by default, so there is one bill and one fewer
 secret to protect. Set `DEEPSEEK_VIA_DASHSCOPE=false` and provide `DEEPSEEK_API_KEY` to bill the

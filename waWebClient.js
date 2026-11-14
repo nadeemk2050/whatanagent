@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch
 import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook, buildBrainPromptSection, isFamilyRelationship, isBusinessRelationship, maybeLearnVoice } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId } from './aiProviders.mjs';
 import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
@@ -980,7 +980,7 @@ async function buildBossExecPrompt() {
     'Format: [CONFIG: {"key": value}]\n' +
     'Allowed keys:\n' +
     '  rules, rulesAppend, systemPromptInstructions, customKnowledgeText, knowledgeAppend, greetingTemplate, humanHandoverKeywords, productsCatalog, faqs, faqAppend (text),\n' +
-    '  cooldownSeconds (number), autoReplyEnabled (true/false), autoReplyScope ("all"|"direct_only"|"groups_only"), aiModel (e.g. "gemini-3.8-flash"),\n' +
+    '  cooldownSeconds (number), autoReplyEnabled (true/false), autoReplyScope ("all"|"direct_only"|"groups_only"), aiModel (e.g. "qwen3.8-flash"),\n' +
     '  bossPhone (text), bossPasscode (text), bossName (text), pausedContacts ({"97150...": true})\n' +
     'Use the *Append keys to ADD a new rule without losing existing ones.\n' +
     'Examples:\n' +
@@ -3175,15 +3175,16 @@ async function getGeminiKey() {
 // ================= DEDICATED AUDIO ENGINE =================
 // 1) Qwen3-ASR-Flash (Alibaba Model Studio, synchronous DashScope API) - runs on the Qwen key and is
 //    NOT limited by Gemini's free-tier AUDIO quota (Gemini returns 429 for audio while text still works).
-// 2) Gemini chain fallback - used only if Qwen ASR is unavailable or fails.
-const AUDIO_MODEL_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
-// Current Flash models. 2.5-flash first: it answers in ~1.6s, while 3.8-flash measured **248s** with
-// thinking tokens eating the output budget. 3.5/3.6 are ~2s and stay as fallbacks.
-const GEMINI_TEXT_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
+// 2) Gemini fallback - used only if Qwen ASR is unavailable or fails. Gemini 2.5 Flash only:
+//    it is the cheapest Gemini here ($0.30 in / $2.50 out) and the only one this app needs.
+const AUDIO_MODEL_CHAIN = GEMINI_TEXT_CHAIN;
+// Gemini 2.5 Flash only - see the cheap-first catalogue in aiProviders.mjs. The 3.x ids were
+// removed deliberately: 3.5 costs $9.00/M out and 3.6/3.8 cost $3.75/M out, and every one of
+// them is a worse answer than falling back to Qwen at $0.47/M out.
 const QWEN_ASR_DEFAULT_MODEL = 'qwen3-asr-flash';
 
 // Rotation counters: share the load between providers - the FIRST fallback alternates
-// between Gemini 3.6 Flash and DeepSeek v4 Flash on every call.
+// between the configured engine and DeepSeek v4 Flash on every call.
 let textRotationCounter = 0;
 let mediaStrategyCounter = 0;
 
@@ -5971,7 +5972,7 @@ export function getAiDefaultMode() { return aiContactStore.defaultMode; }
 export function getAiReplyChainInfo() {
   const labels = { gemini: 'Gemini', qwen: 'Qwen', deepseek: 'DeepSeek', openai: 'OpenAI' };
   const qwenModel = process.env.QWEN_MODEL || 'qwen3.8-flash';
-  const primary = String(waWebKnowledgeBase.aiModel || GEMINI_TEXT_CHAIN[0] || 'gemini-2.5-flash');
+  const primary = String(normaliseModelId(waWebKnowledgeBase.aiModel) || DEFAULT_TEXT_MODEL);
   const p = /^gemini/i.test(primary) ? 'gemini' : (/^qwen/i.test(primary) ? 'qwen' : 'deepseek');
 
   const steps = [{ order: 1, provider: p, model: primary }];
@@ -6489,11 +6490,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     // fall back through the known-good ids (verified live 2026-10-13).
     const qwenCandidates = Array.from(new Set([qwenModelId, 'qwen3.8-flash', 'qwen-plus', 'qwen-flash'].filter(Boolean)));
 
-    // The built-in assistant keeps the knowledge-base model, so nothing changes for him.
-    chosenModel = targetModel
+    // With nothing configured the cheapest capable engine wins (Qwen), not Gemini: Gemini
+    // output is $2.50/M against Qwen's $0.47/M. normaliseModelId() rewrites ids that were
+    // retired (gemini-3.x) so a stale knowledge-base value cannot keep billing the old model.
+    chosenModel = normaliseModelId(
+      targetModel
       || (brainAgent && !brainAgent.isDefault ? brainAgent.model : '')
       || waWebKnowledgeBase.aiModel
-      || GEMINI_TEXT_CHAIN[0];
+      || DEFAULT_TEXT_MODEL
+    );
     // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the 2nd engine
     // in the chain (Qwen), and only then DeepSeek.
     if (chosenModel.startsWith('gemini') && !providerHealthy('gemini')) {
@@ -6504,10 +6509,10 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     console.log('[WA-WEB AI] 🤖 Invoking Model: ' + chosenModel);
 
     // ---- Fallback helpers: every engine backs up every other one ----
-    // FIXED PRIORITY (boss instruction 2026-11): Gemini is the main engine, Qwen is 2nd,
-    // DeepSeek is last. No rotation - the order must be predictable.
+    // CHEAPEST FIRST (2026-11): Qwen -> DeepSeek -> Gemini. Gemini is last on purpose; its
+    // output price is 5x Qwen's, so it must only ever be the engine of last resort for text.
     cheapOrder = (exclude) => {
-      const preferred = ['gemini', 'qwen', 'deepseek'].filter(p => p !== exclude);
+      const preferred = CHEAP_TEXT_ORDER.filter(p => p !== exclude);
       const healthy = preferred.filter(p => providerHealthy(p));
       return healthy.length
         ? [...healthy, ...preferred.filter(p => !healthy.includes(p))]
@@ -6694,10 +6699,10 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         }
       }
 
-      // Try Gemini Multimodal - automatic fallback chain (Gemini 3.6 Flash first: most reliable Gemini media model right now)
+      // Try Gemini Multimodal - Gemini 2.5 Flash only (cheapest Gemini; the 3.x ids were removed)
       if (geminiKey) {
         const geminiCandidates = chosenModel.startsWith('gemini')
-          ? [chosenModel, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']
+          ? Array.from(new Set([chosenModel, ...GEMINI_TEXT_CHAIN]))
           : GEMINI_TEXT_CHAIN;
         for (const geminiModelName of geminiCandidates) {
         try {
@@ -6897,15 +6902,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       });
       return t;
     } else if (geminiKey && providerHealthy('gemini')) {
-      // Automatic Fallback 2: Gemini
+      // Automatic Fallback 2: Gemini (2.5 Flash only — see aiProviders.mjs)
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[1], generationConfig: { maxOutputTokens: replyMaxTokens } });
+      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[0], generationConfig: { maxOutputTokens: replyMaxTokens } });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const t = res.response.text() || null;
       recordAiCall({
         provider: 'gemini',
-        model: GEMINI_TEXT_CHAIN[1],
+        model: GEMINI_TEXT_CHAIN[0],
         area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback]',
         isAutoFetch: false,
         prompt: customerMessage,

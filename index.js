@@ -30,7 +30,7 @@ import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceRepor
 import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
 import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { 
   initWaWeb, 
@@ -82,7 +82,7 @@ installBandwidthTracker();
 
 // Gemini model used by the dashboard features (KB test, AI assistant, OCR, suggest ...).
 // 2.5-flash is the fastest (~1.6s); 3.8-flash measured 248s in testing, so it is NOT the default.
-const GEMINI_FLASH_DEFAULT = process.env.GEMINI_FLASH_MODEL || 'gemini-2.5-flash';
+const GEMINI_FLASH_DEFAULT = normaliseModelId(process.env.GEMINI_FLASH_MODEL) || GEMINI_TEXT_MODEL;
 
 // Give waWebClient Firestore access on ALL nodes (staging skips initWaWeb, but Notebook audio /
 // backups / key resolution inside waWebClient must still work there).
@@ -720,7 +720,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       reply = comp.choices[0]?.message?.content || '';
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL });
       const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       reply = r.response.text() || '';
     } else {
@@ -864,7 +864,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
-      const m = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+      const m = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL });
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
@@ -1245,7 +1245,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       try {
         if (p === 'gemini') {
           const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-          const gModel = genAI.getGenerativeModel({ model: "gemini-3.6-flash", systemInstruction: sanitizeText(systemInstruction) });
+          const gModel = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL, systemInstruction: sanitizeText(systemInstruction) });
           const result = await gModel.generateContent({ contents: geminiContents });
           finalReply = (result.response.text() || '').trim();
         } else if (p === 'qwen') {
@@ -1659,7 +1659,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
       try {
         if (p === 'gemini') {
           const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-          const gModel = genAI.getGenerativeModel({ model: "gemini-3.6-flash", systemInstruction: sanitizeText(systemInstruction) });
+          const gModel = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL, systemInstruction: sanitizeText(systemInstruction) });
           const result = await gModel.generateContent({ contents: geminiContents });
           finalReply = (result.response.text() || '').trim();
         } else if (p === 'qwen') {
@@ -4206,7 +4206,7 @@ app.get('/webhook', (req, res) => {
 
 // Gemini media chain - the automatic fallback when Qwen cannot handle the media
 // (Gemini 3.6 Flash first: it is the most reliable Gemini model for audio/images right now)
-const GEMINI_MEDIA_CHAIN = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-flash-latest'];
+const GEMINI_MEDIA_CHAIN = GEMINI_TEXT_CHAIN; // Gemini 2.5 Flash only - see aiProviders.mjs
 async function geminiMediaAnalyze(buffer, mimeType, prompt, settings) {
   const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
   if (!key) throw new Error('Gemini API key is not configured.');

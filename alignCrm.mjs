@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { alignDb } from './alignAdmin.mjs';
 import { alignAuth } from './alignAdmin.mjs';
+import { GEMINI_TEXT_CHAIN } from './aiProviders.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.ALIGN_CRM_DATA_DIR || path.join(__dirname, 'data', 'crm');
@@ -298,7 +299,7 @@ async function geminiKey() {
 async function geminiJson(prompt, temperature = 0.2) {
   const key = await geminiKey();
   if (!key) return { ok: false, error: 'AI is not configured on the server (no Gemini key).' };
-  for (const model of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+  for (const model of GEMINI_TEXT_CHAIN) {
     try {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + key, {
         method: 'POST',

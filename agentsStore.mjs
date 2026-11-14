@@ -11,6 +11,7 @@
 import {
   doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, query, orderBy, limit
 } from 'firebase/firestore';
+import { QWEN_TEXT_MODEL, QWEN_VISION_MODEL, GEMINI_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
 
 let agentsDb = null;
 export function attachAgentsDb(db) { if (db) agentsDb = db; }
@@ -28,13 +29,15 @@ export const STATUS_LABELS = {
 export const DEFAULT_WEIGHTS = { knowledge: 25, style: 20, scorecard: 35, corrections: 10, tools: 10 };
 export const DEFAULT_READY_THRESHOLD = 80;
 
+// Cheapest capable model first. Only these three providers are routed (see aiProviders.mjs):
+// Qwen for text, DeepSeek for strict JSON, Gemini 2.5 for what needs media reading. The Gemini
+// 3.x ids were removed — 3.5 costs $9.00/M output and 3.6/3.8 cost $3.75/M, all worse for this
+// app than falling back to Qwen at $0.47/M.
 export const AVAILABLE_MODELS = [
-  { id: 'qwen3.8-flash', label: 'Qwen3.8-Flash (fast, multilingual, cheapest)' },
-  { id: 'qwen3.8-omni-flash', label: 'Qwen3.8-Omni-Flash (text + image + audio)' },
+  { id: QWEN_TEXT_MODEL, label: 'Qwen3.8-Flash (fast, multilingual, cheapest)' },
+  { id: QWEN_VISION_MODEL, label: 'Qwen3.8-Omni-Flash (text + image + audio)' },
   { id: 'deepseek-flash', label: 'DeepSeek V4.1 Flash (strict JSON, strong reasoning)' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (PDF + documents)' },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' }
+  { id: GEMINI_TEXT_MODEL, label: 'Gemini 2.5 Flash (PDF + documents)' }
 ];
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -88,8 +91,10 @@ export function sanitizeAgent(raw = {}, existing = {}) {
     disclaimers: arr(rg.disclaimers != null ? rg.disclaimers : eg.disclaimers, 200, 6)
   };
 
-  a.model = sstr(raw.model != null ? raw.model : existing.model, 60) || 'gemini-3.8-flash';
-  a.fallbackModel = sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60) || 'qwen3.8-flash';
+  // Stored documents may still name a retired Gemini id — normalise on every read/write so
+  // nothing keeps routing to gemini-3.x (see aiProviders.RETIRED_MODEL_MAP).
+  a.model = normaliseModelId(sstr(raw.model != null ? raw.model : existing.model, 60)) || QWEN_TEXT_MODEL;
+  a.fallbackModel = normaliseModelId(sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60)) || GEMINI_TEXT_MODEL;
   a.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);
   a.useBusinessTank = asBool(raw.useBusinessTank != null ? raw.useBusinessTank : existing.useBusinessTank, false);
   a.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);
@@ -251,18 +256,25 @@ export function computeProgress(agent) {
 // ---------------------------------------------------------------------------
 // CRUD
 // ---------------------------------------------------------------------------
+// Stored agents may still name a retired Gemini id; normalise on read so the dashboard shows a
+// valid selection and nothing keeps routing to gemini-3.x.
+const withRoutedModel = (a) => {
+  if (!a) return a;
+  return { ...a, model: normaliseModelId(a.model), fallbackModel: normaliseModelId(a.fallbackModel) };
+};
+
 export async function getAgent(id, { fresh = false } = {}) {
   if (!agentsDb || !id) return null;
   const hit = cache.get(id);
-  if (!fresh && hit && (Date.now() - hit.at) < CACHE_TTL_MS) return hit.agent;
+  if (!fresh && hit && (Date.now() - hit.at) < CACHE_TTL_MS) return withRoutedModel(hit.agent);
   try {
     const snap = await getDoc(doc(agentsDb, AGENTS, id));
     const agent = snap.exists() ? { id, ...snap.data() } : null;
     cache.set(id, { agent, at: Date.now() });
-    return agent;
+    return withRoutedModel(agent);
   } catch (e) {
     console.warn('[AGENTS] read failed for ' + id + ':', e.message);
-    return hit ? hit.agent : null;
+    return hit ? withRoutedModel(hit.agent) : null;
   }
 }
 
@@ -276,8 +288,8 @@ export async function listAgents({ fresh = false } = {}) {
     // The built-in assistant is always first, then most recently updated.
     out.sort((a, b) => (Number(!!b.isDefault) - Number(!!a.isDefault)) || ((b.updatedAt || 0) - (a.updatedAt || 0)));
     for (const a of out) cache.set(a.id, { agent: a, at: Date.now() });
-    listCache.items = out; listCache.at = Date.now();
-    return out;
+    listCache.items = out.map(withRoutedModel); listCache.at = Date.now();
+    return listCache.items;
   } catch (e) {
     console.warn('[AGENTS] list failed:', e.message);
     return listCache.items || [];

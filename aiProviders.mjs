@@ -87,3 +87,67 @@ export function backgroundModelFor(settings = {}) {
   }
   return forced;
 }
+
+// ============================================================================
+// 💸 CHEAP-FIRST MODEL CATALOGUE — the one place model ids are written
+// ============================================================================
+// Prices per 1M tokens (verified against the providers' pages, see aiTracker.mjs):
+//
+//   qwen3.8-flash        in $0.16   cache $0.016   out $0.47   ← default for everything
+//   deepseek-v4.1-flash  in $0.30   cache $0.030   out $1.20   ← strict JSON only
+//   gemini-2.5-flash     in $0.30   cache    —     out $2.50   ← media only
+//
+// Gemini is 5x Qwen on output, so a Gemini text call that Qwen could have answered is pure
+// waste. Gemini is kept for what only it can do here: reading PDFs and audio. Every other
+// gradient (3.5 / 3.6 / 3.8 / "latest") was removed: 3.5 costs $9.00/M out — 19x Qwen — and
+// the newer ids are all $0.75/$3.75, i.e. more expensive than 2.5 with no feature this app
+// uses. Nothing is silently upgraded: if Gemini 2.5 fails, the stack falls back to Qwen,
+// which is both cheaper AND better for us than any Gemini text model.
+//
+// GEMINI_FALLBACK_MODELS is the escape hatch: set it to a comma-separated list (for example
+// "gemini-3.8-flash") if Gemini 2.5 is ever retired and media reading breaks.
+export const QWEN_TEXT_MODEL = 'qwen3.8-flash';
+export const QWEN_VISION_MODEL = 'qwen3.8-omni-flash';
+export const GEMINI_TEXT_MODEL = 'gemini-2.5-flash';
+
+function geminiChain() {
+  const extra = String(process.env.GEMINI_FALLBACK_MODELS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set([GEMINI_TEXT_MODEL, ...extra]));
+}
+
+/** Ordered Gemini ids to try — Gemini 2.5 only unless GEMINI_FALLBACK_MODELS opts in. */
+export const GEMINI_TEXT_CHAIN = geminiChain();
+export const GEMINI_MEDIA_CHAIN = GEMINI_TEXT_CHAIN;
+export const GEMINI_AUDIO_CHAIN = GEMINI_TEXT_CHAIN;
+
+/** Cheapest-first order for "any working text engine" fallbacks. */
+export const CHEAP_TEXT_ORDER = ['qwen', 'deepseek', 'gemini'];
+
+/** The model a new agent/section gets when nobody chose one: cheapest capable text engine. */
+export const DEFAULT_TEXT_MODEL = QWEN_TEXT_MODEL;
+
+// Gemini ids that were removed from routing. Documents saved before this change still carry
+// them (AI staff agents, the WhatsApp knowledge base), so any read path must normalise:
+// map each one to Gemini 2.5 Flash — same provider, same job, cheapest Gemini. Without this a
+// stored "gemini-3.8-flash" would keep billing $3.75/M output forever.
+export const RETIRED_MODEL_MAP = {
+  'gemini-3.5-flash': GEMINI_TEXT_MODEL,
+  'gemini-3.6-flash': GEMINI_TEXT_MODEL,
+  'gemini-3.8-flash': GEMINI_TEXT_MODEL,
+  'gemini-flash-latest': GEMINI_TEXT_MODEL,
+  'gemini-2.0-flash': GEMINI_TEXT_MODEL,
+  'gemini-1.5-flash': GEMINI_TEXT_MODEL
+};
+
+/** Rewrite a stored model id to a routed one. Unknown ids pass through untouched. */
+export function normaliseModelId(id) {
+  const s = String(id == null ? '' : id).trim();
+  if (!s) return s;
+  return RETIRED_MODEL_MAP[s.toLowerCase()] || s;
+}
+
+/** True when a stored id had to be replaced — used to log the migration once per agent. */
+export function isRetiredModelId(id) {
+  return !!RETIRED_MODEL_MAP[String(id == null ? '' : id).trim().toLowerCase()];
+}

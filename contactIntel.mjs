@@ -9,6 +9,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { callAgentModel } from './agentRunner.mjs';
 import { DEFAULT_AGENT } from './agentTemplates.mjs';
+import { DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL } from './aiProviders.mjs';
 import { listContacts, getContact, setContact, bulkSetContacts, contactPhones } from './contactStore.mjs';
 
 let DB = null;
@@ -125,7 +126,7 @@ export async function fillContact(phoneIn, { auto = false } = {}) {
   try {
     r = await callAgentModel({
       system, messages: [{ role: 'user', content: user }],
-      model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
+      model: DEFAULT_TEXT_MODEL, fallbackModel: GEMINI_TEXT_MODEL,
       temperature: 0.1, maxTokens: 700, agentName: DEFAULT_AGENT.name, purpose: auto ? 'contact-intel-auto' : 'contact-intel'
     });
   } catch (e) {

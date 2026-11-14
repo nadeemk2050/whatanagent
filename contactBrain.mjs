@@ -19,7 +19,7 @@
 import { doc, getDoc, setDoc, getDocs, collection, addDoc, deleteDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { isAiAutoFetchStopped, recordAiCall } from './aiTracker.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
-import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekFetchExtras, GEMINI_TEXT_CHAIN } from './aiProviders.mjs';
 import { emitAssignmentEvent } from './assignmentEvents.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
@@ -650,7 +650,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
         });
         if (t) { console.log('[BRAIN AI] 🧠 answered via ' + model); return t; }
       } else if (p === 'gemini') {
-        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+        for (const gm of GEMINI_TEXT_CHAIN) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',

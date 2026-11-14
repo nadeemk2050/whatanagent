@@ -3,7 +3,7 @@
 // paragraph; refine single paragraphs; extract tasks into AlignTasks; push notes to WhatsApp;
 // import chats from the WhatsApp vault. Registered from index.js via registerNotebookRoutes(app, db).
 import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
-import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekFetchExtras, GEMINI_TEXT_CHAIN } from './aiProviders.mjs';
 import { alignDb } from './alignAdmin.mjs';
 import { listStaff as alignStaffList } from './alignAuth.mjs';
 import { listContacts } from './contactStore.mjs';
@@ -53,7 +53,7 @@ async function callNoteAI(db, systemPrompt, userText, preferred) {
         const t = ((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '').trim();
         if (t) { console.log('[NOTE AI] ✍️ answered via ' + model); return t; }
       } else if (p === 'gemini') {
-        for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+        for (const gm of GEMINI_TEXT_CHAIN) {
           try {
             const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + geminiKey, {
               method: 'POST',

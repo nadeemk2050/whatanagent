@@ -43,3 +43,21 @@ Under 40% means volatile content has crept to the front of a prompt.
 - Credentials come from the environment, never from the repo or the Firestore settings document.
 - Run `node --check <file>` on every module you touch; `npm run build` only echoes.
 - Push to `master` deploys to the Tencent VPS automatically (`.github/workflows/deploy.yml`).
+
+## Model ids
+
+Only three providers are routed: Qwen, DeepSeek and Gemini 2.5 Flash. Never type a model id in a
+new section — import it from [aiProviders.mjs](../aiProviders.mjs):
+
+```js
+import { QWEN_TEXT_MODEL, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL } from './aiProviders.mjs';
+```
+
+- Text work → `QWEN_TEXT_MODEL` (cheapest capable engine, $0.16/M in, $0.47/M out).
+- Something a model must choose for itself → `DEFAULT_TEXT_MODEL`.
+- Gemini → `GEMINI_TEXT_CHAIN` (Gemini 2.5 Flash only) and only for media: PDFs, audio, images.
+- A stored value that may be stale → wrap it in `normaliseModelId()` before using it.
+
+Gemini 3.x ids were removed on purpose (`gemini-3.5-flash` = $9.00/M output). Do not add them
+back; if a newer Gemini is genuinely needed, set `GEMINI_FALLBACK_MODELS` in the environment so the
+choice is visible and reversible.

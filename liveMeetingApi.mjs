@@ -4,7 +4,7 @@
 import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit, deleteDoc } from 'firebase/firestore';
 import { sendWaWebMessage } from './waWebClient.js';
 import { recordAiCall } from './aiTracker.mjs';
-import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekFetchExtras, GEMINI_TEXT_MODEL } from './aiProviders.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
 import { registerLiveMeetingSessionRoutes } from './liveMeetingSessions.mjs';
 
@@ -54,7 +54,7 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
   for (const p of modelsToTry) {
     try {
       if (p === 'gemini') {
-        const gm = 'gemini-flash-latest';
+        const gm = GEMINI_TEXT_MODEL;
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${geminiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

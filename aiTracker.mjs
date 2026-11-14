@@ -34,14 +34,17 @@ const MODEL_PRICING = {
   'deepseek-coder': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
   'deepseek': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
 
-  // Google Gemini
+  // Google Gemini. Only gemini-2.5-flash is routed now (see aiProviders.mjs): it is the
+  // cheapest Gemini and the only one this app needs (PDFs + audio). The 3.x rows below are
+  // kept ONLY so the old entries in the activity log stay priced correctly — nothing selects
+  // them any more. gemini-3.5-flash was $9.00/M output, 19x Qwen.
   'gemini-2.5-flash': { inPerM: 0.30, outPerM: 2.50 },
   'gemini-2.5-pro': { inPerM: 1.25, outPerM: 10.00 },
-  'gemini-3.5-flash': { inPerM: 1.50, outPerM: 9.00 },
-  'gemini-3.6-flash': { inPerM: 0.75, outPerM: 3.75 },
-  'gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75 },
-  'gemini-flash-latest': { inPerM: 0.75, outPerM: 3.75 },
-  'gemini': { inPerM: 0.75, outPerM: 3.75 },
+  'gemini-3.5-flash': { inPerM: 1.50, outPerM: 9.00 },   // legacy — not routed
+  'gemini-3.6-flash': { inPerM: 0.75, outPerM: 3.75 },   // legacy — not routed
+  'gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75 },   // legacy — not routed
+  'gemini-flash-latest': { inPerM: 0.75, outPerM: 3.75 }, // legacy — not routed
+  'gemini': { inPerM: 0.30, outPerM: 2.50 },
 
   // Alibaba Qwen (DashScope). Verified 2026-11 against Alibaba Cloud Model Studio pricing:
   // qwen3.8-flash is 1 RMB in / 3 RMB out per 1M ≈ $0.16 / $0.47, and context-cache HITS are

@@ -15,6 +15,7 @@
 // ============================================================================
 import { doc, getDoc, getDocs, setDoc, deleteDoc, collection } from 'firebase/firestore';
 import zlib from 'zlib';
+import { DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL } from './aiProviders.mjs';
 
 const COL = 'businessTank';
 const FILES = 'businessTankFiles';
@@ -445,7 +446,7 @@ async function aiReadFile(buf, mime, name) {
   const settings = await getAiSettingsForTank();
   const key = settings.GEMINI_API_KEY || settings.geminiApiKey || process.env.GEMINI_API_KEY || '';
   if (!key) throw new Error('Reading PDFs and images needs the Gemini key, which is not configured. Upload a .txt / .csv / .xlsx / .docx instead.');
-  const model = new GoogleGenerativeAI(key).getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = new GoogleGenerativeAI(key).getGenerativeModel({ model: GEMINI_TEXT_MODEL });
   const prompt = 'Extract ALL text and data from this business document "' + name + '" faithfully. Keep numbers, units, currencies, grades and names exactly as written. Render tables as rows with " | " between columns. Do not summarise or add commentary. If a page is a photo of goods or a logo, describe it in one short line.';
   const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: mime, data: buf.toString('base64') } }] }] });
   return (res.response.text() || '').trim();
@@ -471,7 +472,7 @@ async function askModel(system, user, { maxTokens = 900, purpose = 'briefing' } 
   const { callAgentModel } = await import('./agentRunner.mjs');
   const r = await callAgentModel({
     system, messages: [{ role: 'user', content: user }],
-    model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
+    model: DEFAULT_TEXT_MODEL, fallbackModel: GEMINI_TEXT_MODEL,
     temperature: 0.2, maxTokens, agentName: 'Business Data Tank', purpose
   });
   return r.text;

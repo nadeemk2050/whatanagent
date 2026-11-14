@@ -9,7 +9,7 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { doc, getDoc } from 'firebase/firestore';
-import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
@@ -255,7 +255,13 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
     const res = await gm.generateContent({ contents, generationConfig: { temperature, maxOutputTokens: maxTokens } });
     const text = (res.response.text() || '').trim();
     const u = res.response.usageMetadata || {};
-    return { text, model, tokensIn: u.promptTokenCount || 0, tokensOut: u.candidatesTokenCount || 0, provider };
+    return {
+      text, model,
+      tokensIn: u.promptTokenCount || 0,
+      tokensOut: u.candidatesTokenCount || 0,
+      cachedTokens: u.cachedContentTokenCount || 0,
+      provider
+    };
   }
 
   const ds = resolveDeepSeek(settings);
@@ -298,7 +304,9 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
   throw new Error('Unsupported model: ' + model);
 }
 
-const DEFAULT_CHAIN = ['gemini-3.8-flash', 'qwen3.8-flash'];
+// Cheapest capable text engine first. Gemini is deliberately last: at $2.50/M output it costs
+// 5x Qwen, so it must never be the first thing an agent tries.
+const DEFAULT_CHAIN = [DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL];
 
 export async function callAgentModel({
   system, messages, model, fallbackModel, temperature = 0.4, maxTokens = 1200,
@@ -317,6 +325,11 @@ export async function callAgentModel({
       model = bg;
     }
   }
+
+  // A stored agent may still name a retired Gemini id (saved before the cheap-first switch).
+  // Normalise here too: this is the funnel every AI-staff call passes through.
+  model = normaliseModelId(model);
+  fallbackModel = normaliseModelId(fallbackModel);
 
   const chain = Array.from(new Set([model, fallbackModel, ...DEFAULT_CHAIN].filter(Boolean)));
   let lastErr = null;
@@ -403,7 +416,7 @@ export async function judgeAnswer({ question, expected, criteria, answer }) {
   try {
     const r = await callAgentModel({
       system, messages: [{ role: 'user', content: user }],
-      model: 'gemini-3.8-flash', fallbackModel: 'qwen3.8-flash',
+      model: DEFAULT_TEXT_MODEL, fallbackModel: GEMINI_TEXT_MODEL,
       temperature: 0, maxTokens: 200,
       agentName: 'Evaluator', purpose: 'judge'
     });

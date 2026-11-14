@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { alignDb, alignAuth } from './alignAdmin.mjs';
+import { GEMINI_TEXT_CHAIN } from './aiProviders.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.ALIGN_VESSEL_DATA_DIR || path.join(__dirname, 'data', 'vessel');
@@ -616,7 +617,7 @@ async function aiDetectLine(name, imo) {
     + 'Rules: many carriers brand their ships with a name prefix (MSC, MAERSK, CMA CGM, COSCO, EVERGREEN/EVER, HAPAG-LLOYD, ONE, YANG MING/YM, HMM, ZIM, WAN HAI, PIL, KMTC, SITC, SAFEEN). '
     + 'If the ship is a chartered/feeder vessel and no carrier can be identified, answer unknown - never invent a company. '
     + 'Reply with strict JSON only: {"line": "<full company name or empty string>", "confidence": "high|medium|low", "reason": "<max 15 words>"}';
-  for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+  for (const gm of GEMINI_TEXT_CHAIN) {
     try {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + key, {
         method: 'POST',
@@ -664,7 +665,7 @@ async function aiSummary(snap) {
   const ck = [t.mmsi, v.destination, t.expectedPort, p ? Math.round(p.lat * 10) + ',' + Math.round(p.lon * 10) : '', p ? Math.floor(p.ageMin / 30) : ''].join('|');
   const hit = summaryCache.get(ck);
   if (hit && Date.now() - hit.at < 20 * 60000) return hit.v;
-  for (const gm of ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-latest']) {
+  for (const gm of GEMINI_TEXT_CHAIN) {
     try {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + gm + ':generateContent?key=' + key, {
         method: 'POST',

@@ -17,7 +17,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { recordAiCall } from './aiTracker.mjs';
-import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekFetchExtras, GEMINI_TEXT_MODEL } from './aiProviders.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
 
 let tradeDb = null;
@@ -313,7 +313,7 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'dee
   for (const p of modelsToTry) {
     try {
       if (p === 'gemini') {
-        const gm = 'gemini-flash-latest';
+        const gm = GEMINI_TEXT_MODEL;
         // thinkingBudget: 0 disables deep chain-of-thought delay, generating in 1-2s
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${geminiKey}`, {
           method: 'POST',

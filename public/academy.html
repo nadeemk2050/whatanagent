@@ -668,7 +668,7 @@ async function openHire() {
   $('hDefaultLanguage').value = 'Roman Urdu';
   $('hGender').value = 'neutral'; $('hCategory').value = 'business';
   $('hReadyThreshold').value = 80; $('hDailyBudgetUsd').value = 0.5; $('hUseBusinessKb').checked = true;
-  $('hModel').value = 'gemini-3.8-flash'; $('hFallbackModel').value = 'qwen3.8-flash';
+  $('hModel').value = 'qwen3.8-flash'; $('hFallbackModel').value = 'gemini-2.5-flash';
   document.querySelectorAll('.toolChk').forEach(c => c.checked = false);
   if (typeof window.refreshCvPicker === 'function') window.refreshCvPicker();
   $('hireOverlay').classList.add('open');

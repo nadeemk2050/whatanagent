@@ -8,6 +8,7 @@ import { tankPromptText } from './businessTank.mjs';
 import { AVAILABLE_MODELS, sanitizeCv } from './agentsStore.mjs';
 import { listTools } from './toolRegistry.mjs';
 import { DEFAULT_AGENT } from './agentTemplates.mjs';
+import { DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL } from './aiProviders.mjs';
 
 const sstr = (v, n = 500) => String(v == null ? '' : v).slice(0, n);
 
@@ -22,7 +23,7 @@ export async function generateCvDraft({ name = '', role, gender = 'neutral', cat
   role = sstr(role, 140).trim();
   brief = sstr(brief, 3000).trim();
   if (!role) throw new Error('Role / speciality is required');
-  const modelId = AVAILABLE_MODELS.some(m => m.id === model) ? model : 'qwen3.8-flash';
+  const modelId = AVAILABLE_MODELS.some(m => m.id === model) ? model : DEFAULT_TEXT_MODEL;
   const tools = listTools();
   const toolIds = tools.map(t => t.id);
 
@@ -71,7 +72,7 @@ export async function generateCvDraft({ name = '', role, gender = 'neutral', cat
     system,
     messages: [{ role: 'user', content: user }],
     model: modelId,
-    fallbackModel: modelId === 'gemini-3.8-flash' ? 'qwen3.8-flash' : 'gemini-3.8-flash',
+    fallbackModel: modelId === GEMINI_TEXT_MODEL ? DEFAULT_TEXT_MODEL : GEMINI_TEXT_MODEL,
     temperature: 0.6,
     maxTokens: 3500,
     agentName: DEFAULT_AGENT.name,
