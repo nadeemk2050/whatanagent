@@ -36,9 +36,16 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "BRANCH=${GITHUB_REF_NAME} bash /opt/whatanagent/deploy/deploy.sh"
+
       # Google Drive credentials for the Containers & Lots file service (/candl/api).
       # They live in repository secrets and are written into the server's .env, so no secret is
-      # ever committed to the repo. Idempotent: an existing line is replaced in place.
+      # ever committed to the repo. This runs AFTER the deploy because the script itself arrives
+      # with the checkout; it then restarts the service so the new .env is loaded.
       - name: Sync Containers & Lots Drive credentials into .env
         env:
           CID: ${{ secrets.CANDL_GDRIVE_CLIENT_ID }}
@@ -49,13 +56,7 @@ jobs:
           if [ -z "$CID" ]; then echo "::warning::CANDL_GDRIVE_CLIENT_ID is not set - skipping Drive credential sync"; exit 0; fi
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              "bash /opt/whatanagent/deploy/set-candl-env.sh '$CID' '$CSECRET' '$RTOKEN' '$PFOLDER'"
-
-      - name: Deploy over SSH
-        run: |
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
-              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              "BRANCH=${GITHUB_REF_NAME} bash /opt/whatanagent/deploy/deploy.sh"
+              "bash /opt/whatanagent/deploy/set-candl-env.sh '$CID' '$CSECRET' '$RTOKEN' '$PFOLDER' && sudo systemctl restart whatanagent"
 
       - name: Public health check
         if: success()
