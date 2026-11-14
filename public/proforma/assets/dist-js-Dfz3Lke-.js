@@ -1,0 +1,1 @@
+async function e(e,t={},n){return window.__TAURI_INTERNALS__.invoke(e,t,n)}async function t(t,n){await e(`plugin:shell|open`,{path:t,with:n})}export{t as open};

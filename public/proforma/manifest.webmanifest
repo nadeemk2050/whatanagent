@@ -1,0 +1,41 @@
+{
+  "name": "ProformaTracker",
+  "short_name": "ProformaTracker",
+  "description": "Order Tracker for ProformaTracker — proformas, commercial invoices, bills of lading, containers, payments and extra charges. Local-first, syncs across devices.",
+  "id": "containers-and-lots",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#0f766e",
+  "lang": "en",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Dashboard",
+      "url": "./",
+      "description": "Open the ProformaTracker dashboard"
+    }
+  ]
+}

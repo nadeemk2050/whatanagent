@@ -151,6 +151,15 @@ export function registerCandlRoutes(app, multer, opts = {}) {
   // Keep-alive probe: the web app pings this on load to wake the backend.
   app.get(PREFIX + '/warmup', (req, res) => res.json({ ok: true, ts: Date.now(), service: 'candl-files' }));
 
+  // Masters (shippers, consignees, ports, agents, items) live in Firestore under
+  // users/{uid}/masters plus the device's SQLite. The app still asks the backend on every load,
+  // so answer honestly instead of 404-ing on each page view — this service stores no records.
+  app.get(PREFIX + '/masters', (req, res) => res.json([]));
+  app.all(PREFIX + '/masters/*', (req, res) => res.json({ ok: true, stored: false, store: 'firestore' }));
+  app.post(PREFIX + '/masters', (req, res) => res.json({ ok: true, stored: false, store: 'firestore' }));
+  app.put(PREFIX + '/masters/:id', (req, res) => res.json({ ok: true, stored: false, store: 'firestore' }));
+  app.delete(PREFIX + '/masters/:id', (req, res) => res.json({ ok: true, stored: false, store: 'firestore' }));
+
   // ── Google Drive connection ───────────────────────────────────────────────
   app.get(PREFIX + '/gdrive/status', async (req, res) => {
     try {

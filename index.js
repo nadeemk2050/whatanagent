@@ -197,6 +197,15 @@ app.use(express.static('public', {
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
     }
+    // The Proforma Tracker build is fingerprinted: hashed assets can be cached forever, but its
+    // index.html and service worker must always be revalidated or a deploy would never reach it.
+    if (filePath.includes('proforma')) {
+      if (/[\\/]assets[\\/]/.test(filePath) || /\.[0-9a-f]{8,}\.(js|css|wasm)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+    }
   }
 }));
 
@@ -213,6 +222,13 @@ app.get(['/trade', '/trade-accounts', '/trades'], (req, res) => {
 // Clean route for the Commission Accounts portal (own login, offline-first)
 app.get(['/commission', '/commission-accounts', '/commission-account'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'commission.html'));
+});
+
+// 🚢 Proforma Tracker (Containers & Lots) — a section of this app, served from this host.
+// The React build lives in public/proforma; every deep link falls back to its index.html.
+app.get(['/proforma', '/proforma/', '/proforma/*'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'proforma', 'index.html'));
 });
 
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
