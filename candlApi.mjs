@@ -361,4 +361,55 @@ export function registerCandlRoutes(app, multer, opts = {}) {
   });
 
   console.log('[CANDL] 🚢 Containers & Lots file service registered at ' + PREFIX);
+
+  startDriveWatchdog();
+}
+
+// ── Drive watchdog ─────────────────────────────────────────────────────────
+// A Google refresh token does NOT expire on a schedule once the OAuth app is published, but it
+// can still be revoked (user removes access, password change) or expire every 7 days while the
+// Google Cloud consent screen is still in "Testing". If that happens, uploads start returning
+// 503 — correct, but silent. This checks every few hours and messages the boss on WhatsApp so
+// it is fixed before the next photo needs uploading.
+let watchdogStarted = false;
+function startDriveWatchdog() {
+  if (watchdogStarted) return;
+  watchdogStarted = true;
+  const CHECK_MS = 3 * 60 * 60 * 1000;   // every 3 hours
+  const ALERT_EVERY_MS = 12 * 60 * 60 * 1000;
+  const bossNumber = String(process.env.BOSS_PHONE || process.env.OWNER_PHONE_NUMBER || '').replace(/\D/g, '');
+  let lastAlertAt = 0;
+  let lastState = null;
+
+  const tick = async () => {
+    try {
+      const conn = await gdrive.checkConnection();
+      if (conn.connected) {
+        if (lastState === false) console.log('[CANDL] ✅ Google Drive reconnected');
+        lastState = true;
+        return;
+      }
+      lastState = false;
+      console.warn('[CANDL] ⛔ Google Drive is NOT connected: ' + (conn.reason || 'unknown'));
+      if (!bossNumber || Date.now() - lastAlertAt < ALERT_EVERY_MS) return;
+      lastAlertAt = Date.now();
+      const authUrl = gdrive.getAuthUrl();
+      try {
+        const wa = await import('./waWebClient.js');
+        await wa.sendWaWebMessage(bossNumber,
+          '⛔ *Google Drive disconnected*\n\nPhoto/PDF uploads from the Containers & Lots app will fail until it is re-authorised.\n\n'
+          + (conn.reason ? conn.reason + '\n\n' : '')
+          + (authUrl ? 'Open this link and press Allow:\n' + authUrl : 'Open the app and press the re-authorise button.'));
+        console.log('[CANDL] drive reminder sent to the boss on WhatsApp');
+      } catch (e) {
+        console.warn('[CANDL] could not send the Drive reminder: ' + (e.message || e).slice(0, 120));
+      }
+    } catch (e) {
+      console.warn('[CANDL] drive watchdog error:', (e.message || e).slice(0, 120));
+    }
+  };
+
+  setTimeout(tick, 60 * 1000);           // first check a minute after boot
+  const timer = setInterval(tick, CHECK_MS);
+  if (typeof timer.unref === 'function') timer.unref();
 }

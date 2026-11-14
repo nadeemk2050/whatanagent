@@ -1,0 +1,10 @@
+Watch Drive every 3 hours and warn the boss if it disconnects
+
+A refresh token can still die (revoked, password change, or the Google OAuth
+consent screen still in Testing expires them every 7 days). Uploads already
+return 503 instead of inventing file ids, but that only helps if somebody
+notices. The watchdog checks every 3 hours and, when Drive is down, sends the
+boss a WhatsApp message with the re-authorise link. At most one reminder per
+12 hours; local nodes without a WhatsApp session just log it.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
