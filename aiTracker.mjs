@@ -43,13 +43,15 @@ const MODEL_PRICING = {
   'gemini-flash-latest': { inPerM: 0.75, outPerM: 3.75 },
   'gemini': { inPerM: 0.75, outPerM: 3.75 },
 
-  // Alibaba Qwen (DashScope)
-  'qwen3.8-flash': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
-  'qwen3.8-omni-flash': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
+  // Alibaba Qwen (DashScope). Verified 2026-11 against Alibaba Cloud Model Studio pricing:
+  // qwen3.8-flash is 1 RMB in / 3 RMB out per 1M ≈ $0.16 / $0.47, and context-cache HITS are
+  // billed at 10% of the standard input price (≈$0.016). Cache creation is 125% of input.
+  'qwen3.8-flash': { inPerM: 0.16, outPerM: 0.47, cacheInPerM: 0.016 },
+  'qwen3.8-omni-flash': { inPerM: 0.16, outPerM: 0.47, cacheInPerM: 0.016 },
   'qwen3.8-max': { inPerM: 2.00, outPerM: 6.00, cacheInPerM: 0.20 },
   'qwen-plus': { inPerM: 0.40, outPerM: 1.20, cacheInPerM: 0.04 },
-  'qwen-max': { inPerM: 1.60, outPerM: 4.80, cacheInPerM: 0.16 },
-  'qwen': { inPerM: 0.15, outPerM: 0.47, cacheInPerM: 0.02 },
+  'qwen-max': { inPerM: 1.60, outPerM: 6.40, cacheInPerM: 0.16 },
+  'qwen': { inPerM: 0.16, outPerM: 0.47, cacheInPerM: 0.016 },
 
   // OpenAI
   'gpt-4o': { inPerM: 2.50, outPerM: 10.00 },
@@ -138,6 +140,13 @@ export async function setAiAutoFetchStopped(stopped, user = 'dashboard') {
     stoppedAt: stoppedMetadata.at,
     stoppedBy: stoppedMetadata.by
   };
+}
+
+/** Price table row for a provider/model pair — shared by the cost and the cache-saving maths. */
+export function ratesFor(provider, model) {
+  const modKey = String(model || '').toLowerCase();
+  const provKey = String(provider || '').toLowerCase();
+  return MODEL_PRICING[modKey] || MODEL_PRICING[provKey] || { inPerM: 0.20, outPerM: 0.50 };
 }
 
 export function calculateEstimatedCost(provider, model, tokensIn = 0, tokensOut = 0, cachedTokens = 0) {
@@ -280,6 +289,7 @@ export function getAiSummaryStats() {
     totalCostUsd: 0,
     cachedTokens: 0,
     cacheHitRate: 0,
+    cacheSavedUsd: 0,
     byProvider: {},
     byArea: {}
   };
@@ -297,6 +307,16 @@ export function getAiSummaryStats() {
     stats.totalCostUsd += (item.costUsd || 0);
     promptTokensAll += (item.tokensIn || 0);
     stats.cachedTokens += (item.cachedTokens || 0);
+    // What those cached tokens WOULD have cost at the normal input rate. The difference is
+    // money the prefix cache already saved — the number that tells you whether the ordering
+    // discipline is working.
+    const itemCached = Math.min(Math.max(0, Number(item.cachedTokens) || 0), Math.max(0, Number(item.tokensIn) || 0));
+    if (itemCached > 0) {
+      const r = ratesFor(item.provider, item.model);
+      const normal = r.inPerM;
+      const cachedRate = Number(r.cacheInPerM) > 0 ? Number(r.cacheInPerM) : normal;
+      stats.cacheSavedUsd += ((itemCached / 1000000) * (normal - cachedRate));
+    }
 
     // Group by Provider
     const p = item.provider || 'unknown';
@@ -324,6 +344,7 @@ export function getAiSummaryStats() {
   // Share of all prompt tokens that the provider served from its cache (billable at the
   // cached rate). 0% means the prompt prefix is changing on every call.
   stats.cacheHitRate = promptTokensAll > 0 ? Number(((stats.cachedTokens / promptTokensAll) * 100).toFixed(1)) : 0;
+  stats.cacheSavedUsd = Number(stats.cacheSavedUsd.toFixed(5));
   for (const k of Object.keys(stats.byProvider)) {
     stats.byProvider[k].costUsd = Number(stats.byProvider[k].costUsd.toFixed(5));
   }

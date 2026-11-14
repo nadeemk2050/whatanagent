@@ -18,6 +18,7 @@ import {
 } from 'firebase/firestore';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 
 let tradeDb = null;
 export function attachTradeDb(db) {
@@ -335,7 +336,17 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'dee
         const j = await r.json();
         const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (t) {
-          recordAiCall({ source: 'trade_extractor', model: gm, prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          recordAiCall({
+            provider: 'gemini',
+            model: gm,
+            area: 'Trade Extractor',
+            isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500),
+            response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || j.usageMetadata?.promptTokenCount || 0,
+            tokensOut: j.usage?.completion_tokens || j.usageMetadata?.candidatesTokenCount || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       } else if (p === 'qwen') {
@@ -360,7 +371,17 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'dee
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'trade_extractor', model: qwenModel, prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          recordAiCall({
+            provider: 'qwen',
+            model: qwenModel,
+            area: 'Trade Extractor',
+            isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500),
+            response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || j.usageMetadata?.promptTokenCount || 0,
+            tokensOut: j.usage?.completion_tokens || j.usageMetadata?.candidatesTokenCount || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       } else if (p === 'openai') {
@@ -379,7 +400,17 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'dee
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'trade_extractor', model: 'gpt-4o-mini', prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          recordAiCall({
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            area: 'Trade Extractor',
+            isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500),
+            response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || j.usageMetadata?.promptTokenCount || 0,
+            tokensOut: j.usage?.completion_tokens || j.usageMetadata?.candidatesTokenCount || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       } else if (p === 'deepseek') {
@@ -399,7 +430,17 @@ async function callTradeExtractorAI(db, systemPrompt, userText, preferred = 'dee
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'trade_extractor', model: deepseekModel, prompt: userText.slice(0, 150), response: t.slice(0, 150), success: true });
+          recordAiCall({
+            provider: 'deepseek',
+            model: deepseekModel,
+            area: 'Trade Extractor',
+            isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500),
+            response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || j.usageMetadata?.promptTokenCount || 0,
+            tokensOut: j.usage?.completion_tokens || j.usageMetadata?.candidatesTokenCount || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       }

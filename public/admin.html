@@ -7963,6 +7963,43 @@
                 badge.textContent = '$' + (stats.totalCostUsd || 0).toFixed(4) + ' · ' + (stats.totalCalls || 0) + ' calls';
             }
 
+            // Cache-hit panel: the share of prompt tokens the provider served from its prompt
+            // cache. This is the single best number for judging whether the prompt-ordering
+            // discipline (stable first, volatile last) is actually holding.
+            var cacheRateEl = document.getElementById('aiStatCacheRate');
+            var cacheDetailEl = document.getElementById('aiStatCacheDetail');
+            var cacheSavedEl = document.getElementById('aiStatCacheSaved');
+            var cacheBadgeEl = document.getElementById('aiStatCacheBadge');
+            var rateNum = Number(stats.cacheHitRate) || 0;
+            var cachedNum = Number(stats.cachedTokens) || 0;
+            var savedNum = Number(stats.cacheSavedUsd) || 0;
+            var promptTotal = (cachedNum > 0 && rateNum > 0) ? Math.round(cachedNum / (rateNum / 100)) : 0;
+
+            if (cacheRateEl) {
+                cacheRateEl.textContent = rateNum.toFixed(1) + '%';
+                cacheRateEl.style.color = rateNum >= 70 ? '#15803d' : (rateNum >= 40 ? '#b45309' : '#dc2626');
+            }
+            if (cacheDetailEl) {
+                cacheDetailEl.textContent = cachedNum.toLocaleString() + ' of ' + promptTotal.toLocaleString() + ' prompt tokens cached';
+            }
+            if (cacheSavedEl) {
+                // The saving is the difference between normal and cached input pricing on
+                // exactly the tokens the provider reused.
+                cacheSavedEl.textContent = 'Saved: $' + savedNum.toFixed(4);
+                cacheSavedEl.style.color = savedNum > 0 ? '#16a34a' : '#94a3b8';
+            }
+            if (cacheBadgeEl) {
+                var label = 'NO DATA', bg = '#f1f5f9', fg = '#475569';
+                if (stats.totalCalls > 0) {
+                    if (rateNum >= 70) { label = 'EXCELLENT'; bg = '#dcfce7'; fg = '#15803d'; }
+                    else if (rateNum >= 40) { label = 'OK'; bg = '#fef3c7'; fg = '#b45309'; }
+                    else { label = 'LOW'; bg = '#fee2e2'; fg = '#b91c1c'; }
+                }
+                cacheBadgeEl.textContent = label;
+                cacheBadgeEl.style.background = bg;
+                cacheBadgeEl.style.color = fg;
+            }
+
             // Tab counts
             var cAll = document.getElementById('aiCountAll'); if (cAll) cAll.textContent = stats.totalCalls || 0;
             var cDs = document.getElementById('aiCountDeepseek'); if (cDs) cDs.textContent = ds.count || 0;
@@ -8067,6 +8104,7 @@
                     '<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:11.5px; color:#475569; background:#f8fafc; padding:6px 10px; border-radius:6px;">' +
                         '<span>💰 <b>Cost:</b> <b style="color:#0f172a;">' + costStr + '</b></span>' +
                         '<span>📊 <b>Tokens:</b> ' + (item.totalTokens || 0).toLocaleString() + ' <span style="color:#94a3b8;">(in: ' + (item.tokensIn || 0) + ', out: ' + (item.tokensOut || 0) + ')</span></span>' +
+                        (item.cachedTokens > 0 ? '<span style="background:#dcfce7; color:#15803d; padding:1px 6px; border-radius:10px; font-weight:700;">♻️ ' + Math.round((item.cachedTokens / Math.max(1, item.tokensIn)) * 100) + '% cached (' + Number(item.cachedTokens).toLocaleString() + ')</span>' : '') +
                         (latencyStr ? '<span>⚡ <b>Duration:</b> ' + latencyStr + '</span>' : '') +
                     '</div>' +
 
@@ -12821,6 +12859,16 @@
             </div>
             <div id="aiStatBlockedCalls" style="font-size:20px; font-weight:800; color:#dc2626; margin-top:2px;">0</div>
             <div id="aiStatTotalSpent" style="font-size:10.5px; color:#16a34a; font-weight:700;">Total spent: $0.0000</div>
+          </div>
+
+          <div style="background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase;">CACHE HIT</span>
+              <span id="aiStatCacheBadge" style="font-size:10px; background:#dcfce7; color:#15803d; padding:1px 5px; border-radius:4px; font-weight:bold;">--</span>
+            </div>
+            <div id="aiStatCacheRate" style="font-size:20px; font-weight:800; color:#15803d; margin-top:2px;">0%</div>
+            <div id="aiStatCacheDetail" style="font-size:10.5px; color:#64748b;">0 of 0 prompt tokens cached</div>
+            <div id="aiStatCacheSaved" style="font-size:10.5px; color:#16a34a; font-weight:700;">Saved: $0.0000</div>
           </div>
 
         </div>

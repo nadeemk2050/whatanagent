@@ -316,7 +316,7 @@ export function digestText(d) {
   return lines.join('\n');
 }
 
-export function compileText(st, budget = 9000) {
+export function compileText(st, budget = Number(process.env.TANK_PROMPT_BUDGET) || 9000) {
   if (!st) return '';
   let out = '';
   const add = (title, body) => {

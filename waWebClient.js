@@ -17,7 +17,8 @@ import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
 import { evaluateReplyPolicy, recordUsage } from './officeControls.mjs';
 import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
-import { withRuleBook, enforceScript as romaniseScript } from './ruleBook.mjs';
+import { withRuleBook, ruleBookText, enforceScript as romaniseScript } from './ruleBook.mjs';
+import { orderParts, cacheStats, cachedTokensFrom, stableFingerprint, logCacheShape } from './promptCache.mjs';
 import { sendPush } from './alignPush.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
 import { alignDb, ALIGN_BASE } from './alignAdmin.mjs';
@@ -6202,11 +6203,28 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
 }
 
 let lastWaWebReplyAgent = null;
+// 🧩 Prefix-cache shape per chat: the fingerprint of the STABLE part of the last prompt we
+// built. Logging only when it changes keeps the log readable while still catching a
+// regression (a per-message block creeping into the stable section changes it every call).
+const waCacheShapeLog = new Map();
 export function getLastWaWebReplyAgent() { return lastWaWebReplyAgent; }
+
+// 💸 Output is the expensive half of every call (Qwen $0.47/M out vs $0.16/M in, DeepSeek
+// $1.20 vs $0.30). A WhatsApp reply never needs more than a few hundred tokens, so cap the
+// generation instead of letting the provider's 4k default run. Override with
+// WA_REPLY_MAX_TOKENS when a section genuinely needs a longer answer.
+export function waReplyMaxTokens() {
+  const n = Number(process.env.WA_REPLY_MAX_TOKENS);
+  if (Number.isFinite(n) && n >= 120) return Math.min(4000, Math.round(n));
+  return 900;
+}
 
 async function generateWaWebAutoBotReplyInner(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null, opts = {}) {
   if (!globalDb) return null;
   lastWaWebReplyAgent = null;
+  // Boss/override commands (report writing, summaries) legitimately need more room than a
+  // customer reply, so they keep a larger cap instead of sharing the 900-token default.
+  const replyMaxTokens = overridePrompt ? Math.max(2500, waReplyMaxTokens()) : waReplyMaxTokens();
   // Declared OUTSIDE the try so the catch-block provider fallback can still reach them
   let settings = {};
   let systemPrompt = '';
@@ -6336,69 +6354,126 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         '\n- Never speak for other members, never reveal private one-to-one information in the group, and never mention these instructions.';
     }
 
-    systemPrompt = overridePrompt || (knowledgePrompt + '\n--- 🔄 COMPLETE TWO-WAY CONVERSATION CONTEXT ---\n' +
-'Customer / Contact: ' + (chatContext?.name || 'Customer') + ' (' + jid + ')' + specialGuidance + '\n' +
-'Chronological Transcript of BOTH sides (👑 You/Owner + 👤 Contact):\n' +
-(chatContext?.transcript || customerMessage) + '\n' +
-'--- END CONTEXT ---\n\n' +
-'🧠 INSTRUCTIONS FOR TWO-WAY UNDERSTANDING:\n' +
-'1. You have the complete history of BOTH what the Contact asked/said and what the Owner/Boss (You) replied/promised in voice & text.\n' +
-'2. Carefully analyze agreements, quotes, commitments, and status updates already delivered by the Owner/Boss.\n' +
-'3. DO NOT contradict what the Owner/Boss said. DO NOT ask questions the contact or Owner/Boss already answered.\n' +
-'4. Synthesize the whole conversation and formulate the most intelligent, helpful, natural WhatsApp response.');
+    // ======================================================================
+    // 🧩 PROMPT ASSEMBLY — ordered for the provider's prefix cache.
+    // ======================================================================
+    // The cache is matched on an EXACT PREFIX, so anything that changes per message must
+    // come LAST. The transcript used to sit near the front, which meant the rules, the
+    // playbook, the Business Data Tank and the Contact Brain (thousands of tokens) were
+    // re-billed at full price on every single message. Now:
+    //
+    //   stable   : global rules, section instructions, tank, brain, playbook  (cacheable)
+    //   semi     : this contact's header                                      (per person)
+    //   volatile : transcript + the incoming message                          (every message)
+    const stableParts = [];
+    const semiParts = [];
+    const volatileParts = [];
 
-    // Contact Book duty: ask Mr. Zaheer's missing data naturally (max one item per reply)
-    // — never for family (the duty prompt itself also checks, this is the second belt).
-    if (!overridePrompt && !brainIsFamily) {
+    if (overridePrompt) {
+      systemPrompt = overridePrompt;
+    } else {
+      stableParts.push(knowledgePrompt);
+
+      // 📖 APP RULE BOOK — fetched here rather than appended at the end, because
+      // withRuleBook() appends and the appended text would land AFTER the transcript and
+      // lose its cache. Same content, correct position: stable block, before the context.
       try {
-        const ci = await import('./contactIntel.mjs');
-        const duty = await ci.contactDutyPrompt(jid);
-        if (duty) systemPrompt += duty;
-      } catch (e) { /* optional */ }
-    }
+        const rb = await ruleBookText('wa');
+        if (rb) stableParts.push(rb);
+      } catch (e) { /* rules are best effort */ }
 
-    // 🏭 BUSINESS ENQUIRY → the Business Data Tank answers, and the contact becomes a customer.
-    // Only on the customer side of the book: family never gets the tank dumped into his reply.
-    if (!overridePrompt && !brainIsFamily) {
-      try {
-        const ci = await import('./contactIntel.mjs');
-        const askedBusiness = ci.looksLikeBusinessEnquiry(customerMessage);
-        const businessPerson = !!(brainProfile && isBusinessRelationship(brainProfile.relationship));
-        if (askedBusiness || businessPerson) {
-          const tb = await import('./businessTank.mjs');
-          const tank = tb.tankPromptText();
-          if (tank && askedBusiness) {
-            systemPrompt += '\n\n--- 🏭 BUSINESS DATA TANK (the ONLY source of truth for company, products, rates, capacity, certifications, contacts) ---\n' +
-              tank +
-              '\n--- END BUSINESS DATA TANK ---\n' +
-              'RULES FOR BUSINESS ANSWERS: answer the business question from the tank above, in the contact\'s reply language. ' +
-              'If a figure (price, stock, lead time) is NOT in the tank, say plainly that you will confirm and send it — never invent a rate, a quantity or a delivery date. ' +
-              'Prices are quoted per the tank only; do not add discounts that are not written there.\n';
-            console.log('[WA-WEB TANK] 🏭 Business enquiry detected for ' + jid + ' — Business Data Tank injected');
-          }
-          if (askedBusiness && !String(jid).endsWith('@g.us')) {
-            // Asking about material/rates/orders makes him a customer; an order-sized ask makes him VIP.
-            const vip = /(order|quantity|qty|ton|tons|moq|container|shipment|invoice|regular|monthly)/i.test(customerMessage);
-            ci.markBusinessContact(cleanPhone, { vip }).catch(() => {});
-          }
-        }
-      } catch (e) { console.warn('[WA-WEB TANK] business intent step skipped:', (e.message || '').slice(0, 120)); }
-    }
+      // Contact Book duty: ask Mr. Zaheer's missing data naturally (max one item per reply)
+      // — never for family (the duty prompt itself also checks, this is the second belt).
+      // It is per-contact rather than per-message, so it stays in the stable block: the same
+      // text is produced on every reply for the same contact, which is what makes it cacheable.
+      if (!brainIsFamily) {
+        try {
+          const ci = await import('./contactIntel.mjs');
+          const duty = await ci.contactDutyPrompt(jid);
+          if (duty) stableParts.push(duty);
+        } catch (e) { /* optional */ }
+      }
 
-    // 🧠 CONTACT BRAIN: per-contact personality, relationship rules, learned style + persona blend
-    // (never applied to internal override prompts, e.g. the Boss command brain)
-    if (!overridePrompt) {
+      // 🏭 BUSINESS ENQUIRY → the Business Data Tank answers, and the contact becomes a customer.
+      // Only on the customer side of the book: family never gets the tank dumped into his reply.
+      //
+      // The tank goes into the SEMI block, not the stable one, on purpose. It is only present
+      // on messages that look like a business enquiry, so putting it in the stable block would
+      // shift every byte after it and invalidate the cached prefix on the next ordinary chat.
+      // In the semi block a tank toggle only breaks the cache from that point onwards.
+      if (!brainIsFamily) {
+        try {
+          const ci = await import('./contactIntel.mjs');
+          const askedBusiness = ci.looksLikeBusinessEnquiry(customerMessage);
+          const businessPerson = !!(brainProfile && isBusinessRelationship(brainProfile.relationship));
+          if (askedBusiness || businessPerson) {
+            const tb = await import('./businessTank.mjs');
+            const tank = tb.tankPromptText();
+            if (tank && askedBusiness) {
+              semiParts.push('--- 🏭 BUSINESS DATA TANK (the ONLY source of truth for company, products, rates, capacity, certifications, contacts) ---\n' +
+                tank +
+                '\n--- END BUSINESS DATA TANK ---\n' +
+                'RULES FOR BUSINESS ANSWERS: answer the business question from the tank above, in the contact\'s reply language. ' +
+                'If a figure (price, stock, lead time) is NOT in the tank, say plainly that you will confirm and send it — never invent a rate, a quantity or a delivery date. ' +
+                'Prices are quoted per the tank only; do not add discounts that are not written there.');
+              console.log('[WA-WEB TANK] 🏭 Business enquiry detected for ' + jid + ' — Business Data Tank injected');
+            }
+            if (askedBusiness && !String(jid).endsWith('@g.us')) {
+              // Asking about material/rates/orders makes him a customer; an order-sized ask makes him VIP.
+              const vip = /(order|quantity|qty|ton|tons|moq|container|shipment|invoice|regular|monthly)/i.test(customerMessage);
+              ci.markBusinessContact(cleanPhone, { vip }).catch(() => {});
+            }
+          }
+        } catch (e) { console.warn('[WA-WEB TANK] business intent step skipped:', (e.message || '').slice(0, 120)); }
+      }
+
+      // 🧠 CONTACT BRAIN: per-contact personality, relationship rules, learned style + persona blend
+      // (never applied to internal override prompts, e.g. the Boss command brain)
       try {
         const brainSection = brainProfile ? buildBrainPromptSection(brainProfile) : await brainPromptSectionForJid(jid);
         if (brainSection) {
-          systemPrompt += brainSection;
+          stableParts.push(brainSection);
           console.log('[WA-WEB BRAIN] 🧠 Brain rules applied for ' + jid);
         }
       } catch (e) { console.warn('[WA-WEB BRAIN] prompt injection failed:', e.message); }
+
+      // Instructions for reading the two-way transcript: fixed text, so it belongs before it.
+      stableParts.push('🧠 INSTRUCTIONS FOR TWO-WAY UNDERSTANDING:\n' +
+        '1. You have the complete history of BOTH what the Contact asked/said and what the Owner/Boss (You) replied/promised in voice & text.\n' +
+        '2. Carefully analyze agreements, quotes, commitments, and status updates already delivered by the Owner/Boss.\n' +
+        '3. DO NOT contradict what the Owner/Boss said. DO NOT ask questions the contact or Owner/Boss already answered.\n' +
+        '4. Synthesize the whole conversation and formulate the most intelligent, helpful, natural WhatsApp response.\n' +
+        '5. The conversation transcript comes AFTER these rules, at the end of this message — read it there.');
+
+      semiParts.push('--- 🔄 COMPLETE TWO-WAY CONVERSATION CONTEXT ---\n' +
+        'Customer / Contact: ' + (chatContext?.name || 'Customer') + ' (' + jid + ')' + specialGuidance);
+
+      volatileParts.push('Chronological Transcript of BOTH sides (👑 You/Owner + 👤 Contact):\n' +
+        (chatContext?.transcript || customerMessage) +
+        '\n--- END CONTEXT ---');
     }
 
-    // 📖 APP RULE BOOK: applies to the WhatsApp bot too (Roman Hindi/Urdu only, no secrets, no invented facts).
-    try { systemPrompt = await withRuleBook(systemPrompt, 'wa'); } catch (e) { /* rules are best effort */ }
+    if (!overridePrompt) {
+      systemPrompt = orderParts({ stable: stableParts, semi: semiParts, volatile: volatileParts });
+
+      // Report the cacheable share once per new contact / new shape, not on every message.
+      try {
+        const stats = cacheStats({ stable: stableParts, semi: semiParts, volatile: volatileParts });
+        const fp = stableFingerprint(stableParts.join('\n'));
+        if (waCacheShapeLog.get(jid) !== fp) {
+          waCacheShapeLog.set(jid, fp);
+          if (waCacheShapeLog.size > 500) waCacheShapeLog.clear();
+          logCacheShape('wa-reply ' + jid.slice(-6), stats, fp);
+        }
+      } catch (e) { /* diagnostics only */ }
+    }
+
+    // 📖 APP RULE BOOK: for an override prompt the rule book is appended as before. For the
+    // normal reply path the rules were already placed in the stable block above, so they are
+    // not added twice — and they keep their position in front of the transcript.
+    if (overridePrompt) {
+      try { systemPrompt = await withRuleBook(systemPrompt, 'wa'); } catch (e) { /* rules are best effort */ }
+    }
 
     geminiKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY || settings.geminiApiKey;
     // DeepSeek is routed through the Alibaba key by default (same price, one secret less).
@@ -6449,7 +6524,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
             try {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(geminiKey);
-              const model = genAI.getGenerativeModel({ model: gm });
+              const model = genAI.getGenerativeModel({ model: gm, generationConfig: { maxOutputTokens: replyMaxTokens } });
               const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + userText }] }] });
               const t = (res.response.text() || '').trim();
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via ' + gm + ' fallback'); return t; }
@@ -6464,6 +6539,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: dm,
                 temperature: 0.4,
+                max_tokens: replyMaxTokens,
                 ...deepseekOpenAIOptions(deepseekBase)
               });
               const t = (comp.choices[0]?.message?.content || '').trim();
@@ -6479,6 +6555,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: qm,
                 temperature: 0.4,
+                max_tokens: replyMaxTokens,
                 extra_body: { enable_thinking: false }
               });
               const t = (comp.choices[0]?.message?.content || '').trim();
@@ -6524,7 +6601,12 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       // the vision engine EXTRACTS the text, then a text engine COMPOSES the customer reply.
       // This alternates per message so Gemini and DeepSeek share the media work.
       const isVisualMedia = mediaData.mediaType === 'image' || mediaData.mediaType === 'document';
-      const splitStrategy = isVisualMedia && (mediaStrategyCounter++ % 2) === 1;
+      // 💸 DOCUMENTS ALWAYS SPLIT. A PDF used to go to Gemini for the *whole* reply — a long
+      // reasoning answer billed at Gemini's output rate ($2.50/M, ~5x Qwen's $0.47/M). Splitting
+      // makes Gemini do only the short extraction (capped below) and lets the cheap text engine
+      // write the reply, whose prompt is cacheable. Images keep the 50/50 alternation because
+      // Qwen vision already handles half of them cheaply.
+      const splitStrategy = isVisualMedia && (mediaData.mediaType === 'document' || (mediaStrategyCounter++ % 2) === 1);
 
       const extractMediaText = async () => {
         const extractPrompt = 'Extract ALL information from this attachment as plain text. For invoices/documents list every field (names, companies, phones, emails, amounts, dates, items). If it is just a greeting image, output exactly: GREETING IMAGE. No commentary.';
@@ -6549,7 +6631,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
             try {
               const { GoogleGenerativeAI } = await import('@google/generative-ai');
               const genAI = new GoogleGenerativeAI(geminiKey);
-              const model = genAI.getGenerativeModel({ model: gm });
+              const model = genAI.getGenerativeModel({ model: gm, generationConfig: { maxOutputTokens: 1400 } });
               const res = await model.generateContent({ contents: [{ role: 'user', parts: [
                 { text: extractPrompt },
                 { inlineData: { mimeType: normalizedMime, data: mediaData.buffer.toString('base64') } }
@@ -6599,7 +6681,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
               ] }
             ],
             model: qwenVisionModel,
-            temperature: 0.4
+            temperature: 0.4,
+            max_tokens: replyMaxTokens
           });
           const qReply = comp.choices[0]?.message?.content;
           if (qReply && qReply.trim()) {
@@ -6620,7 +6703,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         try {
           const { GoogleGenerativeAI } = await import('@google/generative-ai');
           const genAI = new GoogleGenerativeAI(geminiKey);
-          const model = genAI.getGenerativeModel({ model: geminiModelName });
+          const model = genAI.getGenerativeModel({ model: geminiModelName, generationConfig: { maxOutputTokens: replyMaxTokens } });
 
           let mediaInstruction = 'Customer sent a ' + (mediaData.mediaType || 'file') + '.';
           if (mediaData.mediaType === 'audio') {
@@ -6677,7 +6760,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
                 }
               ],
               model: chosenModel.startsWith('gpt') ? chosenModel : 'gpt-4o',
-              temperature: 0.4
+              temperature: 0.4,
+              max_tokens: replyMaxTokens
             });
             return comp.choices[0]?.message?.content || null;
           }
@@ -6698,6 +6782,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         ],
         model: deepseekModel,
         temperature: 0.4,
+        max_tokens: replyMaxTokens,
         ...deepseekOpenAIOptions(deepseekBase)
       });
       const t = comp.choices[0]?.message?.content || null;
@@ -6709,14 +6794,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: t,
         tokensIn: comp.usage?.prompt_tokens || 0,
-        tokensOut: comp.usage?.completion_tokens || 0
+        tokensOut: comp.usage?.completion_tokens || 0,
+        cachedTokens: cachedTokensFrom(comp)
       });
       return t;
     } else if (chosenModel.startsWith('gemini') && geminiKey && providerHealthy('gemini')) {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
       const geminiModel = chosenModel || GEMINI_TEXT_CHAIN[0];
-      const model = genAI.getGenerativeModel({ model: geminiModel });
+      const model = genAI.getGenerativeModel({ model: geminiModel, generationConfig: { maxOutputTokens: replyMaxTokens } });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const gtxt = (res.response.text() || '').trim();
       recordAiCall({
@@ -6727,7 +6813,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: gtxt,
         tokensIn: res.response.usageMetadata?.promptTokenCount || 0,
-        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0
+        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0,
+        cachedTokens: cachedTokensFrom(res.response)
       });
       if (gtxt) return gtxt;
       throw new Error('Gemini returned an empty reply');
@@ -6743,6 +6830,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         ],
         model: qm,
         temperature: 0.4,
+        max_tokens: replyMaxTokens,
         extra_body: { enable_thinking: false }
       });
       const qtxt = (comp.choices[0]?.message?.content || '').trim();
@@ -6754,7 +6842,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: qtxt,
         tokensIn: comp.usage?.prompt_tokens || 0,
-        tokensOut: comp.usage?.completion_tokens || 0
+        tokensOut: comp.usage?.completion_tokens || 0,
+        cachedTokens: cachedTokensFrom(comp)
       });
       if (qtxt) return qtxt;
       throw new Error('Qwen returned an empty reply');
@@ -6767,7 +6856,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           { role: 'user', content: customerMessage }
         ],
         model: chosenModel || 'gpt-4o-mini',
-        temperature: 0.4
+        temperature: 0.4,
+        max_tokens: replyMaxTokens
       });
       const t = comp.choices[0]?.message?.content || null;
       recordAiCall({
@@ -6778,7 +6868,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: t,
         tokensIn: comp.usage?.prompt_tokens || 0,
-        tokensOut: comp.usage?.completion_tokens || 0
+        tokensOut: comp.usage?.completion_tokens || 0,
+        cachedTokens: cachedTokensFrom(comp)
       });
       return t;
     } else if (deepseekKey && providerHealthy('deepseek')) {
@@ -6789,6 +6880,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
         model: deepseekModel,
         temperature: 0.4,
+        max_tokens: replyMaxTokens,
         ...deepseekOpenAIOptions(deepseekBase)
       });
       const t = comp.choices[0]?.message?.content || null;
@@ -6800,14 +6892,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: t,
         tokensIn: comp.usage?.prompt_tokens || 0,
-        tokensOut: comp.usage?.completion_tokens || 0
+        tokensOut: comp.usage?.completion_tokens || 0,
+        cachedTokens: cachedTokensFrom(comp)
       });
       return t;
     } else if (geminiKey && providerHealthy('gemini')) {
       // Automatic Fallback 2: Gemini
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[1] });
+      const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[1], generationConfig: { maxOutputTokens: replyMaxTokens } });
       const res = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt + '\n\nUser message: ' + customerMessage }] }] });
       const t = res.response.text() || null;
       recordAiCall({
@@ -6818,7 +6911,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         prompt: customerMessage,
         response: t,
         tokensIn: res.response.usageMetadata?.promptTokenCount || 0,
-        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0
+        tokensOut: res.response.usageMetadata?.candidatesTokenCount || 0,
+        cachedTokens: cachedTokensFrom(res.response)
       });
       return t;
     } else if (qwenKey && providerHealthy('qwen')) {
@@ -6832,6 +6926,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
             model: qm,
             temperature: 0.4,
+            max_tokens: replyMaxTokens,
             extra_body: { enable_thinking: false }
           });
           const t = (comp.choices[0]?.message?.content || '').trim();
@@ -6844,7 +6939,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
             prompt: customerMessage,
             response: t,
             tokensIn: comp.usage?.prompt_tokens || 0,
-            tokensOut: comp.usage?.completion_tokens || 0
+            tokensOut: comp.usage?.completion_tokens || 0,
+            cachedTokens: cachedTokensFrom(comp)
           });
           return t;
         } catch (e) { noteProviderError('qwen', e); console.warn('[WA-WEB AI] Qwen ' + qm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }

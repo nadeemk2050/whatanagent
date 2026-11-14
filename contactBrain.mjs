@@ -22,6 +22,7 @@ import { makeAdminGuard } from './adminGuard.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
 import { emitAssignmentEvent } from './assignmentEvents.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 
 let brainDb = null;
 export function attachBrainDb(db) { if (db) brainDb = db; }
@@ -644,6 +645,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
           response: t,
           tokensIn,
           tokensOut,
+          cachedTokens: cachedTokensFrom(j),
           durationMs: Date.now() - startTime
         });
         if (t) { console.log('[BRAIN AI] 🧠 answered via ' + model); return t; }
@@ -670,6 +672,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
               response: t,
               tokensIn,
               tokensOut,
+              cachedTokens: cachedTokensFrom(j),
               durationMs: Date.now() - startTime
             });
             if (t) { console.log('[BRAIN AI] 🧠 answered via ' + gm); return t; }

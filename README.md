@@ -73,7 +73,7 @@ Meta requires your webhook to be accessible via `https`.
 | Voice notes | `qwen3-asr-flash` (Alibaba), Gemini audio fallback |
 | Images / cards / OCR | `qwen3.8-omni-flash` (Alibaba) |
 | Strict JSON (gold actuals, trade extractor) | `deepseek-v4.1-flash` (via Alibaba) |
-| PDF / documents / last-resort fallback | `gemini-2.5-flash` |
+| PDF / documents | `gemini-2.5-flash` (extraction only — the reply is written by the cheap text engine) |
 
 DeepSeek runs through the Alibaba (DashScope) key by default, so there is one bill and one fewer
 secret to protect. Set `DEEPSEEK_VIA_DASHSCOPE=false` and provide `DEEPSEEK_API_KEY` to bill the
@@ -82,6 +82,52 @@ See [aiProviders.mjs](./aiProviders.mjs).
 
 Credentials belong in the hosting environment (Render → Environment), never in the repository or
 the Firestore settings document.
+
+## 💰 Prompt-cache discipline (read this before adding a new AI section)
+
+Providers cache the **start** of a request and match it on an exact prefix. A cache hit costs
+about a tenth of a fresh prompt token (Qwen $0.016 vs $0.16 per million, DeepSeek $0.03 vs $0.30),
+so one character changing early in the prompt makes everything after it full price again.
+
+Every AI prompt in this app is therefore assembled with [promptCache.mjs](./promptCache.mjs):
+
+```js
+import { orderParts, cacheStats, cachedTokensFrom } from './promptCache.mjs';
+
+const systemPrompt = orderParts({
+  stable:   [globalRules, ruleBook, playbook],      // identical for every call
+  semi:     [perContactCard, businessTank],         // identical per contact
+  volatile: [transcript, incomingMessage]           // different every call
+});
+```
+
+Rules that keep the hit rate high:
+
+1. **Volatile content goes last.** The transcript and the new message are the only things that
+   change per call, so nothing may be appended after them. `withRuleBook()` appends — fetch
+   `ruleBookText()` early and put it in the `stable` array instead.
+2. **Report cached tokens at every `recordAiCall`.** Pass `cachedTokens: cachedTokensFrom(response)`.
+   Without it the dashboard shows 0% and the saving is invisible. `cachedTokensFrom` reads
+   OpenAI/Qwen `usage.prompt_tokens_details.cached_tokens`, DeepSeek `prompt_cache_hit_tokens`,
+   Gemini `usageMetadata.cachedContentTokenCount` and Anthropic `cache_read_input_tokens`.
+3. **`recordAiCall` reads `area`, `tokensIn`, `tokensOut` — not `source` or `success`.** Passing
+   the wrong field silently logs 0 tokens.
+4. **Do not inject a block only sometimes in the middle of `stable`.** A conditional block that
+   appears and disappears shifts everything after it. Put conditionals in `semi` (see the Business
+   Data Tank in [waWebClient.js](./waWebClient.js)).
+5. **Cap the output.** Output is the expensive half of the bill (Qwen $0.16 in vs $0.47 out,
+   DeepSeek $0.30 vs $1.20). WhatsApp replies use `waReplyMaxTokens()` — 700 tokens by default,
+   override with `WA_REPLY_MAX_TOKENS`.
+
+The AI usage panel shows the result as a **CACHE HIT** card: hit rate, cached-token count and the
+dollars the cache already saved. A rate under 40% means something volatile has moved to the front
+of a prompt — `logCacheShape()` logs the stable fingerprint per contact so the change is visible in
+the server log rather than only on the bill.
+
+When using DeepSeek / Qwen from **VS Code** (Copilot custom models), the same rule applies at the
+editor level: keep a long-lived chat session, put stable context (repo conventions, file listings)
+early and paste changing content late, and avoid editing files mid-session — every tree change
+invalidates the cached prefix and the next request is billed in full.
 
 ## 🧠 Contact Brain — who is family, who is a customer, and which language
 

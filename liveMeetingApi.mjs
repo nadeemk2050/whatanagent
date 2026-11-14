@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, addDoc, collection, getDocs, query, orderBy, limit
 import { sendWaWebMessage } from './waWebClient.js';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 import { registerLiveMeetingSessionRoutes } from './liveMeetingSessions.mjs';
 
 const LIVE_ROOMS_COLLECTION = 'liveMeetingRooms';
@@ -66,7 +67,13 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
         const j = await r.json();
         const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (t) {
-          recordAiCall({ source: 'live_meeting', model: gm, prompt: userText.slice(0, 100), response: t.slice(0, 100), success: true });
+          recordAiCall({
+            provider: 'gemini', model: gm, area: 'Live Meeting', isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500), response: t.slice(0, 500),
+            tokensIn: j.usageMetadata?.promptTokenCount || 0,
+            tokensOut: j.usageMetadata?.candidatesTokenCount || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       } else if (p === 'deepseek') {
@@ -86,7 +93,13 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'live_meeting', model: deepseekModel, prompt: userText.slice(0, 100), response: t.slice(0, 100), success: true });
+          recordAiCall({
+            provider: 'deepseek', model: deepseekModel, area: 'Live Meeting', isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500), response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || 0,
+            tokensOut: j.usage?.completion_tokens || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       } else if (p === 'qwen') {
@@ -106,7 +119,13 @@ async function callMeetingAI(db, systemPrompt, userText, preferred = 'qwen') {
         const j = await r.json();
         const t = j?.choices?.[0]?.message?.content?.trim();
         if (t) {
-          recordAiCall({ source: 'live_meeting', model: qwenModel, prompt: userText.slice(0, 100), response: t.slice(0, 100), success: true });
+          recordAiCall({
+            provider: 'qwen', model: qwenModel, area: 'Live Meeting', isAutoFetch: false,
+            prompt: systemPrompt.slice(0, 500), response: t.slice(0, 500),
+            tokensIn: j.usage?.prompt_tokens || 0,
+            tokensOut: j.usage?.completion_tokens || 0,
+            cachedTokens: cachedTokensFrom(j)
+          });
           return t;
         }
       }

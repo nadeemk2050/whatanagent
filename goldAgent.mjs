@@ -8,6 +8,7 @@ import { doc, getDoc, setDoc, collection, getDocs, deleteDoc } from 'firebase/fi
 import { sendWaWebMessage, logBossOrder } from './waWebClient.js';
 import { isAiAutoFetchStopped, recordAiCall, attachAiTrackerDb } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekFetchExtras } from './aiProviders.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 
 let globalDb = null;
 export function attachGoldDb(db) {
@@ -497,6 +498,7 @@ Explain the core mechanism in simple words a beginner can understand immediately
           response: t,
           tokensIn,
           tokensOut,
+          cachedTokens: cachedTokensFrom(j),
           durationMs: Date.now() - startTime
         });
         if (t) {
@@ -527,6 +529,7 @@ Explain the core mechanism in simple words a beginner can understand immediately
               response: t,
               tokensIn,
               tokensOut,
+              cachedTokens: cachedTokensFrom(j),
               durationMs: Date.now() - startTime
             });
             if (t) {
@@ -723,6 +726,7 @@ If the actual result is truly not yet published anywhere in the news, estimate t
               response: t,
               tokensIn,
               tokensOut,
+              cachedTokens: cachedTokensFrom(j),
               durationMs: Date.now() - startTime
             });
             const jsonMatch = t.match(/\{[\s\S]*\}/);
@@ -784,6 +788,7 @@ If the actual result is truly not yet published anywhere in the news, estimate t
           response: t,
           tokensIn,
           tokensOut,
+          cachedTokens: cachedTokensFrom(j),
           durationMs: Date.now() - startTime
         });
         const jsonMatch = t.match(/\{[\s\S]*\}/);
