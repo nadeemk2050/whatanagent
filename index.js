@@ -18,6 +18,7 @@ import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerCommissionRoutes } from './commissionApi.mjs';
+import { registerCandlRoutes } from './candlApi.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -134,8 +135,9 @@ const app = express();
 // keeping the Render free-tier bandwidth pool and CPU pressure low.
 app.use(compression());
 // CORS: allow the Firebase-hosted dashboard (web.app / firebaseapp.com) to call this API
-// cross-origin, plus a local dev server (localhost / 127.0.0.1 on any port).
-const CORS_ALLOWED = /^(https:\/\/whatanagent-a1e59\.(web\.app|firebaseapp\.com)|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
+// cross-origin, plus a local dev server (localhost / 127.0.0.1 on any port), plus the
+// Containers & Lots app which now uses this host as its file service (/candl/api).
+const CORS_ALLOWED = /^(https:\/\/whatanagent-a1e59\.(web\.app|firebaseapp\.com)|https:\/\/(proformatrackerpro|containersandlots)\.web\.app|https:\/\/proformatracker\.firebaseapp\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)$/;
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin && CORS_ALLOWED.test(origin)) {
@@ -165,6 +167,13 @@ const brainEngine = registerBrainRoutes(app, db);
 registerTradeAccountsRoutes(app, db);
 // 🧾 Commission Accounts (offline-first broker ledger: sellers → buyers, commission on GST)
 registerCommissionRoutes(app);
+// 🚢 Containers & Lots (file service: Google Drive bytes + BL reader). The business records
+// live in the app's own browser SQLite + Firestore, so this replaces the Render backend whose
+// only job was file bytes — and gains an always-on host instead of a 33-second cold start.
+{
+  const multer = (await import('multer')).default;
+  registerCandlRoutes(app, multer, { getSettings });
+}
 // 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
 // 📇 Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);

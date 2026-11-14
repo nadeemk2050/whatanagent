@@ -369,3 +369,40 @@ node scripts/workshop-set-step.mjs --site alqaryangroup.com --todo "Photograph t
 
 The repair script removes only rows that came from the sheet (they carry a `source` row) and keeps
 everything typed into the app.
+
+## 🚢 Containers & Lots — file service (`/candl/api`)
+
+The **Containers & Lots** app (`proformatrackerpro.web.app`) keeps every business record in the
+**browser's own SQLite** plus a **Firestore mirror** — customers, proformas, commercial invoices,
+B/Ls, containers, payments and charges never live on a server. What it does need a server for is
+**moving file bytes to Google Drive** and **reading a B/L PDF**. That work used to run on a Render
+free instance, whose first request after a sleep took ~33 seconds.
+
+It now runs here, on the always-on VPS ([candlApi.mjs](./candlApi.mjs)):
+
+| Route | Purpose |
+| --- | --- |
+| `GET /candl/api/warmup` | keep-alive / health probe the web app pings on load |
+| `GET /candl/api/gdrive/status` | is Drive connected, plus the re-authorise link |
+| `GET /candl/api/gdrive/auth` · `/callback` | Google OAuth (offline refresh token) |
+| `POST /candl/api/gdrive/upload` | upload bytes, returns `{folder_id, files:[…]}` |
+| `POST /candl/api/containers/:id/photos` · `/payments/:id/photos` | photo bytes for a container or voucher |
+| `GET /candl/api/files/thumbnail/:id` | 250 px WebP thumbnail (images and PDF first page) |
+| `POST /candl/api/files/delete` · `/rename` · `/replace` | Drive file management, keyed by `file_id` |
+| `POST /candl/api/bl/extract` | read a B/L PDF → structured fields |
+
+The service is **stateless**: no SQLite, no records. The old backend looked files up in its own
+database, which never contained the browser-stored records, so *delete / rename / replace* always
+answered "Record not found"; here the client passes the Drive id it already has
+(`file_id`, `folder_id`).
+
+`candlGdrive.cjs` and `candlThumbnails.cjs` are the Containers & Lots helpers copied in unchanged.
+Credentials come from the environment when present (`GDRIVE_CLIENT_ID`, `GDRIVE_CLIENT_SECRET`,
+`GDRIVE_REFRESH_TOKEN`, `GDRIVE_PARENT_FOLDER_ID`) and otherwise fall back to the values the desktop
+app ships with — **rotate them and move them to `.env`**, they are currently readable in the repo.
+
+The B/L reader also fixed a real bug: the old prompt injected the PDF text through an escaped
+placeholder (`\${…}`) so the model received the literal string `${(text || '').slice(0, 60000)}`
+and never saw the document — every AI call failed and the local regex parser answered instead.
+It now routes through `resolveDeepSeek()` and is recorded in the AI activity log as
+**Container BL Reader**, so its cost is visible on the dashboard.

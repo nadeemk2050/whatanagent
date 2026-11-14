@@ -36,3 +36,8 @@ backups/
 # image optimiser output (regenerated from originals)
 alqaryan-site/build/img/
 
+
+# Google OAuth token files for the Containers & Lots file service (never commit)
+gdrive-token.json
+candl-gdrive-token.json
+service-account.json

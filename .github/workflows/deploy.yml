@@ -36,6 +36,21 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
+      # Google Drive credentials for the Containers & Lots file service (/candl/api).
+      # They live in repository secrets and are written into the server's .env, so no secret is
+      # ever committed to the repo. Idempotent: an existing line is replaced in place.
+      - name: Sync Containers & Lots Drive credentials into .env
+        env:
+          CID: ${{ secrets.CANDL_GDRIVE_CLIENT_ID }}
+          CSECRET: ${{ secrets.CANDL_GDRIVE_CLIENT_SECRET }}
+          RTOKEN: ${{ secrets.CANDL_GDRIVE_REFRESH_TOKEN }}
+          PFOLDER: ${{ secrets.CANDL_GDRIVE_PARENT_FOLDER_ID }}
+        run: |
+          if [ -z "$CID" ]; then echo "::warning::CANDL_GDRIVE_CLIENT_ID is not set - skipping Drive credential sync"; exit 0; fi
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "bash /opt/whatanagent/deploy/set-candl-env.sh '$CID' '$CSECRET' '$RTOKEN' '$PFOLDER'"
+
       - name: Deploy over SSH
         run: |
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
