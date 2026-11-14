@@ -225,8 +225,15 @@ app.get(['/commission', '/commission-accounts', '/commission-account'], (req, re
 });
 
 // 🚢 Proforma Tracker (Containers & Lots) — a section of this app, served from this host.
-// The React build lives in public/proforma; every deep link falls back to its index.html.
-app.get(['/proforma', '/proforma/', '/proforma/*'], (req, res) => {
+// The React build lives in public/proforma; client-side deep links fall back to its index.html.
+// A missing FILE (…/assets/x.js) must 404 instead of returning HTML with a 200, otherwise the
+// browser reports a confusing MIME error and the cache hides the real problem.
+app.get(['/proforma', '/proforma/'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'proforma', 'index.html'));
+});
+app.get('/proforma/*', (req, res, next) => {
+  if (/\.[a-z0-9]{2,5}$/i.test(req.path)) return next();   // let the 404 handler answer
   res.setHeader('Cache-Control', 'no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'proforma', 'index.html'));
 });
