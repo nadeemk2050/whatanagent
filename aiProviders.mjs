@@ -128,16 +128,20 @@ export const CHEAP_TEXT_ORDER = ['qwen', 'deepseek', 'gemini'];
 export const DEFAULT_TEXT_MODEL = QWEN_TEXT_MODEL;
 
 // Gemini ids that were removed from routing. Documents saved before this change still carry
-// them (AI staff agents, the WhatsApp knowledge base), so any read path must normalise:
-// map each one to Gemini 2.5 Flash — same provider, same job, cheapest Gemini. Without this a
+// them (AI staff agents, the WhatsApp knowledge base), so any read path must normalise.
+//
+// They map to the CHEAPEST CAPABLE TEXT ENGINE (Qwen), not to another Gemini: every one of these
+// fields drives text generation, and Qwen writes text at $0.47/M output against Gemini's $2.50/M.
+// Gemini is still used where only it can work (PDF/audio reading) — that is decided by the
+// message's MIME type in waWebClient, not by a stored model id. Without this normalisation a
 // stored "gemini-3.8-flash" would keep billing $3.75/M output forever.
 export const RETIRED_MODEL_MAP = {
-  'gemini-3.5-flash': GEMINI_TEXT_MODEL,
-  'gemini-3.6-flash': GEMINI_TEXT_MODEL,
-  'gemini-3.8-flash': GEMINI_TEXT_MODEL,
-  'gemini-flash-latest': GEMINI_TEXT_MODEL,
-  'gemini-2.0-flash': GEMINI_TEXT_MODEL,
-  'gemini-1.5-flash': GEMINI_TEXT_MODEL
+  'gemini-3.5-flash': DEFAULT_TEXT_MODEL,
+  'gemini-3.6-flash': DEFAULT_TEXT_MODEL,
+  'gemini-3.8-flash': DEFAULT_TEXT_MODEL,
+  'gemini-flash-latest': DEFAULT_TEXT_MODEL,
+  'gemini-2.0-flash': DEFAULT_TEXT_MODEL,
+  'gemini-1.5-flash': DEFAULT_TEXT_MODEL
 };
 
 /** Rewrite a stored model id to a routed one. Unknown ids pass through untouched. */

@@ -92,9 +92,11 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   };
 
   // Stored documents may still name a retired Gemini id — normalise on every read/write so
-  // nothing keeps routing to gemini-3.x (see aiProviders.RETIRED_MODEL_MAP).
+  // nothing keeps routing to gemini-3.x (see aiProviders.RETIRED_MODEL_MAP). If normalising
+  // makes the fallback identical to the primary, keep Gemini as a genuine second engine.
   a.model = normaliseModelId(sstr(raw.model != null ? raw.model : existing.model, 60)) || QWEN_TEXT_MODEL;
   a.fallbackModel = normaliseModelId(sstr(raw.fallbackModel != null ? raw.fallbackModel : existing.fallbackModel, 60)) || GEMINI_TEXT_MODEL;
+  if (a.fallbackModel === a.model) a.fallbackModel = GEMINI_TEXT_MODEL;
   a.useBusinessKb = asBool(raw.useBusinessKb != null ? raw.useBusinessKb : existing.useBusinessKb, true);
   a.useBusinessTank = asBool(raw.useBusinessTank != null ? raw.useBusinessTank : existing.useBusinessTank, false);
   a.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);

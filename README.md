@@ -84,7 +84,8 @@ Gemini **3.x was removed from routing**: `gemini-3.5-flash` cost $9.00/M output 
 `gemini-3.6` / `3.8` cost $3.75/M. Gemini 2.5 Flash is the cheapest Gemini and the only one this
 stack needs, because Gemini is here for media reading, not for writing replies. Fallback order for
 text is `qwen → deepseek → gemini`. Stored documents that still name a retired id (AI staff agents,
-the WhatsApp knowledge base) are rewritten on read by `normaliseModelId()` to `gemini-2.5-flash`.
+the WhatsApp knowledge base) are rewritten on read by `normaliseModelId()` to `qwen3.8-flash` —
+text work goes to the cheapest capable engine; Gemini is chosen by media type, never by a saved id.
 
 If Gemini 2.5 Flash is ever retired, set `GEMINI_FALLBACK_MODELS=gemini-3.8-flash` — that is the
 only supported way to re-enable a pricier Gemini.
