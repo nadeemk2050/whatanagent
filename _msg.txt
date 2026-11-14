@@ -1,24 +1,9 @@
-Make Proforma Tracker a real section of WHATANAGENT (/proforma)
+Keep the section on the cloud store, and never probe a records API
 
-The backend already lived here, but the page was still served by Firebase
-Hosting, so there was nothing in the WHATANAGENT menu to open. Now the whole app
-ships with this one:
-
-- public/proforma/: the ProformaTracker React build (11.5 MB, mostly the
-  wa-sqlite WASM files the offline database needs).
-- index.js: /proforma, /proforma/ and every deep link serve its index.html;
-  hashed assets get a one-year immutable cache, index.html and sw.js are
-  revalidated so a deploy always reaches the browser.
-- The app detects this path and uses same-origin /candl/api, so there is no CORS
-  hop and no external host to wake up.
-- admin.html: "Proforma Tracker" added to the hamburger menu and a "Proforma"
-  chip next to Commission in the WhatsApp header.
-- candlApi: /masters answered honestly (records live in Firestore, not here) so
-  the app stops logging a 404 on every page load.
-
-Verified: /proforma, /proforma/ and /proforma/some/deep/link all 200 with the SPA
-shell; the hashed bundle serves 200; the page then calls /candl/api/warmup 200
-(not Render, not Firebase Hosting); and Firebase Auth accepts the new origin -
-a dummy sign-in returns auth/invalid-credential, not unauthorized-domain.
+Served at /proforma the app used to find its own host answering /warmup and
+concluded that a full records backend existed, which would have run the legacy
+"backfill orders.db to Firestore" path against a service that only stores file
+bytes. It now treats /proforma as cloud mode from the start, so records stay in
+the browser SQLite + Firestore and the stray /api/warmup 404 disappears.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
