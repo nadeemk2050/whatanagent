@@ -53,11 +53,12 @@ jobs:
           RTOKEN: ${{ secrets.CANDL_GDRIVE_REFRESH_TOKEN }}
           PFOLDER: ${{ secrets.CANDL_GDRIVE_PARENT_FOLDER_ID }}
           SAJSON: ${{ secrets.CANDL_SERVICE_ACCOUNT_JSON }}
+          IMPKEY: ${{ secrets.CANDL_IMPORT_KEY }}
         run: |
           if [ -z "$CID" ]; then echo "::warning::CANDL_GDRIVE_CLIENT_ID is not set - skipping Drive credential sync"; exit 0; fi
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-              "bash /opt/whatanagent/deploy/set-candl-env.sh '$CID' '$CSECRET' '$RTOKEN' '$PFOLDER' '$SAJSON' && sudo systemctl restart whatanagent"
+              "bash /opt/whatanagent/deploy/set-candl-env.sh '$CID' '$CSECRET' '$RTOKEN' '$PFOLDER' '$SAJSON' '$IMPKEY' && sudo systemctl restart whatanagent"
 
       - name: Public health check
         if: success()

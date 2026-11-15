@@ -55,4 +55,9 @@ upsert CANDL_GDRIVE_REDIRECT_URI "https://whatanagent.duckdns.org/candl/api/gdri
 # Only written when the secret exists, so the OAuth path keeps working otherwise.
 upsert CANDL_SERVICE_ACCOUNT_JSON "${5:-}"
 
+# Shared secret for POST /candl/api/gdrive/import-token. The still-running Render backend
+# performs the OAuth consent (its callback is the one Google has registered) and forwards the
+# refresh token here, so a re-authorisation needs no Google Cloud Console visit.
+upsert CANDL_IMPORT_KEY "${6:-}"
+
 echo "[candl] drive credentials written to $ENV_FILE (values not printed)"

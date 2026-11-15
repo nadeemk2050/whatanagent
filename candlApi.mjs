@@ -34,6 +34,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import express from 'express';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -306,6 +307,38 @@ silently lost. JSON status: <b>/candl/api/gdrive/diagnose</b></div>
         + '<p style="color:#94A3B8">Offline access is configured. You may close this window.</p></div>');
     } catch (error) {
       res.status(500).send('Authentication failed: ' + error.message);
+    }
+  });
+
+  // ── Token import bridge ───────────────────────────────────────────────────
+  // Google only accepts the OAuth callback that was registered on the client. The
+  // Containers & Lots app's client trusts https://containers-and-lots-backend.onrender.com/
+  // api/gdrive/callback and nothing else, so the browser flow cannot start here until that URI
+  // is added in Google Cloud. Until then the old Render backend — still running — performs the
+  // consent and forwards the resulting refresh token to this endpoint.
+  //
+  // Guarded by CANDL_IMPORT_KEY (a long random secret stored in .env, never in the repo). The
+  // token is written to the gitignored data folder, which this module prefers over .env, and the
+  // client is re-initialised immediately — no restart and no manual copy/paste of a credential.
+  app.post(PREFIX + '/gdrive/import-token', express.urlencoded({ extended: false }), express.json(), async (req, res) => {
+    const expected = String(process.env.CANDL_IMPORT_KEY || '').trim();
+    const given = String(req.headers['x-import-key'] || (req.body && req.body.key) || '').trim();
+    if (expected && given !== expected) return res.status(401).json({ ok: false, error: 'Bad import key' });
+    if (!expected) return res.status(503).json({ ok: false, error: 'CANDL_IMPORT_KEY is not configured on this server' });
+    const refreshToken = String((req.body && (req.body.refresh_token || req.body.refreshToken)) || '').trim();
+    if (!refreshToken) return res.status(400).json({ ok: false, error: 'refresh_token is required' });
+    try {
+      const dir = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, 'candl-gdrive-token.json');
+      fs.writeFileSync(file, JSON.stringify({ refresh_token: refreshToken }, null, 2), { mode: 0o600 });
+      // checkConnection() reloads the newest token file into the OAuth client, so the new
+      // credential is live immediately.
+      const conn = await gdrive.checkConnection();
+      console.log('[CANDL] ✅ Drive token imported from the bridge; connected=' + conn.connected);
+      res.json({ ok: true, connected: conn.connected, reason: conn.reason || null });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
     }
   });
 

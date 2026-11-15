@@ -1,14 +1,20 @@
-Point the Drive banner at a self-service fix page
+Add a guarded Drive token-import endpoint (optional fallback)
 
-Pressing "Re-authorize Google Drive" opened the raw Google consent URL, which
-answers with "Error 400: redirect_uri_mismatch" whenever the OAuth client has
-not been told about this host - a dead end with no explanation.
+Google only accepts the OAuth callback registered on the client, which is the
+old Render host. That would leave a re-authorisation impossible on the VPS
+until the console is updated. This endpoint lets another host hand over a
+refresh token in one POST instead:
 
-- GET /candl/api/gdrive/help: styled page showing the live connection state,
-  the EXACT redirect URI this server sends (copy button friendly), the two
-  Google Cloud steps, and then an "Authorise now" button. Server-side only, so
-  it works even while the token is dead.
-- /gdrive/status returns helpUrl; the dashboard banner now links there and says
-  what the button does.
+  POST /candl/api/gdrive/import-token   (x-import-key: <CANDL_IMPORT_KEY>)
+
+The token is written to the gitignored data folder, which this module prefers
+over .env, and checkConnection() reloads it into the OAuth client immediately -
+no restart, no credential copy/pasted through chat. Returns 503 when
+CANDL_IMPORT_KEY is not configured, so the endpoint is inert by default.
+
+Nothing calls it: the Containers & Lots Render backend is deliberately
+UNCHANGED, so normal uploads never touch Render and the one-time handover
+costs nothing at runtime. Registering this host callback in Google Cloud
+remains the cleanest route and is documented in the README.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
