@@ -429,7 +429,9 @@ needs a server credential. Two failure modes look similar but have different fix
    ```
 
    `GET /candl/api/gdrive/diagnose` prints the value this server actually sends, so copy it from
-   there rather than typing it.
+   there rather than typing it. There is also a ready-made page at
+   **`/candl/api/gdrive/help`** with the copyable URI and a button to continue — the app's
+   "Fix / Re-authorize Google Drive" button opens exactly that page.
 3. Wait about a minute, then press **Re-authorize Google Drive** in the app and accept.
 
 **Step B — make the token permanent**
