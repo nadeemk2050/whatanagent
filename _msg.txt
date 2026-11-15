@@ -1,9 +1,9 @@
-Persist an imported Drive token into .env as well
+Persist the refresh token from the app callback too
 
-The data-folder token file is what candlGdrive reads first, so it wins today.
-But .env still held the older, dead refresh token - if the data file were
-ever lost (fresh checkout, rebuilt host) that dead value would come back and
-the banner would return. The import endpoint now rewrites both names in .env
-atomically while it writes the token file.
+Both paths that can mint a refresh token - the guarded import endpoint and the
+app's own /gdrive/callback - now write it to data/candl-gdrive-token.json AND
+refresh the CANDL_GDRIVE_REFRESH_TOKEN / GDRIVE_REFRESH_TOKEN lines in .env, so
+a stale value can never resurface if the data file is lost. Shared helper,
+atomic write, best effort: a read-only filesystem cannot break the auth flow.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
