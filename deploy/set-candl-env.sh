@@ -47,5 +47,12 @@ upsert GDRIVE_REFRESH_TOKEN "$REFRESH_TOKEN"
 upsert GDRIVE_PARENT_FOLDER_ID "$PARENT_FOLDER"
 # The OAuth re-authorise button must come back to this host, not the old Render one.
 upsert GDRIVE_REDIRECT_URI "https://whatanagent.duckdns.org/candl/api/gdrive/callback"
+# Read by candlGdrive.cjs first, so the value above is unambiguous whichever name wins.
+upsert CANDL_GDRIVE_REDIRECT_URI "https://whatanagent.duckdns.org/candl/api/gdrive/callback"
+
+# Optional: a service-account key (base64 or raw JSON) makes Drive access permanent —
+# no consent screen, no 7-day refresh-token expiry, no re-authorisation ever.
+# Only written when the secret exists, so the OAuth path keeps working otherwise.
+upsert CANDL_SERVICE_ACCOUNT_JSON "${5:-}"
 
 echo "[candl] drive credentials written to $ENV_FILE (values not printed)"

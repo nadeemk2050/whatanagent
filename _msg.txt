@@ -1,18 +1,27 @@
-Match the working host: no COOP/COEP for /proforma
+Guide + diagnostics for Google Drive authorisation on the VPS
 
-Cross-origin isolation would enable the OPFS worker, but Chrome then blocks
-that module worker with net::ERR_BLOCKED_BY_RESPONSE unless the page and every
-subresource opt in, and the app is then left with no local database at all -
-worse than before. Firebase Hosting, the setup known to work, sends no
-isolation headers either: the app uses its main-thread SQLite fallback, which
-loads the WASM and persists the database.
+Re-authorising failed with "Error 400: redirect_uri_mismatch" because the
+OAuth client still lists the old Render callback. The server was sending
+  redirect_uri=https://whatanagent.duckdns.org/candl/api/gdrive/callback
+(verified from getAuthUrl), which Google has never been told about. Only the
+account owner can add it, so the fix is a console step - now documented
+exactly instead of guessed.
 
-Kept the useful part: Cross-Origin-Resource-Policy same-origin on the section
-files, plus the real fix from the previous commit - the SQLite worker is now
-requested from the build base instead of the domain root.
+- GET /candl/api/gdrive/diagnose: credential mode (oauth vs service-account),
+  connected state, hasClientId/hasRefreshToken, the precise redirectUri this
+  server sends, and numbered steps to fix it.
+- /gdrive/status now also returns redirectUri and credentialMode.
+- set-candl-env.sh writes CANDL_GDRIVE_REDIRECT_URI as well (the helper reads
+  the CANDL_ name first) and accepts an optional service-account JSON.
+- Optional CANDL_SERVICE_ACCOUNT_JSON support: written to the gitignored data
+  folder before candlGdrive loads, so a key file takes precedence over OAuth.
+  Documented with its real limitation - a service account has no Drive storage
+  quota, so it only works inside a Workspace Shared Drive.
+- README: full one-time procedure. Registering the callback fixes the immediate
+  error; publishing the OAuth consent screen ("In production") is what stops
+  Google expiring the refresh token every 7 days.
 
-Verified in a real browser at /proforma: no /candl/api/customers 404s on load,
-sqlite3.wasm fetched 200, and "using main-thread SQLite fallback" with
-"fallback persist: saved 294912 bytes".
+Uploads were already working (status: connected) - only the re-auth link was
+broken, because the old token is still valid.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

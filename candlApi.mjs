@@ -37,6 +37,31 @@ import path from 'path';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
+
+// ── Optional: Google service account (the truly permanent credential) ───────
+// A service-account key never expires and needs no consent screen, no 7-day
+// refresh-token limit and no re-authorisation. If the key JSON is supplied in
+// the environment, write it to the data folder (gitignored) BEFORE the Drive
+// helper loads, because that module checks for the file at require time.
+// The target Drive folder must be shared with the service account's e-mail.
+(() => {
+  try {
+    const raw = process.env.CANDL_SERVICE_ACCOUNT_JSON || process.env.GDRIVE_SERVICE_ACCOUNT_JSON || '';
+    if (!raw.trim()) return;
+    const dir = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'candl-service-account.json');
+    // Accept both raw JSON and base64 (base64 survives .env quoting better).
+    const text = raw.trim().startsWith('{') ? raw : Buffer.from(raw.trim(), 'base64').toString('utf8');
+    JSON.parse(text);                      // validate before writing anything
+    fs.writeFileSync(file, text, { mode: 0o600 });
+    process.env.CANDL_SERVICE_ACCOUNT = file;
+    console.log('[CANDL] service-account credentials loaded (permanent, no expiry)');
+  } catch (e) {
+    console.warn('[CANDL] CANDL_SERVICE_ACCOUNT_JSON ignored:', String(e.message || e).slice(0, 160));
+  }
+})();
+
 const gdrive = require('./candlGdrive.cjs');
 const { makeThumbnail, thumbCacheGet, thumbCacheSet, thumbCacheDelete } = require('./candlThumbnails.cjs');
 
@@ -168,11 +193,49 @@ export function registerCandlRoutes(app, multer, opts = {}) {
         isMockMode: gdrive.isMockMode(),
         connected: conn.connected,
         reason: conn.reason,
-        authUrl: gdrive.getAuthUrl() || null
+        authUrl: gdrive.getAuthUrl() || null,
+        // Safe to expose (not a secret) and it is exactly what must be registered in
+        // Google Cloud -> Credentials -> OAuth client -> Authorised redirect URIs.
+        redirectUri: process.env.CANDL_GDRIVE_REDIRECT_URI || process.env.GDRIVE_REDIRECT_URI || '',
+        credentialMode: process.env.CANDL_SERVICE_ACCOUNT ? 'service-account' : 'oauth-refresh-token'
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // Plain-language diagnosis: which credential is in use, and — when Google rejects the
+  // re-authorise link with redirect_uri_mismatch — the exact URI to paste into the console.
+  app.get(PREFIX + '/gdrive/diagnose', async (req, res) => {
+    const mode = process.env.CANDL_SERVICE_ACCOUNT ? 'service-account' : 'oauth';
+    const redirectUri = process.env.CANDL_GDRIVE_REDIRECT_URI || process.env.GDRIVE_REDIRECT_URI || '';
+    let conn = { connected: false, reason: 'not checked' };
+    try { conn = await gdrive.checkConnection(); } catch (e) { conn = { connected: false, reason: String(e.message || e) }; }
+    const steps = mode === 'service-account'
+      ? [
+          'Using a service-account key: it never expires and needs no consent screen.',
+          'Just make sure the target Drive folder is shared with the service account e-mail (Editor).',
+          'Nothing else to do — uploads keep working indefinitely.'
+        ]
+      : [
+          '1. Open https://console.cloud.google.com/apis/credentials for the project that owns the Drive client.',
+          '2. Click the OAuth 2.0 Client ID used by this app.',
+          '3. Under "Authorised redirect URIs" add EXACTLY: ' + (redirectUri || '(no redirect URI configured in this environment)'),
+          '4. Save, wait ~1 minute, then open the re-authorise link again and press Allow.',
+          '5. So the token never expires again: APIs & Services -> OAuth consent screen -> Publishing status must be "In production". While it says "Testing", Google kills refresh tokens after 7 days.',
+          'A service-account key (no expiry) is the alternative if you would rather never do this again.'
+        ];
+    res.json({
+      ok: true,
+      credentialMode: mode,
+      connected: conn.connected,
+      reason: conn.reason,
+      redirectUri,
+      hasRefreshToken: !!(process.env.CANDL_GDRIVE_REFRESH_TOKEN || process.env.GDRIVE_REFRESH_TOKEN),
+      hasClientId: !!(process.env.CANDL_GDRIVE_CLIENT_ID || process.env.GDRIVE_CLIENT_ID),
+      authUrl: gdrive.getAuthUrl() || null,
+      steps
+    });
   });
 
   app.get(PREFIX + '/gdrive/auth', (req, res) => {

@@ -406,3 +406,55 @@ placeholder (`\${…}`) so the model received the literal string `${(text || '')
 and never saw the document — every AI call failed and the local regex parser answered instead.
 It now routes through `resolveDeepSeek()` and is recorded in the AI activity log as
 **Container BL Reader**, so its cost is visible on the dashboard.
+
+### Google Drive authorisation — the one-time setup (and why it lasts forever)
+
+Uploads from the Proforma section go to **Google Drive**, which is the only part of that app that
+needs a server credential. Two failure modes look similar but have different fixes:
+
+| What you see | Cause | Fix |
+| --- | --- | --- |
+| `Error 400: redirect_uri_mismatch` | The OAuth client does not have this host's callback registered | Add the exact callback URI in Google Cloud (below) |
+| "Google Drive token is expired or invalid" every ~7 days | OAuth consent screen still **Testing** | Publish the consent screen (below) |
+
+**Step A — register the callback** (needed once, after moving host to the VPS)
+
+1. Open <https://console.cloud.google.com/apis/credentials> in the Google account that owns the
+   Drive files, project **`proformatracker`** (or whichever owns client id `986175890311-…`).
+2. OAuth 2.0 Client IDs → open the client used by the app → **Authorised redirect URIs** → add
+   **exactly** this and save:
+
+   ```
+   https://whatanagent.duckdns.org/candl/api/gdrive/callback
+   ```
+
+   `GET /candl/api/gdrive/diagnose` prints the value this server actually sends, so copy it from
+   there rather than typing it.
+3. Wait about a minute, then press **Re-authorize Google Drive** in the app and accept.
+
+**Step B — make the token permanent**
+
+In <https://console.cloud.google.com/auth/overview> (APIs & Services → OAuth consent screen), check
+**Publishing status**:
+
+- **Testing** → Google expires every refresh token after **7 days**. This is almost certainly why
+  the token died repeatedly in the old setup. Press **Publish app** (personal use needs no
+  verification; you will just see one "unverified app" warning).
+- **In production** → the refresh token no longer expires; the app stays authorised indefinitely.
+
+**Step C — nothing to do day to day**
+
+With A and B done, the VPS keeps the credential in `/opt/whatanagent/.env` (written by
+`deploy/set-candl-env.sh` from repository secrets) and refreshes it itself. Because the VPS never
+sleeps, Drive stays hot: `/candl/api/gdrive/status` answers in ~350 ms and an upload takes a few
+seconds (Google's side), instead of the ~33 s cold start Render needed before it would even answer.
+
+`GET /candl/api/gdrive/diagnose` tells you which credential is in use, whether it is connected, and
+the exact redirect URI to paste, so this never has to be guesswork.
+
+> **Service accounts:** a key file never expires, so support for it exists
+> (`CANDL_SERVICE_ACCOUNT_JSON`, base64 or raw JSON, written to the data folder at boot and used in
+> preference to OAuth). Be aware of the catch: a service account has **no Drive storage quota**, so
+> it can only upload into a **Google Workspace Shared Drive** where it is a member. On a personal
+> Gmail Drive the upload is rejected — which makes publishing the consent screen (Step B) the right
+> permanent answer for a normal Google account.
