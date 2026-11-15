@@ -1,3 +1,12 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+
+    // ---------------------------------------------------------------------
+    // Prompt-cache stability (DeepSeek V4.1 Flash / Qwen / Gemini prefix cache)
+    // Providers match a request on an EXACT prefix, so anything that shifts in
+    // the EARLY part of the prompt re-bills everything after it. The virtual
+    // tool list is injected near the start of every request; letting it change
+    // between turns silently destroys the cache for the whole session.
+    // ---------------------------------------------------------------------
+    "deepseek-copilot.experimental.stabilizeToolList": true
 }
