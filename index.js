@@ -77,7 +77,7 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-// 📡 Count outbound bytes per destination BEFORE anything makes a network call,
+// Ã°Å¸â€œÂ¡ Count outbound bytes per destination BEFORE anything makes a network call,
 // so /api/diagnostics can show what is consuming the bandwidth allowance.
 installBandwidthTracker();
 
@@ -155,39 +155,39 @@ app.use(express.json({ limit: '30mb' }));
 
 // Note Book (AI notebook: voice -> paragraphs, refine, AlignTasks extraction, WhatsApp push/import, reminders)
 registerNotebookRoutes(app, db);
-// 🔴 Live Interactive Discussion / Meeting Board (Drawings, Calculations, Checklists, Polls, AI Co-Pilot)
+// Ã°Å¸â€Â´ Live Interactive Discussion / Meeting Board (Drawings, Calculations, Checklists, Polls, AI Co-Pilot)
 registerLiveMeetingRoutes(app, db);
 // Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
 const newsAgent = registerNewsRoutes(app, db);
-// � Gold Market Agent (live XAU/USD spot + one-time price alerts -> WhatsApp boss notifications)
+// Ã¯Â¿Â½ Gold Market Agent (live XAU/USD spot + one-time price alerts -> WhatsApp boss notifications)
 const goldAgent = registerGoldRoutes(app, db);
-// �🧠 Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
+// Ã¯Â¿Â½Ã°Å¸Â§Â  Contact Brain API (brain cards, persona mixing, AI discussion area, previews, drafts inbox)
 const brainEngine = registerBrainRoutes(app, db);
-// 📊 Trade Accounts Data (Purchases & Sales Ledger for TT, Gold, and Items)
+// Ã°Å¸â€œÅ  Trade Accounts Data (Purchases & Sales Ledger for TT, Gold, and Items)
 registerTradeAccountsRoutes(app, db);
-// 🧾 Commission Accounts (offline-first broker ledger: sellers → buyers, commission on GST)
+// Ã°Å¸Â§Â¾ Commission Accounts (offline-first broker ledger: sellers Ã¢â€ â€™ buyers, commission on GST)
 registerCommissionRoutes(app);
-// 🚢 Containers & Lots (file service: Google Drive bytes + BL reader). The business records
+// Ã°Å¸Å¡Â¢ Containers & Lots (file service: Google Drive bytes + BL reader). The business records
 // live in the app's own browser SQLite + Firestore, so this replaces the Render backend whose
-// only job was file bytes — and gains an always-on host instead of a 33-second cold start.
+// only job was file bytes Ã¢â‚¬â€ and gains an always-on host instead of a 33-second cold start.
 {
   const multer = (await import('multer')).default;
   registerCandlRoutes(app, multer, { getSettings });
 }
-// 🎓 AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
+// Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
-// 📇 Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
+// Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
 // Firestore is only the one-time migration source / fallback.
 try { const info = initContactStore(db); console.log('[CONTACT-DB] mode=' + info.mode + (info.path ? ' file=' + info.path : '')); } catch (e) { console.warn('[CONTACT-DB] init failed:', e.message); }
 registerContactIntelRoutes(app, db);
-// 🏢 Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
+// Ã°Å¸ÂÂ¢ Offices of Staff (offices, controls, audit, model switcher, meeting room, reports)
 registerOfficeRoutes(app, db);
-// 🏗️ Websites Workshop (site takeover inspection, manager + engineers, health checks)
+// Ã°Å¸Ââ€”Ã¯Â¸Â Websites Workshop (site takeover inspection, manager + engineers, health checks)
 registerWorkshopRoutes(app, db);
-// 📖 Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
+// Ã°Å¸â€œâ€“ Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
 registerRuleBookRoutes(app, db);
 registerBusinessRoutes(app, db);
-// 🎯 AlignTasks: name-based staff login, team unlock gate, stamped task writes
+// Ã°Å¸Å½Â¯ AlignTasks: name-based staff login, team unlock gate, stamped task writes
 registerAlignRoutes(app);
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
@@ -205,29 +205,20 @@ app.use(express.static('public', {
       } else {
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
       }
+      // No COOP/COEP on purpose: cross-origin isolation would enable the OPFS worker, but
+      // Chrome then blocks that module worker unless the page and every subresource opt in,
+      // and it restricts third-party assets. Firebase Hosting (the setup known to work) sends
+      // no isolation headers either, so the app uses its main-thread SQLite fallback, which
+      // persists correctly. Matching the working host beats a small OPFS speed gain.
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     }
   }
 }));
 
-// Clean route for Standalone Live Interactive Board Portal
-app.get('/live', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'live.html'));
-});
-
-// Clean route for Trade Accounts Data Portal
-app.get(['/trade', '/trade-accounts', '/trades'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'trade.html'));
-});
-
-// Clean route for the Commission Accounts portal (own login, offline-first)
-app.get(['/commission', '/commission-accounts', '/commission-account'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'commission.html'));
-});
-
 // 🚢 Proforma Tracker (Containers & Lots) — a section of this app, served from this host.
 // The React build lives in public/proforma; client-side deep links fall back to its index.html.
-// A missing FILE (…/assets/x.js) must 404 instead of returning HTML with a 200, otherwise the
-// browser reports a confusing MIME error and the cache hides the real problem.
+// A missing FILE (assets/x.js) must 404 instead of returning HTML with a 200, otherwise the
+// browser reports a confusing MIME error and its cache hides the real problem.
 app.get(['/proforma', '/proforma/'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'proforma', 'index.html'));
@@ -263,7 +254,7 @@ app.get('/api/server/stats/details', (req, res, next) => (adminOk(req) ? next() 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 📡 Diagnostics — what plan am I on, what is eating the bandwidth, is the session persistent?
+// Ã°Å¸â€œÂ¡ Diagnostics Ã¢â‚¬â€ what plan am I on, what is eating the bandwidth, is the session persistent?
 // Admin-guarded (fail-closed): no ADMIN_TOKEN on the server -> 503.
 const diagGuard = makeAdminGuard({ adminToken: process.env.ADMIN_TOKEN, label: 'diagnostics' });
 app.get('/api/diagnostics', diagGuard, (req, res) => {
@@ -289,7 +280,7 @@ app.get('/api/diagnostics/media/selftest', diagGuard, async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-// 🧹 WhatsApp session housekeeping — tens of thousands of tiny key files accumulate.
+// Ã°Å¸Â§Â¹ WhatsApp session housekeeping Ã¢â‚¬â€ tens of thousands of tiny key files accumulate.
 app.get('/api/diagnostics/session', diagGuard, (req, res) => {
   try { res.json({ ok: true, session: analyzeSession(path.join(__dirname, 'auth_info_baileys')) }); }
   catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -530,7 +521,7 @@ app.get('/api/wa-web/ai-chain', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// 🌐 Public website lead intake — the quote form on alqaryangroup.com /
+// Ã°Å¸Å’Â Public website lead intake Ã¢â‚¬â€ the quote form on alqaryangroup.com /
 // alshaabalwaseem.com posts here. Public by design (no admin token), but with
 // an origin allow-list, a honeypot field and a per-IP throttle. Every lead is
 // stored in Firestore and pushed onto the boss's WhatsApp notification queue.
@@ -588,8 +579,8 @@ app.post('/api/lead', async (req, res) => {
     await setDoc(ref, { items: items.slice(-500), updatedAt: now }, { merge: true });
 
     try {
-      const line = (k, v) => (v ? '\n• ' + k + ': ' + v : '');
-      const text = '🌐 *New website enquiry*\n• Name: ' + lead.name +
+      const line = (k, v) => (v ? '\nÃ¢â‚¬Â¢ ' + k + ': ' + v : '');
+      const text = 'Ã°Å¸Å’Â *New website enquiry*\nÃ¢â‚¬Â¢ Name: ' + lead.name +
         line('Company', lead.company) + line('Country', lead.country) +
         line('Phone', lead.phone) + line('Email', lead.email) +
         line('Material', lead.material) + line('Quantity', lead.quantity) +
@@ -601,7 +592,7 @@ app.post('/api/lead', async (req, res) => {
       await setDoc(nRef, { items: notes.slice(-200) }, { merge: true });
     } catch (e) { console.warn('[LEAD] boss notification skipped:', e.message); }
 
-    console.log('[LEAD] 🌐 new enquiry from ' + (lead.company || lead.name) + ' (' + (lead.country || 'n/a') + ')');
+    console.log('[LEAD] Ã°Å¸Å’Â new enquiry from ' + (lead.company || lead.name) + ' (' + (lead.country || 'n/a') + ')');
     res.json({ ok: true, id: lead.id });
   } catch (err) {
     console.error('[LEAD] failed:', err.message);
@@ -1004,13 +995,13 @@ async function getSettings() {
   return { ...stored, ...overrides };
 }
 
-// Only ever hand a masked hint to a browser: "sk-0729••••••baef"
+// Only ever hand a masked hint to a browser: "sk-0729Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢baef"
 function maskSecret(v) {
   if (!v || typeof v !== 'string') return '';
-  if (v.length <= 8) return '•'.repeat(v.length);
-  return v.slice(0, 6) + '••••••' + v.slice(-4);
+  if (v.length <= 8) return 'Ã¢â‚¬Â¢'.repeat(v.length);
+  return v.slice(0, 6) + 'Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢' + v.slice(-4);
 }
-const looksMasked = (v) => typeof v === 'string' && v.includes('•');
+const looksMasked = (v) => typeof v === 'string' && v.includes('Ã¢â‚¬Â¢');
 
 // Boot: never copy secrets from the environment into the database.
 async function migrateEnvToDb() {
@@ -1173,7 +1164,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     // Inject Brand Voice Rule
     const voice = kb.brandVoice || 'friendly';
     if (voice === 'friendly') {
-      systemInstruction += "TONE & STYLE RULE: Be warm, friendly, supportive, and use business-friendly emojis (😊, 👍, 🌟, etc.) to keep the conversation engaging.\n\n";
+      systemInstruction += "TONE & STYLE RULE: Be warm, friendly, supportive, and use business-friendly emojis (Ã°Å¸ËœÅ , Ã°Å¸â€˜Â, Ã°Å¸Å’Å¸, etc.) to keep the conversation engaging.\n\n";
     } else if (voice === 'professional') {
       systemInstruction += "TONE & STYLE RULE: Be formal, professional, highly direct, and concise. Avoid all emojis. Keep responses strictly factual and business-formal.\n\n";
     } else if (voice === 'sales') {
@@ -1302,7 +1293,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
           finalReply = (completion.choices[0].message.content || '').trim();
         }
         if (finalReply) {
-          if (p !== provider) console.log('[AI] ⛑️ Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          if (p !== provider) console.log('[AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
           break;
         }
       } catch (e) {
@@ -1716,7 +1707,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
           finalReply = (completion.choices[0].message.content || '').trim();
         }
         if (finalReply) {
-          if (p !== provider) console.log('[BOSS AI] ⛑️ Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          if (p !== provider) console.log('[BOSS AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
           break;
         }
       } catch (e) {
@@ -1840,7 +1831,7 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
   // Temporary lockout after too many wrong codes
   if (!verified && auth.lockUntil && Date.now() < auth.lockUntil) {
     const minsLeft = Math.ceil((auth.lockUntil - Date.now()) / 60000);
-    await sendWhatsAppMessage(senderNumber, `🚫 Too many wrong code attempts. Boss access is locked for ${minsLeft} more minute(s).`, settings);
+    await sendWhatsAppMessage(senderNumber, `Ã°Å¸Å¡Â« Too many wrong code attempts. Boss access is locked for ${minsLeft} more minute(s).`, settings);
     return;
   }
 
@@ -1854,17 +1845,17 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
 
     if (attempt === bossCfg.code.toLowerCase()) {
       await setBossAuth({ verified: true, verifiedAt: Date.now(), attempts: 0, lockUntil: 0 });
-      await sendWhatsAppMessage(senderNumber, "🫡 OK BOSS I M READY. What do you need, Boss?", settings);
+      await sendWhatsAppMessage(senderNumber, "Ã°Å¸Â«Â¡ OK BOSS I M READY. What do you need, Boss?", settings);
       return;
     }
 
     const attempts = (auth.attempts || 0) + 1;
     if (attempts >= BOSS_MAX_ATTEMPTS) {
       await setBossAuth({ attempts: 0, lockUntil: Date.now() + BOSS_LOCK_MINUTES * 60000 });
-      await sendWhatsAppMessage(senderNumber, `🚫 Too many wrong code attempts. Boss access locked for ${BOSS_LOCK_MINUTES} minutes.`, settings);
+      await sendWhatsAppMessage(senderNumber, `Ã°Å¸Å¡Â« Too many wrong code attempts. Boss access locked for ${BOSS_LOCK_MINUTES} minutes.`, settings);
     } else {
       await setBossAuth({ attempts });
-      await sendWhatsAppMessage(senderNumber, `🔒 Boss verification required. If you are really my boss, please give the access code. (Attempt ${attempts}/${BOSS_MAX_ATTEMPTS})`, settings);
+      await sendWhatsAppMessage(senderNumber, `Ã°Å¸â€â€™ Boss verification required. If you are really my boss, please give the access code. (Attempt ${attempts}/${BOSS_MAX_ATTEMPTS})`, settings);
     }
     return;
   }
@@ -1892,11 +1883,11 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
         const bookRec = await getContact(targetNumber);
         const inChat = Object.keys(contacts).some(k => phoneMatch(k, targetNumber));
         if (!bookRec && !inChat) {
-          addSuggest = `\n\n➕ +${targetNumber} is not in your Contact Book. Should I add it? Send me the name (required) and any details you want (company, email, city...) and I will save it.`;
+          addSuggest = `\n\nÃ¢Å¾â€¢ +${targetNumber} is not in your Contact Book. Should I add it? Send me the name (required) and any details you want (company, email, city...) and I will save it.`;
         }
       } catch (e) {}
 
-      await sendWhatsAppMessage(senderNumber, `✅ Sent to +${targetNumber} (AI stays active).` + addSuggest, settings);
+      await sendWhatsAppMessage(senderNumber, `Ã¢Å“â€¦ Sent to +${targetNumber} (AI stays active).` + addSuggest, settings);
       return;
     }
     await sendWhatsAppMessage(senderNumber, "Boss, use this format: REPLY <number> <message>", settings);
@@ -1906,7 +1897,7 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
   // --- Everything else = boss data queries / orders -> boss-mode AI (with SEO action loop) ---
   const extraMessages = [];
   let rawReply = await generateBossAIResponse(userText, senderNumber, settings, bossCfg, extraMessages);
-  console.log(`[BOSS RAW REPLY] ${(rawReply || '').substring(0, 500).replace(/\n/g, ' ⏎ ')}`);
+  console.log(`[BOSS RAW REPLY] ${(rawReply || '').substring(0, 500).replace(/\n/g, ' Ã¢ÂÅ½ ')}`);
 
   // SEO agent loop: execute any action blocks the boss AI produced, then let it continue
   const seoActionsDone = [];
@@ -1928,13 +1919,13 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
       }
       extraMessages.push({ role: 'user', content: resultParts.join('\n\n') });
       rawReply = await generateBossAIResponse(userText, senderNumber, settings, bossCfg, extraMessages);
-      console.log(`[BOSS RAW REPLY ${step + 2}] ${(rawReply || '').substring(0, 300).replace(/\n/g, ' ⏎ ')}`);
+      console.log(`[BOSS RAW REPLY ${step + 2}] ${(rawReply || '').substring(0, 300).replace(/\n/g, ' Ã¢ÂÅ½ ')}`);
     }
   } catch (seoErr) { console.error('Boss SEO action loop error:', seoErr.message); }
 
   // Remove any action blocks from the final text sent to the boss
   rawReply = stripSeoActionBlocks(rawReply || '');
-  if (!rawReply && seoActionsDone.length > 0) rawReply = '✅ Kaam ho gaya, Boss.';
+  if (!rawReply && seoActionsDone.length > 0) rawReply = 'Ã¢Å“â€¦ Kaam ho gaya, Boss.';
 
   // Safety net: if the AI CLAIMS a message was sent but produced NO [SENDMSG] tag, nothing was sent.
   // Force one corrective pass so it either sends for real or asks for the missing details.
@@ -1959,17 +1950,17 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
   const saveResult = await processBossSaveTags(sendResult.cleanText, bossCfg);
 
   let finalOut = saveResult.cleanText || '';
-  if (sendResult.sent.length > 0) finalOut += `\n\n✅ WhatsApp message sent to: ${sendResult.sent.map(n => '+' + n).join(', ')}`;
-  if (saveResult.saved.length > 0) finalOut += `\n✅ Saved to Contact Book: ${saveResult.saved.map(s => `${s.name} (+${s.phone})`).join(', ')}`;
-  if (sendResult.failed.length > 0) finalOut += `\n⚠️ Could not send to: ${sendResult.failed.join(', ')} — please check the number(s) and try again.`;
-  if (saveResult.failed.length > 0) finalOut += `\n⚠️ Could not save contact(s): ${saveResult.failed.join(', ')} — a name is required to save a contact.`;
+  if (sendResult.sent.length > 0) finalOut += `\n\nÃ¢Å“â€¦ WhatsApp message sent to: ${sendResult.sent.map(n => '+' + n).join(', ')}`;
+  if (saveResult.saved.length > 0) finalOut += `\nÃ¢Å“â€¦ Saved to Contact Book: ${saveResult.saved.map(s => `${s.name} (+${s.phone})`).join(', ')}`;
+  if (sendResult.failed.length > 0) finalOut += `\nÃ¢Å¡Â Ã¯Â¸Â Could not send to: ${sendResult.failed.join(', ')} Ã¢â‚¬â€ please check the number(s) and try again.`;
+  if (saveResult.failed.length > 0) finalOut += `\nÃ¢Å¡Â Ã¯Â¸Â Could not save contact(s): ${saveResult.failed.join(', ')} Ã¢â‚¬â€ a name is required to save a contact.`;
 
   const savedPhones = saveResult.saved.map(s => s.phone);
 
   // 3) Ask the boss whether to add brand-new sent numbers to the Contact Book
   const newToAsk = sendResult.newNumbers.filter(n => !savedPhones.some(sp => phoneMatch(sp, n)));
   if (newToAsk.length > 0) {
-    finalOut += `\n\n➕ Not in your Contact Book: ${newToAsk.map(n => '+' + n).join(', ')}. Should I add ${newToAsk.length > 1 ? 'them' : 'it'}? If yes, send the name (required) plus any details you want - company, email, city... - and I will save ${newToAsk.length > 1 ? 'them' : 'it'}.`;
+    finalOut += `\n\nÃ¢Å¾â€¢ Not in your Contact Book: ${newToAsk.map(n => '+' + n).join(', ')}. Should I add ${newToAsk.length > 1 ? 'them' : 'it'}? If yes, send the name (required) plus any details you want - company, email, city... - and I will save ${newToAsk.length > 1 ? 'them' : 'it'}.`;
   }
 
   // 4) Ask about phone numbers found in documents / images / voice notes
@@ -1979,14 +1970,14 @@ async function handleBossMessage(senderNumber, userText, settings, bossCfg, opts
       return !savedPhones.some(sp => phoneMatch(sp, pd)) && !newToAsk.some(n => phoneMatch(n, pd));
     });
     if (stillAsk.length > 0) {
-      finalOut += `\n\n📇 I found these numbers in the file: ${stillAsk.join(', ')}. Should I add ${stillAsk.length > 1 ? 'them' : 'it'} to the Contact Book? Send the name(s) - a name is required for each - and any other details.`;
+      finalOut += `\n\nÃ°Å¸â€œâ€¡ I found these numbers in the file: ${stillAsk.join(', ')}. Should I add ${stillAsk.length > 1 ? 'them' : 'it'} to the Contact Book? Send the name(s) - a name is required for each - and any other details.`;
     }
   }
 
   if (finalOut.trim()) await sendWhatsAppMessage(senderNumber, finalOut.trim(), settings);
 }
 
-// --- 🛡️ AI ACTIVITY TRACKER & KILL SWITCH REST ENDPOINTS ---
+// --- Ã°Å¸â€ºÂ¡Ã¯Â¸Â AI ACTIVITY TRACKER & KILL SWITCH REST ENDPOINTS ---
 app.get('/api/ai/control-state', (req, res) => {
   res.json({ ok: true, stopped: isAiAutoFetchStopped() });
 });
@@ -2095,7 +2086,7 @@ app.post('/api/knowledge', legacyAdminRoute, async (req, res) => {
     const prevSnap = await getDoc(doc(db, "appData", "knowledge"));
     const prev = prevSnap.exists() ? (prevSnap.data() || {}) : {};
     const payload = { ...incoming };
-    // "••••" or an empty box means "leave it as it is" - never wipe a secret by saving the form.
+    // "Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢Ã¢â‚¬Â¢" or an empty box means "leave it as it is" - never wipe a secret by saving the form.
     for (const f of SECRET_KNOWLEDGE_FIELDS) {
       if (!payload[f] || looksMasked(payload[f])) {
         if (prev[f] !== undefined) payload[f] = prev[f]; else delete payload[f];
@@ -2143,7 +2134,7 @@ app.get('/api/contacts', async (req, res) => {
 
 // ==========================================================
 // --- DASHBOARD STATS: real unified figures for the stat cards ---
-// Total Contacts = AI-chat contacts ∪ Contact Book (deduped phones)
+// Total Contacts = AI-chat contacts Ã¢Ë†Âª Contact Book (deduped phones)
 // Captured Leads = unified leads (chat lead flags OR book isLead / non-New status)
 // AI Active/Paused = live WA-Web pause list (LIDs resolved to real phones)
 // ==========================================================
@@ -3574,7 +3565,7 @@ app.post('/api/seo/ai-chat', async (req, res) => {
     const model = body.model === 'gemini' ? 'gemini' : 'deepseek';
     if (!messages.length) return res.status(400).json({ error: 'Message is required.' });
 
-    // If the user presses the ⏹ Stop button in the dashboard, the browser aborts the request -
+    // If the user presses the Ã¢ÂÂ¹ Stop button in the dashboard, the browser aborts the request -
     // detect it here so the remaining model calls / actions are not executed.
     // IMPORTANT: listen on res - res 'close' fires when the response is finished OR when the
     // client really drops the connection. Listening on req fires as soon as the JSON body is
@@ -4012,7 +4003,7 @@ app.post('/api/ai-tasks', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to save task: ' + e.message }); }
 });
 
-// ⚡ Command Center 2.0 - pause/resume a task (auto-disabled tasks can be re-enabled the same way)
+// Ã¢Å¡Â¡ Command Center 2.0 - pause/resume a task (auto-disabled tasks can be re-enabled the same way)
 app.post('/api/ai-tasks/toggle', async (req, res) => {
   try {
     const id = String((req.body || {}).id || '');
@@ -4038,7 +4029,7 @@ app.post('/api/ai-tasks/toggle', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ⚡ Command Center 2.0 - run a task immediately (keeps its schedule afterwards)
+// Ã¢Å¡Â¡ Command Center 2.0 - run a task immediately (keeps its schedule afterwards)
 app.post('/api/ai-tasks/run-now', async (req, res) => {
   try {
     const id = String((req.body || {}).id || '');
@@ -4055,7 +4046,7 @@ app.post('/api/ai-tasks/run-now', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 👑 Command Center 2.0 - Boss Orders audit trail (searchable behavioral memory core)
+// Ã°Å¸â€˜â€˜ Command Center 2.0 - Boss Orders audit trail (searchable behavioral memory core)
 app.get('/api/boss-orders', async (req, res) => {
   try {
     const snap = await getDoc(doc(db, 'appData', 'bossOrders'));
@@ -4075,7 +4066,7 @@ app.get('/api/boss-orders', async (req, res) => {
   } catch (e) { res.json({ ok: false, items: [], stats: { total: 0, last7: 0, byKind: {} }, kinds: [] }); }
 });
 
-// 👑 Re-run a past boss order: task orders are recreated on the scheduler; instructions re-run through the boss brain
+// Ã°Å¸â€˜â€˜ Re-run a past boss order: task orders are recreated on the scheduler; instructions re-run through the boss brain
 app.post('/api/boss-orders/rerun', async (req, res) => {
   try {
     const id = String((req.body || {}).id || '');
@@ -4099,7 +4090,7 @@ app.post('/api/boss-orders/rerun', async (req, res) => {
       });
       tasks.push(task);
       await setDoc(tRef, { tasks: tasks.slice(-300) }, { merge: true });
-      logBossOrder({ source: 'dashboard', kind: 'task', text: '▶ Re-run scheduled (in 1 min): ' + String(it.text || '').substring(0, 120), status: 'ok', meta: { taskId: task.id } }).catch(() => {});
+      logBossOrder({ source: 'dashboard', kind: 'task', text: 'Ã¢â€“Â¶ Re-run scheduled (in 1 min): ' + String(it.text || '').substring(0, 120), status: 'ok', meta: { taskId: task.id } }).catch(() => {});
       return res.json({ ok: true, mode: 'task', task });
     }
     const { runDashboardBossCommand } = await import('./waWebClient.js');
@@ -4212,7 +4203,7 @@ app.get('/api/wa-web/backup', async (req, res) => {
       const zip = buildZip([{ name: base + '.html', data: html }, { name: base + '.json', data: json }]);
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', 'attachment; filename="' + base + '.zip"');
-      console.log('[BACKUP] 💬 Single chat exported: ' + base + ' (' + Math.round(zip.length / 1024) + ' KB)');
+      console.log('[BACKUP] Ã°Å¸â€™Â¬ Single chat exported: ' + base + ' (' + Math.round(zip.length / 1024) + ' KB)');
       return res.send(zip);
     }
     const limitParam = parseInt(req.query.limit) || 0;
@@ -4221,7 +4212,7 @@ app.get('/api/wa-web/backup', async (req, res) => {
     const dateStr = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', 'attachment; filename="AlignTasks-Backup-' + dateStr + '.zip"');
-    console.log('[BACKUP] 📦 Full backup built: ' + stats.chats + ' chats / ' + stats.messages + ' messages (' + Math.round(zip.length / 1048576 * 10) / 10 + ' MB)');
+    console.log('[BACKUP] Ã°Å¸â€œÂ¦ Full backup built: ' + stats.chats + ' chats / ' + stats.messages + ' messages (' + Math.round(zip.length / 1048576 * 10) / 10 + ' MB)');
     res.send(zip);
   } catch (e) {
     console.error('[BACKUP] failed:', e.message);
@@ -4251,7 +4242,7 @@ async function geminiMediaAnalyze(buffer, mimeType, prompt, settings) {
         contents: [{ role: 'user', parts: [{ inlineData: { data: Buffer.from(buffer).toString('base64'), mimeType: mimeType } }, { text: prompt }] }]
       });
       const t = (r.response.text() || '').trim();
-      if (t) { console.log('[MEDIA] 🧠 Analyzed with ' + mediaModel); return t; }
+      if (t) { console.log('[MEDIA] Ã°Å¸Â§Â  Analyzed with ' + mediaModel); return t; }
     } catch (e) {
       lastErr = e;
       console.warn('[MEDIA] ' + mediaModel + ' failed: ' + (e.message || '').substring(0, 110));
@@ -4277,7 +4268,7 @@ async function transcribeAudio(audioBuffer, mimeType, settings) {
       const c = r.data && r.data.output && r.data.output.choices && r.data.output.choices[0] && r.data.output.choices[0].message && r.data.output.choices[0].message.content;
       const t = (Array.isArray(c) ? c.map(x => x.text || '').join(' ') : String(c || '')).trim();
       if (t) {
-        console.log('[AUDIO] 🎙️ Transcribed with ' + asrModel + ': "' + t.substring(0, 90) + '"');
+        console.log('[AUDIO] Ã°Å¸Å½â„¢Ã¯Â¸Â Transcribed with ' + asrModel + ': "' + t.substring(0, 90) + '"');
         return t;
       }
     } catch (e) {
@@ -4308,7 +4299,7 @@ async function analyzeImage(imageBuffer, mimeType, settings) {
       }, { headers: { Authorization: 'Bearer ' + qwenKey, 'Content-Type': 'application/json' }, timeout: 60000 });
       const t = String((r.data && r.data.choices && r.data.choices[0] && r.data.choices[0].message && r.data.choices[0].message.content) || '').trim();
       if (t) {
-        console.log('[IMAGE] 👁️ Analyzed with ' + visionModel);
+        console.log('[IMAGE] Ã°Å¸â€˜ÂÃ¯Â¸Â Analyzed with ' + visionModel);
         return t;
       }
     } catch (e) {
@@ -4434,9 +4425,9 @@ async function processFollowUpScheduler() {
   }
 }
 
-// ===== TASKS FOR AI — runs scheduled tasks (send WhatsApp message / AI website job) =====
+// ===== TASKS FOR AI Ã¢â‚¬â€ runs scheduled tasks (send WhatsApp message / AI website job) =====
 // ==========================================================
-// --- ⚡ COMMAND CENTER 2.0: cron-style scheduling engine ---
+// --- Ã¢Å¡Â¡ COMMAND CENTER 2.0: cron-style scheduling engine ---
 // Tiny 5-field cron matcher (min hour dom month dow): *  */n  a-b  a,b,c  a-b/n.
 // All schedules run in Dubai time (Asia/Dubai, fixed +04:00 - no DST).
 // ==========================================================
@@ -4563,13 +4554,13 @@ async function ccNotifyBoss(text) {
 async function ccExecuteTask(t) {
   if (t.taskType === 'send_message' || t.taskType === 'waweb_message') {
     const target = normalizePhone(t.target || '');
-    if (!target) return { ok: false, hard: true, result: '❌ Missing target number.' };
+    if (!target) return { ok: false, hard: true, result: 'Ã¢ÂÅ’ Missing target number.' };
     const ok = await sendWaWebMessage(target, t.message || '');
-    if (ok) return { ok: true, result: '✅ Sent to +' + target + (t.targetName ? ' (' + t.targetName + ')' : '') + ' via WhatsApp Web.' };
-    return { ok: false, hard: false, result: '⏳ WhatsApp Web send failed (socket reconnecting?)' };
+    if (ok) return { ok: true, result: 'Ã¢Å“â€¦ Sent to +' + target + (t.targetName ? ' (' + t.targetName + ')' : '') + ' via WhatsApp Web.' };
+    return { ok: false, hard: false, result: 'Ã¢ÂÂ³ WhatsApp Web send failed (socket reconnecting?)' };
   }
   if (t.taskType === 'send_template') {
-    return { ok: false, hard: true, result: '⚠️ Meta templates are only available for the business bot (businesswhatanagent). Use a normal WhatsApp message task.' };
+    return { ok: false, hard: true, result: 'Ã¢Å¡Â Ã¯Â¸Â Meta templates are only available for the business bot (businesswhatanagent). Use a normal WhatsApp message task.' };
   }
   if (t.taskType === 'ai_task') {
     const seoSnap = await getDoc(doc(db, 'appData', 'seoAgent'));
@@ -4580,16 +4571,16 @@ async function ccExecuteTask(t) {
       model: t.model === 'gemini' ? 'gemini' : 'deepseek',
       siteKey: siteKey
     }, { timeout: 300000 });
-    return { ok: true, result: '🤖 ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500) };
+    return { ok: true, result: 'Ã°Å¸Â¤â€“ ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500) };
   }
   if (t.taskType === 'align_task') {
     const r = await bossAlignTaskAdd({ title: t.title || t.message || '', assignee: t.assignee || '', due: t.dueDate || '' });
     if (r && r.ok) {
-      return { ok: true, result: '📋 Team board task created' + (r.general ? ' (General - for all)' : (r.assignee ? ' for ' + r.assignee.name : '')) + ': "' + String(t.title || '').substring(0, 60) + '"' };
+      return { ok: true, result: 'Ã°Å¸â€œâ€¹ Team board task created' + (r.general ? ' (General - for all)' : (r.assignee ? ' for ' + r.assignee.name : '')) + ': "' + String(t.title || '').substring(0, 60) + '"' };
     }
-    return { ok: false, hard: true, result: '❌ ' + ((r && r.error) || 'board task failed') };
+    return { ok: false, hard: true, result: 'Ã¢ÂÅ’ ' + ((r && r.error) || 'board task failed') };
   }
-  return { ok: false, hard: true, result: '❌ Unknown task type: ' + t.taskType };
+  return { ok: false, hard: true, result: 'Ã¢ÂÅ’ Unknown task type: ' + t.taskType };
 }
 
 async function processAiTasks() {
@@ -4604,10 +4595,10 @@ async function processAiTasks() {
       if (!t || t.status !== 'pending') continue;
       const isCron = t.schedule && t.schedule.type && t.schedule.type !== 'once';
 
-      // expired schedule window → stop before running again
+      // expired schedule window Ã¢â€ â€™ stop before running again
       if (isCron && t.expiresAt && now > t.expiresAt) {
         t.status = 'expired'; t.executedAt = now;
-        t.result = '⌛ Schedule window ended (' + ccFormatDubai(t.expiresAt) + ')';
+        t.result = 'Ã¢Å’â€º Schedule window ended (' + ccFormatDubai(t.expiresAt) + ')';
         t.log = (t.log || []).concat([{ ts: now, ok: false, info: 'expired' }]).slice(-30);
         changed = true; continue;
       }
@@ -4621,7 +4612,7 @@ async function processAiTasks() {
         outcome = await ccExecuteTask(t);
       } catch (e) {
         const msg = e.response ? ((e.response.status || '') + ' ' + JSON.stringify(e.response.data || {})) : e.message;
-        outcome = { ok: false, hard: !/reconnecting|offline|send failed/i.test(String(msg)), result: '❌ ' + safeTruncate(sanitizeText(msg), 400) };
+        outcome = { ok: false, hard: !/reconnecting|offline|send failed/i.test(String(msg)), result: 'Ã¢ÂÅ’ ' + safeTruncate(sanitizeText(msg), 400) };
       }
       t.result = safeTruncate(String(outcome.result || ''), 1200);
       t.executedAt = Date.now();
@@ -4634,7 +4625,7 @@ async function processAiTasks() {
         if (isCron) {
           const next = cronNextMs(t.cronText || (t.schedule && t.schedule.cronText) || '', Date.now());
           if (next && (!t.expiresAt || next <= t.expiresAt)) { t.status = 'pending'; t.runAt = next; t.nextRunAt = next; }
-          else { t.status = 'done'; t.result += '\n⌛ Schedule finished.'; }
+          else { t.status = 'done'; t.result += '\nÃ¢Å’â€º Schedule finished.'; }
         } else { t.status = 'done'; }
       } else if (!outcome.hard) {
         // soft failure (socket reconnecting): retry every minute, do not count as a failure
@@ -4642,10 +4633,10 @@ async function processAiTasks() {
         if (t.socketRetries <= 15) {
           t.status = 'pending'; t.runAt = Date.now() + 60000;
           if (isCron) t.nextRunAt = t.runAt;
-          t.result += '\n⏳ Retrying when WhatsApp Web reconnects (' + t.socketRetries + '/15)…';
+          t.result += '\nÃ¢ÂÂ³ Retrying when WhatsApp Web reconnects (' + t.socketRetries + '/15)Ã¢â‚¬Â¦';
         } else {
           t.status = 'failed';
-          t.result += '\n❌ Gave up after 15 reconnect retries.';
+          t.result += '\nÃ¢ÂÅ’ Gave up after 15 reconnect retries.';
         }
       } else {
         t.socketRetries = 0;
@@ -4657,22 +4648,22 @@ async function processAiTasks() {
           if (next) { t.status = 'pending'; t.runAt = next; t.nextRunAt = next; }
           else { t.status = 'failed'; }
         } else { t.status = 'failed'; }
-        await ccNotifyBoss('❌ *Task failed* (' + failN + '/' + failLimit + '): ' + String(t.title || t.taskType).substring(0, 70) + '\n' + String(t.result || '').substring(0, 350));
+        await ccNotifyBoss('Ã¢ÂÅ’ *Task failed* (' + failN + '/' + failLimit + '): ' + String(t.title || t.taskType).substring(0, 70) + '\n' + String(t.result || '').substring(0, 350));
         if (isCron && failN >= failLimit) {
           t.status = 'disabled';
           t.disabledReason = 'Auto-disabled after ' + failN + ' consecutive failures';
-          await ccNotifyBoss('⛔ *Task auto-disabled* (' + failN + ' failures in a row): ' + String(t.title || t.taskType).substring(0, 70) + '\nFix the cause, then press ▶ Resume in the Command Center.');
+          await ccNotifyBoss('Ã¢â€ºâ€ *Task auto-disabled* (' + failN + ' failures in a row): ' + String(t.title || t.taskType).substring(0, 70) + '\nFix the cause, then press Ã¢â€“Â¶ Resume in the Command Center.');
         }
       }
       changed = true;
 
       // the boss always gets a send report for his own message tasks
       if (t.taskType === 'waweb_message' && t.status !== 'pending' && t.status !== 'running') {
-        await ccNotifyBoss('📤 *Boss message ' + (t.status === 'done' ? 'sent ✅' : 'FAILED ❌') + ':* ' + (t.targetName || ('+' + t.target)) + '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + String(t.result || '').substring(0, 300))));
+        await ccNotifyBoss('Ã°Å¸â€œÂ¤ *Boss message ' + (t.status === 'done' ? 'sent Ã¢Å“â€¦' : 'FAILED Ã¢ÂÅ’') + ':* ' + (t.targetName || ('+' + t.target)) + '\n"' + String(t.message || '').substring(0, 200) + '"' + (t.status === 'done' ? '' : ('\n' + String(t.result || '').substring(0, 300))));
       }
       // boss-created tasks report their outcome (existing behaviour)
       if (t.createdBy === 'boss-waweb' && t.status !== 'pending' && t.status !== 'running') {
-        await ccNotifyBoss('🗓️ *Task ' + (t.status === 'done' ? 'completed ✅' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) + (t.result ? '\n' + String(t.result).substring(0, 600) : ''));
+        await ccNotifyBoss('Ã°Å¸â€”â€œÃ¯Â¸Â *Task ' + (t.status === 'done' ? 'completed Ã¢Å“â€¦' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) + (t.result ? '\n' + String(t.result).substring(0, 600) : ''));
       }
     }
 
@@ -4682,7 +4673,7 @@ async function processAiTasks() {
   }
 }
 
-// (legacy runner kept for reference — superseded by the Command Center 2.0 engine above)
+// (legacy runner kept for reference Ã¢â‚¬â€ superseded by the Command Center 2.0 engine above)
 async function legacyProcessAiTasksOld() {
   try {
     const ref = doc(db, 'appData', 'aiTasks');
@@ -4704,11 +4695,11 @@ async function legacyProcessAiTasksOld() {
           const ok = await sendWaWebMessage(target, t.message || '');
           t.status = ok ? 'done' : 'failed';
           t.result = ok
-            ? '✅ Message sent via WhatsApp Web.'
-            : '❌ WhatsApp Web message sending failed.';
+            ? 'Ã¢Å“â€¦ Message sent via WhatsApp Web.'
+            : 'Ã¢ÂÅ’ WhatsApp Web message sending failed.';
         } else if (t.taskType === 'send_template') {
           t.status = 'failed';
-          t.result = '⚠️ Message templates are only available for Meta Business API (managed in businesswhatanagent). For personal WhatsApp Web, use normal message tasks.';
+          t.result = 'Ã¢Å¡Â Ã¯Â¸Â Message templates are only available for Meta Business API (managed in businesswhatanagent). For personal WhatsApp Web, use normal message tasks.';
         } else if (t.taskType === 'ai_task') {
           const seoSnap = await getDoc(doc(db, 'appData', 'seoAgent'));
           const sites = (seoSnap.exists() ? (seoSnap.data().sites || {}) : {});
@@ -4719,14 +4710,14 @@ async function legacyProcessAiTasksOld() {
             siteKey: siteKey
           }, { timeout: 300000 });
           t.status = 'done';
-          t.result = '🤖 ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500);
+          t.result = 'Ã°Å¸Â¤â€“ ' + safeTruncate(sanitizeText((r.data && r.data.reply) || '(no reply)'), 1500);
         } else {
           t.status = 'failed';
           t.result = 'Unknown task type: ' + t.taskType;
         }
       } catch (e) {
         t.status = 'failed';
-        t.result = '❌ ' + safeTruncate(e.response ? ((e.response.status || '') + ' ' + JSON.stringify(e.response.data || {})) : e.message, 400);
+        t.result = 'Ã¢ÂÅ’ ' + safeTruncate(e.response ? ((e.response.status || '') + ' ' + JSON.stringify(e.response.data || {})) : e.message, 400);
       }
       t.executedAt = Date.now();
       changed = true;
@@ -4740,7 +4731,7 @@ async function legacyProcessAiTasksOld() {
           const items = nsnap.exists() ? (nsnap.data().items || []) : [];
           items.push({
             id: 'ntf-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-            text: '🗓️ *Task ' + (t.status === 'done' ? 'completed ✅' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) +
+            text: 'Ã°Å¸â€”â€œÃ¯Â¸Â *Task ' + (t.status === 'done' ? 'completed Ã¢Å“â€¦' : String(t.status)) + ':* ' + String(t.title || t.taskType || '').substring(0, 70) +
                   (t.result ? '\n' + String(t.result).substring(0, 600) : ''),
             createdAt: Date.now(),
             status: 'pending'
@@ -4794,17 +4785,17 @@ function startFollowUpScheduler() {
     if (newsAgent && typeof newsAgent.maybeAutoRefresh === 'function') {
       newsAgent.maybeAutoRefresh();
     }
-    // � Gold Market: live spot price poll + one-time price alerts (self-throttled)
+    // Ã¯Â¿Â½ Gold Market: live spot price poll + one-time price alerts (self-throttled)
     if (goldAgent && typeof goldAgent.maybePoll === 'function') {
       goldAgent.maybePoll();
     }
-    // �🧠 Contact Brain: nightly-style learning — studies YOUR past messages per contact (self-throttled)
+    // Ã¯Â¿Â½Ã°Å¸Â§Â  Contact Brain: nightly-style learning Ã¢â‚¬â€ studies YOUR past messages per contact (self-throttled)
     if (brainEngine && typeof brainEngine.maybeLearn === 'function') {
       brainEngine.maybeLearn();
     }
-    // 🌱 AI Staff Academy: staff under training study their assigned WhatsApp chats (self-throttled, 6h)
+    // Ã°Å¸Å’Â± AI Staff Academy: staff under training study their assigned WhatsApp chats (self-throttled, 6h)
     maybeAgentAutoLearn();
-    // 📊 Offices of Staff: one stored performance snapshot per day
+    // Ã°Å¸â€œÅ  Offices of Staff: one stored performance snapshot per day
     maybeStaffDailyReport();
   };
   console.log('[SCHEDULER] Started - checking every 60 seconds' + (IS_RENDER ? ' (Render standby gate ACTIVE)' : ''));

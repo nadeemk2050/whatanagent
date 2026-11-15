@@ -1,21 +1,18 @@
-Fix the section showing zero records: asset paths were origin-absolute
+Match the working host: no COOP/COEP for /proforma
 
-At /proforma the SQLite worker URL was built as
-`${window.location.origin}/sqlite/sqlite3-worker1.mjs`, which is a 404 when the
-app is not served from the domain root. That silently disabled the local
-database, so the app fell back to the REST adapter and called
-/candl/api/customers?user_id=local - a file-only service, hence 404 and every
-counter at 0. The Firebase-hosted copy kept working because it sits at /.
+Cross-origin isolation would enable the OPFS worker, but Chrome then blocks
+that module worker with net::ERR_BLOCKED_BY_RESPONSE unless the page and every
+subresource opt in, and the app is then left with no local database at all -
+worse than before. Firebase Hosting, the setup known to work, sends no
+isolation headers either: the app uses its main-thread SQLite fallback, which
+loads the WASM and persists the database.
 
-- appBase.js: new module deriving the build base from import.meta.url, with
-  asset() / assetUrl() helpers. Works at / and at /proforma/ equally.
-- browserSqlite.js: worker URL now assetUrl(...) instead of origin-absolute.
-- main.jsx: registers THIS build worker. Registering "/sw.js" from /proforma
-  would have installed the WHATANAGENT dashboard worker over the whole host.
-- App.jsx: ledger report photo URLs use API_BASE, not window.location.origin.
-- dataService.js: syncFirebase no longer fails when the host has no
-  /auth/sync-firebase route (404/405/501). It falls back to the Firebase
-  identity, because records live in browser SQLite + Firestore and the backend
-  only stores file bytes.
+Kept the useful part: Cross-Origin-Resource-Policy same-origin on the section
+files, plus the real fix from the previous commit - the SQLite worker is now
+requested from the build base instead of the domain root.
+
+Verified in a real browser at /proforma: no /candl/api/customers 404s on load,
+sqlite3.wasm fetched 200, and "using main-thread SQLite fallback" with
+"fallback persist: saved 294912 bytes".
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
