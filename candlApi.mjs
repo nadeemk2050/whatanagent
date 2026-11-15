@@ -332,6 +332,30 @@ silently lost. JSON status: <b>/candl/api/gdrive/diagnose</b></div>
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, 'candl-gdrive-token.json');
       fs.writeFileSync(file, JSON.stringify({ refresh_token: refreshToken }, null, 2), { mode: 0o600 });
+      // Also refresh the token in <app>/.env. The data file is what the Drive helper reads
+      // first, so this is belt-and-braces: if that file is ever lost, the .env copy (otherwise
+      // holding an older, possibly dead token) is still correct on the next start.
+      try {
+        const envPath = process.env.CANDL_ENV_FILE || path.resolve(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+          const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+          const keys = ['CANDL_GDRIVE_REFRESH_TOKEN', 'GDRIVE_REFRESH_TOKEN'];
+          const out = [];
+          const seen = new Set();
+          for (const ln of lines) {
+            const m = /^([A-Z0-9_]+)=/.exec(ln);
+            if (m && keys.includes(m[1])) { out.push(m[1] + '=' + refreshToken); seen.add(m[1]); }
+            else out.push(ln);
+          }
+          for (const k of keys) if (!seen.has(k)) out.push(k + '=' + refreshToken);
+          const tmp = envPath + '.tmp';
+          fs.writeFileSync(tmp, out.join('\n'), { mode: 0o600 });
+          fs.renameSync(tmp, envPath);
+          console.log('[CANDL] .env refresh token updated');
+        }
+      } catch (e) {
+        console.warn('[CANDL] could not update .env (data file still holds the token):', String(e.message || e).slice(0, 120));
+      }
       // checkConnection() reloads the newest token file into the OAuth client, so the new
       // credential is live immediately.
       const conn = await gdrive.checkConnection();

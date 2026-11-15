@@ -100,6 +100,26 @@ async function pushToVps(refreshToken) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // Friendly landing page so the owner only has to remember http://localhost:5050
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Authorise Google Drive</title>
+<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0b1220;color:#e2e8f0;display:flex;
+min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px}
+.c{background:#111b2b;border:1px solid #1f2c40;border-radius:16px;padding:30px;max-width:560px;text-align:center}
+h1{font-size:20px;margin:0 0 8px}p{color:#94a3b8;font-size:14px;line-height:1.6}
+a.b{display:inline-block;margin-top:18px;background:#0d9488;color:#04241f;font-weight:800;padding:14px 26px;
+border-radius:12px;text-decoration:none;font-size:16px}
+small{display:block;margin-top:16px;color:#64748b;font-size:12px}</style></head><body><div class="c">
+<h1>Authorise Google Drive</h1>
+<p>Sign in as <b>nadeemalsaham@gmail.com</b> and press <b>Allow</b>. If Google warns that the app is
+unverified, choose <b>Advanced &rarr; Go to … (unsafe)</b> — that is expected for your own app.</p>
+<a class="b" href="${authUrl}">Authorise Google Drive now</a>
+<small>This helper closes itself once the token is sent to your server.</small>
+</div></body></html>`);
+  }
+
   if (url.pathname !== CALLBACK_PATH) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not found');
@@ -169,10 +189,11 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('='.repeat(74) + '\n');
 });
 
-// Do not hang forever if nobody finishes the flow.
+// Do not hang forever if nobody finishes the flow (default 6 hours — the owner may be away).
+const TIMEOUT_MIN = Number(process.env.BRIDGE_TIMEOUT_MIN || 360);
 setTimeout(() => {
   if (!finished) {
-    console.error('\n✖ Timed out after 10 minutes with no callback. Nothing changed.');
+    console.error('\n✖ Timed out after ' + TIMEOUT_MIN + ' minutes with no callback. Nothing changed.');
     server.close(() => process.exit(1));
   }
-}, 10 * 60 * 1000).unref();
+}, TIMEOUT_MIN * 60 * 1000).unref();

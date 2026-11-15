@@ -1,20 +1,9 @@
-Add a guarded Drive token-import endpoint (optional fallback)
+Persist an imported Drive token into .env as well
 
-Google only accepts the OAuth callback registered on the client, which is the
-old Render host. That would leave a re-authorisation impossible on the VPS
-until the console is updated. This endpoint lets another host hand over a
-refresh token in one POST instead:
-
-  POST /candl/api/gdrive/import-token   (x-import-key: <CANDL_IMPORT_KEY>)
-
-The token is written to the gitignored data folder, which this module prefers
-over .env, and checkConnection() reloads it into the OAuth client immediately -
-no restart, no credential copy/pasted through chat. Returns 503 when
-CANDL_IMPORT_KEY is not configured, so the endpoint is inert by default.
-
-Nothing calls it: the Containers & Lots Render backend is deliberately
-UNCHANGED, so normal uploads never touch Render and the one-time handover
-costs nothing at runtime. Registering this host callback in Google Cloud
-remains the cleanest route and is documented in the README.
+The data-folder token file is what candlGdrive reads first, so it wins today.
+But .env still held the older, dead refresh token - if the data file were
+ever lost (fresh checkout, rebuilt host) that dead value would come back and
+the banner would return. The import endpoint now rewrites both names in .env
+atomically while it writes the token file.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
