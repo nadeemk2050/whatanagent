@@ -194,6 +194,8 @@ export function registerCandlRoutes(app, multer, opts = {}) {
         connected: conn.connected,
         reason: conn.reason,
         authUrl: gdrive.getAuthUrl() || null,
+        // Relative so it works whatever hostname the page was opened on.
+        helpUrl: gdrive.getAuthUrl() ? PREFIX + '/gdrive/help' : null,
         // Safe to expose (not a secret) and it is exactly what must be registered in
         // Google Cloud -> Credentials -> OAuth client -> Authorised redirect URIs.
         redirectUri: process.env.CANDL_GDRIVE_REDIRECT_URI || process.env.GDRIVE_REDIRECT_URI || '',
@@ -236,6 +238,56 @@ export function registerCandlRoutes(app, multer, opts = {}) {
       authUrl: gdrive.getAuthUrl() || null,
       steps
     });
+  });
+
+  // Human-friendly page for the "Re-authorize" button. Opening the raw Google URL from a host
+  // whose callback is not registered only shows "Error 400: redirect_uri_mismatch", which tells
+  // the owner nothing. This page shows the exact URI to paste into Google Cloud, then continues.
+  app.get(PREFIX + '/gdrive/help', async (req, res) => {
+    const redirectUri = process.env.CANDL_GDRIVE_REDIRECT_URI || process.env.GDRIVE_REDIRECT_URI || '(not configured)';
+    let connected = false;
+    try { connected = (await gdrive.checkConnection()).connected; } catch (e) { connected = false; }
+    const authUrl = gdrive.getAuthUrl() || '';
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Google Drive authorisation</title>
+<style>
+ body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0b1220;color:#e2e8f0;margin:0;padding:28px}
+ .card{max-width:820px;margin:0 auto;background:#111b2b;border:1px solid #1f2c40;border-radius:14px;padding:24px}
+ h1{font-size:20px;margin:0 0 4px} .sub{color:#94a3b8;font-size:13px;margin-bottom:18px}
+ .pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700}
+ .ok{background:#052e1b;color:#6ee7b7;border:1px solid #065f46}
+ .bad{background:#3b0d0d;color:#fca5a5;border:1px solid #7f1d1d}
+ code{background:#0a1120;border:1px solid #1f2c40;border-radius:8px;padding:10px 12px;display:block;
+      font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all;color:#7dd3fc;margin:8px 0}
+ ol{line-height:1.75;font-size:14px;padding-left:20px} li{margin-bottom:6px}
+ a.btn{display:inline-block;margin-top:16px;background:#0d9488;color:#04241f;font-weight:800;
+       padding:11px 18px;border-radius:10px;text-decoration:none}
+ .warn{margin-top:16px;background:#2a1e05;border:1px solid #78350f;color:#fcd34d;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6}
+</style></head><body><div class="card">
+<h1>Google Drive authorisation</h1>
+<div class="sub">Containers &amp; Lots file service on this server</div>
+<p>Status: <span class="pill ${connected ? 'ok' : 'bad'}">${connected ? 'CONNECTED' : 'NOT CONNECTED'}</span></p>
+<p style="font-size:14px;line-height:1.6">If Google showed you <b>Error 400: redirect_uri_mismatch</b>, the OAuth client simply does not
+know about this server yet. This has to be added once in Google Cloud Console — no code change is involved.</p>
+<ol>
+  <li>Open <b>Google Cloud Console → APIs &amp; Services → Credentials</b> for the project that owns the Drive client.</li>
+  <li>Open the <b>OAuth 2.0 Client ID</b> this app uses.</li>
+  <li>Under <b>Authorised redirect URIs</b>, add this value <b>exactly</b> (copy it):</li>
+</ol>
+<code>${esc(redirectUri)}</code>
+<ol start="4">
+  <li>Save, wait about a minute, then come back and press the button below.</li>
+  <li>To make it permanent: <b>OAuth consent screen → Publishing status → Publish app</b>.
+      While it says <i>Testing</i>, Google expires the token every 7 days.</li>
+</ol>
+${authUrl ? `<a class="btn" href="${esc(authUrl)}">Authorise Google Drive now</a>` : '<div class="warn">No OAuth client id/secret is configured on this server, so the authorise link cannot be built.</div>'}
+<div class="warn">Uploads are refused (HTTP 503) while Drive is disconnected — they are never faked, so no photo is
+silently lost. JSON status: <b>/candl/api/gdrive/diagnose</b></div>
+</div></body></html>`);
   });
 
   app.get(PREFIX + '/gdrive/auth', (req, res) => {
