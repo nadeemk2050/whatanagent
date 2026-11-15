@@ -1,9 +1,21 @@
-Keep the section on the cloud store, and never probe a records API
+Fix the section showing zero records: asset paths were origin-absolute
 
-Served at /proforma the app used to find its own host answering /warmup and
-concluded that a full records backend existed, which would have run the legacy
-"backfill orders.db to Firestore" path against a service that only stores file
-bytes. It now treats /proforma as cloud mode from the start, so records stay in
-the browser SQLite + Firestore and the stray /api/warmup 404 disappears.
+At /proforma the SQLite worker URL was built as
+`${window.location.origin}/sqlite/sqlite3-worker1.mjs`, which is a 404 when the
+app is not served from the domain root. That silently disabled the local
+database, so the app fell back to the REST adapter and called
+/candl/api/customers?user_id=local - a file-only service, hence 404 and every
+counter at 0. The Firebase-hosted copy kept working because it sits at /.
+
+- appBase.js: new module deriving the build base from import.meta.url, with
+  asset() / assetUrl() helpers. Works at / and at /proforma/ equally.
+- browserSqlite.js: worker URL now assetUrl(...) instead of origin-absolute.
+- main.jsx: registers THIS build worker. Registering "/sw.js" from /proforma
+  would have installed the WHATANAGENT dashboard worker over the whole host.
+- App.jsx: ledger report photo URLs use API_BASE, not window.location.origin.
+- dataService.js: syncFirebase no longer fails when the host has no
+  /auth/sync-firebase route (404/405/501). It falls back to the Firebase
+  identity, because records live in browser SQLite + Firestore and the backend
+  only stores file bytes.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
