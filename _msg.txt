@@ -1,9 +1,9 @@
-Persist the refresh token from the app callback too
+Report when the stored Drive token was issued
 
-Both paths that can mint a refresh token - the guarded import endpoint and the
-app's own /gdrive/callback - now write it to data/candl-gdrive-token.json AND
-refresh the CANDL_GDRIVE_REFRESH_TOKEN / GDRIVE_REFRESH_TOKEN lines in .env, so
-a stale value can never resurface if the data file is lost. Shared helper,
-atomic write, best effort: a read-only filesystem cannot break the auth flow.
+/gdrive/diagnose now returns tokenStoredAt (mtime of the token file). Combined
+with the moment the OAuth app was published, that answers the only question that
+matters: was this token minted while the app was still in Testing (so Google
+expires it ~7 days later), or after publishing (permanent)? Without it the
+answer was guesswork.
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>

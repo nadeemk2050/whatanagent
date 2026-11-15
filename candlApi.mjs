@@ -258,12 +258,24 @@ export function registerCandlRoutes(app, multer, opts = {}) {
           '5. So the token never expires again: APIs & Services -> OAuth consent screen -> Publishing status must be "In production". While it says "Testing", Google kills refresh tokens after 7 days.',
           'A service-account key (no expiry) is the alternative if you would rather never do this again.'
         ];
+
+    // When was the credential we are actually using stored? If this is OLDER than the moment the
+    // OAuth app was published, the token was minted while the app was still in Testing and Google
+    // will expire it about 7 days after issue — pressing Authorise once more fixes that.
+    let tokenStoredAt = null;
+    try {
+      const dir = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data');
+      const f = path.join(dir, 'candl-gdrive-token.json');
+      if (fs.existsSync(f)) tokenStoredAt = fs.statSync(f).mtime.toISOString();
+    } catch (e) { /* ignore */ }
+
     res.json({
       ok: true,
       credentialMode: mode,
       connected: conn.connected,
       reason: conn.reason,
       redirectUri,
+      tokenStoredAt,
       hasRefreshToken: !!(process.env.CANDL_GDRIVE_REFRESH_TOKEN || process.env.GDRIVE_REFRESH_TOKEN),
       hasClientId: !!(process.env.CANDL_GDRIVE_CLIENT_ID || process.env.GDRIVE_CLIENT_ID),
       authUrl: gdrive.getAuthUrl() || null,
