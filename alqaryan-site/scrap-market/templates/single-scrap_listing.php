@@ -142,6 +142,22 @@ while ( have_posts() ) :
 						<a class="sm-btn sm-btn--wa" href="https://wa.me/<?php echo esc_attr( $phone ); ?>?text=<?php echo rawurlencode( $wa_text ); ?>"
 							target="_blank" rel="noopener">💬 WhatsApp the seller</a>
 						<a class="sm-btn sm-btn--ghost" href="#enquiry">Send a message</a>
+						<?php
+						$fb_post_id = get_post_meta( $post_id, '_sm_fb_post_id', true );
+						if ( ! empty( $fb_post_id ) ) :
+							?>
+							<span class="sm-btn sm-btn--fb-done" title="Already posted to Facebook Page (ID: <?php echo esc_attr( $fb_post_id ); ?>)">
+								✓ On Facebook Page
+							</span>
+						<?php else : ?>
+							<button type="button" class="sm-btn sm-btn--fb-send"
+								data-sm-send-fb="<?php echo esc_attr( $post_id ); ?>"
+								data-nonce="<?php echo esc_attr( wp_create_nonce( 'sm_send_fb_' . $post_id ) ); ?>"
+								title="Post directly to Al Qaryan Facebook Page (one-time only, prevents duplicates)">
+								<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="margin-right:4px;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+								<span>Send to Facebook Page</span>
+							</button>
+						<?php endif; ?>
 					</div>
 				</div>
 
@@ -173,6 +189,16 @@ while ( have_posts() ) :
 						href="https://www.facebook.com/sharer/sharer.php?u=<?php echo rawurlencode( $permalink ); ?>">Facebook</a>
 					<button type="button" class="sm-share__btn" data-copy="<?php echo esc_url( $permalink ); ?>">Copy link</button>
 					<a class="sm-share__btn" href="mailto:?subject=<?php echo rawurlencode( get_the_title() ); ?>&body=<?php echo rawurlencode( $permalink ); ?>">Email</a>
+					<?php if ( ! empty( $fb_post_id ) ) : ?>
+						<span class="sm-share__btn sm-share__btn--fb-done" title="Already published on Facebook Page (duplicate prevention active)">✓ On FB Page</span>
+					<?php else : ?>
+						<button type="button" class="sm-share__btn sm-share__btn--fb-direct"
+							data-sm-send-fb="<?php echo esc_attr( $post_id ); ?>"
+							data-nonce="<?php echo esc_attr( wp_create_nonce( 'sm_send_fb_' . $post_id ) ); ?>"
+							title="Directly send this post to Al Qaryan Facebook Page (one-time only, prevents duplicates)">
+							🚀 Send to FB Page
+						</button>
+					<?php endif; ?>
 				</div>
 
 				<div class="sm-safety">

@@ -218,3 +218,60 @@ add_action( 'manage_scrap_listing_posts_custom_column', function ( $col, $post_i
 		echo '<a class="button button-small" href="' . esc_url( $url ) . '">📤 Post to Facebook</a>';
 	}
 }, 10, 2 );
+
+/**
+ * Handle direct front-end "Send to Facebook Page" AJAX request.
+ * Strictly prevents duplicate posts: once posted, cannot be re-posted.
+ */
+add_action( 'wp_ajax_sm_send_to_fb', 'sm_handle_ajax_send_to_fb' );
+add_action( 'wp_ajax_nopriv_sm_send_to_fb', 'sm_handle_ajax_send_to_fb' );
+
+function sm_handle_ajax_send_to_fb() {
+	$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+	$nonce   = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+
+	if ( ! $post_id || ! wp_verify_nonce( $nonce, 'sm_send_fb_' . $post_id ) ) {
+		wp_send_json_error( array( 'message' => 'Security verification failed or invalid listing.' ), 403 );
+	}
+
+	if ( 'scrap_listing' !== get_post_type( $post_id ) || 'publish' !== get_post_status( $post_id ) ) {
+		wp_send_json_error( array( 'message' => 'Only published scrap listings can be sent to Facebook.' ), 400 );
+	}
+
+	// Duplicate prevention: check if already posted
+	$existing_fb_id = get_post_meta( $post_id, '_sm_fb_post_id', true );
+	if ( ! empty( $existing_fb_id ) ) {
+		wp_send_json_error(
+			array(
+				'message'        => 'This listing was already posted to Facebook Page. Duplicate posting is prevented.',
+				'already_posted' => true,
+				'fb_post_id'     => $existing_fb_id,
+			),
+			409
+		);
+	}
+
+	// Concurrency lock: prevent simultaneous double-clicks
+	$transient_key = 'sm_posting_fb_' . $post_id;
+	if ( get_transient( $transient_key ) ) {
+		wp_send_json_error( array( 'message' => 'Post to Facebook is currently in progress. Please wait a moment.' ), 429 );
+	}
+	set_transient( $transient_key, 1, 30 );
+
+	$res = sm_post_to_facebook( $post_id, false );
+	delete_transient( $transient_key );
+
+	if ( is_wp_error( $res ) ) {
+		wp_send_json_error( array( 'message' => $res->get_error_message() ), 500 );
+	}
+
+	$fb_post_id = ! empty( $res['fb_post_id'] ) ? $res['fb_post_id'] : ( ! empty( $res['post_id'] ) ? $res['post_id'] : '' );
+
+	wp_send_json_success(
+		array(
+			'message'    => 'Listing posted successfully to Al Qaryan Industries LLC Facebook Page!',
+			'fb_post_id' => $fb_post_id,
+		)
+	);
+}
+

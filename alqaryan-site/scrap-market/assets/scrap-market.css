@@ -1016,12 +1016,23 @@ html.sm-crop-open, html.sm-crop-open body { overflow: hidden; }
 .sm-card__manage { display: inline-block; margin-top: .5rem; font-size: .76rem; color: var(--q-muted, #6b7c85); text-decoration: none; }
 .sm-card__manage:hover { color: var(--q-primary, #0b6e4f); }
 
+.sm-card__actions {
+	display: flex;
+	align-items: center;
+	gap: .45rem;
+	margin-top: auto;
+	padding-top: .65rem;
+	position: relative;
+}
+.sm-card__actions .sm-card__cta {
+	flex: 1;
+	margin-top: 0;
+}
 .sm-card__cta {
 	display: inline-flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: .4rem;
-	margin-top: .75rem;
 	padding: .5rem .85rem;
 	background: #f0fdf4;
 	border: 1px solid #bbf7d0;
@@ -1045,4 +1056,149 @@ html.sm-crop-open, html.sm-crop-open body { overflow: hidden; }
 }
 .sm-card__cta:hover .sm-card__cta-arrow {
 	transform: translateX(2px);
+}
+
+/* Card Share Dropdown */
+.sm-card:has(.sm-share-pop.is-open),
+.sm-card.has-share-open {
+	overflow: visible !important;
+	z-index: 50;
+}
+.sm-share-pop {
+	position: relative;
+	flex-shrink: 0;
+}
+.sm-share-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 6px;
+	border: 1px solid var(--q-line, #d1ded6);
+	background: #fff;
+	color: var(--q-muted, #475569);
+	cursor: pointer;
+	transition: all .15s ease;
+}
+.sm-share-btn:hover,
+.sm-share-pop.is-open .sm-share-btn {
+	background: #eef4f1;
+	border-color: var(--q-primary, #0b6e4f);
+	color: var(--q-primary, #0b6e4f);
+}
+.sm-share-menu {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	right: 0;
+	z-index: 60;
+	min-width: 195px;
+	background: #fff;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 10px;
+	box-shadow: 0 8px 24px rgba(15, 23, 42, .15);
+	padding: .35rem 0;
+	animation: smSharePop .15s ease-out;
+}
+@keyframes smSharePop {
+	from { opacity: 0; transform: translateY(4px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+.sm-share-menu[hidden] {
+	display: none !important;
+}
+.sm-share-item {
+	display: flex;
+	align-items: center;
+	gap: .55rem;
+	padding: .52rem .85rem;
+	width: 100%;
+	text-align: left;
+	background: none;
+	border: 0;
+	color: var(--q-ink, #0f172a);
+	font-size: .82rem;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+	box-sizing: border-box;
+	transition: background .12s ease;
+}
+.sm-share-item:hover {
+	background: var(--q-primary-soft, #e8f4ef);
+	color: var(--q-primary-dark, #075039);
+	text-decoration: none;
+}
+
+/* Direct Facebook Page Publish Buttons */
+.sm-btn--fb-send {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: .4rem;
+	background: #1877f2;
+	color: #fff !important;
+	border: 0;
+	border-radius: var(--q-radius-sm, 8px);
+	padding: .65rem 1.15rem;
+	font-weight: 700;
+	font-size: .92rem;
+	cursor: pointer;
+	text-decoration: none;
+	transition: background .15s ease, transform .12s ease;
+}
+.sm-btn--fb-send:hover {
+	background: #0d65d9;
+	color: #fff !important;
+	text-decoration: none;
+	transform: translateY(-1px);
+}
+.sm-btn--fb-send:active {
+	transform: translateY(0);
+}
+.sm-btn--fb-done {
+	display: inline-flex;
+	align-items: center;
+	gap: .4rem;
+	background: #f0fdf4;
+	color: #15803d;
+	border: 1px solid #bbf7d0;
+	border-radius: var(--q-radius-sm, 8px);
+	padding: .65rem 1.15rem;
+	font-weight: 700;
+	font-size: .92rem;
+	cursor: default;
+}
+.sm-share__btn--fb-direct {
+	display: inline-flex;
+	align-items: center;
+	gap: .35rem;
+	background: #eff6ff !important;
+	border-color: #93c5fd !important;
+	color: #1d4ed8 !important;
+	font-weight: 700 !important;
+	transition: all .15s ease;
+}
+.sm-share__btn--fb-direct:hover {
+	background: #dbeafe !important;
+	border-color: #3b82f6 !important;
+	color: #1e40af !important;
+}
+.sm-share__btn--fb-done {
+	display: inline-flex;
+	align-items: center;
+	gap: .35rem;
+	background: #f0fdf4 !important;
+	border-color: #86efac !important;
+	color: #15803d !important;
+	font-weight: 700 !important;
+	cursor: default;
+}
+.sm-share-item--fb-send {
+	color: #1d4ed8 !important;
+	font-weight: 700 !important;
+}
+.sm-share-item--fb-send:hover {
+	background: #eff6ff !important;
+	color: #1e40af !important;
 }

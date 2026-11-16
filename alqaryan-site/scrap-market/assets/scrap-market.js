@@ -545,4 +545,129 @@
 
 		paint();
 	} );
+
+	/* ----------------------------------------------- card share dropdowns */
+	document.addEventListener( 'click', function ( e ) {
+		var trigger = e.target.closest( '[data-share-trigger]' );
+		if ( trigger ) {
+			e.preventDefault();
+			e.stopPropagation();
+			var pop = trigger.closest( '.sm-share-pop' );
+			var menu = pop ? pop.querySelector( '.sm-share-menu' ) : null;
+			if ( pop && menu ) {
+				var isHidden = menu.hasAttribute( 'hidden' );
+				document.querySelectorAll( '.sm-share-pop' ).forEach( function ( p ) {
+					p.classList.remove( 'is-open' );
+					var card = p.closest( '.sm-card' );
+					if ( card ) card.classList.remove( 'has-share-open' );
+					var m = p.querySelector( '.sm-share-menu' );
+					if ( m ) m.setAttribute( 'hidden', '' );
+				} );
+				if ( isHidden ) {
+					pop.classList.add( 'is-open' );
+					var card = pop.closest( '.sm-card' );
+					if ( card ) card.classList.add( 'has-share-open' );
+					menu.removeAttribute( 'hidden' );
+				}
+			}
+			return;
+		}
+
+		if ( ! e.target.closest( '.sm-share-menu' ) ) {
+			document.querySelectorAll( '.sm-share-pop' ).forEach( function ( p ) {
+				p.classList.remove( 'is-open' );
+				var card = p.closest( '.sm-card' );
+				if ( card ) card.classList.remove( 'has-share-open' );
+				var m = p.querySelector( '.sm-share-menu' );
+				if ( m ) m.setAttribute( 'hidden', '' );
+			} );
+		}
+	} );
+
+	/* global delegated copy handler */
+	document.addEventListener( 'click', function ( e ) {
+		var btn = e.target.closest( '[data-copy]' );
+		if ( ! btn ) return;
+		var value = btn.getAttribute( 'data-copy' );
+		if ( ! value ) return;
+		var orig = btn.innerHTML;
+		var done = function () {
+			btn.innerHTML = '<span>✓</span> Copied!';
+			window.setTimeout( function () { btn.innerHTML = orig; }, 1600 );
+		};
+		if ( navigator.clipboard && navigator.clipboard.writeText ) {
+			navigator.clipboard.writeText( value ).then( done, function () {} );
+		}
+	} );
+
+	/* --------------------------------- direct send to Facebook Page handler */
+	document.addEventListener( 'click', function ( e ) {
+		var btn = e.target.closest( '[data-sm-send-fb]' );
+		if ( ! btn || btn.disabled ) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		var postId = btn.getAttribute( 'data-sm-send-fb' );
+		var nonce  = btn.getAttribute( 'data-nonce' );
+		if ( ! postId || ! nonce ) return;
+
+		if ( ! window.confirm( 'Send this post directly to Al Qaryan Industries LLC Facebook Page? (This can only be done once per listing to prevent duplicate posts).' ) ) {
+			return;
+		}
+
+		var allBtns = document.querySelectorAll( '[data-sm-send-fb="' + postId + '"]' );
+		allBtns.forEach( function ( b ) {
+			b.disabled = true;
+			b.setAttribute( 'data-orig-html', b.innerHTML );
+			b.innerHTML = '<span>⏳</span> Sending to Facebook…';
+			b.style.opacity = '0.7';
+			b.style.pointerEvents = 'none';
+		} );
+
+		var ajaxUrl = ( window.sm_ajax && window.sm_ajax.ajax_url ) ? window.sm_ajax.ajax_url : '/wp-admin/admin-ajax.php';
+		var body = new URLSearchParams();
+		body.append( 'action', 'sm_send_to_fb' );
+		body.append( 'post_id', postId );
+		body.append( 'nonce', nonce );
+
+		fetch( ajaxUrl, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString()
+		} )
+		.then( function ( res ) { return res.json(); } )
+		.then( function ( data ) {
+			if ( data && data.success ) {
+				allBtns.forEach( function ( b ) {
+					b.outerHTML = '<span class="sm-btn sm-btn--fb-done" style="cursor:default;">✓ Sent to Facebook Page</span>';
+				} );
+				alert( 'Success! ' + ( data.data.message || 'Post sent to Al Qaryan Facebook Page!' ) );
+			} else {
+				var msg = ( data && data.data && data.data.message ) ? data.data.message : 'Failed to post to Facebook';
+				alert( msg );
+				if ( data && data.data && data.data.already_posted ) {
+					allBtns.forEach( function ( b ) {
+						b.outerHTML = '<span class="sm-btn sm-btn--fb-done" style="cursor:default;">✓ On Facebook Page</span>';
+					} );
+				} else {
+					allBtns.forEach( function ( b ) {
+						b.disabled = false;
+						b.innerHTML = b.getAttribute( 'data-orig-html' ) || 'Send to Facebook Page';
+						b.style.opacity = '1';
+						b.style.pointerEvents = '';
+					} );
+				}
+			}
+		} )
+		.catch( function ( err ) {
+			alert( 'Network error: ' + err.message );
+			allBtns.forEach( function ( b ) {
+				b.disabled = false;
+				b.innerHTML = b.getAttribute( 'data-orig-html' ) || 'Send to Facebook Page';
+				b.style.opacity = '1';
+				b.style.pointerEvents = '';
+			} );
+		} );
+	} );
+
 }() );

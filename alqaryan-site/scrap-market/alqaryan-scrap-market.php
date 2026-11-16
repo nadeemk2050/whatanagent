@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.3.3
+ * Version:           0.3.5
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.3.3' );
+define( 'SM_VERSION', '0.3.5' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -106,6 +106,14 @@ add_action( 'wp_enqueue_scripts', function () {
 			array(),
 			SM_VERSION,
 			true
+		);
+
+		wp_localize_script(
+			'scrap-market',
+			'sm_ajax',
+			array(
+				'ajax_url' => admin_url( 'admin-ajax.php' ),
+			)
 		);
 	}
 } );

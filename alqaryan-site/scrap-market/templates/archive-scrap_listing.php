@@ -198,10 +198,44 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 									<div><dt>At</dt><dd><?php echo esc_html( sm_get( $post_id, 'location' ) ); ?></dd></div>
 								<?php endif; ?>
 							</dl>
-							<a class="sm-card__cta" href="<?php the_permalink(); ?>">
-								<span class="sm-card__cta-label">💬 View Details &amp; Contact</span>
-								<span class="sm-card__cta-arrow" aria-hidden="true">&rarr;</span>
-							</a>
+							<div class="sm-card__actions">
+								<a class="sm-card__cta" href="<?php the_permalink(); ?>">
+									<span class="sm-card__cta-label">💬 View Details &amp; Contact</span>
+									<span class="sm-card__cta-arrow" aria-hidden="true">&rarr;</span>
+								</a>
+								<div class="sm-share-pop">
+									<button type="button" class="sm-share-btn" data-share-trigger aria-label="Share listing" title="Share listing">
+										<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+									</button>
+									<div class="sm-share-menu" hidden>
+										<a class="sm-share-item" target="_blank" rel="noopener"
+											href="https://wa.me/?text=<?php echo rawurlencode( get_the_title() . ' — ' . get_permalink() ); ?>">
+											<span>💬</span> Share by WhatsApp
+										</a>
+										<button type="button" class="sm-share-item sm-share-item--copy" data-copy="<?php echo esc_url( get_permalink() ); ?>">
+											<span>📋</span> Copy Link
+										</button>
+										<a class="sm-share-item" target="_blank" rel="noopener"
+											href="https://www.facebook.com/sharer/sharer.php?u=<?php echo rawurlencode( get_permalink() ); ?>">
+											<span>📘</span> Share on Facebook
+										</a>
+										<?php
+										$card_fb_id = get_post_meta( $post_id, '_sm_fb_post_id', true );
+										if ( ! empty( $card_fb_id ) ) :
+											?>
+											<div class="sm-share-item sm-share-item--done" style="color:#15803d;cursor:default;">
+												<span>✓</span> On FB Page
+											</div>
+										<?php else : ?>
+											<button type="button" class="sm-share-item sm-share-item--fb-send"
+												data-sm-send-fb="<?php echo esc_attr( $post_id ); ?>"
+												data-nonce="<?php echo esc_attr( wp_create_nonce( 'sm_send_fb_' . $post_id ) ); ?>">
+												<span>🚀</span> Send to FB Page
+											</button>
+										<?php endif; ?>
+									</div>
+								</div>
+							</div>
 						</div>
 					</article>
 				<?php endwhile; ?>

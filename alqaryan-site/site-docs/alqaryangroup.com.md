@@ -339,6 +339,13 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
   footer on all pages.
 - Credentials for WordPress and Hostinger stored in the workshop records.
 
+**v0.3.3 & v0.3.4 Updates**
+- **Meta Graph API Facebook Integration (v0.3.3)**: Direct integration with Facebook Page `Al Qaryan Industries LLC` (Page ID `1383856674820826`). New listings automatically post to Facebook with high-res photo, listing specs, price, location, WhatsApp inquiry link, and direct website link. Includes manual "Post to Facebook" row action in WP Admin.
+- **Card Share Dropdown (v0.3.4)**: Added interactive share trigger on every listing card on `/scrap-market/` with popup menu options:
+  - 💬 Share by WhatsApp (pre-filled message with listing title & URL)
+  - 📋 Copy Link (copies direct URL to clipboard with "Copied!" feedback)
+  - 📘 Share on Facebook (triggers Meta sharer dialog)
+
 **Verification**
 - `scripts/alqaryan-audit.mjs`: 45 URLs, 0 non-200, 0 duplicate titles/H1, 0 missing canonicals,
   0 mixed content, 0 missing alt, 44/44 WhatsApp.
