@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.3.2
+ * Version:           0.3.3
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.3.2' );
+define( 'SM_VERSION', '0.3.3' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -38,6 +38,7 @@ require_once SM_DIR . 'includes/submission.php';
 require_once SM_DIR . 'includes/queue.php';
 require_once SM_DIR . 'includes/schema.php';
 require_once SM_DIR . 'includes/seo.php';
+require_once SM_DIR . 'includes/facebook.php';
 
 /**
  * Activate: register everything, then flush so /scrap-market/ resolves immediately.
@@ -151,7 +152,7 @@ function sm_render_settings() {
 
 	if ( isset( $_POST['sm_settings_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sm_settings_nonce'] ) ), 'sm_save_settings' ) ) {
 		$clean = array();
-		foreach ( array( 'indexnow_key', 'vps_endpoint', 'drive_folder', 'seller_name', 'seller_phone' ) as $key ) {
+		foreach ( array( 'indexnow_key', 'vps_endpoint', 'drive_folder', 'seller_name', 'seller_phone', 'fb_page_id', 'fb_token' ) as $key ) {
 			$clean[ $key ] = isset( $_POST[ $key ] ) ? sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) : '';
 		}
 		$clean['posting_open'] = empty( $_POST['posting_open'] ) ? '' : '1';
@@ -216,6 +217,29 @@ function sm_render_settings() {
 							<option value="publish" <?php selected( 'publish' === $s['posting_mode'] ); ?>>Live immediately</option>
 							<option value="pending" <?php selected( 'pending' === $s['posting_mode'] ); ?>>Into the review queue</option>
 						</select>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="sm_fb_page_id">Facebook Page ID</label></th>
+					<td>
+						<input name="fb_page_id" id="sm_fb_page_id" type="text" class="regular-text" value="<?php echo esc_attr( isset( $s['fb_page_id'] ) ? $s['fb_page_id'] : '' ); ?>">
+						<p class="description">Al Qaryan Industries LLC Page ID.</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="sm_fb_token">Facebook Page Token</label></th>
+					<td>
+						<input name="fb_token" id="sm_fb_token" type="password" class="large-text" value="<?php echo esc_attr( isset( $s['fb_token'] ) ? $s['fb_token'] : '' ); ?>">
+						<p class="description">Page Access Token with pages_manage_posts scope.</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">Facebook Auto-Posting</th>
+					<td>
+						<label>
+							<input name="fb_auto_post" id="sm_fb_auto_post" type="checkbox" value="1" <?php checked( ! empty( $s['fb_auto_post'] ) ); ?>>
+							Automatically post new listings to Facebook Page when published
+						</label>
 					</td>
 				</tr>
 			</table>

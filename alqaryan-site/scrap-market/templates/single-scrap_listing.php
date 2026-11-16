@@ -169,6 +169,8 @@ while ( have_posts() ) :
 					<span class="sm-muted">Share this lot:</span>
 					<a class="sm-share__btn" target="_blank" rel="noopener"
 						href="https://wa.me/?text=<?php echo rawurlencode( get_the_title() . ' — ' . $permalink ); ?>">WhatsApp</a>
+					<a class="sm-share__btn" target="_blank" rel="noopener"
+						href="https://www.facebook.com/sharer/sharer.php?u=<?php echo rawurlencode( $permalink ); ?>">Facebook</a>
 					<button type="button" class="sm-share__btn" data-copy="<?php echo esc_url( $permalink ); ?>">Copy link</button>
 					<a class="sm-share__btn" href="mailto:?subject=<?php echo rawurlencode( get_the_title() ); ?>&body=<?php echo rawurlencode( $permalink ); ?>">Email</a>
 				</div>

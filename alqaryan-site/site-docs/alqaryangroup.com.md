@@ -269,6 +269,16 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
 
 ## 10. Changelog
 
+### 2026-11-16 — Scrap Market 0.3.3: Facebook Page auto-publishing & Meta Graph API integration
+
+**Features**
+- Integrated official Meta Graph API with Facebook Page "Al Qaryan Industries LLC" (Page ID: `1383856674820826`).
+- Automatic publishing on listing publish: uploads the high-res listing photo, grade/title, price, quantity, location, direct WhatsApp seller deep link, and website listing link.
+- Added settings fields in `Settings → Scrap Market` (`fb_page_id`, `fb_token`, `fb_auto_post`).
+- Added manual "📤 Post to Facebook" action in the admin listings table for instant syndication.
+- Added 1-click Facebook share button on single listing pages alongside WhatsApp, Copy link, and Email.
+- Packaged installer `dist/alqaryan-scrap-market-0.3.3.zip` and deployed live to production.
+
 ### 2026-11-16 — Scrap Market 0.3.2: unified compact topbar, full-bleed layout, collapsible search drawer
 
 **UI & Layout**
