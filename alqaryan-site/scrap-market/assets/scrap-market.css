@@ -834,3 +834,34 @@ html.sm-crop-open, html.sm-crop-open body { overflow: hidden; }
 .sm-link--danger { color: #b91c1c; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-decoration: underline; }
 .sm-card__manage { display: inline-block; margin-top: .5rem; font-size: .76rem; color: var(--q-muted, #6b7c85); text-decoration: none; }
 .sm-card__manage:hover { color: var(--q-primary, #0b6e4f); }
+
+.sm-card__cta {
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .4rem;
+	margin-top: .75rem;
+	padding: .5rem .85rem;
+	background: #f0fdf4;
+	border: 1px solid #bbf7d0;
+	border-radius: 6px;
+	color: #15803d;
+	font-size: .8rem;
+	font-weight: 700;
+	text-decoration: none;
+	transition: background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+}
+.sm-card__cta:hover {
+	background: #15803d;
+	border-color: #15803d;
+	color: #fff;
+	text-decoration: none;
+	transform: translateY(-1px);
+}
+.sm-card__cta-arrow {
+	font-size: .95rem;
+	transition: transform .15s ease;
+}
+.sm-card__cta:hover .sm-card__cta-arrow {
+	transform: translateX(2px);
+}

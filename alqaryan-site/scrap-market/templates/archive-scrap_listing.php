@@ -121,7 +121,10 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 									<div><dt>At</dt><dd><?php echo esc_html( sm_get( $post_id, 'location' ) ); ?></dd></div>
 								<?php endif; ?>
 							</dl>
-							<a class="sm-card__manage" href="<?php echo esc_url( sm_manage_url( $post_id ) ); ?>">✎ Edit</a>
+							<a class="sm-card__cta" href="<?php the_permalink(); ?>">
+								<span class="sm-card__cta-label">💬 View Details &amp; Contact</span>
+								<span class="sm-card__cta-arrow" aria-hidden="true">&rarr;</span>
+							</a>
 						</div>
 					</article>
 				<?php endwhile; ?>

@@ -269,6 +269,14 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
 
 ## 10. Changelog
 
+### 2026-11-16 — Scrap Market 0.3.1: WhatsApp link sanitization, Rank Math SEO filter, card CTA
+
+**Fixes**
+- Sanitized WhatsApp link numbers to strip leading `00` (e.g. `00971...` -> `971...`) and auto-prefix local UAE `05X` numbers to prevent WhatsApp mobile client "Invalid phone number" errors.
+- Hooked `rank_math/frontend/description` and `rank_math/frontend/title` so single listing pages and archive views receive rich, descriptive SEO metadata instead of empty descriptions.
+- Replaced the confusing `✎ Edit` link on public marketplace cards with a dedicated `💬 View Details & Contact →` action button. Listing owners can still manage/edit their lot from the single listing page.
+- Bumped plugin version to 0.3.1 and rebuilt installer package `dist/alqaryan-scrap-market-0.3.1.zip`.
+
 ### 2026-11-16 — Scrap Market 0.3.0: minimal fields, owner editing, photo picker
 
 **Fixes**

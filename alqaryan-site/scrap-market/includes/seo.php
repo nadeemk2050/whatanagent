@@ -52,6 +52,88 @@ function sm_robots( $robots ) {
 add_filter( 'wp_robots', 'sm_robots' );
 
 /**
+ * Build an informative, rich meta description for a scrap listing or archive.
+ *
+ * @param int|null $post_id Post ID if singular.
+ * @return string
+ */
+function sm_get_seo_description( $post_id = null ) {
+	if ( ! $post_id ) {
+		$post_id = get_queried_object_id();
+	}
+
+	if ( is_singular( 'scrap_listing' ) && $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return '';
+		}
+
+		$price    = sm_price_label( $post_id );
+		$quantity = sm_quantity_label( $post_id );
+		$kind     = sm_listing_kind( $post_id );
+		$kind_lbl = 'buy' === $kind ? 'Wanted to Buy' : 'For Sale';
+
+		$parts = array( get_the_title( $post ) );
+		if ( '—' !== $quantity ) {
+			$parts[] = $quantity;
+		}
+		if ( '—' !== $price ) {
+			$parts[] = $price;
+		}
+		$parts[] = '(' . $kind_lbl . ')';
+		$header = implode( ' · ', $parts );
+
+		$text = has_excerpt( $post ) ? get_the_excerpt( $post ) : wp_strip_all_tags( $post->post_content );
+		$text = trim( (string) $text );
+		if ( ! empty( $text ) ) {
+			$text = wp_trim_words( $text, 25, '...' );
+			return $header . ' — ' . $text . ' Direct contact on Recycle Scrap Market.';
+		}
+
+		return $header . ' — Direct contact via WhatsApp on Recycle Scrap Market. Al Qaryan Industries.';
+	}
+
+	if ( is_post_type_archive( 'scrap_listing' ) ) {
+		return 'Live scrap material offers and buy requests — recycled plastics, HDPE, LDPE, PET, regrind, bales and off-grade lots with direct seller WhatsApp contact.';
+	}
+
+	return '';
+}
+
+/**
+ * Filter Rank Math description for scrap listings and archive.
+ *
+ * @param string $description Current description.
+ * @return string
+ */
+function sm_rank_math_description( $description ) {
+	if ( is_singular( 'scrap_listing' ) || is_post_type_archive( 'scrap_listing' ) ) {
+		$custom = sm_get_seo_description();
+		if ( ! empty( $custom ) ) {
+			return $custom;
+		}
+	}
+	return $description;
+}
+add_filter( 'rank_math/frontend/description', 'sm_rank_math_description', 15 );
+add_filter( 'rank_math/opengraph/facebook/description', 'sm_rank_math_description', 15 );
+add_filter( 'rank_math/opengraph/twitter/description', 'sm_rank_math_description', 15 );
+
+/**
+ * Filter Rank Math title for scrap market archive.
+ *
+ * @param string $title Current title.
+ * @return string
+ */
+function sm_rank_math_title( $title ) {
+	if ( is_post_type_archive( 'scrap_listing' ) ) {
+		return 'Recycle Scrap Market | Live Offers & Wanted Lots | Al Qaryan Industries';
+	}
+	return $title;
+}
+add_filter( 'rank_math/frontend/title', 'sm_rank_math_title', 15 );
+
+/**
  * Description fallback for when Rank Math is not installed or not configured.
  */
 function sm_meta_description() {
@@ -59,26 +141,11 @@ function sm_meta_description() {
 		return;
 	}
 
-	if ( is_singular( 'scrap_listing' ) ) {
-		$post_id = get_queried_object_id();
-		$post    = get_post( $post_id );
-		$text    = has_excerpt( $post ) ? get_the_excerpt( $post ) : wp_strip_all_tags( $post->post_content );
-		$text    = wp_trim_words( (string) $text, 30, '' );
-		$price   = sm_price_label( $post_id );
-
-		if ( '' === $text ) {
-			$text = get_the_title( $post ) . ' — ' . $price;
+	if ( is_singular( 'scrap_listing' ) || is_post_type_archive( 'scrap_listing' ) ) {
+		$desc = sm_get_seo_description();
+		if ( ! empty( $desc ) ) {
+			printf( '<meta name="description" content="%s">' . "\n", esc_attr( $desc ) );
 		}
-
-		printf( '<meta name="description" content="%s">' . "\n", esc_attr( $text ) );
-		return;
-	}
-
-	if ( is_post_type_archive( 'scrap_listing' ) ) {
-		printf(
-			'<meta name="description" content="%s">' . "\n",
-			esc_attr( 'Live scrap material offers — recycled plastics, regrind, bales and off-grade lots with price, quantity and delivery basis listed.' )
-		);
 	}
 }
 add_action( 'wp_head', 'sm_meta_description', 4 );

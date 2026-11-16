@@ -25,8 +25,13 @@ while ( have_posts() ) :
 	$price    = sm_price_label( $post_id );
 	$kind     = sm_listing_kind( $post_id );
 	$kinds    = sm_kinds();
-	$settings = sm_settings();
-	$phone    = preg_replace( '/[^0-9]/', '', sm_get( $post_id, 'whatsapp', $settings['seller_phone'] ) );
+	$settings  = sm_settings();
+	$raw_phone = sm_get( $post_id, 'whatsapp', $settings['seller_phone'] );
+	$digits    = preg_replace( '/[^0-9]/', '', (string) $raw_phone );
+	$phone     = preg_replace( '/^00/', '', (string) $digits );
+	if ( preg_match( '/^0(5[0-9]{8})$/', $phone, $m ) ) {
+		$phone = '971' . $m[1];
+	}
 	$seller   = sm_get( $post_id, 'seller', $settings['seller_name'] );
 	$company  = sm_get( $post_id, 'company' );
 	$email    = sm_get( $post_id, 'email' );
