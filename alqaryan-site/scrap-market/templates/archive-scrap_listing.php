@@ -2,11 +2,9 @@
 /**
  * Recycle Scrap Market — the public market page.
  *
- * Layout is mobile-first: the first thing on a phone is the listings themselves, in a
- * sideways sliding rail (swipe left/right), twenty per slide, with the next twenty a tap
- * away. The heading and the explanatory copy sit below that on a phone and move back to the
- * top on a wide screen. Order is pure CSS (see .sm-market in scrap-market.css), so the
- * markup stays in reading order for crawlers and screen readers.
+ * Full-bleed, full-width marketplace with unified compact topbar:
+ * Heading, segmented tabs (All, For Sale, Need to Buy), and collapsible
+ * Search & Filter drawer toggled by search button.
  *
  * @package AlQaryanScrapMarket
  */
@@ -45,21 +43,100 @@ if ( $is_term ) {
 
 $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $qty;
 ?>
-<div class="sm-wrap sm-market">
+<div class="sm-wrap sm-market sm-market--fullbleed">
 
-	<nav class="sm-switch sm-switch--sticky" aria-label="Listing type">
-		<a class="sm-switch__tab<?php echo '' === $kind_now ? ' is-active' : ''; ?>"
-			href="<?php echo esc_url( sm_market_url( array( 'kind' => '' ) ) ); ?>">
-			<span>All</span><b><?php echo esc_html( (string) $counts['all'] ); ?></b>
-		</a>
-		<?php foreach ( $kinds as $slug => $kind ) : ?>
-			<a class="sm-switch__tab sm-switch__tab--<?php echo esc_attr( $slug ); ?><?php echo $kind_now === $slug ? ' is-active' : ''; ?>"
-				href="<?php echo esc_url( sm_market_url( array( 'kind' => $slug ) ) ); ?>">
-				<span><?php echo esc_html( $kind['label'] ); ?></span>
-				<b><?php echo esc_html( (string) $counts[ $slug ] ); ?></b>
-			</a>
-		<?php endforeach; ?>
-	</nav>
+	<div class="sm-topbar">
+		<div class="sm-topbar__main">
+			<h1 class="sm-topbar__title"><?php echo esc_html( $heading ); ?></h1>
+			<nav class="sm-topbar__tabs" aria-label="Listing type">
+				<a class="sm-tab<?php echo '' === $kind_now ? ' is-active' : ''; ?>"
+					href="<?php echo esc_url( sm_market_url( array( 'kind' => '' ) ) ); ?>">
+					<span>All</span>
+					<span class="sm-tab__count"><?php echo esc_html( (string) $counts['all'] ); ?></span>
+				</a>
+				<?php foreach ( $kinds as $slug => $kind ) : ?>
+					<a class="sm-tab sm-tab--<?php echo esc_attr( $slug ); ?><?php echo $kind_now === $slug ? ' is-active' : ''; ?>"
+						href="<?php echo esc_url( sm_market_url( array( 'kind' => $slug ) ) ); ?>">
+						<span><?php echo esc_html( $kind['label'] ); ?></span>
+						<span class="sm-tab__count"><?php echo esc_html( (string) $counts[ $slug ] ); ?></span>
+					</a>
+				<?php endforeach; ?>
+			</nav>
+		</div>
+		<div class="sm-topbar__actions">
+			<button type="button" class="sm-btn-search<?php echo $has_filters ? ' has-filters' : ''; ?>" id="smSearchBtn" aria-expanded="<?php echo $has_filters ? 'true' : 'false'; ?>" aria-controls="smFilterDrawer" title="Search &amp; Filter">
+				<svg class="sm-icon-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+				<span class="sm-btn-search__text">Search &amp; Filter</span>
+				<?php if ( $has_filters ) : ?>
+					<span class="sm-filter-badge">Active</span>
+				<?php endif; ?>
+			</button>
+			<a class="sm-btn-post" href="<?php echo esc_url( sm_post_page_url() ); ?>" title="Post a free listing">＋ Post Lot</a>
+		</div>
+	</div>
+
+	<div class="sm-filter-drawer<?php echo $has_filters ? ' is-open' : ''; ?>" id="smFilterDrawer"<?php echo $has_filters ? '' : ' hidden'; ?>>
+		<form class="sm-filters" method="get" action="<?php echo esc_url( $archive ); ?>" role="search">
+			<?php if ( '' !== $kind_now ) : ?>
+				<input type="hidden" name="kind" value="<?php echo esc_attr( $kind_now ); ?>">
+			<?php endif; ?>
+
+			<label class="sm-filters__search">
+				<span class="screen-reader-text">Search listings</span>
+				<input type="search" name="q" value="<?php echo esc_attr( $search ); ?>"
+					placeholder="Search HDPE, regrind, PVC pipe scrap, Jebel Ali…">
+			</label>
+
+			<label>
+				<span class="screen-reader-text">Material</span>
+				<select name="material">
+					<option value="">All materials</option>
+					<?php foreach ( $materials as $term ) : ?>
+						<?php if ( $term instanceof WP_Term ) : ?>
+							<option value="<?php echo esc_attr( $term->slug ); ?>" <?php selected( $material, $term->slug ); ?>>
+								<?php echo esc_html( $term->name ); ?> (<?php echo esc_html( (string) $term->count ); ?>)
+							</option>
+						<?php endif; ?>
+					<?php endforeach; ?>
+				</select>
+			</label>
+
+			<label>
+				<span class="screen-reader-text">Region</span>
+				<select name="region">
+					<option value="">Any region</option>
+					<?php foreach ( $regions as $term ) : ?>
+						<?php if ( $term instanceof WP_Term ) : ?>
+							<option value="<?php echo esc_attr( $term->slug ); ?>" <?php selected( $region, $term->slug ); ?>>
+								<?php echo esc_html( $term->name ); ?> (<?php echo esc_html( (string) $term->count ); ?>)
+							</option>
+						<?php endif; ?>
+					<?php endforeach; ?>
+				</select>
+			</label>
+
+			<label class="sm-filters__qty">
+				<span class="screen-reader-text">Minimum quantity in tonnes</span>
+				<input type="number" name="qty" min="1" step="1" value="<?php echo esc_attr( $qty ); ?>" placeholder="Min tonnes">
+			</label>
+
+			<label>
+				<span class="screen-reader-text">Sort</span>
+				<select name="sort">
+					<option value="" <?php selected( $sort, '' ); ?>>Newest first</option>
+					<option value="oldest" <?php selected( $sort, 'oldest' ); ?>>Oldest first</option>
+					<option value="price_asc" <?php selected( $sort, 'price_asc' ); ?>>Price: low to high</option>
+					<option value="price_desc" <?php selected( $sort, 'price_desc' ); ?>>Price: high to low</option>
+				</select>
+			</label>
+
+			<button class="sm-btn sm-btn--primary" type="submit">Filter</button>
+			<?php if ( $has_filters ) : ?>
+				<a class="sm-filters__clear" href="<?php echo esc_url( sm_market_url( array( 'q' => '', 'material' => '', 'region' => '', 'qty' => '' ) ) ); ?>">Clear</a>
+			<?php endif; ?>
+			<button type="button" class="sm-filter-close" id="smFilterClose" aria-label="Close filters">✕</button>
+		</form>
+	</div>
 
 	<?php if ( have_posts() ) : ?>
 
@@ -157,79 +234,6 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 		</div>
 
 	<?php endif; ?>
-
-	<details class="sm-filters-wrap" data-filters<?php echo $has_filters ? ' open' : ''; ?>>
-		<summary class="sm-filters-summary">
-			<span>Search and filter</span>
-			<?php if ( $has_filters ) : ?>
-				<em><?php echo esc_html( trim( implode( ' · ', array_filter( array( $search, $material, $region, $qty ) ) ) ) ); ?></em>
-			<?php endif; ?>
-		</summary>
-
-		<form class="sm-filters" method="get" action="<?php echo esc_url( $archive ); ?>" role="search">
-			<?php if ( '' !== $kind_now ) : ?>
-				<input type="hidden" name="kind" value="<?php echo esc_attr( $kind_now ); ?>">
-			<?php endif; ?>
-
-			<label class="sm-filters__search">
-				<span class="screen-reader-text">Search listings</span>
-				<input type="search" name="q" value="<?php echo esc_attr( $search ); ?>"
-					placeholder="Search HDPE, regrind, PVC pipe scrap, Jebel Ali…">
-			</label>
-
-			<label>
-				<span class="screen-reader-text">Material</span>
-				<select name="material">
-					<option value="">All materials</option>
-					<?php foreach ( $materials as $term ) : ?>
-						<?php if ( $term instanceof WP_Term ) : ?>
-							<option value="<?php echo esc_attr( $term->slug ); ?>" <?php selected( $material, $term->slug ); ?>>
-								<?php echo esc_html( $term->name ); ?> (<?php echo esc_html( (string) $term->count ); ?>)
-							</option>
-						<?php endif; ?>
-					<?php endforeach; ?>
-				</select>
-			</label>
-
-			<label>
-				<span class="screen-reader-text">Region</span>
-				<select name="region">
-					<option value="">Any region</option>
-					<?php foreach ( $regions as $term ) : ?>
-						<?php if ( $term instanceof WP_Term ) : ?>
-							<option value="<?php echo esc_attr( $term->slug ); ?>" <?php selected( $region, $term->slug ); ?>>
-								<?php echo esc_html( $term->name ); ?> (<?php echo esc_html( (string) $term->count ); ?>)
-							</option>
-						<?php endif; ?>
-					<?php endforeach; ?>
-				</select>
-			</label>
-
-			<label class="sm-filters__qty">
-				<span class="screen-reader-text">Minimum quantity in tonnes</span>
-				<input type="number" name="qty" min="1" step="1" value="<?php echo esc_attr( $qty ); ?>" placeholder="Min tonnes">
-			</label>
-
-			<label>
-				<span class="screen-reader-text">Sort</span>
-				<select name="sort">
-					<option value="" <?php selected( $sort, '' ); ?>>Newest first</option>
-					<option value="oldest" <?php selected( $sort, 'oldest' ); ?>>Oldest first</option>
-					<option value="price_asc" <?php selected( $sort, 'price_asc' ); ?>>Price: low to high</option>
-					<option value="price_desc" <?php selected( $sort, 'price_desc' ); ?>>Price: high to low</option>
-				</select>
-			</label>
-
-			<button class="sm-btn sm-btn--primary" type="submit">Filter</button>
-			<?php if ( $has_filters ) : ?>
-				<a class="sm-filters__clear" href="<?php echo esc_url( sm_market_url( array( 'q' => '', 'material' => '', 'region' => '', 'qty' => '' ) ) ); ?>">Clear</a>
-			<?php endif; ?>
-		</form>
-	</details>
-
-	<header class="sm-hero sm-hero--market">
-		<h1><?php echo esc_html( $heading ); ?></h1>
-	</header>
 
 	<section class="sm-how">
 		<h2>How this market works</h2>

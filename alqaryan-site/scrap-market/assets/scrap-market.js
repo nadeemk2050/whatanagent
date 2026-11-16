@@ -62,13 +62,40 @@
 		} );
 	} );
 
-	/* filters start open on a wide screen, folded on a phone */
-	document.querySelectorAll( '[data-filters]' ).forEach( function ( details ) {
-		if ( window.matchMedia( '(min-width: 861px)' ).matches && ! details.hasAttribute( 'data-touched' ) ) {
-			details.open = true;
-		}
-		details.addEventListener( 'toggle', function () { details.setAttribute( 'data-touched', '1' ); } );
-	} );
+	/* Search toggle in topbar */
+	var searchBtn = document.getElementById( 'smSearchBtn' );
+	var filterDrawer = document.getElementById( 'smFilterDrawer' );
+	var filterClose = document.getElementById( 'smFilterClose' );
+
+	if ( searchBtn && filterDrawer ) {
+		searchBtn.addEventListener( 'click', function () {
+			var isHidden = filterDrawer.hasAttribute( 'hidden' );
+			if ( isHidden ) {
+				filterDrawer.removeAttribute( 'hidden' );
+				filterDrawer.classList.add( 'is-open' );
+				searchBtn.classList.add( 'is-open' );
+				searchBtn.setAttribute( 'aria-expanded', 'true' );
+				var searchInput = filterDrawer.querySelector( 'input[type="search"]' );
+				if ( searchInput ) {
+					searchInput.focus();
+				}
+			} else {
+				filterDrawer.setAttribute( 'hidden', '' );
+				filterDrawer.classList.remove( 'is-open' );
+				searchBtn.classList.remove( 'is-open' );
+				searchBtn.setAttribute( 'aria-expanded', 'false' );
+			}
+		} );
+	}
+
+	if ( filterClose && filterDrawer && searchBtn ) {
+		filterClose.addEventListener( 'click', function () {
+			filterDrawer.setAttribute( 'hidden', '' );
+			filterDrawer.classList.remove( 'is-open' );
+			searchBtn.classList.remove( 'is-open' );
+			searchBtn.setAttribute( 'aria-expanded', 'false' );
+		} );
+	}
 
 	/* --------------------------------------------------------- favourites */
 	var KEY = 'sm-favourites';

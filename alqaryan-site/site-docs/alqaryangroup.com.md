@@ -269,6 +269,15 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
 
 ## 10. Changelog
 
+### 2026-11-16 — Scrap Market 0.3.2: unified compact topbar, full-bleed layout, collapsible search drawer
+
+**UI & Layout**
+- Merged the page heading ("Recycle Scrap Market") and the segmented section tabs ("All", "For Sale", "Need to Buy") into a single, compact top bar row with reduced padding and sleek pill counts.
+- Converted the bulky permanent "Search and filter" second bar into a collapsible drawer toggled by a dedicated 🔍 "Search & Filter" button in the top bar. When closed, it is completely hidden, saving prime vertical space.
+- Made the marketplace full-width and full-bleed (`max-width: 100% !important;`) across all desktop and mobile viewport sizes, eliminating wasted side margins.
+- Expanded wide-screen rail card layout up to 5 columns on desktop displays (`min-width: 1560px: 20%`), maximizing product exposure.
+- Packaged installer `dist/alqaryan-scrap-market-0.3.2.zip` and deployed live to production.
+
 ### 2026-11-16 — Scrap Market 0.3.1: WhatsApp link sanitization, Rank Math SEO filter, card CTA
 
 **Fixes**

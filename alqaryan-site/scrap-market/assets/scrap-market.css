@@ -708,23 +708,6 @@
 	.sm-rail > .sm-card { flex-basis: 46%; }
 }
 
-/* ---- wide screens: heading back on top, three or four cards per view ---- */
-@media (min-width: 861px) {
-	.sm-market .sm-hero--market   { order: 1; }
-	.sm-market .sm-switch--sticky { order: 2; position: static; box-shadow: none; padding: 0; }
-	.sm-market .sm-filters-wrap   { order: 3; }
-	.sm-market .sm-rail-wrap      { order: 4; }
-	.sm-market .sm-how            { order: 5; }
-	.sm-rail-nav { display: flex; }
-	.sm-rail-hint { display: none; }
-	.sm-rail { padding-bottom: .6rem; }
-	.sm-rail > .sm-card { flex-basis: calc(33.333% - .54rem); }
-	.sm-rail .sm-card__media img { aspect-ratio: 16 / 11; }
-}
-@media (min-width: 1200px) {
-	.sm-rail > .sm-card { flex-basis: calc(25% - .6rem); }
-}
-
 /* Badge geometry: the base .sm-badge pins itself to the left, so the right-hand
    status badges must release that edge or they stretch across the photo. */
 .sm-badge--new,
@@ -733,23 +716,221 @@
 .sm-badge--kind { right: auto; left: .6rem; }
 
 /* ==========================================================================
-   Market v3 — heading only at the top, nothing between the title and the lots.
-   The explainer becomes a heading-only accordion at the very bottom, and the
-   two CTA buttons move down with it, so the page is almost entirely product.
+   Full-Bleed View & Unified Compact Topbar (v0.3.2)
    ========================================================================== */
 
-.sm-market .sm-hero--market { order: 1; margin: 0 0 .3rem; }
-.sm-market .sm-hero--market h1 { font-size: 1.4rem; line-height: 1.25; margin: 0 0 .2rem; }
-.sm-market .sm-switch--sticky { order: 2; }
-.sm-market .sm-rail-wrap      { order: 3; }
-.sm-market .sm-empty          { order: 3; }
-.sm-market .sm-filters-wrap   { order: 4; }
-.sm-market .sm-how            { order: 5; }
+/* Full-bleed layout overrides on archive & taxonomy pages */
+body.post-type-archive-scrap_listing,
+body.tax-scrap_material,
+body.tax-scrap_region {
+	overflow-x: hidden;
+}
+body.post-type-archive-scrap_listing #content.site-content,
+body.tax-scrap_material #content.site-content,
+body.tax-scrap_region #content.site-content {
+	padding: 0 !important;
+	margin: 0 !important;
+}
+body.post-type-archive-scrap_listing .ast-container,
+body.tax-scrap_material .ast-container,
+body.tax-scrap_region .ast-container {
+	max-width: 100% !important;
+	width: 100% !important;
+	padding-left: clamp(0.75rem, 2vw, 1.5rem) !important;
+	padding-right: clamp(0.75rem, 2vw, 1.5rem) !important;
+	margin: 0 !important;
+}
+.sm-market.sm-wrap {
+	max-width: 100% !important;
+	width: 100% !important;
+	padding: 0.85rem clamp(0.5rem, 1.5vw, 1.25rem) 2rem !important;
+}
 
+/* Unified sleek topbar */
+.sm-topbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: .65rem 1rem;
+	padding: .65rem 1rem;
+	margin-bottom: .85rem;
+	background: #fff;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 12px;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+.sm-topbar__main {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: .75rem 1.25rem;
+}
+.sm-topbar__title {
+	margin: 0;
+	font-size: 1.3rem;
+	font-weight: 800;
+	color: var(--q-primary-dark, #075039);
+	letter-spacing: -.02em;
+	line-height: 1.2;
+}
+.sm-topbar__tabs {
+	display: inline-flex;
+	align-items: center;
+	gap: .25rem;
+	background: #f1f5f3;
+	padding: .2rem .25rem;
+	border-radius: 999px;
+}
+.sm-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: .4rem;
+	padding: .26rem .65rem;
+	border-radius: 999px;
+	font-size: .8rem;
+	font-weight: 600;
+	color: var(--q-ink, #1e293b);
+	text-decoration: none;
+	transition: all .15s ease;
+	line-height: 1.2;
+}
+.sm-tab:hover {
+	color: var(--q-primary, #0b6e4f);
+	background: rgba(255, 255, 255, .7);
+	text-decoration: none;
+}
+.sm-tab.is-active {
+	background: var(--q-primary, #0b6e4f);
+	color: #fff;
+	font-weight: 700;
+	box-shadow: 0 2px 6px rgba(11, 110, 79, .22);
+}
+.sm-tab__count {
+	display: inline-block;
+	min-width: 1.15rem;
+	padding: .05rem .32rem;
+	border-radius: 999px;
+	background: rgba(0, 0, 0, .07);
+	font-size: .72rem;
+	font-weight: 700;
+	text-align: center;
+	line-height: 1.2;
+}
+.sm-tab.is-active .sm-tab__count {
+	background: rgba(255, 255, 255, .25);
+	color: #fff;
+}
+.sm-topbar__actions {
+	display: flex;
+	align-items: center;
+	gap: .5rem;
+}
+.sm-btn-search {
+	display: inline-flex;
+	align-items: center;
+	gap: .4rem;
+	padding: .35rem .75rem;
+	border: 1px solid var(--q-line, #d1ded6);
+	border-radius: 999px;
+	background: #fff;
+	color: var(--q-ink, #0f172a);
+	font-size: .8rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all .15s ease;
+}
+.sm-btn-search:hover,
+.sm-btn-search.is-open {
+	border-color: var(--q-primary, #0b6e4f);
+	background: var(--q-primary-soft, #e8f4ef);
+	color: var(--q-primary-dark, #075039);
+}
+.sm-btn-search.has-filters {
+	border-color: var(--q-primary, #0b6e4f);
+	background: var(--q-primary-soft, #e8f4ef);
+}
+.sm-filter-badge {
+	display: inline-block;
+	padding: .08rem .38rem;
+	border-radius: 999px;
+	background: #15803d;
+	color: #fff;
+	font-size: .68rem;
+	font-weight: 700;
+}
+.sm-btn-post {
+	display: inline-flex;
+	align-items: center;
+	padding: .36rem .85rem;
+	border-radius: 999px;
+	background: var(--q-primary, #0b6e4f);
+	color: #fff;
+	font-size: .8rem;
+	font-weight: 700;
+	text-decoration: none;
+	transition: background .15s ease;
+}
+.sm-btn-post:hover {
+	background: var(--q-primary-dark, #075039);
+	color: #fff;
+	text-decoration: none;
+}
+
+/* Collapsible Filter Drawer */
+.sm-filter-drawer {
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 12px;
+	background: #fff;
+	margin-bottom: 1rem;
+	box-shadow: 0 4px 14px rgba(15, 23, 42, .05);
+	overflow: hidden;
+	animation: smDrawerSlide .2s ease-out;
+}
+.sm-filter-drawer[hidden] {
+	display: none !important;
+}
+@keyframes smDrawerSlide {
+	from { opacity: 0; transform: translateY(-6px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+.sm-filter-close {
+	background: #f1f5f3;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 50%;
+	width: 34px;
+	height: 34px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: .85rem;
+	color: var(--q-muted, #6b7c85);
+	cursor: pointer;
+	transition: all .15s ease;
+	flex-shrink: 0;
+}
+.sm-filter-close:hover {
+	background: #fee2e2;
+	border-color: #fca5a5;
+	color: #b91c1c;
+}
+
+/* Full-bleed card rail geometry */
+@media (min-width: 640px) {
+	.sm-rail > .sm-card { flex-basis: 46%; }
+}
 @media (min-width: 861px) {
-	.sm-market .sm-hero--market h1 { font-size: 2rem; }
-	.sm-market .sm-filters-wrap   { order: 3; }
-	.sm-market .sm-rail-wrap      { order: 4; }
+	.sm-rail-nav { display: flex; }
+	.sm-rail-hint { display: none; }
+	.sm-rail { padding-bottom: .6rem; }
+	.sm-rail > .sm-card { flex-basis: calc(33.333% - .6rem); }
+	.sm-rail .sm-card__media img { aspect-ratio: 16 / 11; }
+}
+@media (min-width: 1200px) {
+	.sm-rail > .sm-card { flex-basis: calc(25% - .65rem); }
+}
+@media (min-width: 1560px) {
+	.sm-rail > .sm-card { flex-basis: calc(20% - .68rem); }
 }
 
 /* how it works: headings with arrows, details fold away */
