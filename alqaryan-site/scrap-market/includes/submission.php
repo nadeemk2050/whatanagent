@@ -958,11 +958,16 @@ function sm_render_manage( $post_id ) {
 	}
 
 	if ( ! $open ) {
-		printf(
-			'<p class="sm-manage__hint"><a class="sm-link" href="%s">Posted this lot? Edit or delete it</a></p>',
-			esc_url( sm_manage_url( $post_id ) )
-		);
-		echo '</div>';
+		$manage_url = esc_url( sm_manage_url( $post_id ) );
+		echo '<div class="sm-manage__bar">';
+		echo '<span class="sm-manage__lead">Posted this lot?</span>';
+		echo '<a class="sm-manage__btn sm-manage__btn--edit" href="' . $manage_url . '">';
+		echo '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+		echo '<span>Edit</span></a>';
+		echo '<a class="sm-manage__btn sm-manage__btn--del" href="' . $manage_url . '">';
+		echo '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
+		echo '<span>Delete / Remove</span></a>';
+		echo '</div></div>';
 
 		return;
 	}
@@ -1027,7 +1032,10 @@ function sm_render_manage( $post_id ) {
 		?>
 
 		<div class="sm-form-actions">
-			<button class="sm-btn sm-btn--primary" type="submit">Save changes</button>
+			<button class="sm-btn sm-btn--primary" type="submit">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:4px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+				<span>Save changes</span>
+			</button>
 			<a class="sm-link" href="<?php echo esc_url( get_permalink( $post_id ) ); ?>">Back to the listing</a>
 		</div>
 		<p class="sm-form__msg" data-form-msg role="status"></p>
@@ -1039,7 +1047,10 @@ function sm_render_manage( $post_id ) {
 		<input type="hidden" name="action" value="sm_manage_delete">
 		<input type="hidden" name="listing" value="<?php echo esc_attr( (string) $post_id ); ?>">
 		<?php wp_nonce_field( 'sm_manage_delete_' . $post_id, 'sm_manage_nonce' ); ?>
-		<button class="sm-link sm-link--danger" type="submit">Delete this listing</button>
+		<button class="sm-btn sm-btn--danger" type="submit">
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+			<span>Delete / Remove this listing</span>
+		</button>
 	</form>
 	<?php
 	echo '</div>';

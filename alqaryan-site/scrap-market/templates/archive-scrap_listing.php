@@ -200,7 +200,10 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 							</dl>
 							<div class="sm-card__actions">
 								<a class="sm-card__cta" href="<?php the_permalink(); ?>">
-									<span class="sm-card__cta-label">💬 View Details &amp; Contact</span>
+									<span class="sm-card__cta-label">
+										<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:3px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+										<span>View Details &amp; Contact</span>
+									</span>
 									<span class="sm-card__cta-arrow" aria-hidden="true">&rarr;</span>
 								</a>
 								<div class="sm-share-pop">
@@ -208,29 +211,56 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 										<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
 									</button>
 									<div class="sm-share-menu" hidden>
-										<a class="sm-share-item" target="_blank" rel="noopener"
-											href="https://wa.me/?text=<?php echo rawurlencode( get_the_title() . ' — ' . get_permalink() ); ?>">
-											<span>💬</span> Share by WhatsApp
+										<?php
+										$card_wa_msg = sprintf(
+											'Good day, I have got details about your products from Al Qaryan Scrap Market (www.alqaryangroup.com/scrap-market). I am interested in this material: %s (%s, %s). Is this offer still available? %s',
+											get_the_title(),
+											sm_quantity_label( $post_id ),
+											sm_price_label( $post_id ),
+											get_permalink()
+										);
+										$card_em_subj = 'Enquiry about ' . get_the_title() . ' — Al Qaryan Scrap Market';
+										$card_em_body = sprintf(
+											"Good day,\n\nI have got details about your products from Al Qaryan Scrap Market (www.alqaryangroup.com/scrap-market).\n\nI am interested in this material: %s (%s, %s).\nIs this offer still available?\n\nListing link: %s",
+											get_the_title(),
+											sm_quantity_label( $post_id ),
+											sm_price_label( $post_id ),
+											get_permalink()
+										);
+										?>
+										<a class="sm-share-item sm-share-item--wa" target="_blank" rel="noopener"
+											href="https://wa.me/?text=<?php echo rawurlencode( $card_wa_msg ); ?>">
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#25d366;"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+											<span>Share by WhatsApp</span>
+										</a>
+										<a class="sm-share-item sm-share-item--gmail"
+											href="mailto:?subject=<?php echo rawurlencode( $card_em_subj ); ?>&body=<?php echo rawurlencode( $card_em_body ); ?>">
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#ea4335;"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+											<span>Share by Gmail / Email</span>
 										</a>
 										<button type="button" class="sm-share-item sm-share-item--copy" data-copy="<?php echo esc_url( get_permalink() ); ?>">
-											<span>📋</span> Copy Link
+											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+											<span>Copy Link</span>
 										</button>
-										<a class="sm-share-item" target="_blank" rel="noopener"
+										<a class="sm-share-item sm-share-item--fb" target="_blank" rel="noopener"
 											href="https://www.facebook.com/sharer/sharer.php?u=<?php echo rawurlencode( get_permalink() ); ?>">
-											<span>📘</span> Share on Facebook
+											<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#1877f2;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+											<span>Share on Facebook</span>
 										</a>
 										<?php
 										$card_fb_id = get_post_meta( $post_id, '_sm_fb_post_id', true );
 										if ( ! empty( $card_fb_id ) ) :
 											?>
 											<div class="sm-share-item sm-share-item--done" style="color:#15803d;cursor:default;">
-												<span>✓</span> On FB Page
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#15803d;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+												<span>On FB Page</span>
 											</div>
 										<?php else : ?>
 											<button type="button" class="sm-share-item sm-share-item--fb-send"
 												data-sm-send-fb="<?php echo esc_attr( $post_id ); ?>"
 												data-nonce="<?php echo esc_attr( wp_create_nonce( 'sm_send_fb_' . $post_id ) ); ?>">
-												<span>🚀</span> Send to FB Page
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="color:#1877f2;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+												<span>Send to FB Page</span>
 											</button>
 										<?php endif; ?>
 									</div>

@@ -1202,3 +1202,132 @@ html.sm-crop-open, html.sm-crop-open body { overflow: hidden; }
 	background: #eff6ff !important;
 	color: #1e40af !important;
 }
+
+/* Branded Icon Buttons across Scrap Market */
+.sm-btn--wa {
+	display: inline-flex;
+	align-items: center;
+	gap: .45rem;
+}
+.sm-btn--wa svg {
+	flex-shrink: 0;
+}
+.sm-btn--gmail {
+	display: inline-flex;
+	align-items: center;
+	gap: .45rem;
+	border-color: #fecaca;
+	color: #dc2626;
+}
+.sm-btn--gmail:hover {
+	background: #fef2f2;
+	border-color: #dc2626;
+	color: #b91c1c;
+}
+.sm-link--phone,
+.sm-link--mail {
+	display: inline-flex;
+	align-items: center;
+	gap: .35rem;
+}
+.sm-link--mail {
+	color: #dc2626;
+}
+.sm-link--mail:hover {
+	color: #991b1b;
+}
+
+/* Branded Share Pills */
+.sm-share__btn {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: .38rem !important;
+	font-weight: 600 !important;
+	font-size: .84rem !important;
+	padding: .45rem .85rem !important;
+	transition: all .15s ease !important;
+}
+.sm-share__btn svg {
+	flex-shrink: 0;
+}
+.sm-share__btn--wa:hover {
+	background: #e8f5e9 !important;
+	border-color: #25d366 !important;
+	color: #1b5e20 !important;
+}
+.sm-share__btn--wa svg {
+	color: #25d366;
+}
+.sm-share__btn--gmail:hover {
+	background: #fef2f2 !important;
+	border-color: #ea4335 !important;
+	color: #991b1b !important;
+}
+.sm-share__btn--gmail svg {
+	color: #ea4335;
+}
+.sm-share__btn--fb:hover {
+	background: #eff6ff !important;
+	border-color: #1877f2 !important;
+	color: #1e40af !important;
+}
+.sm-share__btn--fb svg {
+	color: #1877f2;
+}
+.sm-share__btn--copy:hover {
+	background: #f1f5f9 !important;
+	border-color: #64748b !important;
+	color: #0f172a !important;
+}
+
+/* Manage Action Bar (Edit / Delete / Remove) */
+.sm-manage__bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: .6rem;
+	padding: .85rem 1rem;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	margin-top: 1.5rem;
+}
+.sm-manage__lead {
+	font-size: .88rem;
+	font-weight: 700;
+	color: #475569;
+	margin-right: .3rem;
+}
+.sm-manage__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: .38rem;
+	padding: .4rem .85rem;
+	border-radius: 6px;
+	font-size: .82rem;
+	font-weight: 700;
+	text-decoration: none;
+	transition: all .15s ease;
+}
+.sm-manage__btn--edit {
+	background: #fff;
+	border: 1px solid #cbd5e1;
+	color: #334155;
+}
+.sm-manage__btn--edit:hover {
+	background: #f1f5f9;
+	border-color: #94a3b8;
+	color: #0f172a;
+	text-decoration: none;
+}
+.sm-manage__btn--del {
+	background: #fff;
+	border: 1px solid #fecaca;
+	color: #dc2626;
+}
+.sm-manage__btn--del:hover {
+	background: #fef2f2;
+	border-color: #ef4444;
+	color: #b91c1c;
+	text-decoration: none;
+}

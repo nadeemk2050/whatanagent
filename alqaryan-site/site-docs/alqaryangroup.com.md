@@ -339,12 +339,17 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
   footer on all pages.
 - Credentials for WordPress and Hostinger stored in the workshop records.
 
-**v0.3.3 & v0.3.4 Updates**
-- **Meta Graph API Facebook Integration (v0.3.3)**: Direct integration with Facebook Page `Al Qaryan Industries LLC` (Page ID `1383856674820826`). New listings automatically post to Facebook with high-res photo, listing specs, price, location, WhatsApp inquiry link, and direct website link. Includes manual "Post to Facebook" row action in WP Admin.
-- **Card Share Dropdown (v0.3.4)**: Added interactive share trigger on every listing card on `/scrap-market/` with popup menu options:
-  - 💬 Share by WhatsApp (pre-filled message with listing title & URL)
-  - 📋 Copy Link (copies direct URL to clipboard with "Copied!" feedback)
-  - 📘 Share on Facebook (triggers Meta sharer dialog)
+**v0.3.3, v0.3.4, v0.3.5 & v0.3.6 Updates**
+- **Meta Graph API Facebook Integration (v0.3.3 & v0.3.5)**: Direct integration with Facebook Page `Al Qaryan Industries LLC` (Page ID `1383856674820826`). Includes one-time "Send to Facebook Page" action with strict database and transient duplicate prevention.
+- **Card Share Dropdown & Icon Branding (v0.3.4 & v0.3.6)**: Added interactive share trigger on every listing card on `/scrap-market/` and single listing pages with branded SVG icons:
+  - 💬 WhatsApp (with official SVG & green styling)
+  - ✉️ Gmail / Email (with official SVG & red styling)
+  - 📘 Facebook (with official SVG & blue styling)
+  - 📋 Copy Link (with link SVG & instant clipboard feedback)
+  - ✏️ Edit & 🗑️ Delete / Remove (with dedicated action buttons & SVGs)
+  - 👁️ View Details & Contact (with eye & user card SVGs)
+- **Pre-filled Communication Message (v0.3.6)**: Built-in standardized inquiry text across WhatsApp links, Gmail mailto, and contact form:
+  `"Good day, I have got details about your products from Al Qaryan Scrap Market (www.alqaryangroup.com/scrap-market). I am interested in this material, is this offer still available?"`
 
 **Verification**
 - `scripts/alqaryan-audit.mjs`: 45 URLs, 0 non-200, 0 duplicate titles/H1, 0 missing canonicals,
