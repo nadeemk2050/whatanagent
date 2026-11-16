@@ -1,11 +1,40 @@
 # Scrap Market — WordPress plugin
 
-Adds a **Scrap Market** section to alqaryangroup.com: a listing post type, three
-taxonomies, `Product`/`Offer` schema, IndexNow pings, and an image pipeline that
-guarantees every stored photo is under 300 KB.
+Adds the **Recycle Scrap Market** to alqaryangroup.com: a public market page with a
+*For Sale* / *Need to Buy* switch, search and facets, listing pages with WhatsApp
+enquiry, free posting by visitors, a review queue, `Product`/`Demand` schema, IndexNow
+pings, and an image pipeline that guarantees every stored photo is under 300 KB.
 
-Phase 0 of the marketplace plan. Members, subscriptions and the VPS/Drive archive
-are later phases.
+## What the page does
+
+```
+/scrap-market/                 the market — switch, search, material/region/quantity facets, sort
+/scrap-market/?kind=sell       For Sale only
+/scrap-market/?kind=buy        Need to Buy only
+/scrap-market/{slug}/          one listing: gallery, price bar, WhatsApp, enquiry form, related lots
+/scrap-market/material/hdpe/   material view
+/scrap-market/region/uae/      region view
+/list-your-scrap/              the free posting form ([scrap_market_post])
+```
+
+Every filter is a plain GET parameter, so a filtered view is a real URL that can be sent
+on WhatsApp or indexed, and the whole page works with JavaScript switched off. JS only
+adds the photo switcher, the copy-link button and a localStorage shortlist.
+
+## Posting
+
+Posting is open by design — no account, no fee. Four cheap controls replace a login:
+
+1. a honeypot field only a bot fills in
+2. a minimum of three seconds on the form
+3. a per-IP limit of 5 posts an hour (and 20 reports an hour)
+4. a nonce, so the form cannot be posted from another site
+
+Duplicates of the same title from the same IP inside an hour are dropped.
+
+**Settings → Scrap Market** decides whether a new listing goes live immediately (default)
+or into the review queue. The queue lives at **Scrap Market → Review queue** and also
+collects every listing a visitor reported. Row actions: Approve, Dismiss report, Trash.
 
 ## Why a plugin, not theme files
 
@@ -16,9 +45,12 @@ stored in the active Astra theme dies the same way. This lives in
 ## Install
 
 1. WordPress admin → **Plugins → Add New → Upload Plugin**
-2. Choose `dist/alqaryan-scrap-market-0.1.0.zip` → **Install Now** → **Activate**
-3. WordPress will flush rewrite rules on activation, so `/scrap-market/` resolves
-   straight away. If it 404s, go to **Settings → Permalinks → Save** once.
+2. Choose `dist/alqaryan-scrap-market-0.2.0.zip` → **Install Now** → **Activate**
+3. Activation flushes rewrite rules, so `/scrap-market/` resolves straight away. If it
+   404s, go to **Settings → Permalinks → Save** once.
+
+The posting page exists as a draft (`/list-your-scrap/`) — publish it once the plugin is
+active.
 
 ## Configure
 
@@ -26,14 +58,15 @@ stored in the active Astra theme dies the same way. This lives in
 
 | Field | Value |
 |---|---|
-| IndexNow key | `f90e62ce9199ff70fd09452c4519dbf9` (the file already at the site root) |
-| Archive endpoint (VPS) | leave as is — used from Phase 1 |
+| IndexNow key | `f90e62ce9199ff70fd09452c4519dbf9` (already served at the site root) |
+| Archive endpoint (VPS) | leave as is — used for the Drive archive |
 | Drive folder | `ScrapMarket` |
 | Default seller / phone | pre-fills new listings |
+| Public posting | on — turn off to close the market to outside posts |
+| New listing goes | live immediately, or into the review queue |
 
-**Rank Math → Sitemap Settings** — confirm *Scrap Market* is included. The plugin
-also filters it out of Rank Math's exclusion list, but the sitemap checkbox is the
-authority.
+**Rank Math → Sitemap Settings** — confirm *Scrap Market* is included. The plugin also
+filters it out of Rank Math's exclusion list, but the sitemap checkbox is the authority.
 
 ## Publish the first listing
 
@@ -45,62 +78,51 @@ authority.
 - Material / Region / Offer type: tick at least one of each
 - Description: 2–4 sentences — the first 55 words become the meta description
 
-On **Publish** the plugin pings IndexNow automatically. The publish box also shows
-a **Submit to IndexNow** button and the HTTP result of the last ping.
+On **Publish** the plugin pings IndexNow automatically. The publish box also shows a
+**Submit to IndexNow** button and the HTTP result of the last ping.
 
 ## The 300 KB image pipeline
 
-Every JPEG/PNG/WebP upload is re-encoded before WordPress stores it:
+Every JPEG/PNG/WebP upload — admin or front-end — is re-encoded before WordPress stores it:
 
 1. EXIF orientation applied, then **all EXIF stripped** — phone photos carry GPS
    coordinates, and a seller's yard location is not something to publish by accident
 2. longest edge capped at 1600 px, never upscaled
-3. encoded to WebP with a **binary search on quality** — it tries 65, then 80, then
-   72… and keeps the highest quality that still fits under 300 KB
+3. encoded to WebP with a **binary search on quality** — it tries 65, then 80, then 72…
+   and keeps the highest quality that still fits under 300 KB
 4. if even quality 35 is too large, it downscales and searches again
 
-The **Photo check** box on each listing shows the stored file size and flags
-anything over the ceiling. Settings → Scrap Market shows whether Imagick or GD is
-driving it, and whether WebP is available on the host.
-
 GIFs are left untouched so animations are not flattened.
-
-## URLs
-
-```
-/scrap-market/                  archive + filters
-/scrap-market/{slug}/           one listing
-/scrap-market/material/hdpe/    taxonomy
-/scrap-market/region/dubai/     taxonomy
-/scrap-market/listing/sell/     taxonomy
-```
 
 ## Search-engine behaviour
 
 - Sold listings and listings past their expiry date **stay at their URL** but get
   `noindex` — history is preserved, dead stock leaves the index
-- `Product` + `Offer` + `BreadcrumbList` on every listing, with the seller pointing
-  at `https://alqaryangroup.com/#organization` so Google merges the marketplace into
-  the company it already knows
+- `Product` + `Offer` + `BreadcrumbList` on a *For Sale* listing; a *Need to Buy* listing
+  emits `Demand` instead, so a buyer's budget is never published as a price
 - `ItemList` on archives
 - Meta description falls back to the excerpt when Rank Math is not active
 
 ## Later phases (not in this build)
 
-- Phase 1 — front-end submission form, camera capture, VPS compression + Drive archive
-- Phase 2 — internal links from the material pages, filters, related listings
-- Phase 3 — member accounts with a moderation queue
-- Phase 4 — paid tiers via Stripe Payment Links
+- Phase 2 — links from the material pages into matching listings, saved searches
+- Phase 3 — member accounts, so a seller can edit their own listing
+- Phase 4 — paid featured listings via Stripe Payment Links
+- Phase 5 — VPS compression + permanent Drive archive for photos
 
 ## Files
 
 ```
 alqaryan-scrap-market.php   bootstrap, settings screen, asset enqueue
-includes/cpt.php            post type, taxonomies, templates, admin columns
+includes/cpt.php            post type, taxonomies, term seeding, templates, admin columns
 includes/fields.php         meta box, save handler, price/quantity labels
+includes/query.php          kind switch, search, facets, sorting, market template
+includes/submission.php     public posting form, anti-spam, report handler
+includes/queue.php          review queue (pending + reported), approve/dismiss/trash
 includes/media.php          the 300 KB compression pipeline
 includes/schema.php         JSON-LD for listings and archives
 includes/seo.php            noindex, description fallback, IndexNow
 templates/                  archive + single, using get_header()/get_footer()
 assets/scrap-market.css     uses the existing --q-* design tokens
+assets/scrap-market.js      gallery switcher, copy link, localStorage shortlist
 ```

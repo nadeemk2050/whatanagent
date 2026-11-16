@@ -9,6 +9,7 @@
 // from inside the site rather than only from the sitemap.
 
 import { GUIDES, HDPE, PVC } from '../alqaryan-site/build/guides/pages.mjs';
+import { wrapContent } from '../alqaryan-site/build/chrome.mjs';
 
 const SITE = String(process.env.RANKMATH_SITE || '').replace(/\/+$/, '');
 const USER = process.env.RANKMATH_USER;
@@ -19,7 +20,10 @@ if (!SITE || !USER || !PASS) { console.error('Set RANKMATH_SITE, RANKMATH_USER, 
 const H = { Authorization: 'Basic ' + Buffer.from(USER + ':' + PASS).toString('base64'), 'Content-Type': 'application/json' };
 
 const render = (await import('../alqaryan-site/build/guides/pages.mjs')).default;
-const html = (p) => render(p);
+// Wrapped, so a guide is published with the same header, footer and WhatsApp/call
+// buttons as every other page. Publishing the bare render() left seven pages without
+// navigation and without any way to contact the company.
+const html = (p) => wrapContent(render(p));
 
 async function findPage(slug) {
   const r = await fetch(`${SITE}/wp-json/wp/v2/pages?slug=${encodeURIComponent(slug)}&status=publish,draft&_fields=id,slug,link`, { headers: H });

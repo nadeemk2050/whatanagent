@@ -27,6 +27,9 @@
 import net from 'node:net';
 import dns from 'node:dns/promises';
 import axios from 'axios';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { doc, getDoc, setDoc, updateDoc, deleteField, FieldPath } from 'firebase/firestore';
 import { makeAdminGuard } from './adminGuard.mjs';
 import crypto from 'node:crypto';
@@ -586,9 +589,50 @@ export function registerWorkshopRoutes(app, db) {
     return rec.n > 25;
   };
 
-  // ---------------------------------------------------------------- state
-  app.get(api + '/state', async (req, res) => {
+  // ------------------------------------------------------- website handbook
+  // The long-form "everything about this website" document that ships with the repo
+  // (alqaryan-site/site-docs/<site>.md). It exists so an incoming agent — in this
+  // workspace or in another IDE such as Antigravity — can read the structure, the
+  // rules and the history instead of discovering them again from scratch.
+  app.get(api + '/doc', async (req, res) => {
     try {
+      const raw = sstr((req.query || {}).key, 200).toLowerCase() || 'alqaryangroup.com';
+      const key = raw.replace(/[^a-z0-9.-]/g, '');
+      if (!key) return bad(res, 'Which website handbook?');
+
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const file = path.join(here, 'alqaryan-site', 'site-docs', key + '.md');
+
+      if (!fs.existsSync(file)) {
+        return res.json({ ok: true, key, exists: false, markdown: '', files: listDocFiles(here) });
+      }
+
+      const stat = fs.statSync(file);
+      res.json({
+        ok: true, key, exists: true,
+        updatedAt: stat.mtimeMs,
+        bytes: stat.size,
+        markdown: fs.readFileSync(file, 'utf8'),
+        files: listDocFiles(here)
+      });
+    } catch (e) {
+      console.error('[WORKSHOP] doc failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
+  function listDocFiles(here) {
+    try {
+      return fs.readdirSync(path.join(here, 'alqaryan-site', 'site-docs'))
+        .filter(f => f.endsWith('.md'))
+        .map(f => f.replace(/\.md$/, ''));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // ---------------------------------------------------------------- state
+  app.get(api + '/state', async (req, res) => {    try {
       const meta = await readMeta(db);
       const seoSites = await readSeoSites(db);
       const agents = await listAgents({ fresh: false });

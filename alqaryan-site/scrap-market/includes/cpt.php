@@ -119,22 +119,69 @@ function sm_register_taxonomies() {
 add_action( 'init', 'sm_register_taxonomies', 6 );
 
 /**
- * Seed the two offer types once, so "Sell" and "Buy" exist before the first ad.
+ * Seed the offer types, materials and regions once, so the market and the posting form
+ * are usable before anything has been filed. The two offer types are the whole point of
+ * the page, so their names are also corrected on an existing install.
  */
-add_action( 'admin_init', function () {
-	if ( get_option( 'sm_seeded_terms' ) ) {
-		return;
-	}
+function sm_seed_terms() {
 	if ( ! taxonomy_exists( 'scrap_kind' ) ) {
 		return;
 	}
-	foreach ( array( 'sell' => 'For Sale', 'buy' => 'Wanted' ) as $slug => $name ) {
-		if ( ! term_exists( $slug, 'scrap_kind' ) ) {
-			wp_insert_term( $name, 'scrap_kind', array( 'slug' => $slug ) );
+
+	if ( get_option( 'sm_seeded_terms_v2' ) ) {
+		return;
+	}
+
+	$kinds = array(
+		'sell' => 'For Sale',
+		'buy'  => 'Need to Buy',
+	);
+
+	foreach ( $kinds as $slug => $name ) {
+		$existing = get_term_by( 'slug', $slug, 'scrap_kind' );
+		if ( $existing instanceof WP_Term ) {
+			if ( $existing->name !== $name ) {
+				wp_update_term( $existing->term_id, 'scrap_kind', array( 'name' => $name ) );
+			}
+			continue;
+		}
+		wp_insert_term( $name, 'scrap_kind', array( 'slug' => $slug ) );
+	}
+
+	$materials = array(
+		'HDPE'    => 'hdpe',
+		'LDPE'    => 'ldpe',
+		'PP'      => 'pp',
+		'PET'     => 'pet',
+		'PVC'     => 'pvc',
+		'ABS / PS' => 'abs-ps',
+		'Mixed'   => 'mixed',
+	);
+
+	foreach ( $materials as $name => $slug ) {
+		if ( ! term_exists( $slug, 'scrap_material' ) ) {
+			wp_insert_term( $name, 'scrap_material', array( 'slug' => $slug ) );
 		}
 	}
-	update_option( 'sm_seeded_terms', 1 );
-} );
+
+	$regions = array(
+		'Pakistan'      => 'pakistan',
+		'UAE'           => 'uae',
+		'Saudi Arabia'  => 'saudi-arabia',
+		'Far East'      => 'far-east',
+		'Europe'        => 'europe',
+	);
+
+	foreach ( $regions as $name => $slug ) {
+		if ( ! term_exists( $slug, 'scrap_region' ) ) {
+			wp_insert_term( $name, 'scrap_region', array( 'slug' => $slug ) );
+		}
+	}
+
+	update_option( 'sm_seeded_terms_v2', 1 );
+}
+add_action( 'admin_init', 'sm_seed_terms' );
+add_action( 'init', 'sm_seed_terms', 20 );
 
 /**
  * Use the plugin templates, but let a child theme override them.

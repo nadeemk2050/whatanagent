@@ -6,6 +6,7 @@
 // Nothing else is invented: technical grades are described as agreed per lot.
 import { TEL, TEL_LINK, WA, CTA } from './materials/constants.mjs';
 import { MATERIAL_DEAL_PAGES } from './materials/index.mjs';
+import { GUIDE_PAGES } from './guides/pages.mjs';
 
 export const SITE = {
   name: 'Al Qaryan Industries',
@@ -74,12 +75,12 @@ export const PAGES = [
     <div class="q-card">
       <h3>Plastic recycling</h3>
       <p>Shredding, washing and pelletising of HDPE, LDPE, PP, PET, PVC and ABS/PS scrap into regrind and pellets for Pakistani manufacturers.</p>
-      <a class="q-link" href="/plastic-recycling/">How we recycle</a>
+      <a class="q-link" href="/services/plastic-recycling/">How we recycle</a>
     </div>
     <div class="q-card">
       <h3>Polymer trading</h3>
       <p>Imported and locally sourced polymer feedstock, supplied in truckloads and container lots with documented quality per lot.</p>
-      <a class="q-link" href="/polymer-trading/">See how we trade</a>
+      <a class="q-link" href="/services/polymer-trading/">See how we trade</a>
     </div>
     <div class="q-card">
       <h3>PVC pipes</h3>
@@ -266,12 +267,12 @@ ${CTA}`
   <div class="q-card">
     <h3>Plastic recycling</h3>
     <p>Shredding, washing and pelletising HDPE, LDPE, PP, PET, PVC and ABS/PS scrap into regrind and pellets.</p>
-    <a class="q-link" href="/plastic-recycling/">Plastic recycling</a>
+    <a class="q-link" href="/services/plastic-recycling/">Plastic recycling</a>
   </div>
   <div class="q-card">
     <h3>Polymer trading</h3>
     <p>Imported and locally sourced polymer feedstock supplied in truckloads and container lots.</p>
-    <a class="q-link" href="/polymer-trading/">Polymer trading</a>
+    <a class="q-link" href="/services/polymer-trading/">Polymer trading</a>
   </div>
   <div class="q-card">
     <h3>PVC pipe manufacturing</h3>
@@ -281,7 +282,7 @@ ${CTA}`
   <div class="q-card">
     <h3>PVC pipe supply</h3>
     <p>Sizes, fittings and product families we source from vetted mills for customers who buy a mixed basket.</p>
-    <a class="q-link" href="/pvc-pipes-supply/">PVC pipe supply</a>
+    <a class="q-link" href="/services/pvc-pipes-supply/">PVC pipe supply</a>
   </div>
 </div>
 
@@ -293,7 +294,7 @@ ${CTA}`
       <tr><td>A manufacturer needing regrind or pellets</td><td><a href="/materials/">Materials we supply</a></td></tr>
       <tr><td>A trader or plant with plastic scrap to sell</td><td><a href="/we-buy/">We buy plastic scrap</a></td></tr>
       <tr><td>Sourcing PVC pipe on a recurring basis</td><td><a href="/pvc-pipe-manufacturing/">Pipe manufacturing</a></td></tr>
-      <tr><td>Buying a mixed basket of pipe and fittings</td><td><a href="/pvc-pipes-supply/">Pipe supply</a></td></tr>
+      <tr><td>Buying a mixed basket of pipe and fittings</td><td><a href="/services/pvc-pipes-supply/">Pipe supply</a></td></tr>
     </tbody>
   </table>
 </div>
@@ -420,7 +421,7 @@ ${CTA}`
 <div class="q-section">
   <h2>What we manufacture</h2>
   <p>Our extrusion lines produce PVC pipe for plumbing, drainage and irrigation use, in the diameters and pressure classes agreed with the customer. Because the compound comes through our own recycling operation, we control what goes into the pipe rather than buying finished stock and relabelling it.</p>
-  <p class="q-note">If you need a size or fitting we do not extrude ourselves, we supply it through our <a href="/pvc-pipes-supply/">pipe supply service</a> from vetted mills — and we tell you clearly which is which.</p>
+  <p class="q-note">If you need a size or fitting we do not extrude ourselves, we supply it through our <a href="/services/pvc-pipes-supply/">pipe supply service</a> from vetted mills — and we tell you clearly which is which.</p>
 </div>
 
 <div class="q-section">
@@ -1275,7 +1276,11 @@ ${CTA}`
 ${CTA}`
   },
 
-  ...MATERIAL_DEAL_PAGES
+  ...MATERIAL_DEAL_PAGES,
+
+  // Buyer guides. They live here (rather than only in guides/pages.mjs) so every build
+  // path wraps them in the site chrome and they can never drift from the rest of the site.
+  ...GUIDE_PAGES
 ];
 
 // Contextual cross-links from the six resin-family pages into the specific scrap

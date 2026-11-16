@@ -248,6 +248,22 @@ function sm_keep_in_sitemap( $excluded ) {
 add_filter( 'rank_math/sitemap/exclude_post_type', 'sm_keep_in_sitemap' );
 
 /**
+ * Clear the page cache when a listing goes live.
+ *
+ * The market archive is cached like any other page, so without this a new listing sits
+ * invisible behind a cached copy of /scrap-market/ until the cache happens to expire.
+ */
+add_action( 'transition_post_status', function ( $new_status, $old_status, $post ) {
+	if ( 'scrap_listing' !== $post->post_type || 'publish' !== $new_status || $new_status === $old_status ) {
+		return;
+	}
+
+	do_action( 'litespeed_purge_all' );
+	do_action( 'litespeed_purge_url', get_permalink( $post->ID ) );
+	do_action( 'litespeed_purge_url', get_post_type_archive_link( 'scrap_listing' ) );
+}, 20, 3 );
+
+/**
  * "Scrap Market" in the archive <title>.
  *
  * @param array<string,string> $parts Title parts.

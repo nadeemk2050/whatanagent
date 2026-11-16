@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.1.0
+ * Version:           0.2.3
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.1.0' );
+define( 'SM_VERSION', '0.2.3' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -33,6 +33,9 @@ define( 'SM_MAX_EDGE', 1600 );
 require_once SM_DIR . 'includes/cpt.php';
 require_once SM_DIR . 'includes/fields.php';
 require_once SM_DIR . 'includes/media.php';
+require_once SM_DIR . 'includes/query.php';
+require_once SM_DIR . 'includes/submission.php';
+require_once SM_DIR . 'includes/queue.php';
 require_once SM_DIR . 'includes/schema.php';
 require_once SM_DIR . 'includes/seo.php';
 
@@ -42,6 +45,7 @@ require_once SM_DIR . 'includes/seo.php';
 function sm_activate() {
 	sm_register_post_type();
 	sm_register_taxonomies();
+	sm_seed_terms();
 	sm_optimiser_probe( true );
 	flush_rewrite_rules();
 }
@@ -62,11 +66,13 @@ register_deactivation_hook( __FILE__, 'sm_deactivate' );
  */
 function sm_settings() {
 	$defaults = array(
-		'indexnow_key' => '',
+		'indexnow_key' => 'f90e62ce9199ff70fd09452c4519dbf9',
 		'vps_endpoint' => 'https://whatanagent.duckdns.org/scrap/api',
 		'drive_folder' => 'ScrapMarket',
 		'seller_name'  => 'Al Qaryan Industries',
 		'seller_phone' => '+92 333 201 0506',
+		'posting_open' => '1',
+		'posting_mode' => 'publish',
 	);
 	$saved = get_option( 'sm_settings', array() );
 
@@ -74,20 +80,51 @@ function sm_settings() {
 }
 
 /**
- * Enqueue the listing stylesheet only where it is needed.
+ * Enqueue the listing stylesheet and the small enhancement script.
  */
 add_action( 'wp_enqueue_scripts', function () {
 	if ( is_singular( 'scrap_listing' )
 		|| is_post_type_archive( 'scrap_listing' )
-		|| is_tax( array( 'scrap_material', 'scrap_region', 'scrap_kind' ) ) ) {
+		|| is_tax( array( 'scrap_material', 'scrap_region', 'scrap_kind' ) )
+		|| is_page( 'scrap-market-post' ) ) {
 		wp_enqueue_style(
 			'scrap-market',
 			SM_URL . 'assets/scrap-market.css',
 			array(),
 			SM_VERSION
 		);
+
+		wp_enqueue_script(
+			'scrap-market',
+			SM_URL . 'assets/scrap-market.js',
+			array(),
+			SM_VERSION,
+			true
+		);
 	}
 } );
+
+/**
+ * Flush rewrite rules once per version, from an ordinary front-end request.
+ *
+ * The activation hook flushes too, but at that moment another plugin's rewrite rules
+ * (Rank Math's sitemaps, for one) may not be registered yet, and the flush then persists a
+ * ruleset without them — which is exactly how /sitemap_index.xml turns into a 404.
+ * wp_loaded runs after every plugin has registered, and the version check means this
+ * happens once per release rather than on every request.
+ */
+add_action( 'wp_loaded', function () {
+	// Admin and cron requests are skipped on purpose: Rank Math registers its sitemap routes
+	// for front-end requests, so flushing from wp-admin is what quietly writes a ruleset
+	// without them and 404s /sitemap_index.xml.
+	if ( is_admin() || wp_doing_cron() ) {
+		return;
+	}
+	if ( get_option( 'sm_rules_version' ) !== SM_VERSION ) {
+		flush_rewrite_rules( false );
+		update_option( 'sm_rules_version', SM_VERSION );
+	}
+}, 9999 );
 
 /**
  * Settings screen: Settings -> Scrap Market.
@@ -112,6 +149,8 @@ function sm_render_settings() {
 		foreach ( array( 'indexnow_key', 'vps_endpoint', 'drive_folder', 'seller_name', 'seller_phone' ) as $key ) {
 			$clean[ $key ] = isset( $_POST[ $key ] ) ? sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) : '';
 		}
+		$clean['posting_open'] = empty( $_POST['posting_open'] ) ? '' : '1';
+		$clean['posting_mode'] = ( isset( $_POST['posting_mode'] ) && 'pending' === $_POST['posting_mode'] ) ? 'pending' : 'publish';
 		update_option( 'sm_settings', $clean );
 		echo '<div class="notice notice-success"><p>Saved.</p></div>';
 	}
@@ -154,6 +193,25 @@ function sm_render_settings() {
 				<tr>
 					<th scope="row"><label for="sm_seller_phone">Default phone / WhatsApp</label></th>
 					<td><input name="seller_phone" id="sm_seller_phone" type="text" class="regular-text" value="<?php echo esc_attr( $s['seller_phone'] ); ?>"></td>
+				</tr>
+				<tr>
+					<th scope="row">Public posting</th>
+					<td>
+						<label>
+							<input name="posting_open" id="sm_posting_open" type="checkbox" value="1" <?php checked( ! empty( $s['posting_open'] ) ); ?>>
+							Let visitors post their own listings from the website
+						</label>
+						<p class="description">Honeypot, a minimum fill time, a nonce and a 5-per-hour per-IP limit run on every submission.</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="sm_posting_mode">New listing goes</label></th>
+					<td>
+						<select name="posting_mode" id="sm_posting_mode">
+							<option value="publish" <?php selected( 'publish' === $s['posting_mode'] ); ?>>Live immediately</option>
+							<option value="pending" <?php selected( 'pending' === $s['posting_mode'] ); ?>>Into the review queue</option>
+						</select>
+					</td>
 				</tr>
 			</table>
 			<?php submit_button(); ?>

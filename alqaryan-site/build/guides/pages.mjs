@@ -13,6 +13,9 @@
 
 const jsonLd = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
 
+// One source for the phone number / WhatsApp link, shared with every other page.
+import { TEL, TEL_LINK, WA } from '../materials/constants.mjs';
+
 function renderSection(s) {
   const out = ['<div class="q-section">', '  <h2>' + s.h2 + '</h2>'];
   (s.paras || []).forEach(p => out.push('  <p>' + p + '</p>'));
@@ -32,9 +35,10 @@ function renderSection(s) {
 }
 
 const CTA = `<div class="q-section q-cta">
-  <h2>Send your pipe requirement</h2>
-  <p>Give us the diameter, the pressure class you need, the quantity and the delivery location. We confirm what we can supply, the price per metre and the lead time — in writing, before you commit.</p>
-  <p><a class="q-link" href="/contact/">Contact Al Qaryan Industries</a> · <a class="q-link" href="tel:+923332010506">+92 333 201506</a></p>
+  <h2>Send your requirement</h2>
+  <p>Send the material or pipe size, the quantity and the delivery location. We confirm what we can supply, the price and the lead time — in writing, before you commit.</p>
+  <p class="q-cta__actions"><a class="q-btn q-btn--primary" href="/contact/">Request a quote</a> <a class="q-btn q-btn--wa" href="${WA}" target="_blank" rel="noopener">WhatsApp ${TEL}</a></p>
+  <p class="q-muted">Or call <a class="q-link" href="${TEL_LINK}">${TEL}</a> — enquiries are answered within one working day.</p>
 </div>`;
 
 function render(p) {
@@ -818,5 +822,22 @@ export const PRICE = {
 };
 
 export const GUIDES = [HDPE, PVC, HDPE_SCRAP, LDPE_SCRAP, SELLERS, COMPARE, PRICE];
+
+// The same seven guides as build pages, so they are published through the normal
+// build (build-preview / build-wxr) and therefore get the shared chrome: header,
+// footer and the WhatsApp/call buttons. Publishing a guide straight from render()
+// is what left these seven pages without navigation or a WhatsApp link.
+export const GUIDE_PAGES = GUIDES.map(function (p, i) {
+  return {
+    id: 1101 + i,
+    slug: p.slug,
+    title: p.h1,
+    wpTitle: p.h1,
+    seoTitle: p.seoTitle,
+    seoDesc: p.seoDesc,
+    focus: p.focus,
+    html: render(p)
+  };
+});
 
 export default render;

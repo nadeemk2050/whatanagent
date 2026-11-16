@@ -14390,6 +14390,7 @@
     /* ---------------- single-website page (opened from the register) ---------------- */
     var SITE_VIEWS = [
         { id: 'process', label: '\ud83d\udccb Processes & Statuses' },
+        { id: 'doc', label: '\ud83d\udcda Website handbook' },
         { id: 'google', label: '\ud83d\udd0e Google Index' },
         { id: 'workspace', label: '\ud83d\uddc2 Workspace' },
         { id: 'soon', label: '\u23f3 Coming soon' }
@@ -14464,10 +14465,116 @@
             }).join('');
         }
         $('wsSiteBody').innerHTML = WS.siteView === 'workspace' ? workspaceHtml(s)
-            : WS.siteView === 'google' ? googleHtml(s.key)
-                : WS.siteView === 'soon' ? soonHtml(s)
-                    : processHtml(s.key);
+            : WS.siteView === 'doc' ? docHtml(s.key)
+                : WS.siteView === 'google' ? googleHtml(s.key)
+                    : WS.siteView === 'soon' ? soonHtml(s)
+                        : processHtml(s.key);
         if (WS.siteView === 'google' || WS.siteView === 'workspace') ensureGoogle(s.key);
+        if (WS.siteView === 'doc') ensureDoc(s.key);
+    }
+
+    /* ---------------- website handbook (alqaryan-site/site-docs/<key>.md) ---------------- */
+    var WS_DOC = {};
+
+    function docHtml(key) {
+        var d = WS_DOC[key];
+        if (!d) {
+            return '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83d\udcda</div><b>Loading the website handbook\u2026</b></div></div>';
+        }
+        if (!d.exists) {
+            return '<div class="ws-card"><h3 class="ws-h3">\ud83d\udcda Website handbook</h3>' +
+                '<p class="ws-hint">No handbook for this website yet. Add <code>alqaryan-site/site-docs/' + esc(key) + '.md</code> to the repository and it appears here.</p></div>';
+        }
+        return '<div class="ws-card"><div class="ws-row" style="justify-content:space-between;align-items:flex-start;gap:12px;">' +
+            '<div style="flex:1;min-width:240px;">' +
+                '<h3 class="ws-h3">\ud83d\udcda Website handbook \u2014 every update, rule and structure</h3>' +
+                '<p class="ws-hint" style="margin:6px 0 0 0;">The file <code>alqaryan-site/site-docs/' + esc(key) + '.md</code>. Written so any agent \u2014 this workspace or another IDE such as Antigravity \u2014 reads what is already done instead of starting again. Updated ' + esc(when(d.updatedAt)) + ' \u00b7 ' + Math.round((d.bytes || 0) / 1024) + ' KB.</p>' +
+            '</div>' +
+            '<button class="ws-btn dark" onclick="wshopDocReload(\'' + esc(key) + '\')">\u21bb Reload file</button>' +
+        '</div></div>' +
+        '<div class="ws-card ws-doc">' + mdToHtml(d.markdown) + '</div>';
+    }
+
+    async function ensureDoc(key) {
+        if (WS_DOC[key]) return;
+        try {
+            WS_DOC[key] = await api('/doc?key=' + encodeURIComponent(key), { method: 'GET' });
+            if (WS.siteView === 'doc') renderSitePage();
+        } catch (e) { toastMsg('\u26a0\ufe0f ' + e.message); }
+    }
+
+    function docReload(key) { delete WS_DOC[key]; renderSitePage(); }
+
+    // Deliberately small markdown renderer: headings, tables, lists, code fences, bold,
+    // inline code and links. The handbook is written in exactly that subset.
+    function mdToHtml(md) {
+        var lines = String(md || '').replace(/\r/g, '').split('\n');
+        var out = [];
+        var i = 0;
+
+        function inline(s) {
+            return esc(s)
+                .replace(/`([^`]+)`/g, '<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:12.5px;">$1</code>')
+                .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        }
+
+        while (i < lines.length) {
+            var line = lines[i];
+
+            if (/^```/.test(line)) {
+                var code = [];
+                i++;
+                while (i < lines.length && !/^```/.test(lines[i])) { code.push(esc(lines[i])); i++; }
+                i++;
+                out.push('<pre style="background:#0f172a;color:#e2e8f0;padding:12px 14px;border-radius:10px;overflow:auto;font-size:12.5px;line-height:1.5;">' + code.join('\n') + '</pre>');
+                continue;
+            }
+
+            var h = line.match(/^(#{1,4})\s+(.*)$/);
+            if (h) {
+                var lvl = Math.min(4, h[1].length) + 1;
+                var sizes = { 2: '20px', 3: '16.5px', 4: '14.5px', 5: '13px' };
+                out.push('<h' + lvl + ' style="font-size:' + (sizes[lvl] || '13px') + ';margin:20px 0 8px;color:#0f172a;">' + inline(h[2]) + '</h' + lvl + '>');
+                i++;
+                continue;
+            }
+
+            if (/^\s*\|/.test(line) && /^\s*\|?[\s:|-]+\|/.test(lines[i + 1] || '')) {
+                var head = line.split('|').slice(1, -1).map(function (c) { return c.trim(); });
+                i += 2;
+                var rows = [];
+                while (i < lines.length && /^\s*\|/.test(lines[i])) {
+                    rows.push(lines[i].split('|').slice(1, -1).map(function (c) { return c.trim(); }));
+                    i++;
+                }
+                var th = head.map(function (c) { return '<th style="text-align:left;padding:7px 10px;border-bottom:1px solid #dbe3ea;font-size:12.5px;background:#f8fafc;">' + inline(c) + '</th>'; }).join('');
+                var tr = rows.map(function (r) {
+                    return '<tr>' + r.map(function (c) { return '<td style="padding:7px 10px;border-bottom:1px solid #eef2f7;font-size:13px;">' + inline(c) + '</td>'; }).join('') + '</tr>';
+                }).join('');
+                out.push('<div style="overflow:auto;margin:10px 0;"><table style="border-collapse:collapse;width:100%;">' + (head.length ? '<thead><tr>' + th + '</tr></thead>' : '') + '<tbody>' + tr + '</tbody></table></div>');
+                continue;
+            }
+
+            if (/^\s*([-*]|\d+\.)\s+/.test(line)) {
+                var ordered = /^\s*\d+\./.test(line);
+                var items = [];
+                while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) {
+                    items.push('<li style="margin:4px 0;">' + inline(lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '')) + '</li>');
+                    i++;
+                }
+                var tag = ordered ? 'ol' : 'ul';
+                out.push('<' + tag + ' style="margin:8px 0 8px 20px;padding:0;">' + items.join('') + '</' + tag + '>');
+                continue;
+            }
+
+            if (/^\s*$/.test(line)) { i++; continue; }
+
+            out.push('<p style="margin:8px 0;font-size:13.5px;line-height:1.65;color:#334155;">' + inline(line) + '</p>');
+            i++;
+        }
+
+        return out.join('');
     }
 
     function processHtml(key) {
@@ -15162,6 +15269,7 @@
     window.wshopSiteOpen = siteOpen;
     window.wshopSiteSwitch = siteSwitch;
     window.wshopMenuClose = menuClose;
+    window.wshopDocReload = docReload;
     window.wshopAudit = auditLive;
     window.wshopTodoForm = todoForm;
     window.wshopTodoAsk = todoAsk;

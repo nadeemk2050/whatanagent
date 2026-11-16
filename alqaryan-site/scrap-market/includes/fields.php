@@ -340,3 +340,51 @@ function sm_save_details( $post_id ) {
 	}
 }
 add_action( 'save_post_scrap_listing', 'sm_save_details' );
+
+/**
+ * Expose the listing fields to the REST API.
+ *
+ * Without this a listing created over REST (the workshop, an AI agent, a script) saves its
+ * title and body but silently loses the price, the quantity and the contact details,
+ * because underscore-prefixed meta is protected by default.
+ */
+add_action( 'init', function () {
+	$auth = function () {
+		return current_user_can( 'edit_posts' );
+	};
+
+	foreach ( sm_fields() as $key => $def ) {
+		register_post_meta(
+			'scrap_listing',
+			'_sm_' . $key,
+			array(
+				'show_in_rest'  => true,
+				'single'        => true,
+				'type'          => 'string',
+				'auth_callback' => $auth,
+			)
+		);
+	}
+
+	register_post_meta(
+		'scrap_listing',
+		'_sm_gallery',
+		array(
+			'show_in_rest'  => true,
+			'single'        => true,
+			'type'          => 'string',
+			'auth_callback' => $auth,
+		)
+	);
+
+	register_post_meta(
+		'scrap_listing',
+		'_sm_price_sort',
+		array(
+			'show_in_rest'  => false,
+			'single'        => true,
+			'type'          => 'number',
+			'auth_callback' => $auth,
+		)
+	);
+}, 20 );

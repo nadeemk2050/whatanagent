@@ -438,3 +438,336 @@
 		gap: 1rem;
 	}
 }
+
+/* ==========================================================================
+   Recycle Scrap Market — market page, switch, filters, gallery, posting form
+   Added with the public market page. Uses the same --q-* design tokens as the
+   rest of alqaryangroup.com so the market never looks bolted on.
+   ========================================================================== */
+
+.sm-hero__actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.1rem; }
+
+/* ---- For Sale / Need to Buy switch ---- */
+.sm-switch {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: .5rem;
+	margin: 1.4rem 0 1rem;
+}
+.sm-switch__tab {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: .6rem;
+	padding: .85rem 1rem;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 12px;
+	background: #fff;
+	color: var(--q-ink, #0f172a);
+	font-weight: 700;
+	text-decoration: none;
+	transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.sm-switch__tab:hover { border-color: var(--q-primary, #0b6e4f); transform: translateY(-1px); }
+.sm-switch__tab b {
+	min-width: 2rem;
+	padding: .1rem .5rem;
+	border-radius: 999px;
+	background: var(--q-soft, #f5f8f6);
+	color: var(--q-muted, #6b7c85);
+	font-size: .85rem;
+	text-align: center;
+}
+.sm-switch__tab.is-active {
+	border-color: var(--q-primary, #0b6e4f);
+	background: var(--q-primary-soft, #e8f4ef);
+	box-shadow: 0 6px 18px rgba(11, 110, 79, .12);
+}
+.sm-switch__tab.is-active b { background: var(--q-primary, #0b6e4f); color: #fff; }
+
+/* ---- search + facets ---- */
+.sm-filters {
+	display: grid;
+	grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(130px, 1fr)) minmax(130px, 1fr) auto auto;
+	gap: .5rem;
+	align-items: center;
+	padding: .8rem;
+	margin-bottom: 1.1rem;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 14px;
+	background: #fff;
+}
+.sm-filters input,
+.sm-filters select {
+	width: 100%;
+	padding: .62rem .7rem;
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 9px;
+	font-size: .95rem;
+	background: #fff;
+	color: var(--q-ink, #0f172a);
+}
+.sm-filters__clear { color: var(--q-muted, #6b7c85); font-size: .9rem; text-decoration: underline; }
+.sm-count { color: var(--q-muted, #6b7c85); font-size: .92rem; margin: 0 0 .8rem; }
+
+/* ---- cards ---- */
+.sm-card { position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.sm-card--buy { border-color: #cfe3ff; }
+.sm-card__price { margin: .35rem 0 .5rem; font-weight: 800; color: var(--q-primary-dark, #075039); }
+.sm-badge--kind {
+	position: absolute;
+	top: .6rem;
+	left: .6rem;
+	background: var(--q-primary, #0b6e4f);
+	color: #fff;
+}
+.sm-card--buy .sm-badge--kind { background: #1d4ed8; }
+.sm-badge--new { position: absolute; top: .6rem; right: .6rem; background: #f59e0b; color: #3b2a00; }
+.sm-badge--expired { background: #6b7280; color: #fff; margin-left: .4rem; }
+
+/* ---- single listing ---- */
+.sm-single__kind { margin: 0 0 .3rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; font-size: .78rem; color: var(--q-primary, #0b6e4f); }
+.sm-single__kind--buy { color: #1d4ed8; }
+.sm-h2 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
+
+.sm-gallery { margin: 1rem 0; }
+.sm-gallery__main { width: 100%; height: auto; border-radius: 14px; display: block; }
+.sm-gallery__thumbs { display: flex; gap: .5rem; margin-top: .55rem; flex-wrap: wrap; }
+.sm-gallery__thumb {
+	padding: 0; border: 2px solid transparent; border-radius: 10px; background: none;
+	cursor: pointer; line-height: 0;
+}
+.sm-gallery__thumb img { width: 84px; height: 64px; object-fit: cover; border-radius: 8px; }
+.sm-gallery__thumb.is-active { border-color: var(--q-primary, #0b6e4f); }
+
+.sm-share { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 1.4rem 0; }
+.sm-share__btn {
+	padding: .45rem .8rem; border: 1px solid var(--q-line, #e3ebe6); border-radius: 999px;
+	background: #fff; color: var(--q-ink, #0f172a); font-size: .88rem; text-decoration: none; cursor: pointer;
+}
+.sm-share__btn:hover { border-color: var(--q-primary, #0b6e4f); }
+
+.sm-safety {
+	margin: 1.6rem 0; padding: 1rem 1.15rem; border-radius: 14px;
+	background: #fff8e6; border: 1px solid #f2dfa8;
+}
+.sm-safety ul { margin: .4rem 0 .6rem 1.1rem; }
+.sm-safety li { margin-bottom: .35rem; }
+
+.sm-panel__seller { font-weight: 800; font-size: 1.05rem; margin: .2rem 0; }
+.sm-link { color: var(--q-primary, #0b6e4f); }
+
+/* ---- posting / enquiry forms ---- */
+.sm-form-wrap { max-width: 860px; }
+.sm-form fieldset.sm-fs {
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 14px;
+	padding: 1rem 1.1rem 1.2rem;
+	margin: 0 0 1rem;
+	background: #fff;
+}
+.sm-form legend { font-weight: 800; padding: 0 .4rem; color: var(--q-ink, #0f172a); }
+.sm-field { display: block; margin: .65rem 0; }
+.sm-field > span { display: block; font-weight: 700; font-size: .9rem; margin-bottom: .25rem; }
+.sm-field > span i { font-style: normal; font-weight: 500; color: var(--q-muted, #6b7c85); font-size: .82rem; }
+.sm-field input, .sm-field select, .sm-field textarea {
+	width: 100%; padding: .68rem .75rem; border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 9px; font-size: .97rem; background: #fff; color: var(--q-ink, #0f172a);
+}
+.sm-field small { display: block; margin-top: .22rem; color: var(--q-muted, #6b7c85); font-size: .82rem; }
+.sm-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .7rem; }
+
+.sm-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .6rem; margin-bottom: .6rem; }
+.sm-kindbox { display: flex; gap: .55rem; align-items: flex-start; padding: .8rem .9rem; border: 1px solid var(--q-line, #e3ebe6); border-radius: 12px; cursor: pointer; }
+.sm-kindbox input { margin-top: .25rem; }
+.sm-kindbox b { display: block; }
+.sm-kindbox em { font-style: normal; color: var(--q-muted, #6b7c85); font-size: .86rem; }
+.sm-kindbox:has(input:checked) { border-color: var(--q-primary, #0b6e4f); background: var(--q-primary-soft, #e8f4ef); }
+
+.sm-hp { position: absolute !important; left: -9999px !important; height: 0 !important; opacity: 0 !important; }
+.sm-consent { display: flex; gap: .5rem; align-items: flex-start; margin: .8rem 0 .2rem; font-size: .9rem; }
+.sm-form-actions { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-top: .3rem; }
+.sm-form--compact .sm-field { margin: .5rem 0; }
+.sm-form__msg { margin: .5rem 0 0; font-size: .9rem; }
+.sm-form__msg.is-error { color: #b91c1c; }
+.sm-form__msg.is-ok { color: #0d954d; }
+
+.sm-alert { padding: .8rem 1rem; border-radius: 10px; margin: 0 0 1rem; }
+.sm-alert--ok { background: #e8f7ef; border: 1px solid #b7e3c9; color: #0b5d3b; }
+.sm-alert--error { background: #fdecec; border: 1px solid #f5c2c2; color: #991b1b; }
+
+.sm-how { margin: 2.4rem 0 1rem; }
+.sm-how__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.sm-how__item { padding: 1rem 1.1rem; border: 1px solid var(--q-line, #e3ebe6); border-radius: 14px; background: #fff; }
+.sm-how__n {
+	display: inline-flex; align-items: center; justify-content: center;
+	width: 30px; height: 30px; border-radius: 50%;
+	background: var(--q-primary-soft, #e8f4ef); color: var(--q-primary-dark, #075039);
+	font-weight: 800; margin-bottom: .4rem;
+}
+.sm-how__item h3 { margin: .1rem 0 .3rem; font-size: 1rem; }
+
+/* ---- mobile ---- */
+@media (max-width: 860px) {
+	.sm-filters { grid-template-columns: 1fr 1fr; }
+	.sm-filters__search { grid-column: 1 / -1; }
+	.sm-single__grid { display: block; }
+	.sm-pricebar { flex-direction: column; align-items: flex-start; gap: .6rem; }
+}
+@media (max-width: 520px) {
+	.sm-filters { grid-template-columns: 1fr; }
+	.sm-switch { grid-template-columns: 1fr; }
+	.sm-gallery__thumb img { width: 68px; height: 52px; }
+}
+
+/* ==========================================================================
+   Market layout v2 — mobile first: the listings come first, the copy last.
+   The rail is a native horizontal scroller, so swiping works with touch, a
+   trackpad, a mouse wheel and the arrow keys without any carousel library.
+   ========================================================================== */
+
+.sm-market { display: flex; flex-direction: column; }
+.sm-market > * { min-width: 0; }
+
+/* phone order: switch, listings, filters, heading, explainer */
+.sm-market .sm-switch--sticky { order: 1; }
+.sm-market .sm-rail-wrap      { order: 2; }
+.sm-market .sm-empty          { order: 2; }
+.sm-market .sm-filters-wrap   { order: 3; }
+.sm-market .sm-hero--market   { order: 4; }
+.sm-market .sm-how            { order: 5; }
+
+.sm-switch--sticky {
+	position: sticky;
+	top: 0;
+	z-index: 20;
+	margin: 0 0 .5rem;
+	padding: .45rem 0;
+	background: #fff;
+	box-shadow: 0 6px 14px -12px rgba(15, 23, 42, .5);
+}
+.sm-switch--sticky .sm-switch__tab { padding: .6rem .75rem; font-size: .92rem; border-radius: 10px; }
+
+/* ---- the rail ---- */
+.sm-rail-wrap { margin: 0 0 .9rem; }
+.sm-rail-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: .35rem; }
+.sm-rail-head .sm-count { margin: 0; }
+.sm-rail-hint { margin-left: .45rem; color: var(--q-muted, #6b7c85); font-size: .8rem; }
+.sm-rail-nav { display: none; gap: .4rem; }
+.sm-rail {
+	display: flex;
+	gap: .8rem;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x mandatory;
+	-webkit-overflow-scrolling: touch;
+	scroll-padding-inline: .25rem;
+	padding: .25rem .25rem 1rem;
+	scrollbar-width: thin;
+}
+.sm-rail:focus-visible { outline: 2px solid var(--q-primary, #0b6e4f); outline-offset: 4px; border-radius: 12px; }
+.sm-rail > .sm-card { flex: 0 0 84%; scroll-snap-align: start; }
+.sm-rail .sm-card__media { display: block; position: relative; }
+.sm-rail .sm-card__media img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; height: auto; }
+.sm-rail .sm-card__title { font-size: 1rem; }
+.sm-rail-btn {
+	width: 38px; height: 38px; border-radius: 50%;
+	border: 1px solid var(--q-line, #e3ebe6); background: #fff; color: var(--q-ink, #0f172a);
+	font-size: 1rem; line-height: 1; cursor: pointer;
+}
+.sm-rail-btn:hover { border-color: var(--q-primary, #0b6e4f); }
+
+/* ---- filters as a collapsible panel ---- */
+.sm-filters-wrap {
+	border: 1px solid var(--q-line, #e3ebe6);
+	border-radius: 14px;
+	background: #fff;
+	margin: 0 0 1.1rem;
+	overflow: hidden;
+}
+.sm-filters-summary {
+	display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+	padding: .85rem 1rem; font-weight: 700; cursor: pointer; list-style: none;
+}
+.sm-filters-summary::-webkit-details-marker { display: none; }
+.sm-filters-summary::after { content: '▾'; color: var(--q-muted, #6b7c85); }
+.sm-filters-wrap[open] .sm-filters-summary::after { content: '▴'; }
+.sm-filters-summary em { font-style: normal; font-weight: 500; font-size: .84rem; color: var(--q-muted, #6b7c85); }
+.sm-filters-wrap .sm-filters { border: 0; border-top: 1px solid var(--q-line, #e3ebe6); border-radius: 0; margin: 0; }
+
+/* ---- pagination reads as slides ---- */
+.sm-market .sm-pagination { margin: .2rem 0 1.4rem; display: flex; justify-content: center; gap: .5rem; }
+.sm-market .sm-pagination .page-numbers {
+	padding: .45rem .7rem; border: 1px solid var(--q-line, #e3ebe6); border-radius: 9px;
+	background: #fff; text-decoration: none; color: var(--q-ink, #0f172a); font-size: .9rem;
+}
+.sm-market .sm-pagination .page-numbers.current { background: var(--q-primary, #0b6e4f); border-color: var(--q-primary, #0b6e4f); color: #fff; font-weight: 700; }
+.sm-market .sm-pagination .prev, .sm-market .sm-pagination .next { font-weight: 700; }
+
+@media (min-width: 640px) {
+	.sm-rail > .sm-card { flex-basis: 46%; }
+}
+
+/* ---- wide screens: heading back on top, three or four cards per view ---- */
+@media (min-width: 861px) {
+	.sm-market .sm-hero--market   { order: 1; }
+	.sm-market .sm-switch--sticky { order: 2; position: static; box-shadow: none; padding: 0; }
+	.sm-market .sm-filters-wrap   { order: 3; }
+	.sm-market .sm-rail-wrap      { order: 4; }
+	.sm-market .sm-how            { order: 5; }
+	.sm-rail-nav { display: flex; }
+	.sm-rail-hint { display: none; }
+	.sm-rail { padding-bottom: .6rem; }
+	.sm-rail > .sm-card { flex-basis: calc(33.333% - .54rem); }
+	.sm-rail .sm-card__media img { aspect-ratio: 16 / 11; }
+}
+@media (min-width: 1200px) {
+	.sm-rail > .sm-card { flex-basis: calc(25% - .6rem); }
+}
+
+/* Badge geometry: the base .sm-badge pins itself to the left, so the right-hand
+   status badges must release that edge or they stretch across the photo. */
+.sm-badge--new,
+.sm-badge--sold,
+.sm-badge--reserved { left: auto; right: .6rem; }
+.sm-badge--kind { right: auto; left: .6rem; }
+
+/* ==========================================================================
+   Market v3 — heading only at the top, nothing between the title and the lots.
+   The explainer becomes a heading-only accordion at the very bottom, and the
+   two CTA buttons move down with it, so the page is almost entirely product.
+   ========================================================================== */
+
+.sm-market .sm-hero--market { order: 1; margin: 0 0 .3rem; }
+.sm-market .sm-hero--market h1 { font-size: 1.4rem; line-height: 1.25; margin: 0 0 .2rem; }
+.sm-market .sm-switch--sticky { order: 2; }
+.sm-market .sm-rail-wrap      { order: 3; }
+.sm-market .sm-empty          { order: 3; }
+.sm-market .sm-filters-wrap   { order: 4; }
+.sm-market .sm-how            { order: 5; }
+
+@media (min-width: 861px) {
+	.sm-market .sm-hero--market h1 { font-size: 2rem; }
+	.sm-market .sm-filters-wrap   { order: 3; }
+	.sm-market .sm-rail-wrap      { order: 4; }
+}
+
+/* how it works: headings with arrows, details fold away */
+.sm-how {
+	margin: 1.8rem 0 2rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--q-line, #e3ebe6);
+}
+.sm-how h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
+.sm-how__list { display: grid; gap: .5rem; }
+.sm-how__item { border: 1px solid var(--q-line, #e3ebe6); border-radius: 12px; background: #fff; overflow: hidden; }
+.sm-how__q {
+	display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+	padding: .8rem 1rem; font-weight: 700; font-size: .95rem; cursor: pointer; list-style: none;
+}
+.sm-how__q::-webkit-details-marker { display: none; }
+.sm-how__q::after { content: '▾'; color: var(--q-muted, #6b7c85); }
+.sm-how__item[open] .sm-how__q::after { content: '▴'; }
+.sm-how__item p { margin: 0; padding: 0 1rem 1rem; color: #334155; font-size: .92rem; line-height: 1.6; }
+.sm-how__cta { display: flex; flex-wrap: wrap; gap: .6rem; margin: .9rem 0 0; }
+.sm-how__grid, .sm-how__n { display: none; }

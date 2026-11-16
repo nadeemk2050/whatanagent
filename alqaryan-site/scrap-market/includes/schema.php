@@ -65,6 +65,10 @@ function sm_build_schema( $post_id ) {
 		$images[] = $thumb;
 	}
 
+	// A "Need to Buy" post is a demand, not an offer for sale: publishing it as a
+	// Product with an Offer would put a buyer's budget into a price line.
+	$is_demand = ( 'buy' === sm_listing_kind( $post_id ) );
+
 	$offer = array(
 		'@type'            => 'Offer',
 		'url'              => get_permalink( $post_id ),
@@ -98,18 +102,51 @@ function sm_build_schema( $post_id ) {
 		);
 	}
 
-	$product = array(
-		'@type'       => 'Product',
-		'@id'         => get_permalink( $post_id ) . '#product',
-		'name'        => $title,
-		'description' => $summary,
-		'url'         => get_permalink( $post_id ),
-		'brand'       => array(
-			'@type' => 'Brand',
-			'name'  => 'Al Qaryan Industries',
-		),
-		'offers'      => $offer,
-	);
+	if ( $is_demand ) {
+		$product = array(
+			'@type'       => 'Demand',
+			'@id'         => get_permalink( $post_id ) . '#demand',
+			'name'        => $title,
+			'description' => $summary,
+			'url'         => get_permalink( $post_id ),
+			'itemOffered' => array(
+				'@type' => 'Product',
+				'name'  => $title,
+			),
+			'seller'      => array(
+				'@type' => 'Organization',
+				'@id'   => home_url( '/#organization' ),
+			),
+		);
+
+		if ( is_numeric( $price ) ) {
+			$product['priceSpecification'] = array(
+				'@type'         => 'PriceSpecification',
+				'name'          => 'Budget',
+				'price'         => (float) $price,
+				'priceCurrency' => $currency,
+			);
+		}
+		if ( ! empty( $region_terms ) && ! is_wp_error( $region_terms ) ) {
+			$product['areaServed'] = array(
+				'@type' => 'Place',
+				'name'  => implode( ', ', $region_terms ),
+			);
+		}
+	} else {
+		$product = array(
+			'@type'       => 'Product',
+			'@id'         => get_permalink( $post_id ) . '#product',
+			'name'        => $title,
+			'description' => $summary,
+			'url'         => get_permalink( $post_id ),
+			'brand'       => array(
+				'@type' => 'Brand',
+				'name'  => 'Al Qaryan Industries',
+			),
+			'offers'      => $offer,
+		);
+	}
 
 	if ( $images ) {
 		$product['image'] = $images;

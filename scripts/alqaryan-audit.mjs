@@ -26,10 +26,10 @@ const TIMEOUT_MS = 25000;
 const strip = (h) => String(h || '');
 const unesc = (s) => strip(s).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
-async function get(url, { method = 'GET' } = {}) {
+async function get(url, { method = 'GET', ua = UA } = {}) {
   const t0 = Date.now();
   try {
-    const res = await fetch(url, { method, redirect: 'follow', headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await fetch(url, { method, redirect: 'follow', headers: { 'User-Agent': ua, Accept: 'text/html,application/xhtml+xml' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
     const body = method === 'HEAD' ? '' : await res.text();
     return { ok: res.ok, status: res.status, headers: res.headers, body, ms: Date.now() - t0, url: res.url };
   } catch (e) {
@@ -195,6 +195,41 @@ const main = async () => {
   console.log('www host                 : ' + (wwwTest.status ? wwwTest.status + ' -> ' + wwwTest.url : 'no response'));
   console.log('trailing-slash /about    : ' + (trailing.status ? trailing.status + ' -> ' + trailing.url : 'no response'));
 
+  // ---------------------------------------------------------------- crawler access
+  // A 200 for a browser UA proves nothing on its own, but a 403 for a *claimed* crawler UA
+  // proves very little either: hosts that verify crawler identity (Hostinger/hcdn does)
+  // refuse an unverified claim from an ordinary IP. So this section is informational — it
+  // shows whether the host distinguishes the claims, not whether Google or Bing can crawl.
+  // Confirm real access in Search Console (Sitemaps → Success / last read) and in Bing
+  // Webmaster Tools URL Inspection, which fetch as the genuine, IP-verified crawler.
+  console.log('\n=== CRAWLER UA CLAIMS (informational) ===');
+  const CRAWLER_UAS = [
+    ['Googlebot', 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'],
+    ['Bingbot', 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)'],
+    ['browser', UA]
+  ];
+  const CRAWLER_PATHS = ['/robots.txt', '/sitemap_index.xml', '/page-sitemap.xml', '/llms.txt', '/'];
+  const crawler = {};
+  for (const [name, ua] of CRAWLER_UAS) {
+    const row = {};
+    for (const path of CRAWLER_PATHS) row[path] = (await get(SITE + path, { ua })).status;
+    crawler[name] = row;
+    console.log('  ' + name.padEnd(10) + Object.entries(row).map(([p, s]) => p.replace('/', '') + '=' + (s || 'ERR')).join('  '));
+  }
+  const blocked = [];
+  for (const [name, row] of Object.entries(crawler)) {
+    if (name === 'browser') continue;
+    for (const [p, s] of Object.entries(row)) {
+      if (p !== '/' && s !== 200) blocked.push(name + ' ' + p + '->' + (s || 'ERR'));
+    }
+  }
+  console.log('  claimed-crawler refusals  : ' + (blocked.length ? blocked.join('  |  ') : 'none'));
+  if (blocked.length) {
+    console.log('  NOTE: this server is not a search engine, so the host cannot verify the claim.');
+    console.log('        Confirm real access in Search Console (Sitemaps) and Bing Webmaster (URL Inspection),');
+    console.log('        then push URLs with IndexNow — the key is live at https://' + new URL(SITE).hostname + '/<key>.');
+  }
+
   const report = {
     site: SITE, at: new Date().toISOString(), pages,
     summary: {
@@ -205,7 +240,8 @@ const main = async () => {
       images: totalImgs, imagesMissingAlt: totalMissing, imagesEmptyAlt: totalEmpty,
       cacheDeclared: cached, ttfbMs: home.ms,
       orgPages, faqPages, whatsappPages: pages.filter(p => p.hasWhatsApp).length,
-      wwwStatus: wwwTest.status, wwwFinal: wwwTest.url
+      wwwStatus: wwwTest.status, wwwFinal: wwwTest.url,
+      crawler, crawlerBlocked: blocked
     }
   };
   if (JSON_OUT) { fs.writeFileSync(JSON_OUT, JSON.stringify(report, null, 1), 'utf8'); console.log('\nJSON written: ' + JSON_OUT); }
