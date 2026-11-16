@@ -32,6 +32,43 @@ Posting is open by design — no account, no fee. Four cheap controls replace a 
 
 Duplicates of the same title from the same IP inside an hour are dropped.
 
+Only **three things are required**: the title, the poster's name, and a WhatsApp number *or* an
+email. Material, quantity, description, price, region and photos are optional — a lot can go
+live with a name and a number and be completed later from the edit form.
+
+A rejected submission keeps what was typed: the form posts with `fetch` when JavaScript is
+available, and without it the text is stashed in a short-lived transient and re-filled on the
+way back.
+
+### Photos
+
+Up to five per listing, added one at a time or all at once, chosen from the gallery or taken
+with the phone camera (`capture="environment"`). Each photo can be **cropped** in the browser
+(free, 1:1, 4:3, 16:9) before it is queued, and each one can be removed again — or all of them.
+The queued files are written back into the real `sm_photos[]` input through a `DataTransfer`,
+so a plain form post still carries them. Server side they go through the 300 KB pipeline.
+
+### Editing and deleting a listing
+
+No accounts: a shared password is the permission model.
+
+- Entry points are `?sm=manage` — the "Posted this lot? Edit or delete it" link on a listing and
+  the `✎ Edit` link on each card.
+- The password form sets a signed `sm_manage` cookie (HMAC of the listing id and an expiry, 30
+  minutes, httponly, SameSite=Lax). Wrong attempts are limited to 10 an hour per IP.
+- The password is the `sm_manage_password` option, default `abcd`; override it with
+  `update_option( 'sm_manage_password', '…' )` or the `sm_manage_password` filter.
+- The edit form is the posting form plus a **Status** selector (Available / Reserved / Sold).
+- Delete calls `wp_trash_post()`, so the listing leaves the market immediately and can still be
+  restored from the WordPress trash.
+
+### Caching
+
+`/list-your-scrap/` and any listing viewed with `?sm=manage`, `?sm_msg` or an owner cookie send
+`litespeed_control_set_nocache` and `nocache_headers()`, because they carry a nonce and
+per-visitor state. Everything else stays cached; a listing that changes state purges the
+archive, the listing and both sitemaps.
+
 **Settings → Scrap Market** decides whether a new listing goes live immediately (default)
 or into the review queue. The queue lives at **Scrap Market → Review queue** and also
 collects every listing a visitor reported. Row actions: Approve, Dismiss report, Trash.
@@ -45,7 +82,7 @@ stored in the active Astra theme dies the same way. This lives in
 ## Install
 
 1. WordPress admin → **Plugins → Add New → Upload Plugin**
-2. Choose `dist/alqaryan-scrap-market-0.2.0.zip` → **Install Now** → **Activate**
+2. Choose `dist/alqaryan-scrap-market-0.3.0.zip` → **Install Now** → **Activate**
 3. Activation flushes rewrite rules, so `/scrap-market/` resolves straight away. If it
    404s, go to **Settings → Permalinks → Save** once.
 

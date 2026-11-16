@@ -121,6 +121,7 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 									<div><dt>At</dt><dd><?php echo esc_html( sm_get( $post_id, 'location' ) ); ?></dd></div>
 								<?php endif; ?>
 							</dl>
+							<a class="sm-card__manage" href="<?php echo esc_url( sm_manage_url( $post_id ) ); ?>">✎ Edit</a>
 						</div>
 					</article>
 				<?php endwhile; ?>

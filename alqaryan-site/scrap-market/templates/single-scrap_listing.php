@@ -182,6 +182,8 @@ while ( have_posts() ) :
 					</p>
 				</div>
 
+				<?php sm_render_manage( $post_id ); ?>
+
 			</div>
 
 			<aside class="sm-single__side">

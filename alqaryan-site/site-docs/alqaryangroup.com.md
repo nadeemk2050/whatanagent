@@ -120,7 +120,7 @@ the rest. Both use the application password.
 
 ---
 
-## 6. Scrap Market (plugin `alqaryan-scrap-market`, v0.2.2)
+## 6. Scrap Market (plugin `alqaryan-scrap-market`, v0.3.0)
 
 A free, public market for plastic scrap: **For Sale** and **Need to Buy** listings.
 
@@ -140,16 +140,44 @@ A free, public market for plastic scrap: **For Sale** and **Need to Buy** listin
 
 - **Posting is open**: no account, no fee. Controls are a honeypot, a 3-second minimum fill
   time, a nonce, 5 posts/hour per IP, and duplicate-title suppression for an hour.
+- **Only three things are required**: a title, the poster's name, and a WhatsApp number *or* an
+  email. Material, quantity, description, price, region and photos are all optional — a lot can
+  be published with a name and a number and filled in later.
+- **A rejected submission never loses what was typed.** The form posts with `fetch` when the
+  browser supports it, so nothing reloads; without JavaScript the text is stashed in a
+  short-lived transient and put back into the fields on the way back.
 - `Settings → Scrap Market` switches posting off, or sends new listings to the review queue.
 - `Scrap Market → Review queue` lists pending + reported listings (approve / dismiss / trash).
 - Visitors can **report** a listing; the counter shows in the queue.
-- Photos: up to 5 per listing, re-encoded through the **300 KB pipeline** (EXIF stripped, longest
-  edge 1600 px, WebP binary search on quality).
+- **Photos**: up to 5 per listing, chosen one at a time or several at once, from the gallery or
+  straight from the phone camera. Each one can be **cropped** (free, 1:1, 4:3, 16:9) before it is
+  added, and each one can be removed again — or all of them at once. Files go through the
+  **300 KB pipeline** (EXIF stripped, longest edge 1600 px, WebP binary search on quality).
 - Schema: `Product` + `Offer` for For Sale, `Demand` for Need to Buy, `BreadcrumbList`, and
   `ItemList` on the archive.
 - Publishing a listing purges the LiteSpeed cache so the archive refreshes immediately.
 - Listing meta is exposed to REST (`register_post_meta`), so listings can be created by an agent
   or script, not only by hand.
+- `/list-your-scrap/`, and any listing viewed with `?sm=manage` or an owner cookie, are
+  **excluded from the page cache**: they carry a nonce and per-visitor state.
+
+### Editing and deleting a listing
+
+Anyone who knows the market password can edit or delete any listing — there are no accounts,
+and the password is the whole permission model.
+
+- Entry points: **“Posted this lot? Edit or delete it”** at the bottom of a listing, and the small
+  **✎ Edit** link on every card in the rail. Both go to `?sm=manage`.
+- `?sm=manage` shows a password box. The correct password sets a signed `sm_manage` cookie
+  (HMAC of listing id + expiry, 30 minutes, httponly) and reveals the edit form.
+- The password is the `sm_manage_password` **option**, defaulting to `abcd`. Change it with
+  `update_option( 'sm_manage_password', '…' )` or the `sm_manage_password` filter. Wrong
+  attempts are rate limited to 10 per hour per IP.
+- The edit form is the posting form plus a **Status** selector (Available / Reserved / Sold), so a
+  lot that is gone can be closed without deleting its history.
+- **Delete** moves the listing to the WordPress trash (`wp_trash_post`), so it disappears from
+  the market at once and can be restored from the admin.
+- Editing fires the same cache purge as publishing.
 
 ### Layout rules
 
@@ -234,12 +262,33 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
 | Gallery | Only one real plant photo; the 24-photo shot list is in `alqaryan-site/image-plan.md` |
 | Homepage TTFB | 1.0–1.8 s measured; origin render 1.2–1.5 s |
 | HSTS | `Strict-Transport-Security` not sent; add in hPanel when convenient |
-| Duplicate listings | Two identical "PC BOTTLE SCRAP" listings were posted on 2026-11-16; remove one in Scrap Market → All Listings |
+| Duplicate listings | Resolved 2026-11-16 — the duplicate "PC BOTTLE SCRAP" was trashed; one listing remains |
 | Case studies | Needs real project facts from the owner |
 
 ---
 
 ## 10. Changelog
+
+### 2026-11-16 — Scrap Market 0.3.0: minimal fields, owner editing, photo picker
+
+**Fixes**
+- The posting form rejected a title + name + number because material, quantity and description
+  were still mandatory, and the redirect back wiped every field. Requirements are now title,
+  name and one contact detail; rejection keeps the text (see §6).
+- LiteSpeed cached the posting page and the manage view, so drafts and unlocked edit forms never
+  reached the visitor. Both are excluded from the cache now.
+- `/list-your-scrap/` rendered with no stylesheet at all: the enqueue check looked for a page slug
+  that does not exist. It now matches the stored page ID.
+- The archive card printed the material name directly above an identical title; it is only shown
+  when the two differ.
+- The duplicate "PC BOTTLE SCRAP" listing was removed and its stale URL dropped from the sitemap;
+  a listing that changes state now purges the sitemaps too.
+
+**New**
+- **Edit and delete with the market password** (`?sm=manage`, cookie-signed session) — see §6.
+- **Photo picker**: add several at once or one by one, shoot with the camera, crop each photo
+  (free / 1:1 / 4:3 / 16:9 before upload), remove one or all.
+- The edit form carries a Status selector so a sold lot can be closed without being deleted.
 
 ### 2026-11-16 — audit, repair, and the Scrap Market launch
 
