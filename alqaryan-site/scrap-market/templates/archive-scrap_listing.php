@@ -110,7 +110,7 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 							<?php endif; ?>
 						</a>
 						<div class="sm-card__body">
-							<?php if ( '' !== $mat_name ) : ?>
+							<?php if ( '' !== $mat_name && 0 !== strcasecmp( $mat_name, get_the_title() ) ) : ?>
 								<p class="sm-card__material"><?php echo esc_html( $mat_name ); ?></p>
 							<?php endif; ?>
 							<h2 class="sm-card__title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h2>

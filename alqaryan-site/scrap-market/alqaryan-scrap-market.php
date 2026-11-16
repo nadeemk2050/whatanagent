@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.2.3
+ * Version:           0.2.4
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.2.3' );
+define( 'SM_VERSION', '0.2.4' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -83,10 +83,15 @@ function sm_settings() {
  * Enqueue the listing stylesheet and the small enhancement script.
  */
 add_action( 'wp_enqueue_scripts', function () {
+	// The posting page is whichever page holds the shortcode, so match its stored ID as well
+	// as the slug the earlier release assumed.
+	$post_page = (int) get_option( 'sm_post_page_id' );
+
 	if ( is_singular( 'scrap_listing' )
 		|| is_post_type_archive( 'scrap_listing' )
 		|| is_tax( array( 'scrap_material', 'scrap_region', 'scrap_kind' ) )
-		|| is_page( 'scrap-market-post' ) ) {
+		|| ( $post_page && is_page( $post_page ) )
+		|| is_page( array( 'scrap-market-post', 'list-your-scrap' ) ) ) {
 		wp_enqueue_style(
 			'scrap-market',
 			SM_URL . 'assets/scrap-market.css',
