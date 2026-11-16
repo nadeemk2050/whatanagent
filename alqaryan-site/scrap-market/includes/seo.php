@@ -248,19 +248,25 @@ function sm_keep_in_sitemap( $excluded ) {
 add_filter( 'rank_math/sitemap/exclude_post_type', 'sm_keep_in_sitemap' );
 
 /**
- * Clear the page cache when a listing goes live.
+ * Clear the page cache whenever a listing changes state.
  *
  * The market archive is cached like any other page, so without this a new listing sits
  * invisible behind a cached copy of /scrap-market/ until the cache happens to expire.
+ *
+ * Every state change counts, not only publishing: trashing or marking a lot sold has to
+ * remove it again, and the sitemaps are cached separately from the pages, so they are
+ * purged by URL as well.
  */
 add_action( 'transition_post_status', function ( $new_status, $old_status, $post ) {
-	if ( 'scrap_listing' !== $post->post_type || 'publish' !== $new_status || $new_status === $old_status ) {
+	if ( 'scrap_listing' !== $post->post_type || $new_status === $old_status ) {
 		return;
 	}
 
 	do_action( 'litespeed_purge_all' );
 	do_action( 'litespeed_purge_url', get_permalink( $post->ID ) );
 	do_action( 'litespeed_purge_url', get_post_type_archive_link( 'scrap_listing' ) );
+	do_action( 'litespeed_purge_url', home_url( '/wp-sitemap.xml' ) );
+	do_action( 'litespeed_purge_url', home_url( '/wp-sitemap-posts-scrap_listing-1.xml' ) );
 }, 20, 3 );
 
 /**
