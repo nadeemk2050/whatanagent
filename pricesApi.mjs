@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getDoc, doc } from 'firebase/firestore';
 import { getPricesData, savePriceSnapshot, attachPricesDb } from './pricesStore.mjs';
 import { wrapContent } from './alqaryan-site/build/chrome.mjs';
 
@@ -12,18 +13,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FB_PAGE_ID = '1383856674820826';
 const FB_TOKEN = 'EAAXVrAq1aSQBTP0EnSKmFu96BHQudfQAZAQfHRZCoyvI9bZB8JpA3nVhTdpyTjw2Q4lXAa50iixRmYRri9sbSG6U8ZAOSQ3FZANinldR7KQyy1g8KHAQkjmygeV6qRH9mGKO2ZCQ1QqZAXul5nbQyVj0r4Oy0D2zlzM2U6ZAJAAjWCkZClnaClljm8dIAMHgto7dC49fZCl4WeZBBZAhd0tmrqqbX6rfc5qKwcWfifm51zGxZBom8ckfYuPDg3DUZD';
 
-function getWpCredentials() {
-  const src = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
-  // Return standard known credentials from workshop store
-  return {
-    site: 'https://alqaryangroup.com',
-    user: 'whatanagent',
-    pass: 'kC4n XW5e kO21 6e7S q1b2 5mZ9' // Application password for alqaryangroup.com
-  };
+let gDb = null;
+
+async function getWpCredentials(database) {
+  let user = 'whatanagent';
+  let pass = '';
+  const dbToUse = database || gDb;
+  if (dbToUse) {
+    try {
+      const snap = await getDoc(doc(dbToUse, 'appData', 'seoAgent'));
+      const aq = snap.data()?.sites?.['alqaryangroup.com'];
+      user = aq?.cmsUsername || user;
+      pass = aq?.cmsPassword || pass;
+      if (!pass) {
+        const wsSnap = await getDoc(doc(dbToUse, 'appData', 'websitesWorkshop'));
+        const wsAq = wsSnap.data()?.sites?.['alqaryangroup.com'];
+        user = wsAq?.host?.cmsUsername || wsAq?.cmsUsername || user;
+        pass = wsAq?.host?.cmsPassword || wsAq?.cmsPassword || pass;
+      }
+    } catch (e) {
+      console.warn('[PRICES] getWpCredentials error:', e.message);
+    }
+  }
+  return { site: 'https://alqaryangroup.com', user, pass };
 }
 
 export function registerPricesRoutes(app, db) {
-  if (db) attachPricesDb(db);
+  if (db) {
+    gDb = db;
+    attachPricesDb(db);
+  }
   const api = '/api/prices';
 
   // GET current rates and 12-month historical data
@@ -145,7 +164,7 @@ export function registerPricesRoutes(app, db) {
       `;
 
       // 2. Publish to WordPress REST API
-      const creds = getWpCredentials();
+      const creds = await getWpCredentials(gDb);
       const auth = 'Basic ' + Buffer.from(creds.user + ':' + creds.pass).toString('base64');
       const H = { Authorization: auth, 'Content-Type': 'application/json' };
 
@@ -208,9 +227,9 @@ export function registerPricesRoutes(app, db) {
       // 5. Update snapshot status
       current.publishedWp = true;
       current.publishedFb = !!(fbResult && fbResult.id);
-      current.wpPostId = savedWp.id;
+      current.wpPostId = Number(savedWp?.id || existing?.id || 1557);
       current.wpUrl = articleUrl;
-      current.fbPostId = fbResult?.id || '';
+      current.fbPostId = String(fbResult?.id || '');
       await savePriceSnapshot(current);
 
       res.json({
