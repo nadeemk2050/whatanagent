@@ -447,6 +447,7 @@ const PROCESS_STEPS = [
   { id: 'ga4',             group: 'Analytics', label: 'GA4 live with correct timezone/currency', owner: 'workshop', why: 'Timezone is set at creation and drives report day boundaries. Currency only matters for e-commerce.' },
   { id: 'ga4-gsc',         group: 'Analytics', label: 'GA4 linked to Search Console',      owner: 'workshop', why: 'Puts real queries next to landing pages — the most useful B2B report there is.' },
   { id: 'gbp',             group: 'Off-site',  label: 'Google Business Profile verified',  owner: 'owner',    why: 'Feeds the local pack and the knowledge graph. Cannot be delegated: needs the owner\'s phone for verification.' },
+  { id: 'facebook-page',   group: 'Off-site',  label: 'Facebook Page & Meta Graph API bot live', owner: 'workshop', why: 'Official Al Qaryan Industries LLC Page connected with auto-publishing bot.' },
   { id: 'linkedin',        group: 'Off-site',  label: 'LinkedIn company page',             owner: 'owner',    why: 'A second corroborating source, and a sameAs target for the Organization schema.' },
   { id: 'directories',     group: 'Off-site',  label: 'Tier-1 directory citations',        owner: 'owner',    why: 'Same NAP everywhere. Inconsistent name/address/phone suppresses entity confidence.' },
   { id: 'reviews',         group: 'Off-site',  label: 'Google reviews collected',          owner: 'owner',    why: 'A verified profile with no reviews ranks poorly regardless of everything else.' },
@@ -473,7 +474,8 @@ const PROCESS_STEPS = [
 
   // ---- Conversion ----
   { id: 'whatsapp-cta',    group: 'Conversion', label: 'WhatsApp CTA on every page',                 owner: 'workshop', why: 'A scrap enquiry starts with a photo on WhatsApp. Put the button where the thumb already is.' },
-  { id: 'lead-form',       group: 'Conversion', label: 'Quote form with spam protection',              owner: 'workshop', why: 'Some buyers will not use WhatsApp. A short form (material, quantity, country) catches them without a phone number exposed.' }
+  { id: 'lead-form',       group: 'Conversion', label: 'Quote form with spam protection',              owner: 'workshop', why: 'Some buyers will not use WhatsApp. A short form (material, quantity, country) catches them without a phone number exposed.' },
+  { id: 'scrap-market',    group: 'Conversion', label: 'Recycle Scrap Market published',              owner: 'workshop', why: 'B2B scrap marketplace with open posting, search, WhatsApp enquiry and photo pipeline.' }
 ];
 
 const PROCESS_SEED = {
@@ -504,6 +506,8 @@ const PROCESS_SEED = {
       'ga4':            { status: 'done', note: 'G-MMBWQXX946 via GA Google Analytics plugin · Pakistan Time · PKR', at: 1762000000000 },
       'ga4-gsc':        { status: 'done', note: 'Linked 2 Nov 2026 · stream 16251515891', at: 1762100000000 },
       'gbp':            { status: 'doing', note: 'In progress — business description stage', at: 1762100000000 },
+      'facebook-page':  { status: 'done', note: 'Page ID 1383856674820826 · Meta Graph API token verified · auto-publishes listings', at: 1794851000000 },
+      'scrap-market':   { status: 'done', note: 'Plugin v0.3.6 active · /scrap-market/ and /list-your-scrap/ live · 4 listings · auto-posts to Facebook', at: 1794852000000 },
       'linkedin':       { status: 'todo', note: 'Copy written in citation-pack.md §8', at: 0 },
       'directories':    { status: 'todo', note: 'Citation pack ready · PPMA, FPCCI, Karachi Chamber', at: 0 },
       'reviews':        { status: 'todo', note: 'Blocked until GBP is verified — then ask 5 buyers', at: 0 },
