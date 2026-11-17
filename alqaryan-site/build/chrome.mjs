@@ -27,6 +27,7 @@ export const HEAD = `
       <a href="/quality/">Quality</a>
       <a href="/faq/">FAQ</a>
       <a href="/scrap-market/">Scrap Market</a>
+      <a href="/news/">News &amp; Tech</a>
       <a class="q-nav__cta" href="/contact/">Contact</a>
     </nav>
   </div>
@@ -47,6 +48,8 @@ export const FOOT = `
       <a href="/gallery/">Gallery</a>
       <a href="/quality/">Quality &amp; certifications</a>
       <a href="/sustainability/">Sustainability</a>
+      <a href="/news/">News &amp; insights</a>
+      <a href="/machinery-inventions/">Machinery &amp; tech</a>
       <a href="/faq/">FAQ</a>
     </div>
     <div class="q-site-foot__col">
