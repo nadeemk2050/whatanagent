@@ -10,7 +10,7 @@ import { wrapContent } from './alqaryan-site/build/chrome.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const FB_PAGE_ID = '1383856674820826';
-const FB_TOKEN = 'EAAXVrAq1aSQBTBnzADBuuzQ15ICR8nAIVYc2ZBch4HFJlDGW1XfhkGSzjWRPqApII8gAOGJRagMiR8ZAD8TcFB6WKfio1qiCxU2DNVOak0OViu9wsKvp90BV6aWZAZAmPrPWvlgynZBfZAsJ7fHIekZAHXi8x8A2BYj8Ddao9oZBYayH1TEFSggZBYtmvyfMcJZANVA67AXcF61eSs1pIMSvSA9n1yIaAPM62ZCB4lDhV1thW2JKro6cscC8TSEIeAZD';
+const FB_TOKEN = 'EAAXVrAq1aSQBTP0EnSKmFu96BHQudfQAZAQfHRZCoyvI9bZB8JpA3nVhTdpyTjw2Q4lXAa50iixRmYRri9sbSG6U8ZAOSQ3FZANinldR7KQyy1g8KHAQkjmygeV6qRH9mGKO2ZCQ1QqZAXul5nbQyVj0r4Oy0D2zlzM2U6ZAJAAjWCkZClnaClljm8dIAMHgto7dC49fZCl4WeZBBZAhd0tmrqqbX6rfc5qKwcWfifm51zGxZBom8ckfYuPDg3DUZD';
 
 function getWpCredentials() {
   const src = fs.readFileSync(path.join(__dirname, 'public', 'admin.html'), 'utf8');
