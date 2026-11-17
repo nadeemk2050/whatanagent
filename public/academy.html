@@ -1395,7 +1395,7 @@ async function toggleStop(id, on) {
 
 /* ---------------- office overlay ---------------- */
 const OFFICE_TABS = [
-  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'],
+  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['prices', '📈 Prices Data'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'],
   ['tools', '🧰 Tools'], ['control', '🎛️ Control'], ['performance', '📊 Performance'], ['logs', '🗂️ Logs'],
   ['team', '👨‍👩‍👦 Team'], ['model', '🧠 Model']
 ];
@@ -1665,6 +1665,94 @@ function renderOfficeTab() {
         ? (d.modelHistory || []).map(h => '<div class="meta-row"><span>' + esc(h.from) + ' → ' + esc(h.to) + '</span><span>' + esc(h.action) + '</span></div>').join('')
         : '<div class="x">No switches yet.</div>');
     return;
+  }
+
+  if (O.tab === 'prices') {
+    b.innerHTML = '<div class="x">Loading plastic scrap price data…</div>';
+    fetch(API_ORIGIN + '/api/prices/data')
+      .then(r => r.json())
+      .then(res => {
+        if (!res.ok) throw new Error(res.error || 'Failed to load prices');
+        const p = res.data || {};
+        const cur = p.current || {};
+        const rates = cur.rates || [];
+        const hist = p.history || [];
+
+        const rows = rates.map(r => `
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:8px 6px;"><b>${esc(r.name)}</b><br><small style="color:#64748b;">${esc(r.notes||'')}</small></td>
+            <td style="padding:8px 6px;"><span class="badge" style="background:#e0e7ff;color:#4338ca;">${esc(r.category)}</span></td>
+            <td style="padding:8px 6px;font-weight:700;color:#059669;">${esc(r.unit)} ${esc(r.low)} – ${esc(r.high)}</td>
+            <td style="padding:8px 6px;"><b style="color:${r.trend==='up'?'#10b981':r.trend==='down'?'#ef4444':'#64748b'};">${esc(r.change)}</b></td>
+          </tr>
+        `).join('');
+
+        const histRows = hist.map(h => {
+          const upvc = (h.rates||[]).find(x => x.id === 'upvc_pipe');
+          const hdpe = (h.rates||[]).find(x => x.id === 'hdpe_pe100');
+          return `
+            <tr style="border-bottom:1px solid #f8fafc;font-size:11px;">
+              <td style="padding:6px;"><b>${esc(h.date)}</b></td>
+              <td style="padding:6px;">${esc(h.session || 'Weekly Closing')}</td>
+              <td style="padding:6px;color:#059669;">PKR ${upvc ? upvc.low + '-' + upvc.high : '—'}</td>
+              <td style="padding:6px;color:#0284c7;">PKR ${hdpe ? hdpe.low + '-' + hdpe.high : '—'}</td>
+            </tr>
+          `;
+        }).join('');
+
+        b.innerHTML =
+          oSect('📈 Plastic Scrap Price Intelligence (Al Qaryan Industries LLC)',
+            '<div style="font-size:12px;color:#334155;margin-bottom:10px;">Scouted &amp; maintained by <b>Shirazi (Senior Engineer)</b>. Pulls benchmark rates 3 times weekly from Karachi (Shershah/SITE), FBR customs rulings, and regional Indian mandis.</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
+            '<button class="btn btn-primary btn-sm" onclick="fetchPricesNow()">⚡ Fetch Fresh Prices Now</button>' +
+            '<button class="btn btn-green btn-sm" onclick="publishPricesNow()">🚀 Publish to Website &amp; Facebook Page</button>' +
+            '<span class="badge" style="background:#fef3c7;color:#b45309;padding:6px 10px;align-self:center;">🔄 Schedule: 3x Weekly (Mon 10am, Wed 2pm, Fri 4pm PKT)</span>' +
+            '</div>' +
+            '<div id="pricesActionMsg" style="font-size:12px;margin-bottom:10px;"></div>' +
+            '<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);">' +
+            '<thead><tr style="background:#f1f5f9;text-align:left;"><th style="padding:8px 6px;">Material</th><th style="padding:8px 6px;">Family</th><th style="padding:8px 6px;">Price Range</th><th style="padding:8px 6px;">Trend</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table>' +
+            '<div style="margin-top:10px;font-size:11px;color:#64748b;">Sources: ' + esc((cur.sources||[]).join(' · ')) + ' · Last updated: ' + esc(cur.date) + '</div>'
+          ) +
+          oSect('📅 12-Month Historical Price Trends (Rolling Archive)',
+            '<div style="font-size:11px;color:#64748b;margin-bottom:8px;">Historical data preserved over 12 months for market forecasting and supplier contract negotiation.</div>' +
+            '<div style="max-height:240px;overflow-y:auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;">' +
+            '<table style="width:100%;border-collapse:collapse;">' +
+            '<thead><tr style="background:#f8fafc;text-align:left;font-size:11px;position:sticky;top:0;"><th style="padding:6px;">Date</th><th style="padding:6px;">Session / Benchmark</th><th style="padding:6px;">uPVC Regrind</th><th style="padding:6px;">PE100 Black</th></tr></thead>' +
+            '<tbody>' + histRows + '</tbody></table></div>'
+          );
+      })
+      .catch(e => { b.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>'; });
+    return;
+  }
+}
+
+/* ---------------- prices actions ---------------- */
+async function fetchPricesNow() {
+  const msg = $('pricesActionMsg');
+  if (msg) msg.innerHTML = '<span style="color:#0284c7;">⏳ Shirazi is scouting live plastic scrap rates…</span>';
+  try {
+    const res = await fetch(API_ORIGIN + '/api/prices/fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Fetch failed');
+    if (msg) msg.innerHTML = '<span style="color:#059669;font-weight:700;">✅ Fresh prices fetched and saved to 12-month history!</span>';
+    setTimeout(() => { if (O.tab === 'prices') renderOfficeTab(); }, 800);
+  } catch (e) {
+    if (msg) msg.innerHTML = '<span style="color:#b91c1c;">❌ ' + esc(e.message) + '</span>';
+  }
+}
+
+async function publishPricesNow() {
+  const msg = $('pricesActionMsg');
+  if (msg) msg.innerHTML = '<span style="color:#0284c7;">⏳ Publishing report to alqaryangroup.com and Facebook Page…</span>';
+  try {
+    const res = await fetch(API_ORIGIN + '/api/prices/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Publish failed');
+    if (msg) msg.innerHTML = '<span style="color:#059669;font-weight:700;">🚀 Published to Website &amp; Facebook Page! <a href="' + esc(json.wpUrl) + '" target="_blank" style="color:#0284c7;">View Live Article ↗</a></span>';
+    setTimeout(() => { if (O.tab === 'prices') renderOfficeTab(); }, 1200);
+  } catch (e) {
+    if (msg) msg.innerHTML = '<span style="color:#b91c1c;">❌ ' + esc(e.message) + '</span>';
   }
 }
 

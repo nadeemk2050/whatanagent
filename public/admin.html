@@ -14390,6 +14390,7 @@
     /* ---------------- single-website page (opened from the register) ---------------- */
     var SITE_VIEWS = [
         { id: 'process', label: '\ud83d\udccb Processes & Statuses' },
+        { id: 'prices', label: '\ud83d\udcc8 Prices Data' },
         { id: 'doc', label: '\ud83d\udcda Website handbook' },
         { id: 'google', label: '\ud83d\udd0e Google Index' },
         { id: 'workspace', label: '\ud83d\uddc2 Workspace' },
@@ -14465,12 +14466,120 @@
             }).join('');
         }
         $('wsSiteBody').innerHTML = WS.siteView === 'workspace' ? workspaceHtml(s)
+            : WS.siteView === 'prices' ? pricesWorkshopHtml(s.key)
             : WS.siteView === 'doc' ? docHtml(s.key)
                 : WS.siteView === 'google' ? googleHtml(s.key)
                     : WS.siteView === 'soon' ? soonHtml(s)
                         : processHtml(s.key);
         if (WS.siteView === 'google' || WS.siteView === 'workspace') ensureGoogle(s.key);
+        if (WS.siteView === 'prices') ensurePricesData();
         if (WS.siteView === 'doc') ensureDoc(s.key);
+    }
+
+    /* ---------------- prices data intelligence (Shirazi) ---------------- */
+    var WS_PRICES = null;
+
+    function pricesWorkshopHtml(key) {
+        if (!WS_PRICES) {
+            return '<div class="ws-card"><div class="ws-empty"><div class="big">\ud83d\udcc8</div><b>Loading plastic scrap price data\u2026</b></div></div>';
+        }
+        var cur = WS_PRICES.current || {};
+        var rates = cur.rates || [];
+        var hist = WS_PRICES.history || [];
+
+        var rows = rates.map(function (r) {
+            return '<tr style="border-bottom:1px solid #f1f5f9;">' +
+                '<td style="padding:10px 8px;"><b>' + esc(r.name) + '</b><br><small style="color:#64748b;">' + esc(r.notes || '') + '</small></td>' +
+                '<td style="padding:10px 8px;"><span class="ws-pill mut">' + esc(r.category) + '</span></td>' +
+                '<td style="padding:10px 8px;font-weight:700;color:#0b6e4f;">' + esc(r.unit) + ' ' + esc(r.low) + ' \u2013 ' + esc(r.high) + '</td>' +
+                '<td style="padding:10px 8px;"><b style="color:' + (r.trend === 'up' ? '#128c4b' : r.trend === 'down' ? '#b91c1c' : '#64748b') + ';">' + esc(r.change) + '</b></td>' +
+            '</tr>';
+        }).join('');
+
+        var histRows = hist.map(function (h) {
+            var upvc = (h.rates || []).filter(function (x) { return x.id === 'upvc_pipe'; })[0];
+            var hdpe = (h.rates || []).filter(function (x) { return x.id === 'hdpe_pe100'; })[0];
+            var ldpe = (h.rates || []).filter(function (x) { return x.id === 'ldpe_film'; })[0];
+            return '<tr style="border-bottom:1px solid #f8fafc;font-size:12px;">' +
+                '<td style="padding:8px 6px;"><b>' + esc(h.date) + '</b></td>' +
+                '<td style="padding:8px 6px;">' + esc(h.session || 'Weekly Closing') + '</td>' +
+                '<td style="padding:8px 6px;color:#0b6e4f;font-weight:600;">PKR ' + (upvc ? upvc.low + '\u2013' + upvc.high : '\u2014') + '</td>' +
+                '<td style="padding:8px 6px;color:#0284c7;font-weight:600;">PKR ' + (hdpe ? hdpe.low + '\u2013' + hdpe.high : '\u2014') + '</td>' +
+                '<td style="padding:8px 6px;color:#64748b;">PKR ' + (ldpe ? ldpe.low + '\u2013' + ldpe.high : '\u2014') + '</td>' +
+            '</tr>';
+        }).join('');
+
+        return '<div class="ws-card">' +
+            '<div class="ws-row" style="justify-content:space-between;align-items:flex-start;gap:12px;">' +
+                '<div style="flex:1;min-width:240px;">' +
+                    '<h3 class="ws-h3">\ud83d\udcc8 Plastic Scrap Price Intelligence &amp; 12-Month Historical Data</h3>' +
+                    '<p class="ws-hint" style="margin:6px 0 0 0;">Managed &amp; scouted by <b>Shirazi (Senior Engineer)</b> for Al Qaryan Industries LLC. Pulls benchmark price ranges 3 times weekly from Karachi (Shershah, SITE), FBR customs valuations, and regional Indian mandis.</p>' +
+                '</div>' +
+                '<div class="ws-row" style="gap:8px;">' +
+                    '<button class="ws-btn primary" onclick="wshopFetchPrices()">\u26a1 Fetch Fresh Prices Now</button>' +
+                    '<button class="ws-btn dark" onclick="wshopPublishPrices()">\ud83d\ude80 Publish to Website &amp; Facebook</button>' +
+                '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;">' +
+                '<span class="ws-chip">Schedule: <b>3x Weekly (Mon 10am, Wed 2pm, Fri 4pm PKT)</b></span>' +
+                '<span class="ws-chip">Latest Date: <b>' + esc(cur.date || '\u2014') + '</b></span>' +
+                '<span class="ws-chip">Website Sync: <b>' + (cur.publishedWp ? '\u2705 Live' : '\u23f3 Pending') + '</b></span>' +
+                '<span class="ws-chip">Facebook Sync: <b>' + (cur.publishedFb ? '\u2705 Live' : '\u23f3 Pending') + '</b></span>' +
+            '</div>' +
+            '<div id="wsPricesMsg" style="margin-bottom:10px;font-size:12px;"></div>' +
+            '<div class="ws-tblwrap"><table class="ws-tbl"><thead><tr>' +
+                '<th>Material Grade &amp; Details</th><th>Family</th><th>Benchmark Range</th><th>Trend</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+            '<div class="ws-hint" style="margin-top:8px;">Sources: ' + esc((cur.sources || []).join(' \u00b7 ')) + '</div>' +
+        '</div>' +
+        '<div class="ws-card" style="margin-top:16px;">' +
+            '<h3 class="ws-h3">\ud83d\udcc5 12-Month Historical Price Archive</h3>' +
+            '<p class="ws-hint" style="margin:6px 0 10px 0;">Preserved rolling historical price data across 52 weeks (12 months) for supply forecasting, procurement timing, and buyer trend analysis.</p>' +
+            '<div class="ws-tblwrap" style="max-height:280px;overflow-y:auto;"><table class="ws-tbl"><thead><tr style="position:sticky;top:0;background:#f8fafc;">' +
+                '<th>Date</th><th>Session Benchmark</th><th>uPVC Regrind</th><th>HDPE PE100 Black</th><th>LDPE Clear Film</th>' +
+            '</tr></thead><tbody>' + histRows + '</tbody></table></div>' +
+        '</div>';
+    }
+
+    async function ensurePricesData() {
+        try {
+            var res = await fetch('/api/prices/data');
+            var json = await res.json();
+            if (json.ok) {
+                WS_PRICES = json.data;
+                if (WS.siteView === 'prices') renderSitePage();
+            }
+        } catch (e) {
+            toastMsg('\u26a0\ufe0f ' + e.message);
+        }
+    }
+
+    async function wshopFetchPrices() {
+        var msg = $('wsPricesMsg');
+        if (msg) msg.innerHTML = '<span style="color:#0284c7;">\u23f3 Shirazi is scouting live plastic scrap rates\u2026</span>';
+        try {
+            var res = await fetch('/api/prices/fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            var json = await res.json();
+            if (!json.ok) throw new Error(json.error || 'Fetch failed');
+            if (msg) msg.innerHTML = '<span style="color:#059669;font-weight:700;">\u2705 Fresh prices fetched and saved to 12-month history!</span>';
+            await ensurePricesData();
+        } catch (e) {
+            if (msg) msg.innerHTML = '<span style="color:#b91c1c;">\u274c ' + esc(e.message) + '</span>';
+        }
+    }
+
+    async function wshopPublishPrices() {
+        var msg = $('wsPricesMsg');
+        if (msg) msg.innerHTML = '<span style="color:#0284c7;">\u23f3 Publishing report to alqaryangroup.com and Facebook Page\u2026</span>';
+        try {
+            var res = await fetch('/api/prices/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            var json = await res.json();
+            if (!json.ok) throw new Error(json.error || 'Publish failed');
+            if (msg) msg.innerHTML = '<span style="color:#059669;font-weight:700;">\ud83d\ude80 Published to Website &amp; Facebook Page! <a href="' + esc(json.wpUrl) + '" target="_blank" style="color:#0284c7;">View Live Article \u2197</a></span>';
+            await ensurePricesData();
+        } catch (e) {
+            if (msg) msg.innerHTML = '<span style="color:#b91c1c;">\u274c ' + esc(e.message) + '</span>';
+        }
     }
 
     /* ---------------- website handbook (alqaryan-site/site-docs/<key>.md) ---------------- */
@@ -15268,6 +15377,8 @@
     window.wshopSiteMenu = siteMenu;
     window.wshopSiteOpen = siteOpen;
     window.wshopSiteSwitch = siteSwitch;
+    window.wshopFetchPrices = wshopFetchPrices;
+    window.wshopPublishPrices = wshopPublishPrices;
     window.wshopMenuClose = menuClose;
     window.wshopDocReload = docReload;
     window.wshopAudit = auditLive;
