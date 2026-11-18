@@ -886,6 +886,12 @@
           '<span style="margin-left:auto">' + closeBtn + '</span>' +
         '</div>' +
         '<div style="padding:11px 13px">' +
+          ((x.text_error || x.ai_error)
+            ? '<div style="font-size:11.5px;color:#fbbf24;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);' +
+                'border-radius:8px;padding:8px 10px;margin-bottom:8px">Limited read \u2014 ' +
+                esc([x.text_error ? 'text: ' + x.text_error : '', x.ai_error ? 'fields: ' + x.ai_error : ''].filter(Boolean).join(' \u00b7 ')) +
+              '</div>'
+            : '') +
           (x.read_at
             ? '<div style="font-size:11px;color:#64748b;margin-bottom:8px">Text kept since ' +
                 esc(new Date(x.read_at).toLocaleString()) +

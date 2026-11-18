@@ -256,7 +256,7 @@ async function extractWithAi(text, settings = {}) {
     ],
     response_format: { type: 'json_object' },
     temperature: 0,
-    max_tokens: 2000
+    max_tokens: 3000
   };
   if (/dashscope/i.test(ds.base)) body.enable_thinking = false;
 
@@ -446,12 +446,15 @@ export function scrubLabelValues(fields) {
 export async function extractXray(text, settings = {}) {
   const local = extractXrayLocal(text);
   let ai = null;
+  let aiError = '';
   let source = 'local';
   try {
     ai = await extractWithAi(text, settings);
     if (ai && typeof ai === 'object') source = 'ai';
+    else aiError = 'the model returned no usable JSON';
   } catch (e) {
-    console.warn('[BL-XRAY] AI read failed, using the local parser:', sstr(e.message || e, 160));
+    aiError = String((e && e.message) || e).slice(0, 200);
+    console.warn('[BL-XRAY] AI read failed, using the local parser:', sstr(aiError, 160));
   }
 
   const fields = {};
@@ -476,7 +479,7 @@ export async function extractXray(text, settings = {}) {
   // Never present a printed label as data (see scrubLabelValues).
   const fieldNotes = scrubLabelValues(fields);
 
-  return { source, fields, field_notes: fieldNotes };
+  return { source, fields, field_notes: fieldNotes, ai_error: aiError };
 }
 
 // ── the checks the owner asked for ──────────────────────────────────────────
@@ -668,6 +671,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
     let mediaSource = '';
     let text = pastedText.trim();
     let textSource = text ? 'pasted' : '';
+    let textError = '';
     let readAt = 0;
 
     if (!text) {
@@ -683,7 +687,8 @@ export function registerCandlXrayRoutes(app, opts = {}) {
         const got = await ensureArchiveText(jid, messageId);
         text = String((got && got.text) || '');
         const recorded = String((got && got.source) || '');
-        textSource = /^(pdf-text|vision:)/.test(recorded) ? recorded : 'sidecar';
+        textSource = /^(pdf-text|vision:)/.test(recorded) ? recorded : (/^pdf-text/.test(recorded) ? recorded : 'sidecar');
+        textError = (got && got.error) || '';
         readAt = (got && got.at) || 0;
       } else {
         // Not archived yet: pull it once, then keep it so this never has to happen again.
@@ -697,6 +702,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
             const got = await ensureArchiveText(jid, messageId);
             text = String((got && got.text) || '');
             textSource = (got && got.source) || '';
+            textError = (got && got.error) || '';
             readAt = (got && got.at) || 0;
           } else {
             const appSettings = await blSettings();
@@ -707,6 +713,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
             });
             text = String((got && got.text) || '');
             textSource = (got && got.source) || '';
+            textError = (got && got.error) || '';
           }
         } catch (e) {
           return res.status(409).json({
@@ -735,9 +742,14 @@ export function registerCandlXrayRoutes(app, opts = {}) {
     let cached = false;
     let cachedAt = 0;
     let fieldNotes = {};
+    let aiError = '';
 
     const cache = canCache ? readSidecarFields(jid, messageId) : null;
-    if (cache && cache.v === XRAY_CACHE_VERSION && cache.hash === hash && cache.fields) {
+    // Only a cache written by the model is trusted: a local-parser result is cheap to redo and may
+    // simply reflect a moment when the AI call failed.
+    const cacheUsable = !!(cache && cache.v === XRAY_CACHE_VERSION && cache.hash === hash &&
+      cache.fields && cache.extraction_source === 'ai');
+    if (cacheUsable) {
       fields = cache.fields;
       extractionSource = cache.extraction_source || 'cache';
       fieldNotes = cache.field_notes || {};
@@ -748,7 +760,8 @@ export function registerCandlXrayRoutes(app, opts = {}) {
       fields = ex.fields;
       extractionSource = ex.source;
       fieldNotes = ex.field_notes || {};
-      if (canCache) {
+      aiError = ex.ai_error || '';
+      if (canCache && ex.source === 'ai') {
         const wrote = writeSidecarFields(jid, messageId, {
           v: XRAY_CACHE_VERSION,
           hash: hash,
@@ -782,6 +795,8 @@ export function registerCandlXrayRoutes(app, opts = {}) {
       extraction_source: extractionSource,
       text_source: textSource,
       text_chars: String(text).length,
+      text_error: textError,
+      ai_error: aiError,
       read_at: readAt,
       cached: cached,
       cached_at: cachedAt,

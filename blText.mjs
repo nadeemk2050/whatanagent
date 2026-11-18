@@ -117,7 +117,11 @@ export async function extractTextFromBuffer(buffer, opts = {}) {
       const ocr = await ocrWithVision(buffer, 'application/pdf', opts.settings || {});
       return { text: ocr.text, source: ocr.source };
     } catch (e) {
-      return { text: text || '', source: text ? (usable ? 'pdf-text-scrambled' : 'pdf-text-thin') : 'none' };
+      return {
+        text: text || '',
+        source: text ? (usable ? 'pdf-text-scrambled' : 'pdf-text-thin') : 'none',
+        error: String((e && e.message) || e).slice(0, 200)
+      };
     }
   }
 
@@ -126,11 +130,11 @@ export async function extractTextFromBuffer(buffer, opts = {}) {
       const ocr = await ocrWithVision(buffer, mimetype || 'image/jpeg', opts.settings || {});
       return { text: ocr.text, source: ocr.source };
     } catch (e) {
-      return { text: '', source: 'none' };
+      return { text: '', source: 'none', error: String((e && e.message) || e).slice(0, 200) };
     }
   }
 
-  return { text: '', source: 'none' };
+  return { text: '', source: 'none', error: 'unsupported file type' };
 }
 
 /** Text from a file already on disk. */

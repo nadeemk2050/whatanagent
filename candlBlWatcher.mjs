@@ -256,7 +256,7 @@ export async function ensureArchiveText(jid, id) {
   }
 
   if (!p.rec.size || p.rec.size > MAX_ONE_FILE_BYTES) {
-    return { text: '', source: 'too-large', at: Date.now() };
+    return { text: '', source: 'too-large', at: Date.now(), error: 'file exceeds the extraction size limit' };
   }
 
   const got = await extractTextFromFile(p.rec.abs, {
@@ -265,23 +265,32 @@ export async function ensureArchiveText(jid, id) {
     settings: await blSettings()
   });
   const text = String((got && got.text) || '').trim();
+  const at = Date.now();
+
   if (!text) {
-    patchMediaRecord(jid, id, { text_source: 'none', text_chars: 0, text_at: Date.now() });
-    return { text: '', source: 'none', at: Date.now() };
+    // Record the failure (so it is reported, and so we do not retry a vision call every tick).
+    patchMediaRecord(jid, id, {
+      text_source: (got && got.source) || 'none',
+      text_error: (got && got.error) || '',
+      text_chars: 0,
+      text_at: at,
+      text_version: SIDECAR_TEXT_VERSION
+    });
+    return { text: '', source: (got && got.source) || 'none', at: at, error: (got && got.error) || '' };
   }
 
   try { fs.writeFileSync(p.text, text.slice(0, MAX_TEXT_CHARS)); }
   catch (e) { /* the text is still usable in memory */ }
 
-  const at = Date.now();
   patchMediaRecord(jid, id, {
     text_source: got.source || 'text',
+    text_error: got.source === 'pdf-text-scrambled' ? ((got && got.error) || '') : '',
     text_chars: text.length,
     text_at: at,
     text_version: SIDECAR_TEXT_VERSION
   });
   console.log('[BL-INBOX] 📄 text ready (' + (got.source || 'text') + ', ' + text.length + ' chars) for ' + sstr(p.rec.fileName, 40));
-  return { text: text, source: got.source || 'text', at: at };
+  return { text: text, source: got.source || 'text', at: at, error: (got && got.error) || '' };
 }
 
 // Background queue: reading a scan can cost a vision call, so arrival must never wait for it.
