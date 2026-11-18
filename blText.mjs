@@ -93,7 +93,13 @@ export async function ocrWithVision(buffer, mimetype, settings = {}) {
       lastErr = e;
     }
   }
-  throw new Error('vision OCR failed' + (lastErr ? ': ' + String(lastErr.message || lastErr).slice(0, 120) : ''));
+  // Keep the useful part of the provider's message: the long URL it embeds is noise.
+  const detail = String((lastErr && lastErr.message) || lastErr || 'unknown error')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  throw new Error('vision OCR failed: ' + detail);
 }
 
 /**

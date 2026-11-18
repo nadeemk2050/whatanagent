@@ -292,7 +292,42 @@ async function extractWithAi(text, settings = {}) {
     cachedTokens: cachedTokensFrom(data),
     durationMs: Date.now() - started
   });
-  return { parsed: parseJsonObject(content), raw: content, finishReason: data?.choices?.[0]?.finish_reason || '' };
+  // A long or noisy document can exhaust the budget before the JSON closes. Retry once with more
+  // room instead of silently dropping to the regex parser.
+  const parsedFirst = parseJsonObject(content);
+  if (!parsedFirst && (data?.choices?.[0]?.finish_reason === 'length' || !String(content).trim())) {
+    try {
+      const retryBody = Object.assign({}, body, { max_tokens: 4096 });
+      const r2 = await fetch(ds.base.replace(/\/+$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ds.key },
+        body: JSON.stringify(retryBody)
+      });
+      if (r2.ok) {
+        const d2 = await r2.json().catch(() => ({}));
+        const c2 = d2?.choices?.[0]?.message?.content || '';
+        const parsed2 = parseJsonObject(c2);
+        if (parsed2) {
+          recordAiCall({
+            provider: 'deepseek',
+            model: ds.model,
+            area: 'Container BL X-Ray',
+            isAutoFetch: false,
+            prompt: text.slice(0, 2000),
+            response: c2.slice(0, 2000),
+            tokensIn: d2?.usage?.prompt_tokens || 0,
+            tokensOut: d2?.usage?.completion_tokens || 0,
+            cachedTokens: cachedTokensFrom(d2),
+            durationMs: Date.now() - started
+          });
+          return { parsed: parsed2, raw: c2, finishReason: d2?.choices?.[0]?.finish_reason || '' };
+        }
+        return { parsed: null, raw: c2, finishReason: d2?.choices?.[0]?.finish_reason || '' };
+      }
+    } catch (e) { /* keep the first reply's diagnostics */ }
+  }
+
+  return { parsed: parsedFirst, raw: content, finishReason: data?.choices?.[0]?.finish_reason || '' };
 }
 
 /** Regex pass — answers alone when there is no AI key, and fills AI gaps otherwise. */
