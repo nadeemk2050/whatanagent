@@ -549,7 +549,26 @@ export function checkXray(fields, reference, rules) {
   const drafts = Array.isArray(ref.drafts) ? ref.drafts : [];
   const masters = Array.isArray(ref.masters) ? ref.masters : [];
   const byCategory = (cat) => masters.filter(m => m && m.category === cat && m.name);
-  const draft = drafts.find(d => d && d.bl_number && sameish(d.bl_number, fields.bl_number));
+
+  // Find the saved draft to compare against. The B/L number is preferred, but a misread number
+  // (a container-like token instead of the printed one) must not cost the whole comparison: a
+  // draft that holds one of this BL's containers is still the right draft.
+  let draft = drafts.find(d => d && d.bl_number && sameish(d.bl_number, fields.bl_number));
+  let draftBasis = draft ? 'b/l number' : '';
+  if (!draft) {
+    const mine = (Array.isArray(fields.container_numbers) ? fields.container_numbers : []).map(norm).filter(Boolean);
+    if (mine.length) {
+      draft = drafts.find((d) => {
+        if (!d) return false;
+        const theirs = (d.container_numbers || []).map(norm);
+        if (theirs.some(c => mine.includes(c))) return true;
+        return d.container_numbers_text
+          ? mine.some(c => norm(d.container_numbers_text).includes(c))
+          : false;
+      }) || null;
+      if (draft) draftBasis = 'container number';
+    }
+  }
   const checks = [];
 
   // 1. The parties and places the owner asked for, against drafts first then masters.
@@ -648,7 +667,7 @@ export function checkXray(fields, reference, rules) {
   const summary = { ok: 0, mismatch: 0, missing: 0, invalid: 0, unknown: 0 };
   for (const c of checks) summary[c.status] = (summary[c.status] || 0) + 1;
 
-  return { checks, summary, mastered_with: draft ? draft.bl_number : '' };
+  return { checks, summary, mastered_with: draft ? draft.bl_number : '', matched_basis: draftBasis };
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────
@@ -847,6 +866,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
       field_notes: fieldNotes,
       summary: result.summary,
       compared_with_bl: result.mastered_with,
+      compared_basis: result.matched_basis || '',
       rules: { free_days_default: readRules().free_days_default || null }
     });
   });
