@@ -461,6 +461,7 @@
       const data = await apiFetch('/wa/bl-inbox' + q);
       state.inbox = Array.isArray(data.items) ? data.items : [];
       if (typeof data.referenceUpdatedAt === 'number') state.referenceUpdatedAt = data.referenceUpdatedAt;
+      state.bossReady = data.boss_notifications !== false;
       renderInbox(wrap);
     } catch (e) {
       state.inbox = state.inbox || [];
@@ -515,7 +516,12 @@
       (state.reference
         ? 'Comparing against your app: ' + state.reference.drafts + ' BL draft(s) and ' + state.reference.masters + ' saved master(s).'
         : 'Your app\u2019s reference (masters + drafts) is synced automatically when this section opens.') +
-      '</div>';
+      '</div>' +
+      (state.bossReady === false
+        ? '<div style="font-size:11.5px;color:#fbbf24;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);' +
+          'border-radius:8px;padding:8px 10px;margin-bottom:9px">Boss WhatsApp is not configured on the server ' +
+          '(BOSS_PHONE missing) \u2014 verdicts will still be posted in the group, but not sent to you directly.</div>'
+        : '');
 
     if (state.inbox === null) {
       host.innerHTML = refLine + '<div style="font-size:12.5px;color:#7dd3fc">Loading AI checks\u2026</div>';

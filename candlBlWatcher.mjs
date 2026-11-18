@@ -271,6 +271,10 @@ async function notify(item, { group, boss }) {
   if (boss && bn) {
     try { await sendWaWebMessage(bn, text); done.boss = true; }
     catch (e) { console.warn('[BL-INBOX] boss notify failed:', sstr(e.message, 120)); }
+  } else if (boss && !bn) {
+    // Say so out loud: a silent skip looks exactly like a check that found nothing.
+    done.boss_error = 'BOSS_PHONE (or OWNER_PHONE_NUMBER) is not set on the server';
+    console.warn('[BL-INBOX] boss notification skipped — ' + done.boss_error);
   }
   return done;
 }
@@ -483,7 +487,7 @@ export function registerCandlBlInboxRoutes(app) {
     const jid = sstr(req.query.jid, 120).trim();
     const state = readInbox();
     const items = (state.items || []).filter(i => i && (!jid || i.jid === jid));
-    res.json({ ok: true, total: items.length, items: items.slice(0, 100) });
+    res.json({ ok: true, total: items.length, items: items.slice(0, 100), boss_notifications: !!bossNumber() });
   });
 
   app.post(PREFIX + '/bl-inbox/scan', guard, async (req, res) => {
