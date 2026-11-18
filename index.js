@@ -19,6 +19,7 @@ import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
 import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.mjs';
 import { registerCommissionRoutes } from './commissionApi.mjs';
 import { registerCandlRoutes } from './candlApi.mjs';
+import { registerCandlWhatsAppRoutes } from './candlWhatsApp.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -176,6 +177,9 @@ registerCommissionRoutes(app);
   const multer = (await import('multer')).default;
   registerCandlRoutes(app, multer, { getSettings });
 }
+// 📱 BL Checking Station — "Interaction with WhatsApp": pick the working group, pull the BLs
+// posted in it, and assign the AI staff member (AI Staff Academy) that runs that group.
+registerCandlWhatsAppRoutes(app);
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
 // Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);

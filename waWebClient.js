@@ -5440,6 +5440,22 @@ export async function collectBrainChatMessagesForLearning(jid, maxMessages = 120
   return all.slice(-Math.max(1, Math.min(maxMessages, 500)));
 }
 
+// 📄 Proforma BL Checking Station: read a chat's recent messages for the OWNER'S explicit
+// request (e.g. "pull the B/L numbers out of the shipping group"). Same memory + vault source
+// as the brain reader above, but deliberately NOT gated by the per-chat AI on/off switch —
+// that switch controls automatic AI reading, not a search the owner asked for by hand.
+// Returns newest-last, capped.
+export async function readChatMessagesForOwner(jid, maxMessages = 200) {
+  if (!jid) return [];
+  const chat = waWebState.chats.get(jid);
+  if (!chat) return [];
+  if (chat._messagesLoaded === false) {
+    try { await hydrateChatFromVault(jid); } catch (e) { /* keep whatever we have */ }
+  }
+  const all = (chat.messages || []).slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  return all.slice(-Math.max(1, Math.min(maxMessages, 500)));
+}
+
 // ---- Contact Book bridge (Mr. Zaheer = data steward) ----
 // Every WhatsApp Web contact as a flat row: phone + address-book name + WhatsApp profile name.
 // `name` on a Baileys record falls back to notify, so a "saved" name equal to the profile name is
