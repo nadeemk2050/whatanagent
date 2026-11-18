@@ -962,7 +962,9 @@
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
-      ensureTabs();
+      // This runs on every React re-render. A throw here would escape into the app's global
+      // error overlay and blank the whole page, so a bug can only ever cost us the tab.
+      try { ensureTabs(); } catch (e) { console.warn('[BL-WA] tab injection failed:', e && e.message); }
     });
   }
 

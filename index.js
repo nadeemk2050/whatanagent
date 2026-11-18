@@ -214,7 +214,13 @@ app.use(express.static('public', {
     // The Proforma Tracker build is fingerprinted: hashed assets can be cached forever, but its
     // index.html and service worker must always be revalidated or a deploy would never reach it.
     if (filePath.includes('proforma')) {
-      if (/[\\/]assets[\\/]/.test(filePath) || /\.[0-9a-f]{8,}\.(js|css|wasm)$/i.test(filePath)) {
+      // Files we maintain by hand sit in the same folder as the fingerprint hashed bundle
+      // (bl-whatsapp.js). Those must always revalidate: a browser that cached one as immutable
+      // for a year would never receive a fix, and would keep running a crash. Only a real
+      // Vite-style hash suffix (-TRIPwaEC.js) is safe to cache forever.
+      const handMaintained = /[\\/]bl-whatsapp\.js$/i.test(filePath);
+      const fingerprinted = /[\\/]assets[\\/]/.test(filePath) && /-[A-Za-z0-9_]{8,}\.[a-z]+$/i.test(filePath);
+      if (fingerprinted && !handMaintained) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       } else {
         res.setHeader('Cache-Control', 'no-cache, must-revalidate');
