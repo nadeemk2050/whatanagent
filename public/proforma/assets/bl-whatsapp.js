@@ -876,11 +876,21 @@
       '<div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;overflow:hidden;background:rgba(56,189,248,.04)">' +
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 13px;background:rgba(56,189,248,.08)">' +
           '<b style="font-size:13px;color:#fff">\ud83d\udd2c BL X-Ray \u2014 ' + esc(x.file_name || 'document') + '</b>' +
-          '<span style="font-size:11px;color:#94a3b8">read by ' + esc(x.extraction_source || '?') +
-            (x.media_source ? ' \u00b7 file from ' + esc(x.media_source) : '') + '</span>' +
+          '<span style="font-size:11px;color:#94a3b8">' +
+            'read by ' + esc(x.extraction_source || '?') +
+            (x.cached ? ' \u00b7 from cache (no AI cost)' : '') +
+            (x.media_source ? ' \u00b7 file from ' + esc(x.media_source) : '') +
+            (x.text_source ? ' \u00b7 text ' + esc(x.text_source) : '') +
+          '</span>' +
           '<span style="margin-left:auto">' + closeBtn + '</span>' +
         '</div>' +
         '<div style="padding:11px 13px">' +
+          (x.read_at
+            ? '<div style="font-size:11px;color:#64748b;margin-bottom:8px">Text kept since ' +
+                esc(new Date(x.read_at).toLocaleString()) +
+                (x.text_chars ? ' \u00b7 ' + Number(x.text_chars).toLocaleString() + ' characters' : '') +
+                ' \u00b7 future checks of this BL are free</div>'
+            : '') +
           '<div style="margin-bottom:8px">' + (summaryChips || '<span style="font-size:12px;color:#64748b">No checks ran.</span>') + '</div>' +
           '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden">' + rows + '</div>' +
           '<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(148,163,184,.06);' +

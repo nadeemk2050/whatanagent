@@ -25,12 +25,17 @@
 // ============================================================================
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import express from 'express';
 import { createRequire } from 'module';
 import { resolveDeepSeek } from './aiProviders.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
-import { lookupArchivedMedia, readReference, pdfToText } from './candlBlWatcher.mjs';
+import {
+  lookupArchivedMedia, readReference, saveToArchive, ensureArchiveText,
+  readSidecarText, readSidecarFields, writeSidecarFields
+} from './candlBlWatcher.mjs';
+import { extractTextFromBuffer } from './blText.mjs';
 import { downloadWaWebMedia } from './waWebClient.js';
 
 const require = createRequire(import.meta.url);
@@ -591,25 +596,53 @@ export function registerCandlXrayRoutes(app) {
     const messageId = sstr(body.message_id, 90).trim();
     const pastedText = String(body.text || '').slice(0, MAX_TEXT_CHARS);
 
-    let buffer = null;
     let fileName = sstr(body.file_name, 160) || 'pasted text';
     let mediaSource = '';
+    let text = pastedText.trim();
+    let textSource = text ? 'pasted' : '';
+    let readAt = 0;
 
-    if (pastedText.trim()) {
-      mediaSource = 'pasted';
-    } else {
+    if (!text) {
       if (!jid || !messageId) return res.status(400).json({ ok: false, error: 'Pass { jid, message_id } or { text }.' });
+
       const archived = lookupArchivedMedia(jid, messageId);
       if (archived) {
-        try { buffer = fs.readFileSync(archived.abs); fileName = archived.fileName; mediaSource = 'archive'; }
-        catch (e) { buffer = null; }
-      }
-      if (!buffer) {
+        fileName = archived.fileName || fileName;
+        mediaSource = 'archive';
+
+        // The text sidecar is the whole point: it was paid for once, so reading it now is free.
+        const side = readSidecarText(jid, messageId);
+        if (side) {
+          text = side;
+          // Trust the file over the index: a stale record (e.g. a failed OCR recorded as "none")
+          // must not claim there is no text when the .txt is sitting right there.
+          const recorded = String(archived.text_source || '');
+          textSource = /^(pdf-text|vision:)/.test(recorded) ? recorded : 'sidecar';
+          readAt = archived.text_at || 0;
+        } else {
+          const got = await ensureArchiveText(jid, messageId);
+          text = String((got && got.text) || '');
+          textSource = (got && got.source) || '';
+          readAt = (got && got.at) || 0;
+        }
+      } else {
+        // Not archived yet: pull it once, then keep it so this never has to happen again.
         try {
           const media = await downloadWaWebMedia(jid, messageId);
-          buffer = media.buffer;
           fileName = media.fileName || fileName;
           mediaSource = 'whatsapp';
+
+          const saved = await saveToArchive(jid, messageId, media, Date.now(), '');
+          if (saved) {
+            const got = await ensureArchiveText(jid, messageId);
+            text = String((got && got.text) || '');
+            textSource = (got && got.source) || '';
+            readAt = (got && got.at) || 0;
+          } else {
+            const got = await extractTextFromBuffer(media.buffer, { mimetype: media.mimetype, fileName: media.fileName });
+            text = String((got && got.text) || '');
+            textSource = (got && got.source) || '';
+          }
         } catch (e) {
           return res.status(409).json({
             ok: false,
@@ -619,17 +652,45 @@ export function registerCandlXrayRoutes(app) {
       }
     }
 
-    let text = pastedText;
-    if (!text.trim()) {
-      try { text = await pdfToText(buffer); }
-      catch (e) { return res.status(422).json({ ok: false, error: 'The PDF has no readable text (probably a scan).' }); }
-    }
     if (!String(text || '').trim()) {
-      return res.status(422).json({ ok: false, error: 'The document produced no text to read.' });
+      return res.status(422).json({
+        ok: false,
+        error: 'The document produced no readable text (unreadable scan, and OCR could not read it either).'
+      });
     }
 
+    // Field extraction is cached against a hash of the text: check the same BL twice and the
+    // second check costs nothing, even after the saved masters change.
     const settings = (body.settings && typeof body.settings === 'object') ? body.settings : {};
-    const { source, fields } = await extractXray(text, settings);
+    const canCache = !!(jid && messageId && mediaSource === 'archive');
+    const hash = crypto.createHash('sha1').update(text).digest('hex');
+
+    let fields = null;
+    let extractionSource = '';
+    let cached = false;
+    let cachedAt = 0;
+
+    const cache = canCache ? readSidecarFields(jid, messageId) : null;
+    if (cache && cache.hash === hash && cache.fields) {
+      fields = cache.fields;
+      extractionSource = cache.extraction_source || 'cache';
+      cached = true;
+      cachedAt = cache.at || 0;
+    } else {
+      const ex = await extractXray(text, settings);
+      fields = ex.fields;
+      extractionSource = ex.source;
+      if (canCache) {
+        const wrote = writeSidecarFields(jid, messageId, {
+          hash: hash,
+          at: Date.now(),
+          extraction_source: ex.source,
+          fields: ex.fields
+        });
+        cachedAt = wrote ? Date.now() : 0;
+      }
+    }
+
     const result = checkXray(fields, readReference(), readRules());
 
     const groups = xraySchema().map(g => ({
@@ -647,7 +708,12 @@ export function registerCandlXrayRoutes(app) {
       message_id: messageId,
       file_name: fileName,
       media_source: mediaSource,
-      extraction_source: source,
+      extraction_source: extractionSource,
+      text_source: textSource,
+      text_chars: String(text).length,
+      read_at: readAt,
+      cached: cached,
+      cached_at: cachedAt,
       groups,
       checks: result.checks,
       summary: result.summary,

@@ -34,6 +34,7 @@ import { createRequire } from 'module';
 import { extractBlFields } from './candlBl.mjs';
 import { listAssignments } from './candlWhatsApp.mjs';
 import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage, downloadWaWebMediaRaw, addWaMediaListener } from './waWebClient.js';
+import { extractTextFromBuffer, extractTextFromFile, pdfToText } from './blText.mjs';
 
 const require = createRequire(import.meta.url);
 const gdrive = require('./candlGdrive.cjs');
@@ -151,7 +152,137 @@ export async function saveToArchive(jid, id, media, ts, groupName) {
   idx.totalBytes = Number(idx.totalBytes || 0) + rec.size;
   pruneArchive(idx);
   writeJson(MEDIA_INDEX_FILE, idx);
+
+  // Extract the text now, in the background, so every later read is free.
+  if (isTextualFile(rec.mimetype, rec.fileName)) queueArchiveText(jid, id);
+
   return rec;
+}
+
+// ── text + fields sidecars ──────────────────────────────────────────────────
+// Each archived file gets two small neighbours: <id>.txt (the text, extracted once — OCR when the
+// file is a scan) and <id>.xray.json (the X-Ray fields, keyed by a hash of that text). This is what
+// makes re-checking free: comparing an old BL against updated masters costs no AI at all.
+const isTextualFile = (mimetype, fileName) =>
+  /pdf/i.test(String(mimetype || '')) || /^image\//i.test(String(mimetype || '')) || /\.(pdf|jpe?g|png|webp|tiff?|bmp)$/i.test(String(fileName || ''));
+
+function sidecarBase(rec) {
+  return path.join(MEDIA_DIR, String(rec.file).replace(/\.[^./\\]+$/, ''));
+}
+
+/** Paths of the two sidecars for an archived message, or null when it is not archived. */
+export function archiveSidecars(jid, id) {
+  const rec = lookupArchivedMedia(jid, id);
+  if (!rec) return null;
+  const base = sidecarBase(rec);
+  return { rec: rec, text: base + '.txt', fields: base + '.xray.json' };
+}
+
+export function readSidecarText(jid, id) {
+  const p = archiveSidecars(jid, id);
+  if (!p) return null;
+  try {
+    const t = fs.readFileSync(p.text, 'utf8');
+    return t.trim() ? t : null;
+  } catch (e) { return null; }
+}
+
+export function readSidecarFields(jid, id) {
+  const p = archiveSidecars(jid, id);
+  if (!p) return null;
+  try {
+    const obj = JSON.parse(fs.readFileSync(p.fields, 'utf8'));
+    return obj && obj.fields ? obj : null;
+  } catch (e) { return null; }
+}
+
+export function writeSidecarFields(jid, id, data) {
+  const p = archiveSidecars(jid, id);
+  if (!p || !data) return false;
+  try {
+    const tmp = p.fields + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data));
+    fs.renameSync(tmp, p.fields);
+    return true;
+  } catch (e) { return false; }
+}
+
+/** Patch one archive record (text_source / text_chars / text_at). */
+function patchMediaRecord(jid, id, patch) {
+  try {
+    const idx = readMediaIndex();
+    const key = archiveKey(jid, id);
+    if (!idx.items || !idx.items[key]) return;
+    idx.items[key] = Object.assign({}, idx.items[key], patch);
+    writeJson(MEDIA_INDEX_FILE, idx);
+  } catch (e) { /* index trouble must never break extraction */ }
+}
+
+/**
+ * Text for an archived file, extracted once and kept. Returns { text, source, at } or null.
+ * Uses the .txt sidecar when present, otherwise reads the file (PDF text layer, or vision OCR for
+ * a scan or a photo).
+ */
+export async function ensureArchiveText(jid, id) {
+  const p = archiveSidecars(jid, id);
+  if (!p) return null;
+
+  const existing = readSidecarText(jid, id);
+  if (existing) {
+    return { text: existing, source: (p.rec && p.rec.text_source) || 'sidecar', at: (p.rec && p.rec.text_at) || 0 };
+  }
+
+  if (!p.rec.size || p.rec.size > MAX_ONE_FILE_BYTES) {
+    return { text: '', source: 'too-large', at: Date.now() };
+  }
+
+  const got = await extractTextFromFile(p.rec.abs, { mimetype: p.rec.mimetype, fileName: p.rec.fileName });
+  const text = String((got && got.text) || '').trim();
+  if (!text) {
+    patchMediaRecord(jid, id, { text_source: 'none', text_chars: 0, text_at: Date.now() });
+    return { text: '', source: 'none', at: Date.now() };
+  }
+
+  try { fs.writeFileSync(p.text, text.slice(0, MAX_TEXT_CHARS)); }
+  catch (e) { /* the text is still usable in memory */ }
+
+  const at = Date.now();
+  patchMediaRecord(jid, id, { text_source: got.source || 'text', text_chars: text.length, text_at: at });
+  console.log('[BL-INBOX] 📄 text ready (' + (got.source || 'text') + ', ' + text.length + ' chars) for ' + sstr(p.rec.fileName, 40));
+  return { text: text, source: got.source || 'text', at: at };
+}
+
+// Background queue: reading a scan can cost a vision call, so arrival must never wait for it.
+const textQueue = [];
+const textQueued = new Set();
+let textPumpBusy = false;
+
+export function queueArchiveText(jid, id) {
+  if (!jid || !id) return;
+  const key = archiveKey(jid, id);
+  if (textQueued.has(key)) return;
+  textQueued.add(key);
+  textQueue.push({ jid: jid, id: id });
+  pumpTextQueue();
+}
+
+async function pumpTextQueue() {
+  if (textPumpBusy) return;
+  textPumpBusy = true;
+  try {
+    while (textQueue.length) {
+      const job = textQueue.shift();
+      try {
+        if (!readSidecarText(job.jid, job.id)) await ensureArchiveText(job.jid, job.id);
+      } catch (e) {
+        console.warn('[BL-INBOX] text extraction failed:', sstr(e.message || e, 140));
+      } finally {
+        textQueued.delete(archiveKey(job.jid, job.id));
+      }
+    }
+  } finally {
+    textPumpBusy = false;
+  }
 }
 
 // Groups the owner has opted in to media saving for (they must be assigned to an AI staff member).
@@ -306,12 +437,9 @@ export function checkBlAgainstReference(fields, reference) {
 }
 
 // ── PDF text ────────────────────────────────────────────────────────────────
-export async function pdfToText(buffer) {
-  const { PDFParse } = require('pdf-parse');
-  const parsed = await new PDFParse({ data: buffer }).getText();
-  const text = String((parsed && parsed.text) || '');
-  return text.slice(0, MAX_TEXT_CHARS);
-}
+// The implementation lives in blText.mjs (shared with the X-Ray reader) and is re-exported here so
+// existing callers keep working.
+export { pdfToText };
 
 // ── Drive: permanent home for the BL the group sent ─────────────────────────
 async function saveBlToDrive(buffer, fileName, groupName, blNumber) {
