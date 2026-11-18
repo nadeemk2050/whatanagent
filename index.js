@@ -234,6 +234,16 @@ app.get('/proforma/*', (req, res, next) => {
   res.sendFile(path.join(__dirname, 'public', 'proforma', 'index.html'));
 });
 
+// 🧾 Commission Accounts (Qaryan Brokerage) — the pretty URL must be a real Express route.
+// firebase.json rewrites /commission to /commission.html only on Firebase Hosting; the VPS
+// proxies straight to this Node process, where no such rewrite exists. The page's assets are
+// absolute (/commission.css, /commission.js), so /commission and /commission/ both work.
+const commissionPage = path.join(__dirname, 'public', 'commission.html');
+app.get(['/commission', '/commission-accounts', '/commission-account'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(commissionPage);
+});
+
 // Health probe (Railway / uptime monitors) - also reports node role + scheduler isolation state
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, service: 'whatanagent', role: NODE_ROLE, staging: STAGING_MODE, dryRun: DRY_RUN, schedulers: schedulerState, uptimeSec: Math.round(process.uptime()) });
