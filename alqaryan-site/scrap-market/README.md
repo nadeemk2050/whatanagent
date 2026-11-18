@@ -82,7 +82,7 @@ stored in the active Astra theme dies the same way. This lives in
 ## Install
 
 1. WordPress admin → **Plugins → Add New → Upload Plugin**
-2. Choose `dist/alqaryan-scrap-market-0.3.0.zip` → **Install Now** → **Activate**
+2. Choose `dist/alqaryan-scrap-market-0.3.8.zip` → **Install Now** → **Activate**
 3. Activation flushes rewrite rules, so `/scrap-market/` resolves straight away. If it
    404s, go to **Settings → Permalinks → Save** once.
 
@@ -96,6 +96,8 @@ active.
 | Field | Value |
 |---|---|
 | IndexNow key | `f90e62ce9199ff70fd09452c4519dbf9` (already served at the site root) |
+| Facebook Page ID | Page ID for Al Qaryan Industries LLC |
+| Facebook Page token | A **long-lived Page** token with `pages_manage_posts`. Use a Business Manager System User token (never expires) — a normal user token dies after ~60 days. Use **Test Facebook connection** after saving. |
 | Archive endpoint (VPS) | leave as is — used for the Drive archive |
 | Drive folder | `ScrapMarket` |
 | Default seller / phone | pre-fills new listings |

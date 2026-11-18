@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.3.7
+ * Version:           0.3.8
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.3.6' );
+define( 'SM_VERSION', '0.3.8' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -75,7 +75,9 @@ function sm_settings() {
 		'posting_open' => '1',
 		'posting_mode' => 'publish',
 		'fb_page_id'   => '1383856674820826',
-		'fb_token'     => 'EAAXVrAq1aSQBTP0EnSKmFu96BHQudfQAZAQfHRZCoyvI9bZB8JpA3nVhTdpyTjw2Q4lXAa50iixRmYRri9sbSG6U8ZAOSQ3FZANinldR7KQyy1g8KHAQkjmygeV6qRH9mGKO2ZCQ1QqZAXul5nbQyVj0r4Oy0D2zlzM2U6ZAJAAjWCkZClnaClljm8dIAMHgto7dC49fZCl4WeZBBZAhd0tmrqqbX6rfc5qKwcWfifm51zGxZBom8ckfYuPDg3DUZD',
+		// No token ships with the plugin. A stale token in the source is what showed
+		// "Session has expired" to visitors; it must come from Settings → Scrap Market.
+		'fb_token'     => '',
 	);
 	$saved = get_option( 'sm_settings', array() );
 
@@ -168,6 +170,10 @@ function sm_render_settings() {
 		$clean['posting_open'] = empty( $_POST['posting_open'] ) ? '' : '1';
 		$clean['posting_mode'] = ( isset( $_POST['posting_mode'] ) && 'pending' === $_POST['posting_mode'] ) ? 'pending' : 'publish';
 		update_option( 'sm_settings', $clean );
+		// A new token must not inherit the previous token's pause or error state.
+		delete_option( 'sm_fb_last_error' );
+		delete_option( 'sm_fb_test_result' );
+		delete_transient( 'sm_fb_blocked' );
 		echo '<div class="notice notice-success"><p>Saved.</p></div>';
 	}
 
@@ -252,9 +258,67 @@ function sm_render_settings() {
 						</label>
 					</td>
 				</tr>
+				<tr>
+					<th scope="row">Facebook connection</th>
+					<td>
+						<?php
+						$has_token = ! empty( $s['fb_token'] );
+						$last      = get_option( 'sm_fb_last_error', array() );
+						$test      = get_option( 'sm_fb_test_result', array() );
+						?>
+						<p style="margin:0 0 8px;">
+							<?php if ( ! $has_token ) : ?>
+								<strong style="color:#b91c1c;">No token saved.</strong> Posting to the Page will fail until one is added.
+							<?php elseif ( is_array( $last ) && ! empty( $last['message'] ) ) : ?>
+								<strong style="color:#b91c1c;">Last post failed <?php echo esc_html( human_time_diff( (int) $last['time'] ) ); ?> ago:</strong>
+								<?php echo esc_html( $last['message'] ); ?>
+							<?php else : ?>
+								<strong style="color:#15803d;">Token saved.</strong> No failure recorded since the last successful post.
+							<?php endif; ?>
+						</p>
+						<?php if ( is_array( $test ) && ! empty( $test['at'] ) ) : ?>
+							<p style="margin:0 0 8px;">
+								Test <?php echo esc_html( human_time_diff( (int) $test['at'] ) ); ?> ago:
+								<?php if ( ! empty( $test['ok'] ) ) : ?>
+									<strong style="color:#15803d;">valid</strong>
+									<?php if ( ! empty( $test['expires_at'] ) ) : ?>
+										· expires <?php echo esc_html( gmdate( 'Y-m-d H:i', (int) $test['expires_at'] ) ); ?> UTC
+									<?php else : ?>
+										· never expires
+									<?php endif; ?>
+									<?php if ( ! empty( $test['scopes'] ) ) : ?>
+										· scopes: <?php echo esc_html( implode( ', ', (array) $test['scopes'] ) ); ?>
+									<?php endif; ?>
+								<?php else : ?>
+									<strong style="color:#b91c1c;">failed</strong> — <?php echo esc_html( $test['message'] ); ?>
+								<?php endif; ?>
+							</p>
+						<?php endif; ?>
+						<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=sm_fb_test' ), 'sm_fb_test' ) ); ?>">Test Facebook connection</a>
+						<p class="description" style="margin-top:8px;">Use a <strong>long-lived Page access token</strong> with <code>pages_manage_posts</code>. A normal user token expires after about 60 days — that is the usual cause of “Session has expired”.</p>
+					</td>
+				</tr>
 			</table>
 			<?php submit_button(); ?>
-		</form>
-	</div>
-	<?php
-}
+			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Admin-post: verify the saved Facebook token with Meta's debug_token endpoint.
+	 * The result is stored so the settings screen can show it without calling Meta on every load.
+	 */
+	add_action( 'admin_post_sm_fb_test', function () {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Unauthorized' );
+		}
+		check_admin_referer( 'sm_fb_test' );
+
+		if ( function_exists( 'sm_fb_debug_token' ) ) {
+			update_option( 'sm_fb_test_result', sm_fb_debug_token(), false );
+		}
+
+		wp_safe_redirect( admin_url( 'options-general.php?page=scrap-market&sm_fb_tested=1' ) );
+		exit;
+	} );

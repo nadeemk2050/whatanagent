@@ -600,6 +600,25 @@
 		}
 	} );
 
+	/* --------------------------------- inline notice (no alert boxes) */
+	function smFbNotice( wrap, message, isError ) {
+		if ( ! wrap ) return;
+		var note = wrap.querySelector( '.sm-fb-note' );
+		if ( ! note ) {
+			note = document.createElement( 'div' );
+			note.className = 'sm-fb-note';
+			wrap.appendChild( note );
+		}
+		note.textContent = message;
+		note.style.cssText = 'flex-basis:100%;width:100%;font-size:12.5px;line-height:1.5;margin-top:8px;padding:8px 10px;border-radius:8px;' +
+			( isError
+				? 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;'
+				: 'background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;' );
+		window.setTimeout( function () {
+			if ( note && note.parentNode ) note.parentNode.removeChild( note );
+		}, isError ? 14000 : 5000 );
+	}
+
 	/* --------------------------------- direct send to Facebook Page handler */
 	document.addEventListener( 'click', function ( e ) {
 		var btn = e.target.closest( '[data-sm-send-fb]' );
@@ -610,6 +629,7 @@
 		var postId = btn.getAttribute( 'data-sm-send-fb' );
 		var nonce  = btn.getAttribute( 'data-nonce' );
 		if ( ! postId || ! nonce ) return;
+		var wrap = btn.closest( '.sm-pricebar__cta' ) || btn.closest( '.sm-share' ) || btn.parentNode;
 
 		if ( ! window.confirm( 'Send this post directly to Al Qaryan Industries LLC Facebook Page? (This can only be done once per listing to prevent duplicate posts).' ) ) {
 			return;
@@ -641,10 +661,10 @@
 				allBtns.forEach( function ( b ) {
 					b.outerHTML = '<span class="sm-btn sm-btn--fb-done" style="cursor:default;">✓ Sent to Facebook Page</span>';
 				} );
-				alert( 'Success! ' + ( data.data.message || 'Post sent to Al Qaryan Facebook Page!' ) );
+				smFbNotice( wrap, data.data.message || 'Post sent to the Al Qaryan Facebook Page.', false );
 			} else {
 				var msg = ( data && data.data && data.data.message ) ? data.data.message : 'Failed to post to Facebook';
-				alert( msg );
+				smFbNotice( wrap, msg, true );
 				if ( data && data.data && data.data.already_posted ) {
 					allBtns.forEach( function ( b ) {
 						b.outerHTML = '<span class="sm-btn sm-btn--fb-done" style="cursor:default;">✓ On Facebook Page</span>';
@@ -660,7 +680,7 @@
 			}
 		} )
 		.catch( function ( err ) {
-			alert( 'Network error: ' + err.message );
+			smFbNotice( wrap, 'Network error: ' + ( err && err.message ? err.message : 'request failed' ), true );
 			allBtns.forEach( function ( b ) {
 				b.disabled = false;
 				b.innerHTML = b.getAttribute( 'data-orig-html' ) || 'Send to Facebook Page';

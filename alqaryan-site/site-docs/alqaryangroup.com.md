@@ -120,7 +120,7 @@ the rest. Both use the application password.
 
 ---
 
-## 6. Scrap Market (plugin `alqaryan-scrap-market`, v0.3.0)
+## 6. Scrap Market (plugin `alqaryan-scrap-market`, v0.3.8)
 
 A free, public market for plastic scrap: **For Sale** and **Need to Buy** listings.
 
@@ -268,6 +268,20 @@ Accepted codes: api.indexnow.org 200, bing.com/indexnow 200, yandex.com/indexnow
 ---
 
 ## 10. Changelog
+
+### 2026-11-18 — Scrap Market 0.3.8: expired-token handling, admin-only Facebook send, connection test
+
+- The Facebook Page token no longer ships in the plugin source. It is read only from
+  Settings → Scrap Market, so a stale default can never be used again.
+- **Send to Facebook Page** is administrator-only, both the front-end button and the AJAX
+  route. Previously any visitor could trigger it with the nonce printed on the page.
+- Meta’s raw error is no longer shown in a browser alert. The listing page shows a short
+  inline note, and a token failure says exactly what to do. Auto-posting pauses for 15
+  minutes after a token error instead of retrying on every publish.
+- Settings → Scrap Market shows the last failure and has **Test Facebook connection**
+  (`debug_token`: valid/invalid, expiry date, scopes).
+- The token that expired on 17 Nov 2026 11:00 PST was a **user** token. Replace it with a
+  Business Manager **System User** Page token, which does not expire.
 
 ### 2026-11-16 — Scrap Market 0.3.3: Facebook Page auto-publishing & Meta Graph API integration
 

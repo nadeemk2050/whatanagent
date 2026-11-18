@@ -13,6 +13,135 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Meta errors that mean the token itself is dead. No retry can fix these.
+ * 190/102 = authentication error; 463/467 = the "session has expired" subcodes.
+ *
+ * @param int $code    Graph error code.
+ * @param int $subcode Graph error_subcode.
+ * @return bool
+ */
+function sm_fb_is_token_error( $code, $subcode = 0 ) {
+	$code    = (int) $code;
+	$subcode = (int) $subcode;
+
+	return in_array( $code, array( 102, 190, 463, 467 ), true )
+		|| in_array( $subcode, array( 458, 459, 460, 463, 464, 467, 492 ), true );
+}
+
+/**
+ * Turn a Graph API error into a sentence a site owner can act on.
+ *
+ * @param array  $res_data Decoded response body.
+ * @param string $fallback Message to use when Meta sent nothing useful.
+ * @return string
+ */
+function sm_fb_friendly_message( $res_data, $fallback = '' ) {
+	$err = isset( $res_data['error'] ) && is_array( $res_data['error'] ) ? $res_data['error'] : array();
+	$code = isset( $err['code'] ) ? (int) $err['code'] : 0;
+	$sub  = isset( $err['error_subcode'] ) ? (int) $err['error_subcode'] : 0;
+	$raw  = isset( $err['message'] ) ? (string) $err['message'] : '';
+
+	if ( sm_fb_is_token_error( $code, $sub ) ) {
+		return 'Facebook access token has expired or is invalid. Open Settings → Scrap Market and paste a new long-lived Page access token.' . ( '' !== $raw ? ' (Meta said: ' . $raw . ')' : '' );
+	}
+
+	if ( 200 === $code || 10 === $code ) {
+		return 'The Facebook token does not have the pages_manage_posts permission. Add it in Meta and generate a new Page token.';
+	}
+
+	if ( '' !== $raw ) {
+		return 'Facebook rejected the post: ' . $raw;
+	}
+
+	return '' !== $fallback ? $fallback : 'Facebook rejected the post.';
+}
+
+/**
+ * Remember the last failure so Settings can show it, and pause auto-posting for
+ * 15 minutes when the token itself is the problem (no point retrying every publish).
+ */
+function sm_fb_record_error( $message, $token_problem = false ) {
+	update_option(
+		'sm_fb_last_error',
+		array(
+			'time'    => time(),
+			'message' => (string) $message,
+		),
+		false
+	);
+
+	if ( $token_problem ) {
+		set_transient( 'sm_fb_blocked', 1, 15 * MINUTE_IN_SECONDS );
+	}
+}
+
+/**
+ * Clear the failure state after a good post or a successful token test.
+ */
+function sm_fb_clear_error() {
+	delete_option( 'sm_fb_last_error' );
+	delete_transient( 'sm_fb_blocked' );
+}
+
+/**
+ * Ask Meta whether the saved token is still valid, when it expires and what
+ * permissions it carries. Used by the "Test Facebook connection" button.
+ *
+ * @return array<string,mixed>
+ */
+function sm_fb_debug_token() {
+	$settings = sm_settings();
+	$token    = trim( (string) $settings['fb_token'] );
+	$out      = array(
+		'ok'         => false,
+		'at'         => time(),
+		'expires_at' => 0,
+		'scopes'     => array(),
+		'message'    => '',
+	);
+
+	if ( '' === $token ) {
+		$out['message'] = 'No access token is saved.';
+		return $out;
+	}
+
+	$url  = 'https://graph.facebook.com/v21.0/debug_token?' . http_build_query(
+		array(
+			'input_token'  => $token,
+			'access_token' => $token,
+		)
+	);
+	$resp = wp_remote_get( $url, array( 'timeout' => 20 ) );
+
+	if ( is_wp_error( $resp ) ) {
+		$out['message'] = $resp->get_error_message();
+		return $out;
+	}
+
+	$status = (int) wp_remote_retrieve_response_code( $resp );
+	$data   = json_decode( (string) wp_remote_retrieve_body( $resp ), true );
+
+	if ( 200 !== $status ) {
+		$out['message'] = sm_fb_friendly_message( $data, 'Meta returned HTTP ' . $status . '.' );
+		return $out;
+	}
+
+	$d                 = isset( $data['data'] ) && is_array( $data['data'] ) ? $data['data'] : array();
+	$out['ok']         = ! empty( $d['is_valid'] );
+	$out['expires_at'] = isset( $d['expires_at'] ) ? (int) $d['expires_at'] : 0;
+	$out['scopes']     = isset( $d['scopes'] ) && is_array( $d['scopes'] ) ? $d['scopes'] : array();
+	$out['message']    = $out['ok']
+		? 'Token is valid.'
+		: ( isset( $d['error']['message'] ) ? (string) $d['error']['message'] : 'Meta reports the token is not valid.' );
+
+	if ( $out['ok'] ) {
+		sm_fb_clear_error();
+	}
+
+	return $out;
+}
+
+/**
  * Publish a scrap listing to Facebook Page.
  *
  * @param int  $post_id Post ID.
@@ -25,7 +154,17 @@ function sm_post_to_facebook( $post_id, $force = false ) {
 	$token    = trim( (string) $settings['fb_token'] );
 
 	if ( empty( $page_id ) || empty( $token ) ) {
-		return new WP_Error( 'sm_fb_not_configured', 'Facebook Page ID or Access Token is missing in Settings → Scrap Market.' );
+		$msg = 'Facebook Page ID or access token is missing in Settings → Scrap Market.';
+		sm_fb_record_error( $msg, true );
+		return new WP_Error( 'sm_fb_not_configured', $msg );
+	}
+
+	// After a token failure, stop hammering Meta on every publish for 15 minutes.
+	// A manual (forced) post always goes through so the owner can retest immediately.
+	if ( ! $force && get_transient( 'sm_fb_blocked' ) ) {
+		$last = get_option( 'sm_fb_last_error', array() );
+		$msg  = ! empty( $last['message'] ) ? $last['message'] : 'Facebook posting is paused after a failed attempt.';
+		return new WP_Error( 'sm_fb_paused', $msg );
 	}
 
 	$existing_fb_id = get_post_meta( $post_id, '_sm_fb_post_id', true );
@@ -134,11 +273,18 @@ function sm_post_to_facebook( $post_id, $force = false ) {
 		if ( 200 === $status && ! empty( $res_data['id'] ) ) {
 			$fb_post_id = $res_data['id'];
 		} else {
-			$err_msg = ! empty( $res_data['error']['message'] ) ? $res_data['error']['message'] : 'Unknown Facebook API error';
-			return new WP_Error( 'sm_fb_error', $err_msg );
+			$code          = isset( $res_data['error']['code'] ) ? (int) $res_data['error']['code'] : 0;
+			$sub           = isset( $res_data['error']['error_subcode'] ) ? (int) $res_data['error']['error_subcode'] : 0;
+			$msg           = sm_fb_friendly_message( $res_data, 'Unknown Facebook API error' );
+			$token_problem = sm_fb_is_token_error( $code, $sub );
+
+			sm_fb_record_error( $msg, $token_problem );
+
+			return new WP_Error( $token_problem ? 'sm_fb_token_expired' : 'sm_fb_error', $msg );
 		}
 	}
 
+	sm_fb_clear_error();
 	update_post_meta( $post_id, '_sm_fb_post_id', $fb_post_id );
 	update_post_meta( $post_id, '_sm_fb_posted_at', time() );
 
@@ -224,11 +370,16 @@ add_action( 'manage_scrap_listing_posts_custom_column', function ( $col, $post_i
  * Strictly prevents duplicate posts: once posted, cannot be re-posted.
  */
 add_action( 'wp_ajax_sm_send_to_fb', 'sm_handle_ajax_send_to_fb' );
-add_action( 'wp_ajax_nopriv_sm_send_to_fb', 'sm_handle_ajax_send_to_fb' );
+// No wp_ajax_nopriv handler on purpose: sending a listing to the company Page is an
+// administrator action, not something a visitor (or a copied nonce) may trigger.
 
 function sm_handle_ajax_send_to_fb() {
 	$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
 	$nonce   = isset( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => 'Only a site administrator can send listings to the Facebook Page.' ), 403 );
+	}
 
 	if ( ! $post_id || ! wp_verify_nonce( $nonce, 'sm_send_fb_' . $post_id ) ) {
 		wp_send_json_error( array( 'message' => 'Security verification failed or invalid listing.' ), 403 );
@@ -258,11 +409,18 @@ function sm_handle_ajax_send_to_fb() {
 	}
 	set_transient( $transient_key, 1, 30 );
 
-	$res = sm_post_to_facebook( $post_id, false );
+	$res = sm_post_to_facebook( $post_id, true );
 	delete_transient( $transient_key );
 
 	if ( is_wp_error( $res ) ) {
-		wp_send_json_error( array( 'message' => $res->get_error_message() ), 500 );
+		$code = $res->get_error_code();
+		wp_send_json_error(
+			array(
+				'message'       => $res->get_error_message(),
+				'token_expired' => ( 'sm_fb_token_expired' === $code || 'sm_fb_not_configured' === $code ),
+			),
+			500
+		);
 	}
 
 	$fb_post_id = ! empty( $res['fb_post_id'] ) ? $res['fb_post_id'] : ( ! empty( $res['post_id'] ) ? $res['post_id'] : '' );

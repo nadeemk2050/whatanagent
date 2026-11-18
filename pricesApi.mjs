@@ -10,8 +10,10 @@ import { wrapContent } from './alqaryan-site/build/chrome.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const FB_PAGE_ID = '1383856674820826';
-const FB_TOKEN = 'EAAXVrAq1aSQBTP0EnSKmFu96BHQudfQAZAQfHRZCoyvI9bZB8JpA3nVhTdpyTjw2Q4lXAa50iixRmYRri9sbSG6U8ZAOSQ3FZANinldR7KQyy1g8KHAQkjmygeV6qRH9mGKO2ZCQ1QqZAXul5nbQyVj0r4Oy0D2zlzM2U6ZAJAAjWCkZClnaClljm8dIAMHgto7dC49fZCl4WeZBBZAhd0tmrqqbX6rfc5qKwcWfifm51zGxZBom8ckfYuPDg3DUZD';
+const FB_PAGE_ID = process.env.FB_PAGE_ID || '1383856674820826';
+// A Page token is a credential: environment only. It must never be committed again.
+// When it is absent, the website publish still runs and Facebook is skipped with a note.
+const FB_TOKEN = String(process.env.FB_PAGE_TOKEN || '').trim();
 
 let gDb = null;
 
@@ -189,23 +191,34 @@ export function registerPricesRoutes(app, db) {
       const savedWp = await wpRes.json();
       const articleUrl = savedWp.link || `${creds.site}/${slug}/`;
 
-      // 3. Post to Facebook Page via Meta Graph API
+      // 3. Post to Facebook Page via Meta Graph API (skipped cleanly when no token is configured)
       let fbResult = null;
-      try {
-        const fbMessage = `📢 LATEST PLASTIC SCRAP MARKET RATES (${dateStr})\n\nOfficial benchmark rates from Al Qaryan Industries LLC:\n• uPVC Pipe Regrind: PKR 245 - 275 / kg\n• HDPE PE100 Pipe Regrind: PKR 240 - 280 / kg\n• HDPE Blow Milk Bottles: PKR 185 - 215 / kg\n• LDPE Clear Film: PKR 195 - 225 / kg\n• PP Woven Bag Scrap: PKR 140 - 165 / kg\n\nFull 12-month historical price report & analysis:\n🔗 ${articleUrl}\n\nTrade scrap lots directly on our market:\n👉 https://alqaryangroup.com/scrap-market/`;
+      let fbNote = '';
+      if ( ! FB_TOKEN ) {
+        fbNote = 'Facebook skipped: FB_PAGE_TOKEN is not set on the server.';
+        console.warn('[PRICES] ' + fbNote);
+      } else {
+        try {
+          const fbMessage = `📢 LATEST PLASTIC SCRAP MARKET RATES (${dateStr})\n\nOfficial benchmark rates from Al Qaryan Industries LLC:\n• uPVC Pipe Regrind: PKR 245 - 275 / kg\n• HDPE PE100 Pipe Regrind: PKR 240 - 280 / kg\n• HDPE Blow Milk Bottles: PKR 185 - 215 / kg\n• LDPE Clear Film: PKR 195 - 225 / kg\n• PP Woven Bag Scrap: PKR 140 - 165 / kg\n\nFull 12-month historical price report & analysis:\n🔗 ${articleUrl}\n\nTrade scrap lots directly on our market:\n👉 https://alqaryangroup.com/scrap-market/`;
 
-        const fbRes = await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/feed`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: fbMessage,
-            link: articleUrl,
-            access_token: FB_TOKEN
-          })
-        });
-        fbResult = await fbRes.json();
-      } catch (fbErr) {
-        console.warn('[PRICES] Facebook publish warning:', fbErr.message);
+          const fbRes = await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/feed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: fbMessage,
+              link: articleUrl,
+              access_token: FB_TOKEN
+            })
+          });
+          fbResult = await fbRes.json();
+          if (fbResult && fbResult.error) {
+            fbNote = 'Facebook rejected the post: ' + (fbResult.error.message || 'unknown error');
+            console.warn('[PRICES] ' + fbNote);
+          }
+        } catch (fbErr) {
+          fbNote = 'Facebook publish failed: ' + fbErr.message;
+          console.warn('[PRICES] ' + fbNote);
+        }
       }
 
       // 4. Ping IndexNow
@@ -216,7 +229,7 @@ export function registerPricesRoutes(app, db) {
           body: JSON.stringify({
             host: 'alqaryangroup.com',
             key: 'f90e62ce9199ff70fd09452c4519dbf9',
-            keyLocation: 'https://alqaryangroup.com/f90e62ce9199ff70fd09452c4519dbf9.txt',
+            keyLocation: 'https://alqaryangroup.com/f90e62ce9199ff70fd09452c4519dbf9',
             urlList: [articleUrl, 'https://alqaryangroup.com/news/']
           })
         });
@@ -234,9 +247,12 @@ export function registerPricesRoutes(app, db) {
 
       res.json({
         ok: true,
-        message: 'Price report successfully published to Website and Facebook Page!',
+        message: (fbResult && fbResult.id)
+          ? 'Price report published to the website and the Facebook Page.'
+          : 'Price report published to the website.' + (fbNote ? ' ' + fbNote : ''),
         wpUrl: articleUrl,
-        fbPostId: fbResult?.id || null
+        fbPostId: fbResult?.id || null,
+        fbNote
       });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
