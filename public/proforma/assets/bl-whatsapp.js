@@ -45,6 +45,10 @@
     inboxTimer: null,
     chat: null,
     chatBusy: false,
+    chatFiles: null,
+    analysis: null,
+    analysisBusy: false,
+    analysisFor: '',
     xray: null,
     xrayBusy: false,
     xrayFor: '',
@@ -457,14 +461,15 @@
           '<div>' +
             '<div style="font-size:15px;font-weight:800;color:#fff">5. Chat &amp; files of this group</div>' +
             '<div style="font-size:12.5px;color:#94a3b8;margin-top:3px">' +
-              'Read what the group has been saying and open the files the AI has already saved. ' +
+              'The conversation loads and is explained automatically the moment you pick a group: who is in it, ' +
+              'what each member wants, what is still open. Saved files are listed above the messages. ' +
               'WhatsApp only lets a file be downloaded while it is fresh, so files are copied the moment ' +
               'they arrive \u2014 anything from before saving was switched on has to be forwarded once.' +
             '</div>' +
           '</div>' +
           '<button type="button" id="blwa-load-chat" style="' + buttonStyle('secondary', !selected) + '"' +
             (selected ? '' : ' disabled title="Select a group first"') + '>' +
-            (state.chatBusy ? '\u23f3 Loading\u2026' : '\ud83d\udcac Load chat') +
+            (state.chatBusy ? '\u23f3 Loading\u2026' : '\u21bb Reload chat') +
           '</button>' +
         '</div>' +
         '<div id="blwa-chat" style="margin-top:14px"></div>' +
@@ -583,7 +588,7 @@
       return '<div style="padding:10px 12px;border-top:1px solid rgba(148,163,184,.14)">' +
         '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
           '<span>' + icon + '</span>' +
-          '<a href="' + esc((state.base || '') + f.url) + '" target="_blank" rel="noreferrer" ' +
+          '<a href="' + esc(mediaUrl(f.jid, f.id)) + '" target="_blank" rel="noreferrer" ' +
             'style="color:#7dd3fc;font-weight:700;text-decoration:none;font-size:12.5px;overflow:hidden;' +
             'text-overflow:ellipsis;white-space:nowrap;max-width:52ch" title="' + esc(f.file_name) + '">' +
             esc(f.file_name) + ' \u2197</a>' +
@@ -942,13 +947,99 @@
       if (data.ok === false) toast(data.error || 'Could not read this chat', 'error');
       state.chat = Array.isArray(data.messages) ? data.messages : [];
       state.chatArchived = Number(data.archived_files) || 0;
+
+      // Files the AI saved for this group, shown even when the message itself is no longer inside
+      // the chat window (a BL posted an hour ago is often already out of the last 200).
+      try {
+        const m = await apiFetch('/wa/media/list?limit=100&jid=' + encodeURIComponent(state.groupJid));
+        state.chatFiles = Array.isArray(m.items) ? m.items : [];
+      } catch (e) { state.chatFiles = []; }
     } catch (e) {
       toast('Could not read this chat: ' + e.message, 'error');
       state.chat = state.chat || [];
+      state.chatFiles = state.chatFiles || [];
     } finally {
       state.chatBusy = false;
       renderSection(wrap);
     }
+    // Explain the conversation straight away instead of waiting for another button.
+    if ((state.chat || []).length) analyseChat(wrap, false);
+  }
+
+  /** Who is in this group, what each one wants, and what is still open. */
+  async function analyseChat(wrap, force) {
+    if (!state.groupJid || state.analysisBusy) return;
+    if (!force && state.analysisFor === state.groupJid && state.analysis) return;
+    state.analysisBusy = true;
+    renderChat(wrap);
+    try {
+      const r = await apiFetch('/wa/chat/analyse', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: state.groupJid, limit: 200, force: !!force })
+      });
+      state.analysis = (r && r.ok !== false) ? (r.analysis || null) : { error: (r && r.error) || 'Analysis failed' };
+      state.analysisFor = state.groupJid;
+    } catch (e) {
+      state.analysis = { error: e.message };
+      state.analysisFor = state.groupJid;
+    } finally {
+      state.analysisBusy = false;
+      renderChat(wrap);
+    }
+  }
+
+  function analysisHtml() {
+    if (state.analysisBusy) {
+      return '<div style="padding:11px 13px;border-radius:10px;background:rgba(56,189,248,.08);' +
+        'border:1px dashed rgba(56,189,248,.4);font-size:12.5px;color:#7dd3fc;margin-bottom:12px">' +
+        '\ud83e\udde0 Reading the conversation \u2014 who is here and what each one wants\u2026</div>';
+    }
+    const a = state.analysis;
+    if (!a) return '';
+    if (a.error) {
+      return '<div style="padding:10px 12px;border-radius:10px;background:rgba(245,158,11,.1);' +
+        'border:1px solid rgba(245,158,11,.35);font-size:12px;color:#fbbf24;margin-bottom:12px">' +
+        'Could not analyse the chat: ' + esc(a.error) + '</div>';
+    }
+
+    const list = (items, colour) => (items || []).filter(Boolean).slice(0, 6)
+      .map(t => '<li style="color:' + colour + '">' + esc(t) + '</li>').join('');
+
+    const members = (a.members || []).filter(m => m && m.name).map(m => {
+      const wants = list(m.wants, '#cbd5e1');
+      const asks = list(m.asks, '#7dd3fc');
+      return '<div style="padding:8px 11px;border-top:1px solid rgba(148,163,184,.12)">' +
+        '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">' +
+          '<b style="font-size:12.5px;color:#e2e8f0">' + esc(m.name) + '</b>' +
+          (m.role ? '<span style="font-size:11px;color:#94a3b8">\u00b7 ' + esc(m.role) + '</span>' : '') +
+        '</div>' +
+        (wants || asks
+          ? '<ul style="margin:4px 0 0 16px;padding:0;font-size:11.5px">' + wants + asks + '</ul>'
+          : '') +
+        (m.notes ? '<div style="font-size:11px;color:#64748b;margin-top:2px">' + esc(m.notes) + '</div>' : '') +
+      '</div>';
+    }).join('');
+
+    const open = list(a.open_questions, '#fbbf24');
+    const actions = (a.action_items || []).filter(x => x && x.what).slice(0, 6)
+      .map(x => '<li style="color:#cbd5e1"><b>' + esc(x.who || 'You') + ':</b> ' + esc(x.what) + '</li>').join('');
+
+    return '<div style="border:1px solid rgba(168,85,247,.35);border-radius:12px;overflow:hidden;' +
+        'background:rgba(168,85,247,.05);margin-bottom:12px">' +
+      '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;background:rgba(168,85,247,.1)">' +
+        '<b style="font-size:12.5px;color:#fff">\ud83e\udde0 What this group is saying</b>' +
+        '<span style="font-size:10.5px;color:#c4b5fd">' + (a.cached ? 'saved analysis' : 'just analysed') + '</span>' +
+        '<button type="button" id="blwa-analyse-again" style="' + buttonStyle('ghost') + ';padding:3px 9px;font-size:11px;margin-left:auto">\u21bb Analyse again</button>' +
+      '</div>' +
+      '<div style="padding:10px 12px;font-size:12.5px;color:#e2e8f0;line-height:1.5">' + esc(a.summary || '') + '</div>' +
+      (members ? '<div>' + members + '</div>' : '') +
+      (open ? '<div style="padding:9px 12px;border-top:1px solid rgba(148,163,184,.12)">' +
+        '<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#fbbf24;margin-bottom:3px">Still open</div>' +
+        '<ul style="margin:0 0 0 16px;padding:0;font-size:11.5px">' + open + '</ul></div>' : '') +
+      (actions ? '<div style="padding:9px 12px;border-top:1px solid rgba(148,163,184,.12)">' +
+        '<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#6ee7b7;margin-bottom:3px">To do</div>' +
+        '<ul style="margin:0 0 0 16px;padding:0;font-size:11.5px">' + actions + '</ul></div>' : '') +
+    '</div>';
   }
 
   async function saveMediaToDrive(wrap, jid, id) {
@@ -981,10 +1072,32 @@
       return;
     }
     if (!state.chat.length) {
-      host.innerHTML = '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
+      host.innerHTML = analysisHtml() +
+        '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
         'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">No messages in memory for this group right now.</div>';
+      wireChatButtons(wrap);
       return;
     }
+
+    const files = Array.isArray(state.chatFiles) ? state.chatFiles : [];
+    const filesHtml = files.length
+      ? '<div style="margin-bottom:12px">' +
+          '<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#7dd3fc;font-weight:800;margin-bottom:5px">' +
+            'Saved files for this group (' + files.length + ')</div>' +
+          '<div style="border:1px solid rgba(56,189,248,.28);border-radius:10px;overflow:hidden;background:rgba(56,189,248,.04)">' +
+            files.map(f =>
+              '<div style="display:flex;align-items:center;gap:9px;padding:6px 11px;border-top:1px solid rgba(148,163,184,.1);flex-wrap:wrap">' +
+                '<span>' + (/^image\//i.test(f.mimetype || '') ? '\ud83d\uddbc\ufe0f' : '\ud83d\udcc4') + '</span>' +
+                '<a href="' + esc(mediaUrl(f.jid, f.id)) + '" target="_blank" rel="noreferrer" ' +
+                  'style="color:#7dd3fc;font-weight:700;text-decoration:none;font-size:12px;overflow:hidden;' +
+                  'text-overflow:ellipsis;white-space:nowrap;max-width:46ch" title="' + esc(f.file_name) + '">' +
+                  esc(f.file_name) + ' \u2197</a>' +
+                '<span style="font-size:11px;color:#64748b">' + esc(fmtBytes(f.size)) + '</span>' +
+                '<span style="margin-left:auto;font-size:11px;color:#64748b">' + esc(f.ts ? new Date(f.ts).toLocaleDateString() : '') + '</span>' +
+              '</div>').join('') +
+          '</div>' +
+        '</div>'
+      : '';
 
     const rows = state.chat.slice().reverse().map((m) => {
       const time = m.ts ? new Date(m.ts).toLocaleString() : '';
@@ -1015,12 +1128,20 @@
       state.chat.length + ' message(s) \u00b7 ' + (state.chatArchived || 0) + ' file(s) saved by the AI' +
       '</div>';
 
-    host.innerHTML = head +
+    host.innerHTML = analysisHtml() + filesHtml + head +
       '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden;max-height:420px;overflow-y:auto">' + rows + '</div>';
 
+    wireChatButtons(wrap);
+  }
+
+  function wireChatButtons(wrap) {
+    const host = wrap.querySelector('#blwa-chat');
+    if (!host) return;
     host.querySelectorAll('[data-blwa-drive]').forEach((b) => {
       b.addEventListener('click', guard(() => saveMediaToDrive(wrap, state.groupJid, b.dataset.blwaDrive)));
     });
+    const again = host.querySelector('#blwa-analyse-again');
+    if (again) again.addEventListener('click', guard(() => analyseChat(wrap, true)));
   }
 
   function renderBls(wrap) {
@@ -1215,12 +1336,20 @@
     state.bls = [];
     state.blsLoaded = false;
     state.assignment = null;
+    // A different group means different messages: never show the previous group's chat.
+    state.chat = null;
+    state.chatFiles = null;
+    state.analysis = null;
+    state.analysisFor = '';
     try {
       localStorage.setItem(GROUP_KEY + '::' + stationKey(), JSON.stringify({ jid: state.groupJid, name: state.groupName }));
     } catch (e) { /* private mode */ }
     renderSection(wrap);
     toast('Group selected: ' + (name || jid));
     loadAssignment(wrap);
+    // Load and explain the conversation immediately — no extra button press.
+    loadChat(wrap);
+    loadInbox(wrap, { quiet: true });
   }
 
   function restoreSelection() {
@@ -1239,11 +1368,18 @@
     renderSection(wrap);
     try {
       const data = await apiFetch('/wa/bls?jid=' + encodeURIComponent(state.groupJid) + '&limit=300');
-      state.bls = Array.isArray(data.bls) ? data.bls : [];
+      const fromChat = Array.isArray(data.bls) ? data.bls : [];
       state.scanned = data.scanned || 0;
+
+      // The chat window only holds recent messages, so a BL posted an hour ago can be missing from
+      // it even though the AI saved the file. Saved files are a first-class source, not a fallback.
+      const saved = await savedBlRows(state.groupJid);
+      state.bls = mergeBlRows(fromChat, saved);
       state.blsLoaded = true;
-      if (data.hint) toast(data.hint, 'error');
-      else toast(state.bls.length + ' BL reference(s) found in this group');
+
+      if (state.bls.length) toast(state.bls.length + ' BL reference(s) found in this group');
+      else if (data.hint) toast(data.hint, 'error');
+      else toast('No BL reference found in this group yet.', 'error');
     } catch (e) {
       state.bls = [];
       state.blsLoaded = true;
@@ -1252,6 +1388,61 @@
       state.busy = false;
       renderSection(wrap);
     }
+  }
+
+  /** BL rows derived from the files the AI has already saved for this group. */
+  async function savedBlRows(jid) {
+    try {
+      const data = await apiFetch('/wa/media/list?limit=200&jid=' + encodeURIComponent(jid));
+      const rows = [];
+      for (const f of (data.items || [])) {
+        const tokens = String(f.file_name || '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+        const refs = tokens.filter(t => /^[A-Z]{2,5}\d{6,}$/.test(t));
+        for (const ref of refs) {
+          rows.push({
+            bl_number: ref,
+            group_jid: f.jid,
+            group_name: f.group_name || '',
+            vessel_name: '',
+            seal_number: '',
+            container_numbers: [],
+            document_names: [f.file_name],
+            sender: '',
+            date: f.ts ? new Date(f.ts).toISOString().slice(0, 10) : '',
+            snippet: 'Saved file: ' + f.file_name,
+            message_id: f.id,
+            message_ts: f.ts || 0,
+            found_in: ['saved file'],
+            open_url: mediaUrl(f.jid, f.id)
+          });
+        }
+      }
+      return rows;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Merge BL rows from the chat and from saved files, keeping one row per BL number. */
+  function mergeBlRows(chatRows, savedRows) {
+    const byRef = new Map();
+    const add = (row) => {
+      const key = String(row.bl_number || '').toUpperCase();
+      if (!key) return;
+      const prev = byRef.get(key);
+      if (!prev) { byRef.set(key, Object.assign({}, row)); return; }
+      const next = Object.assign({}, prev, row);
+      next.document_names = Array.from(new Set([...(prev.document_names || []), ...(row.document_names || [])]));
+      next.container_numbers = Array.from(new Set([...(prev.container_numbers || []), ...(row.container_numbers || [])]));
+      next.found_in = Array.from(new Set([...(prev.found_in || []), ...(row.found_in || [])]));
+      next.vessel_name = prev.vessel_name || row.vessel_name || '';
+      next.message_ts = Math.max(prev.message_ts || 0, row.message_ts || 0);
+      next.open_url = row.open_url || prev.open_url || '';
+      byRef.set(key, next);
+    };
+    (chatRows || []).forEach(add);
+    (savedRows || []).forEach(add);
+    return Array.from(byRef.values()).sort((a, b) => (b.message_ts || 0) - (a.message_ts || 0));
   }
 
   // ── step 3: agents ───────────────────────────────────────────────────────

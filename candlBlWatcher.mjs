@@ -29,12 +29,16 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import express from 'express';
 import { createRequire } from 'module';
 import { extractBlFields } from './candlBl.mjs';
 import { listAssignments } from './candlWhatsApp.mjs';
 import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage, downloadWaWebMediaRaw, addWaMediaListener, addWaMessageListener } from './waWebClient.js';
 import { extractTextFromBuffer, extractTextFromFile, pdfToText } from './blText.mjs';
+import { resolveDeepSeek } from './aiProviders.mjs';
+import { recordAiCall } from './aiTracker.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 
 const require = createRequire(import.meta.url);
 const gdrive = require('./candlGdrive.cjs');
@@ -43,6 +47,7 @@ const PREFIX = '/candl/api/wa';
 const DATA_DIR = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data');
 const REF_FILE = path.join(DATA_DIR, 'candl-wa-reference.json');
 const INBOX_FILE = path.join(DATA_DIR, 'candl-wa-bl-inbox.json');
+const ANALYSIS_FILE = path.join(DATA_DIR, 'candl-wa-chat-analysis.json');
 // A group is read the moment something arrives in it (see queueScanForGroup). This sweep is only a
 // backstop for what an event cannot cover: messages that arrived while the server was down and
 // were replayed by history sync, which raises no live event.
@@ -888,7 +893,7 @@ export function registerCandlBlInboxRoutes(app, opts = {}) {
     res.json({ ok: true, results: out });
   });
 
-  // ── the group's chat, readable from the station ──────────────────────────
+  // ── read the group's chat and explain it ───────────────────────────────
   app.get(PREFIX + '/chat', guard, async (req, res) => {
     const jid = sstr(req.query.jid, 120).trim();
     if (!jid) return res.status(400).json({ ok: false, error: 'Which group? Pass ?jid=' });
@@ -924,6 +929,131 @@ export function registerCandlBlInboxRoutes(app, opts = {}) {
       archived_files: rows.filter(r => r.archived).length,
       messages: rows
     });
+  });
+
+  // ── explain the group: who wants what, and what is meant ───────────────
+  // One call per changed conversation: the answer is cached against a hash of the messages, so
+  // opening the section again, or pressing Analyse again, costs nothing.
+  app.post(PREFIX + '/chat/analyse', guard, express.json({ limit: '256kb' }), async (req, res) => {
+    const body = req.body || {};
+    const jid = sstr(body.jid || req.query.jid, 120).trim();
+    const limit = Math.max(10, Math.min(Number(body.limit) || 200, 500));
+    const force = !!body.force;
+    if (!jid) return res.status(400).json({ ok: false, error: 'Which group? Pass { jid }' });
+
+    let messages = [];
+    try { messages = await readChatMessagesForOwner(jid, limit); }
+    catch (e) { return res.status(500).json({ ok: false, error: sstr(e.message || e, 150) }); }
+
+    if (!messages.length) {
+      return res.json({ ok: true, empty: true, messages: 0, analysis: null, hint: 'No messages in memory for this group yet.' });
+    }
+
+    const transcript = messages.map((m) => {
+      const who = m.fromMe ? 'You (owner)' : (m.senderName || 'Member');
+      const when = m.timestamp ? new Date(m.timestamp).toISOString().slice(0, 16).replace('T', ' ') : '';
+      const media = m.mediaType
+        ? ' [' + m.mediaType + (m.mediaInfo && m.mediaInfo.fileName ? ': ' + m.mediaInfo.fileName : '') + ']'
+        : '';
+      return when + ' | ' + who + ': ' + String(m.text || '').slice(0, 300) + media;
+    }).join('\n').slice(0, MAX_TEXT_CHARS);
+
+    const hash = crypto.createHash('sha1').update(transcript).digest('hex');
+    const store = readJson(ANALYSIS_FILE, {});
+    const cached = store[jid];
+    if (!force && cached && cached.hash === hash && cached.analysis) {
+      return res.json({ ok: true, cached: true, messages: messages.length, analysis: cached.analysis, at: cached.at || 0 });
+    }
+
+    const settings = await blSettings();
+    const ds = resolveDeepSeek(settings);
+    if (!ds.key) return res.status(503).json({ ok: false, error: 'No AI key is configured for the server.' });
+
+    const prompt = `You are reading a business WhatsApp group for the owner of a shipping/trading company. Explain it plainly.
+
+Return ONLY a JSON object (no markdown, no code fences) with EXACTLY these keys:
+{
+  "summary": "2-4 sentences: what this group is about and what is happening in it right now",
+  "members": [ { "name": "exactly as shown in the transcript", "role": "shipper / consignee / agent / broker / colleague / unknown", "wants": ["what this person wants, in their own terms"], "asks": ["direct requests or questions they made"], "notes": "anything important about them" } ],
+  "decisions": ["things already agreed or confirmed"],
+  "open_questions": ["questions still unanswered in the chat"],
+  "action_items": [ { "who": "name or 'You'", "what": "the action" } ]
+}
+
+RULES
+- Only use what the transcript supports. Use "" or [] when unsure. Never invent a person or a fact.
+- "You (owner)" is the reader of this report; do not list them as a customer.
+- Judge intent from the actual wording, including short replies and document names.
+- If a document (PDF/image) was sent, say who sent it and what it appears to be.
+
+TRANSCRIPT:
+---
+${transcript}
+---`;
+
+    const started = Date.now();
+    let content = '';
+    try {
+      const aiBody = {
+        model: ds.model,
+        messages: [
+          { role: 'system', content: 'You summarise WhatsApp business chats into JSON. Never invent facts.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 1600
+      };
+      if (/dashscope/i.test(ds.base)) aiBody.enable_thinking = false;
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      let resp;
+      let raw = '';
+      try {
+        resp = await fetch(ds.base.replace(/\/+$/, '') + '/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ds.key },
+          body: JSON.stringify(aiBody),
+          signal: ctrl.signal
+        });
+        raw = await resp.text();
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!resp.ok) throw new Error('AI ' + resp.status + ': ' + raw.slice(0, 160));
+
+      let data = {};
+      try { data = JSON.parse(raw); } catch (e) { data = {}; }
+      content = data?.choices?.[0]?.message?.content || '';
+      recordAiCall({
+        provider: 'deepseek',
+        model: ds.model,
+        area: 'Container Group Chat Analysis',
+        isAutoFetch: false,
+        prompt: transcript.slice(0, 2000),
+        response: content.slice(0, 2000),
+        tokensIn: data?.usage?.prompt_tokens || 0,
+        tokensOut: data?.usage?.completion_tokens || 0,
+        cachedTokens: cachedTokensFrom(data),
+        durationMs: Date.now() - started
+      });
+    } catch (e) {
+      return res.status(502).json({ ok: false, error: sstr(e.message || e, 180) });
+    }
+
+    let analysis = null;
+    const start = content.indexOf('{');
+    const end = content.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+      try { analysis = JSON.parse(content.slice(start, end + 1)); } catch (e) { analysis = null; }
+    }
+    if (!analysis) return res.status(502).json({ ok: false, error: 'The model returned no usable JSON.' });
+
+    store[jid] = { hash: hash, at: Date.now(), messages: messages.length, analysis: analysis };
+    writeJson(ANALYSIS_FILE, store);
+
+    res.json({ ok: true, cached: false, messages: messages.length, analysis: analysis, at: store[jid].at });
   });
 
   // List what the AI has actually downloaded and kept on this server.
