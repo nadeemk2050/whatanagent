@@ -49,6 +49,8 @@
     xrayBusy: false,
     xrayFor: '',
     xrayRules: null,
+    mediaList: null,
+    mediaBusy: false,
     busy: false
   };
 
@@ -260,6 +262,7 @@
     loadStatus(wrap);
     syncReference();
     loadInbox(wrap);
+    loadMedia(wrap);
     if (state.inboxTimer) clearInterval(state.inboxTimer);
     state.inboxTimer = setInterval(guard(() => loadInbox(wrap, { quiet: true })), 25000);
   }
@@ -467,6 +470,23 @@
         '<div id="blwa-chat" style="margin-top:14px"></div>' +
       '</div>' +
 
+      // ── STEP 6: DRAFTS MEDIA ───────────────────────────────────────────────
+      '<div style="' + cardStyle() + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:15px;font-weight:800;color:#fff">\ud83d\udcc1 DRAFTS MEDIA</div>' +
+            '<div style="font-size:12.5px;color:#94a3b8;margin-top:3px">' +
+              'Every document and photo the AI downloaded from the assigned group(s) and saved on your Tencent server. ' +
+              'Files are kept here so a BL can still be read and checked long after WhatsApp has stopped serving it.' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" id="blwa-media-load" style="' + buttonStyle('primary') + '">' +
+            (state.mediaBusy ? '\u23f3 Loading\u2026' : '\ud83d\udcc2 Load files') +
+          '</button>' +
+        '</div>' +
+        '<div id="blwa-media" style="margin-top:14px"></div>' +
+      '</div>' +
+
       '<div style="font-size:11.5px;color:#64748b;padding:0 2px 8px">' +
         'BL rows can be pushed into the station form (fields are filled for you to verify) or parked in ' +
         '<b style="color:#94a3b8">BL Drafts</b>. Drafts written from here appear in the station list after the app is reloaded.' +
@@ -491,11 +511,102 @@
     const chatBtn = wrap.querySelector('#blwa-load-chat');
     if (chatBtn && selected) chatBtn.addEventListener('click', guard(() => loadChat(wrap)));
 
+    // wire step 6
+    const mediaBtn = wrap.querySelector('#blwa-media-load');
+    if (mediaBtn) mediaBtn.addEventListener('click', guard(() => loadMedia(wrap)));
+
     renderBls(wrap);
     renderAgents(wrap);
     renderInbox(wrap);
     renderXray(wrap);
     renderChat(wrap);
+    renderMedia(wrap);
+  }
+
+  // ── step 6: DRAFTS MEDIA (what is saved on the server) ──────────────────
+  function fmtBytes(n) {
+    const v = Number(n) || 0;
+    if (v < 1024) return v + ' B';
+    if (v < 1048576) return (v / 1024).toFixed(0) + ' KB';
+    return (v / 1048576).toFixed(1) + ' MB';
+  }
+
+  async function loadMedia(wrap) {
+    if (state.mediaBusy) return;
+    state.mediaBusy = true;
+    renderSection(wrap);
+    try {
+      const r = await apiFetch('/wa/media/list?limit=200');
+      state.mediaList = r;
+    } catch (e) {
+      toast('Could not read the saved media: ' + e.message, 'error');
+      state.mediaList = state.mediaList || { ok: false, items: [] };
+    } finally {
+      state.mediaBusy = false;
+      renderSection(wrap);
+    }
+  }
+
+  function renderMedia(wrap) {
+    const host = wrap.querySelector('#blwa-media');
+    if (!host) return;
+
+    if (state.mediaList === null || state.mediaList === undefined) {
+      host.innerHTML = '<div style="font-size:12.5px;color:#94a3b8">Press \u201cLoad files\u201d to see what the AI has saved on this server.</div>';
+      return;
+    }
+
+    const data = state.mediaList;
+    if (data.ok === false) {
+      host.innerHTML = '<div style="font-size:12.5px;color:#fca5a5">' + esc(data.error || 'Could not read the saved media.') + '</div>';
+      return;
+    }
+
+    const folderLine = '<div style="font-size:11.5px;color:#64748b;margin-bottom:9px">' +
+      'Folder on the server: <b style="color:#94a3b8">' + esc(data.folder || 'data/wa-media') + '</b>' +
+      ' \u00b7 ' + (data.total || 0) + ' file(s) \u00b7 ' + fmtBytes(data.bytes) + '</div>';
+
+    if (!data.items || !data.items.length) {
+      host.innerHTML = folderLine +
+        '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
+        'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">' +
+        'Nothing saved yet. Files are copied the moment they are posted in an assigned group \u2014 ' +
+        'anything posted before saving was switched on cannot be recovered from WhatsApp and has to be forwarded once.' +
+        '</div>';
+      return;
+    }
+
+    const rows = data.items.map((f) => {
+      const isImg = /^image\//i.test(f.mimetype || '');
+      const icon = isImg ? '\ud83d\uddbc\ufe0f' : (/pdf/i.test(f.mimetype || '') || /\.pdf$/i.test(f.file_name || '') ? '\ud83d\udcc4' : '\ud83d\udcce');
+      const day = f.ts ? new Date(f.ts).toLocaleString() : '';
+      return '<div style="padding:10px 12px;border-top:1px solid rgba(148,163,184,.14)">' +
+        '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+          '<span>' + icon + '</span>' +
+          '<a href="' + esc((state.base || '') + f.url) + '" target="_blank" rel="noreferrer" ' +
+            'style="color:#7dd3fc;font-weight:700;text-decoration:none;font-size:12.5px;overflow:hidden;' +
+            'text-overflow:ellipsis;white-space:nowrap;max-width:52ch" title="' + esc(f.file_name) + '">' +
+            esc(f.file_name) + ' \u2197</a>' +
+          '<span style="font-size:11px;color:#64748b">' + esc(fmtBytes(f.size)) + '</span>' +
+          '<span style="margin-left:auto;font-size:11px;color:#64748b">' + esc(day) + '</span>' +
+        '</div>' +
+        '<div style="margin-top:5px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:11.5px;color:#94a3b8">' +
+          (f.group_name ? '<span>\ud83d\udc65 ' + esc(f.group_name) + '</span>' : '') +
+          '<button type="button" data-blwa-media-drive="' + esc(f.jid) + '|' + esc(f.id) + '" ' +
+            'style="' + buttonStyle('ghost') + ';padding:3px 9px;font-size:11px">Save to Drive</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    host.innerHTML = folderLine +
+      '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden;max-height:460px;overflow-y:auto">' + rows + '</div>';
+
+    host.querySelectorAll('[data-blwa-media-drive]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        const parts = String(b.dataset.blwaMediaDrive || '').split('|');
+        if (parts.length === 2) saveMediaToDrive(wrap, parts[0], parts[1]);
+      }));
+    });
   }
 
   // ── step 4: automatic checks ─────────────────────────────────────────────

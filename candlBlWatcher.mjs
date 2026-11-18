@@ -683,6 +683,57 @@ export function registerCandlBlInboxRoutes(app) {
     });
   });
 
+  // List what the AI has actually downloaded and kept on this server.
+  app.get(PREFIX + '/media/list', guard, (req, res) => {
+    const jid = sstr(req.query.jid, 120).trim();
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
+    const idx = readMediaIndex();
+    idx.items = idx.items || {};
+
+    // Trust the disk, not the index: a file can disappear (manual delete, lost volume), and a
+    // stale entry would then inflate the reported size forever. A global listing also drops the
+    // dead entries so the index heals itself.
+    const all = [];
+    let dropped = 0;
+    for (const key of Object.keys(idx.items)) {
+      const r = idx.items[key];
+      if (!r || !r.file) { delete idx.items[key]; dropped++; continue; }
+      let st = null;
+      try { st = fs.statSync(path.join(MEDIA_DIR, r.file)); } catch (e) { st = null; }
+      if (!st || !st.size) {
+        if (!jid) { idx.totalBytes = Math.max(0, (Number(idx.totalBytes) || 0) - (Number(r.size) || 0)); delete idx.items[key]; dropped++; }
+        continue;
+      }
+      if (jid && r.jid !== jid) continue;
+      all.push({ r: r, size: st.size });
+    }
+    if (dropped) writeJson(MEDIA_INDEX_FILE, idx);
+
+    all.sort((a, b) => (b.r.ts || 0) - (a.r.ts || 0));
+    const totalBytes = all.reduce((n, x) => n + x.size, 0);
+
+    const items = all.slice(0, limit).map(({ r, size }) => ({
+      id: r.id,
+      jid: r.jid,
+      group_name: r.group_name || '',
+      file_name: r.fileName || path.basename(r.file),
+      mimetype: r.mimetype || '',
+      size: size,
+      ts: r.ts || 0,
+      at: r.at || 0,
+      url: PREFIX + '/media?jid=' + encodeURIComponent(r.jid) + '&id=' + encodeURIComponent(r.id)
+    }));
+
+    res.json({
+      ok: true,
+      folder: MEDIA_DIR,
+      total: all.length,
+      bytes: totalBytes,
+      shown: items.length,
+      items: items
+    });
+  });
+
   // Serve an archived file back to the station (or straight to the browser).
   app.get(PREFIX + '/media', guard, (req, res) => {
     const jid = sstr(req.query.jid, 120).trim();
