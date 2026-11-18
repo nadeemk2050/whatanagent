@@ -62,6 +62,25 @@
     return uid + '::' + dbKey;
   }
 
+  function fail(e) {
+    const msg = (e && e.message) || String(e);
+    console.warn('[BL-WA]', e);
+    toast(msg, 'error');
+  }
+
+  /** Wrap a handler so a bug in this module can never hit the app's global error screen. */
+  function guard(fn) {
+    return function () {
+      try {
+        const r = fn.apply(this, arguments);
+        if (r && typeof r.catch === 'function') r.catch(fail);
+        return r;
+      } catch (e) {
+        fail(e);
+      }
+    };
+  }
+
   function toast(text, kind) {
     let t = document.getElementById('blwa-toast');
     if (!t) {
@@ -174,16 +193,16 @@
       'margin:0 0 14px 0;padding-bottom:2px;border-bottom:1px solid rgba(148,163,184,.22)';
     bar.appendChild(tabButtons('station'));
 
-    bar.querySelector('[data-blwa-tab="whatsapp"]').addEventListener('click', (e) => {
+    bar.querySelector('[data-blwa-tab="whatsapp"]').addEventListener('click', guard((e) => {
       e.preventDefault();
       e.stopPropagation();
       openWhatsApp();
-    });
-    bar.querySelector('[data-blwa-tab="station"]').addEventListener('click', (e) => {
+    }));
+    bar.querySelector('[data-blwa-tab="station"]').addEventListener('click', guard((e) => {
       e.preventDefault();
       e.stopPropagation();
       closeWhatsApp();
-    });
+    }));
 
     card.insertBefore(bar, card.firstChild);
   }
@@ -208,13 +227,13 @@
       'padding:12px 18px 0;background:rgba(15,23,42,.96);border-bottom:1px solid rgba(148,163,184,.2)';
     header.appendChild(tabButtons('whatsapp'));
     const backTab = header.querySelector('[data-blwa-tab="station"]');
-    if (backTab) backTab.addEventListener('click', (e) => { e.preventDefault(); closeWhatsApp(); });
+    if (backTab) backTab.addEventListener('click', guard((e) => { e.preventDefault(); closeWhatsApp(); }));
     const close = document.createElement('button');
     close.type = 'button';
     close.textContent = '✕ Close';
     close.style.cssText = 'margin-left:auto;margin-bottom:8px;padding:7px 12px;border-radius:8px;cursor:pointer;' +
       'background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.4);color:#fca5a5;font:700 12px system-ui';
-    close.addEventListener('click', (e) => { e.preventDefault(); closeWhatsApp(); });
+    close.addEventListener('click', guard((e) => { e.preventDefault(); closeWhatsApp(); }));
     header.appendChild(close);
     ov.appendChild(header);
 
@@ -228,6 +247,39 @@
 
     document.body.appendChild(ov);
     renderSection(wrap);
+    loadStatus(wrap);
+  }
+
+  /** The connection chip starts as "unknown" — always ask the server before showing a verdict. */
+  function statusChipHtml() {
+    if (!state.status) {
+      return '<span id="blwa-status-chip" style="font-size:11px;font-weight:800;letter-spacing:.06em;padding:4px 10px;' +
+        'border-radius:20px;background:rgba(148,163,184,.14);border:1px solid rgba(148,163,184,.35);color:#94a3b8">' +
+        'CHECKING WHATSAPP WEB…</span>';
+    }
+    const ok = state.connected;
+    return '<span id="blwa-status-chip" style="font-size:11px;font-weight:800;letter-spacing:.06em;padding:4px 10px;' +
+      'border-radius:20px;background:' + (ok ? 'rgba(16,185,129,.16)' : 'rgba(245,158,11,.16)') + ';' +
+      'border:1px solid ' + (ok ? 'rgba(16,185,129,.5)' : 'rgba(245,158,11,.5)') + ';' +
+      'color:' + (ok ? '#34d399' : '#fbbf24') + '">' +
+      (ok
+        ? 'WHATSAPP WEB CONNECTED' + (state.phone ? ' · ' + esc(state.phone) : '')
+        : 'WHATSAPP WEB ' + esc(String(state.status || 'not connected').toUpperCase())) +
+    '</span>';
+  }
+
+  async function loadStatus(wrap) {
+    try {
+      const s = await apiFetch('/wa/status');
+      state.connected = !!s.connected;
+      state.status = s.status || 'disconnected';
+      state.phone = s.phone || '';
+    } catch (e) {
+      state.connected = false;
+      state.status = 'unreachable';
+    }
+    const chip = wrap.querySelector('#blwa-status-chip');
+    if (chip) chip.outerHTML = statusChipHtml();
   }
 
   function cardStyle() {
@@ -249,19 +301,13 @@
   }
 
   function renderSection(wrap) {
-    const connected = state.connected;
     const selected = state.groupJid;
 
     wrap.innerHTML = '' +
       '<div style="padding:2px 2px 0">' +
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
           '<div style="font-size:22px;font-weight:800;color:#fff">💬 Interaction with WhatsApp</div>' +
-          '<span style="font-size:11px;font-weight:800;letter-spacing:.06em;padding:4px 10px;border-radius:20px;' +
-            'background:' + (connected ? 'rgba(16,185,129,.16)' : 'rgba(245,158,11,.16)') + ';' +
-            'border:1px solid ' + (connected ? 'rgba(16,185,129,.5)' : 'rgba(245,158,11,.5)') + ';' +
-            'color:' + (connected ? '#34d399' : '#fbbf24') + '">' +
-            (connected ? 'WHATSAPP WEB CONNECTED' : 'WHATSAPP WEB ' + esc((state.status || 'NOT CONNECTED').toUpperCase())) +
-          '</span>' +
+          statusChipHtml() +
         '</div>' +
         '<div style="font-size:13px;color:#94a3b8;margin-top:6px">' +
           'Work the BL Checking Station straight from the shipping group: pick the group, pull the BLs posted in it, ' +
@@ -330,11 +376,11 @@
 
     // wire step 1
     const pickBtn = wrap.querySelector('#blwa-pick-group');
-    if (pickBtn) pickBtn.addEventListener('click', () => openGroupPicker(wrap));
+    if (pickBtn) pickBtn.addEventListener('click', guard(() => openGroupPicker(wrap)));
 
     // wire step 2
     const fetchBtn = wrap.querySelector('#blwa-fetch-bls');
-    if (fetchBtn && selected) fetchBtn.addEventListener('click', () => fetchBls(wrap));
+    if (fetchBtn && selected) fetchBtn.addEventListener('click', guard(() => fetchBls(wrap)));
 
     renderBls(wrap);
     renderAgents(wrap);
@@ -386,10 +432,10 @@
       '</div>';
 
     host.querySelectorAll('[data-blwa-fill]').forEach((b) => {
-      b.addEventListener('click', () => fillBlForm(state.bls[Number(b.dataset.blwaFill)]));
+      b.addEventListener('click', guard(() => fillBlForm(state.bls[Number(b.dataset.blwaFill)])));
     });
     host.querySelectorAll('[data-blwa-draft]').forEach((b) => {
-      b.addEventListener('click', () => saveDraft(state.bls[Number(b.dataset.blwaDraft)]));
+      b.addEventListener('click', guard(() => saveDraft(state.bls[Number(b.dataset.blwaDraft)])));
     });
   }
 
@@ -453,7 +499,7 @@
         : '');
 
     const assignBtn = host.querySelector('#blwa-assign');
-    if (assignBtn && state.groupJid) assignBtn.addEventListener('click', () => assignAgent(host));
+    if (assignBtn && state.groupJid) assignBtn.addEventListener('click', guard(() => assignAgent(host)));
   }
 
   // ── step 1: group picker ─────────────────────────────────────────────────
@@ -469,13 +515,13 @@
         state.status = data.status || state.status;
         if (data.hint) toast(data.hint, 'error');
       }
-      renderPicker(host);
+      renderPicker(host, wrap);
     } catch (e) {
       host.innerHTML = '<div style="font-size:12.5px;color:#fca5a5">Could not load groups: ' + esc(e.message) + '</div>';
     }
   }
 
-  function renderPicker(host) {
+  function renderPicker(host, wrap) {
     const groups = state.groups || [];
     host.innerHTML = '' +
       '<div style="border:1px solid rgba(148,163,184,.25);border-radius:11px;overflow:hidden">' +
@@ -509,9 +555,9 @@
       }).join('');
 
       list.querySelectorAll('[data-blwa-group]').forEach((b) => {
-        b.addEventListener('click', () => {
+        b.addEventListener('click', guard(() => {
           selectGroup(b.dataset.blwaGroup, b.dataset.blwaGname, wrap);
-        });
+        }));
       });
     };
 
@@ -519,10 +565,10 @@
     const search = host.querySelector('#blwa-group-search');
     if (search) search.addEventListener('input', () => paint(search.value));
     const reload = host.querySelector('#blwa-group-reload');
-    if (reload) reload.addEventListener('click', async () => {
+    if (reload) reload.addEventListener('click', guard(async () => {
       state.groups = null;
       await openGroupPicker(wrap);
-    });
+    }));
   }
 
   function selectGroup(jid, name, wrap) {
