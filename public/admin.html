@@ -668,6 +668,21 @@
             .ws-tab { flex: 1 1 calc(50% - 8px); justify-content: center; font-size: 12px; padding: 9px 10px; }
             .ws-card { padding: 14px; }
         }
+
+        /* ===================== 📋 WHATANAGENT APP PROCESSES ===================== */
+        .ap-item { display: flex; gap: 14px; justify-content: space-between; align-items: flex-start; padding: 13px 12px; border: 1px solid var(--ws-line); border-left: 4px solid #cbd5e1; border-radius: 12px; margin-bottom: 10px; background: #fff; flex-wrap: wrap; }
+        .ap-item:last-child { margin-bottom: 0; }
+        .ap-item.ap-pri-critical { border-left-color: #dc2626; }
+        .ap-item.ap-pri-high { border-left-color: #f97316; }
+        .ap-item.ap-pri-medium { border-left-color: #3b82f6; }
+        .ap-item.ap-pri-low { border-left-color: #94a3b8; }
+        .ap-item-main { flex: 1; min-width: 240px; }
+        .ap-item-title { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 13.5px; font-weight: 800; color: var(--ws-ink); }
+        .ap-item-detail { font-size: 12.5px; line-height: 1.6; color: #475569; margin-top: 6px; white-space: pre-wrap; }
+        .ap-item-meta { display: flex; gap: 11px; flex-wrap: wrap; font-size: 11px; color: var(--ws-muted); margin-top: 7px; }
+        .ap-item-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .ap-item-actions .ws-psel { font-size: 11.5px; padding: 5px 7px; }
+        .ap-sug.transferred, .ap-sug.cancelled { opacity: .72; }
     </style>
     
     <!-- Firebase SDKs -->
@@ -846,6 +861,10 @@
             <div class="menu-item" onclick="showSection('workshop')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(15, 118, 110, 0.08); border-left: 4px solid #0f766e; cursor:pointer;">
                 <span>🏗️ Websites Workshop</span>
                 <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#0f766e; color:#fff; font-weight:bold;">NEW</span>
+            </div>
+            <div class="menu-item" onclick="showSection('appproc')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(79, 70, 229, 0.08); border-left: 4px solid #4f46e5; cursor:pointer;">
+                <span>📋 WhatAnAgent App Processes</span>
+                <span id="apNavBadge" style="font-size:8px; padding:1px 7px; border-radius:12px; background:#4f46e5; color:#fff; font-weight:bold;">NEW</span>
             </div>
             <div class="menu-item" onclick="showSection('cloudflare')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(249, 115, 22, 0.10); border-left: 4px solid #f97316; cursor:pointer;">
                 <span>☁️ Cloud Flare Section</span>
@@ -4065,6 +4084,95 @@
                 </div>
             </div>
 
+            <!-- ============================================================
+                 📋 WHATANAGENT APP PROCESSES
+                 Tab 1  to-do tasks (status: todo / doing / blocked)
+                 Tab 2  completed tasks (reopen or remove)
+                 Tab 3  suggestions from the owner or AI (transfer to to-do)
+                 ============================================================ -->
+            <div id="appProcSection" class="app-section">
+                <div class="ws">
+                    <div class="ws-head">
+                        <div>
+                            <h2 class="ws-h2">📋 WhatAnAgent App Processes</h2>
+                            <p class="ws-sub">Every improvement to this app in one place. A suggestion from you or the AI staff becomes a confirmed to-do in one click; finished work moves to Completed with its history kept.</p>
+                        </div>
+                        <div id="apStats" class="ws-row" style="gap:8px; flex-wrap:wrap;"></div>
+                    </div>
+
+                    <div class="ws-tabs">
+                        <button class="ws-tab active" id="apTabBtn-todo" onclick="apTab('todo')">📋 To-Do Tasks <span class="ws-sec-n" id="apCountTodo">0</span></button>
+                        <button class="ws-tab" id="apTabBtn-done" onclick="apTab('done')">✅ Completed <span class="ws-sec-n" id="apCountDone">0</span></button>
+                        <button class="ws-tab" id="apTabBtn-suggest" onclick="apTab('suggest')">💡 Suggestions <span class="ws-sec-n" id="apCountSug">0</span></button>
+                    </div>
+
+                    <div class="ws-pane active" id="apPane-todo">
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                                <div>
+                                    <h3 class="ws-h3">📋 To-do tasks for the WhatAnAgent app</h3>
+                                    <p class="ws-hint" style="margin:5px 0 0 0;">Status is saved immediately. A task created from a suggestion keeps a link back to it.</p>
+                                </div>
+                                <div class="ws-row" style="gap:8px; flex-wrap:wrap;">
+                                    <button class="ws-btn dark" onclick="apAddTask()">➕ Add task</button>
+                                    <button class="ws-btn" onclick="apLoad(true)">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <div id="apTodoList" style="margin-top:12px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="ws-pane" id="apPane-done">
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                                <div>
+                                    <h3 class="ws-h3">✅ Completed tasks</h3>
+                                    <p class="ws-hint" style="margin:5px 0 0 0;">Reopen a task if it needs more work, or remove it when the record is no longer useful.</p>
+                                </div>
+                                <button class="ws-btn" onclick="apLoad(true)">↻ Refresh</button>
+                            </div>
+                            <div id="apDoneList" style="margin-top:12px;"></div>
+                        </div>
+                    </div>
+
+                    <div class="ws-pane" id="apPane-suggest">
+                        <div class="ws-card">
+                            <div class="ws-row" style="justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                                <div>
+                                    <h3 class="ws-h3">💡 New suggestions</h3>
+                                    <p class="ws-hint" style="margin:5px 0 0 0;">From the owner or the AI staff. Transfer to To-Do asks for confirmation first, then moves the item into the To-Do tab. Cancel keeps it out of the way; Remove deletes it.</p>
+                                </div>
+                                <div class="ws-row" style="gap:8px; flex-wrap:wrap;">
+                                    <button class="ws-btn dark" onclick="apAddSuggestion()">➕ Add suggestion</button>
+                                    <button class="ws-btn primary" onclick="apAskAI()">🤖 Ask AI for suggestions</button>
+                                    <button class="ws-btn" onclick="apLoad(true)">↻ Refresh</button>
+                                </div>
+                            </div>
+                            <div class="ws-row" style="gap:10px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+                                <label class="ws-hint" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                                    <input type="checkbox" id="apShowClosed" onchange="apToggleClosed(this.checked)"> Show transferred and cancelled
+                                </label>
+                                <span class="ws-hint" id="apSuggestMsg"></span>
+                            </div>
+                            <div id="apSuggestList" style="margin-top:8px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- shared modal for this section only -->
+                    <div class="ws-modal-back" id="apModalBack" onclick="apModalClose(event)">
+                        <div class="ws-modal" onclick="event.stopPropagation()">
+                            <h3 id="apModalTitle">Title</h3>
+                            <p class="ws-hint" id="apModalHint"></p>
+                            <div id="apModalBody"></div>
+                            <div class="ws-row" style="justify-content:flex-end; margin-top:16px;">
+                                <button class="ws-btn" onclick="apModalClose()">Cancel</button>
+                                <button class="ws-btn primary" id="apModalOk" onclick="apModalOk()">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- ☁️ CLOUD FLARE SECTION -->
             <div id="cloudflareSection" class="app-section"></div>
     </div>
@@ -4398,7 +4506,7 @@
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
             const sec = document.getElementById(id + 'Section');
             if (sec) sec.classList.add('active');
-            document.body.classList.toggle('ws-bleed', id === 'workshop');
+            document.body.classList.toggle('ws-bleed', id === 'workshop' || id === 'appproc');
             
             const container = document.querySelector('.container');
             if (container) {
@@ -4430,6 +4538,8 @@
                     if (typeof loadDashboardStats === 'function') loadDashboardStats();
                 } else if (id === 'workshop') {
                     if (typeof wshopLoad === 'function') wshopLoad();
+                } else if (id === 'appproc') {
+                    if (typeof apLoad === 'function') apLoad(false);
                 } else if (id === 'cloudflare') {
                     if (typeof loadCloudflareLab === 'function') loadCloudflareLab();
                 }
@@ -15420,6 +15530,574 @@
     });
 })();
 </script>
+
+<script>
+/* ===================== 📋 WHATANAGENT APP PROCESSES (client) ===================== */
+(function () {
+    'use strict';
+
+    var AP = { data: null, at: 0, tab: 'todo', showClosed: false, modalOk: null, modalBusy: false, agents: null };
+
+    function $(id) { return document.getElementById(id); }
+    function val(id) { var el = $(id); return el ? String(el.value || '').trim() : ''; }
+    function esc(v) {
+        return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function apWhen(ts) {
+        if (!ts) return '—';
+        var d = new Date(Number(ts));
+        if (isNaN(d.getTime())) return '—';
+        var mins = Math.round((Date.now() - d.getTime()) / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + ' min ago';
+        if (mins < 1440) return Math.round(mins / 60) + ' h ago';
+        return d.toLocaleDateString();
+    }
+    function toast(t) { try { if (typeof toastMsg === 'function') toastMsg(t); } catch (e) {} }
+
+    async function api(path, opts) {
+        opts = opts || {};
+        var url = '/api/appproc' + path;
+        var send = function () {
+            return fetch(url, {
+                method: opts.method || 'GET',
+                headers: Object.assign({ 'Content-Type': 'application/json', 'x-admin-token': adminToken() }, opts.headers || {}),
+                body: opts.body ? JSON.stringify(opts.body) : undefined
+            });
+        };
+        var res = await send();
+        if (res.status === 401 && typeof setAdminToken === 'function') {
+            var t = window.prompt('WhatAnAgent App Processes is protected.\n\nEnter your ADMIN TOKEN (the ADMIN_TOKEN value set in the hosting environment):');
+            if (t && t.trim()) { setAdminToken(t.trim()); res = await send(); }
+        }
+        var data = {};
+        try { data = await res.json(); } catch (e) { data = {}; }
+        if (res.status === 503) throw new Error(data.error || 'The admin token is not configured on the server (ADMIN_TOKEN).');
+        if (!res.ok || data.ok === false) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+        return data;
+    }
+
+    /* ---------------- small view helpers ---------------- */
+    var PRI_STYLE = {
+        critical: 'background:#fef2f2;color:#b91c1c;border-color:#fecaca;',
+        high: 'background:#fff7ed;color:#c2410c;border-color:#fed7aa;',
+        medium: 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;',
+        low: 'background:#f8fafc;color:#475569;border-color:#e2e8f0;'
+    };
+    var STATUS_CLASS = { todo: 'warn', doing: 'ok', blocked: 'bad', done: 'ok', new: 'warn', transferred: 'ok', cancelled: 'mut' };
+
+    function pill(text, cls) { return '<span class="ws-pill ' + (cls || 'mut') + '">' + esc(text) + '</span>'; }
+    function priPill(p) { p = p || 'medium'; return '<span class="ws-pill" style="' + (PRI_STYLE[p] || PRI_STYLE.medium) + '">' + esc(p) + '</span>'; }
+    function empty(big, title, sub) {
+        return '<div class="ws-empty"><div class="big">' + big + '</div><b>' + esc(title) + '</b><div style="margin-top:6px;">' + esc(sub) + '</div></div>';
+    }
+    function findTodo(id) { return ((AP.data && AP.data.todos) || []).filter(function (t) { return t.id === id; })[0] || null; }
+    function findSug(id) { return ((AP.data && AP.data.suggestions) || []).filter(function (s) { return s.id === id; })[0] || null; }
+    function options(list, selected) {
+        return (list || []).map(function (x) {
+            return '<option value="' + esc(x) + '"' + (x === selected ? ' selected' : '') + '>' + esc(x) + '</option>';
+        }).join('');
+    }
+    function cats(sel) { return options((AP.data && AP.data.categories) || ['Product'], sel); }
+    function pris(sel) { return options((AP.data && AP.data.priorities) || ['medium'], sel); }
+
+    /* ---------------- rendering ---------------- */
+    function renderStats() {
+        var b = $('apStats');
+        if (!b) return;
+        var s = (AP.data && AP.data.stats) || {};
+        function chip(label, n) { return '<span class="ws-chip">' + label + ' <b>' + (n || 0) + '</b></span>'; }
+        b.innerHTML = chip('To-do', s.todo) + chip('Doing', s.doing) + chip('Blocked', s.blocked) +
+            chip('Completed', s.completed) + chip('Cancelled', s.cancelled) + chip('Suggestions', s.suggestions);
+    }
+
+    function renderCounts() {
+        var s = (AP.data && AP.data.stats) || {};
+        if ($('apCountTodo')) $('apCountTodo').textContent = String(s.open || 0);
+        if ($('apCountDone')) $('apCountDone').textContent = String((s.completed || 0) + (s.cancelled || 0));
+        if ($('apCountSug')) $('apCountSug').textContent = String(s.suggestions || 0);
+        if ($('apNavBadge')) $('apNavBadge').textContent = (s.open || 0) + ' OPEN';
+    }
+
+    function renderTodo() {
+        var box = $('apTodoList');
+        if (!box) return;
+        var list = ((AP.data && AP.data.todos) || []).filter(function (t) { return t.status !== 'done' && t.status !== 'cancelled'; });
+        list.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+        if (!list.length) {
+            box.innerHTML = empty('📋', 'No open tasks', 'Add a task, or transfer a suggestion from the Suggestions tab.');
+            return;
+        }
+        box.innerHTML = list.map(function (t) {
+            var sel = options(['todo', 'doing', 'blocked'], t.status);
+            return '<div class="ap-item ap-pri-' + esc(t.priority || 'medium') + '">' +
+                '<div class="ap-item-main">' +
+                    '<div class="ap-item-title">' + esc(t.title) + pill(t.status, STATUS_CLASS[t.status]) + priPill(t.priority) +
+                        (t.sourceSuggestionId ? '<span class="ws-pill mut" title="Created from a suggestion">💡 from suggestion</span>' : '') +
+                    '</div>' +
+                    (t.detail ? '<div class="ap-item-detail">' + esc(t.detail) + '</div>' : '') +
+                    '<div class="ap-item-meta">' +
+                        '<span>' + esc(t.category || 'Product') + '</span>' +
+                        '<span>Created ' + apWhen(t.createdAt) + '</span>' +
+                        (t.by ? '<span>By ' + esc(t.by) + '</span>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div class="ap-item-actions">' +
+                    '<select class="ws-psel" onchange="apTaskStatus(\'' + esc(t.id) + '\', this.value)" title="Status">' + sel + '</select>' +
+                    '<button class="ws-btn sm" onclick="apEditTask(\'' + esc(t.id) + '\')">✏ Edit</button>' +
+                    '<button class="ws-btn sm primary" onclick="apTaskStatus(\'' + esc(t.id) + '\',\'done\')">✅ Done</button>' +
+                    '<button class="ws-btn sm" onclick="apCancelTask(\'' + esc(t.id) + '\')">🚫 Cancel</button>' +
+                    '<button class="ws-btn sm bad" onclick="apRemoveTask(\'' + esc(t.id) + '\')" title="Remove task">🗑</button>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function renderDone() {
+        var box = $('apDoneList');
+        if (!box) return;
+        var list = ((AP.data && AP.data.todos) || []).filter(function (t) { return t.status === 'done' || t.status === 'cancelled'; });
+        list.sort(function (a, b) { return (b.completedAt || b.updatedAt || 0) - (a.completedAt || a.updatedAt || 0); });
+        if (!list.length) {
+            box.innerHTML = empty('✅', 'Nothing completed or cancelled yet', 'Mark a task Done or Cancel from the To-Do tab and it moves here.');
+            return;
+        }
+        box.innerHTML = list.map(function (t) {
+            var closed = t.status === 'cancelled';
+            var actions = '<button class="ws-btn sm" onclick="apTaskStatus(\'' + esc(t.id) + '\',\'todo\')">↩ Reopen</button>' +
+                '<button class="ws-btn sm" onclick="apEditTask(\'' + esc(t.id) + '\')">✏ Edit</button>' +
+                '<button class="ws-btn sm bad" onclick="apRemoveTask(\'' + esc(t.id) + '\')" title="Remove task">🗑</button>';
+            return '<div class="ap-item ap-pri-' + esc(t.priority || 'medium') + '">' +
+                '<div class="ap-item-main">' +
+                    '<div class="ap-item-title">' + esc(t.title) + pill(t.status, closed ? 'mut' : 'ok') + priPill(t.priority) + '</div>' +
+                    (t.detail ? '<div class="ap-item-detail">' + esc(t.detail) + '</div>' : '') +
+                    '<div class="ap-item-meta">' +
+                        '<span>' + esc(t.category || 'Product') + '</span>' +
+                        '<span>' + (closed ? 'Cancelled ' : 'Completed ') + apWhen(t.completedAt || t.updatedAt) + '</span>' +
+                        (t.sourceSuggestionId ? '<span>From suggestion ' + esc(t.sourceSuggestionId) + '</span>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div class="ap-item-actions">' + actions + '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function renderSuggest() {
+        var box = $('apSuggestList');
+        if (!box) return;
+        var all = (AP.data && AP.data.suggestions) || [];
+        var list = AP.showClosed ? all.slice() : all.filter(function (s) { return s.status === 'new'; });
+        list.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+        if (!list.length) {
+            box.innerHTML = empty('💡', AP.showClosed ? 'No suggestions recorded' : 'No open suggestions',
+                'Add one yourself, or ask the AI staff to review the app.');
+            return;
+        }
+        box.innerHTML = list.map(function (s) {
+            var actions;
+            if (s.status === 'new') {
+                actions = '<button class="ws-btn sm primary" onclick="apTransferSuggestion(\'' + esc(s.id) + '\')">➡ Transfer to To-Do</button>' +
+                    '<button class="ws-btn sm" onclick="apEditSuggestion(\'' + esc(s.id) + '\')">✏ Edit</button>' +
+                    '<button class="ws-btn sm" onclick="apCancelSuggestion(\'' + esc(s.id) + '\')">🚫 Cancel</button>' +
+                    '<button class="ws-btn sm bad" onclick="apRemoveSuggestion(\'' + esc(s.id) + '\')" title="Remove suggestion">🗑</button>';
+            } else {
+                actions = '<button class="ws-btn sm" onclick="apRestoreSuggestion(\'' + esc(s.id) + '\')">↩ Restore</button>' +
+                    '<button class="ws-btn sm bad" onclick="apRemoveSuggestion(\'' + esc(s.id) + '\')" title="Remove suggestion">🗑</button>';
+            }
+            return '<div class="ap-item ap-sug ' + esc(s.status) + ' ap-pri-' + esc(s.priority || 'medium') + '">' +
+                '<div class="ap-item-main">' +
+                    '<div class="ap-item-title">' + esc(s.title) + pill(s.status, STATUS_CLASS[s.status]) + priPill(s.priority) +
+                        '<span class="ws-pill mut">' + (s.source === 'ai' ? '🤖 AI' : '👤 Owner') + '</span>' +
+                        '<span class="ws-pill mut">' + esc(s.category || 'Product') + '</span>' +
+                    '</div>' +
+                    (s.detail ? '<div class="ap-item-detail">' + esc(s.detail) + '</div>' : '') +
+                    '<div class="ap-item-meta">' +
+                        '<span>Added ' + apWhen(s.createdAt) + '</span>' +
+                        (s.byName ? '<span>By ' + esc(s.byName) + '</span>' : '') +
+                        (s.status === 'transferred' ? '<span>→ task ' + esc(s.transferredTodoId || '') + '</span>' : '') +
+                    '</div>' +
+                '</div>' +
+                '<div class="ap-item-actions">' + actions + '</div>' +
+            '</div>';
+        }).join('');
+    }
+
+    function renderAll() {
+        renderStats();
+        renderCounts();
+        renderTodo();
+        renderDone();
+        renderSuggest();
+    }
+
+    /* ---------------- data ---------------- */
+    async function load(force) {
+        if (!force && AP.data && Date.now() - AP.at < 1500) return;
+        try {
+            var d = await api('/state');
+            AP.data = d;
+            AP.at = Date.now();
+            renderAll();
+        } catch (e) {
+            var box = $('apTodoList');
+            if (box && !AP.data) {
+                box.innerHTML = '<div class="ws-empty"><div class="big">🔐</div><b>Could not load the app processes</b><div style="margin-top:6px;">' + esc(e.message) + '</div></div>';
+            }
+            toast('⚠️ ' + e.message);
+        }
+    }
+
+    function tab(name) {
+        AP.tab = name;
+        ['todo', 'done', 'suggest'].forEach(function (n) {
+            var b = $('apTabBtn-' + n), p = $('apPane-' + n);
+            if (b) b.classList.toggle('active', n === name);
+            if (p) p.classList.toggle('active', n === name);
+        });
+    }
+
+    function toggleClosed(on) {
+        AP.showClosed = !!on;
+        renderSuggest();
+    }
+
+    /* ---------------- modal ---------------- */
+    function openModal(cfg) {
+        AP.modalOk = cfg.ok || null;
+        if ($('apModalTitle')) $('apModalTitle').textContent = cfg.title || '';
+        if ($('apModalHint')) $('apModalHint').textContent = cfg.hint || '';
+        if ($('apModalBody')) $('apModalBody').innerHTML = cfg.body || '';
+        var ok = $('apModalOk');
+        if (ok) { ok.textContent = cfg.okText || 'Save'; ok.style.display = cfg.ok ? '' : 'none'; ok.disabled = false; }
+        if ($('apModalBack')) $('apModalBack').classList.add('open');
+    }
+    function closeModal() {
+        if ($('apModalBack')) $('apModalBack').classList.remove('open');
+        AP.modalOk = null;
+        AP.modalBusy = false;
+    }
+    async function modalOk() {
+        if (!AP.modalOk || AP.modalBusy) return;
+        var btn = $('apModalOk');
+        AP.modalBusy = true;
+        if (btn) btn.disabled = true;
+        try { await AP.modalOk(); }
+        catch (e) { toast('⚠️ ' + e.message); }
+        finally { AP.modalBusy = false; if (btn) btn.disabled = false; }
+    }
+    function modalClose(ev) {
+        if (ev && ev.target && ev.target.id !== 'apModalBack') return;
+        closeModal();
+    }
+
+    /* ---------------- task forms ---------------- */
+    function taskForm(t) {
+        t = t || {};
+        return '<div class="ws-grid2">' +
+            '<div class="ws-field" style="grid-column:1/-1;"><label>Task</label><input id="apTaskTitle" class="ws-input" value="' + esc(t.title || '') + '" placeholder="e.g. Deny client access to Firestore appData"></div>' +
+            '<div class="ws-field"><label>Category</label><select id="apTaskCat" class="ws-select">' + cats(t.category) + '</select></div>' +
+            '<div class="ws-field"><label>Priority</label><select id="apTaskPri" class="ws-select">' + pris(t.priority) + '</select></div>' +
+            '<div class="ws-field" style="grid-column:1/-1;"><label>Detail</label><textarea id="apTaskDetail" class="ws-textarea" rows="5" placeholder="What exactly has to change, and where?">' + esc(t.detail || '') + '</textarea></div>' +
+        '</div>';
+    }
+
+    function addTask() {
+        openModal({
+            title: '➕ Add a task',
+            hint: 'A task lives in the To-Do tab until it is marked Done.',
+            okText: 'Add task',
+            body: taskForm({}) +
+                '<div class="ws-field" style="margin-top:10px;"><label>Start status</label><select id="apTaskStart" class="ws-select">' + options(['todo', 'doing', 'blocked'], 'todo') + '</select></div>',
+            ok: async function () {
+                var title = val('apTaskTitle');
+                if (!title) throw new Error('Give the task a title.');
+                await api('/todo/add', { method: 'POST', body: {
+                    title: title, detail: val('apTaskDetail'),
+                    category: val('apTaskCat'), priority: val('apTaskPri'), status: val('apTaskStart')
+                } });
+                closeModal(); toast('✅ Task added');
+                await load(true); tab('todo');
+            }
+        });
+    }
+
+    function editTask(id) {
+        var t = findTodo(id);
+        if (!t) return;
+        openModal({
+            title: '✏ Edit task',
+            hint: 'Changes are saved to this task only.',
+            okText: 'Save changes',
+            body: taskForm(t),
+            ok: async function () {
+                var title = val('apTaskTitle');
+                if (!title) throw new Error('Give the task a title.');
+                await api('/todo/update', { method: 'POST', body: {
+                    id: id, title: title, detail: val('apTaskDetail'),
+                    category: val('apTaskCat'), priority: val('apTaskPri')
+                } });
+                closeModal(); toast('✅ Task updated');
+                await load(true);
+            }
+        });
+    }
+
+    async function taskStatus(id, status) {
+        try {
+            await api('/todo/status', { method: 'POST', body: { id: id, status: status } });
+            await load(true);
+            toast(status === 'done' ? '✅ Moved to Completed' : '✅ Status saved');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    async function removeTask(id) {
+        var t = findTodo(id);
+        if (!confirm('Remove this task permanently?\n\n' + (t ? t.title : ''))) return;
+        try {
+            await api('/todo/remove', { method: 'POST', body: { id: id } });
+            await load(true);
+            toast('Task removed');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    async function cancelTask(id) {
+        var t = findTodo(id);
+        if (!confirm('Cancel this task?\n\n' + (t ? t.title : '') + '\n\nIt moves to the Completed tab, marked as cancelled, and can be reopened.')) return;
+        try {
+            await api('/todo/status', { method: 'POST', body: { id: id, status: 'cancelled' } });
+            await load(true);
+            toast('Task cancelled');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    /* ---------------- suggestion forms ---------------- */
+    function suggestionForm(s) {
+        s = s || {};
+        return '<div class="ws-grid2">' +
+            '<div class="ws-field" style="grid-column:1/-1;"><label>Suggestion</label><input id="apSugTitle" class="ws-input" value="' + esc(s.title || '') + '" placeholder="Short, specific title"></div>' +
+            '<div class="ws-field"><label>Category</label><select id="apSugCat" class="ws-select">' + cats(s.category) + '</select></div>' +
+            '<div class="ws-field"><label>Priority</label><select id="apSugPri" class="ws-select">' + pris(s.priority) + '</select></div>' +
+            '<div class="ws-field" style="grid-column:1/-1;"><label>Detail</label><textarea id="apSugDetail" class="ws-textarea" rows="6" placeholder="What should change, and why?">' + esc(s.detail || '') + '</textarea></div>' +
+        '</div>';
+    }
+
+    function addSuggestion() {
+        openModal({
+            title: '➕ Add a suggestion',
+            hint: 'Saved in the Suggestions tab. Nothing becomes a task until you transfer it.',
+            okText: 'Add suggestion',
+            body: suggestionForm({}),
+            ok: async function () {
+                var title = val('apSugTitle');
+                if (!title) throw new Error('Give the suggestion a title.');
+                await api('/suggestion/add', { method: 'POST', body: {
+                    title: title, detail: val('apSugDetail'),
+                    category: val('apSugCat'), priority: val('apSugPri'), source: 'owner'
+                } });
+                closeModal(); toast('✅ Suggestion added');
+                await load(true); tab('suggest');
+            }
+        });
+    }
+
+    function editSuggestion(id) {
+        var s = findSug(id);
+        if (!s) return;
+        openModal({
+            title: '✏ Edit suggestion',
+            hint: 'Editing a suggestion never changes a task that was already transferred from it.',
+            okText: 'Save changes',
+            body: suggestionForm(s),
+            ok: async function () {
+                var title = val('apSugTitle');
+                if (!title) throw new Error('Give the suggestion a title.');
+                await api('/suggestion/update', { method: 'POST', body: {
+                    id: id, title: title, detail: val('apSugDetail'),
+                    category: val('apSugCat'), priority: val('apSugPri')
+                } });
+                closeModal(); toast('✅ Suggestion updated');
+                await load(true);
+            }
+        });
+    }
+
+    async function transferSuggestion(id) {
+        var s = findSug(id);
+        if (!s) return;
+        if (!confirm('Transfer this suggestion to the To-Do list?\n\n' + s.title + '\n\nIt will appear in the To-Do tab as a confirmed task.')) return;
+        try {
+            var r = await api('/suggestion/transfer', { method: 'POST', body: { id: id } });
+            await load(true);
+            tab('todo');
+            toast(r.already ? 'Already in the To-Do list' : '✅ Transferred to To-Do');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    async function cancelSuggestion(id) {
+        try {
+            await api('/suggestion/status', { method: 'POST', body: { id: id, status: 'cancelled' } });
+            await load(true);
+            toast('Suggestion cancelled');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    async function restoreSuggestion(id) {
+        try {
+            await api('/suggestion/status', { method: 'POST', body: { id: id, status: 'new' } });
+            await load(true);
+            toast('Suggestion restored');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    async function removeSuggestion(id) {
+        var s = findSug(id);
+        if (!confirm('Remove this suggestion permanently?\n\n' + (s ? s.title : ''))) return;
+        try {
+            await api('/suggestion/remove', { method: 'POST', body: { id: id } });
+            await load(true);
+            toast('Suggestion removed');
+        } catch (e) { toast('⚠️ ' + e.message); }
+    }
+
+    /* ---------------- AI suggestions ---------------- */
+    async function loadAgents() {
+        if (AP.agents) return AP.agents;
+        var res = await fetch('/api/agents', { headers: { 'x-admin-token': adminToken() } });
+        var j = null;
+        try { j = await res.json(); } catch (e) { j = null; }
+        if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || 'Could not read the AI Staff Academy');
+        AP.agents = (j.agents || []).filter(function (a) { return a.status !== 'archived'; });
+        return AP.agents;
+    }
+
+    async function agentChat(agentId, prompt) {
+        var res = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken() },
+            body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] })
+        });
+        var j = null;
+        try { j = await res.json(); } catch (e) { j = null; }
+        if (!res.ok || !j || !j.ok) throw new Error((j && j.error) || ('AI request failed (' + res.status + ')'));
+        return j;
+    }
+
+    function buildPrompt(context, count) {
+        var base = (context && context.trim())
+            ? 'Area to review: ' + context.trim()
+            : 'Review WHATANAGENT as a whole. It is a Node/Express + Firestore app with a WhatsApp AI agent, an AI Staff Academy, a Websites Workshop, a commission ledger, trade accounts, a notebook, a live meeting board, a prices publisher, and this admin dashboard.';
+        return base + '\n\n' +
+            'Return ONLY a JSON array (no markdown, no commentary) of up to ' + count + ' concrete suggestions.\n' +
+            'Each object: {"title": "...", "detail": "...", "category": "Security|Workshop|Data|AI|SEO|Docs|Product|Plan", "priority": "critical|high|medium|low"}.\n' +
+            'Rules: be specific and evidence-based, name the file or screen when you can, never invent a feature that already exists, and keep each detail under 400 characters.';
+    }
+
+    function parseSuggestionJson(text) {
+        var t = String(text || '').trim();
+        t = t.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+        var a = t.indexOf('['), b = t.lastIndexOf(']');
+        if (a >= 0 && b > a) {
+            try {
+                var arr = JSON.parse(t.slice(a, b + 1));
+                if (Array.isArray(arr)) return arr;
+            } catch (e) { /* fall through */ }
+        }
+        return null;
+    }
+
+    async function askAI() {
+        var agents;
+        try { agents = await loadAgents(); }
+        catch (e) { toast('⚠️ ' + e.message); return; }
+        if (!agents.length) { toast('⚠️ No AI staff in the Academy yet — hire one first'); return; }
+
+        openModal({
+            title: '🤖 Ask the AI staff for suggestions',
+            hint: 'The staff member reads the context you give it and returns a short list. Every item is saved as a suggestion; nothing becomes a task until you transfer it.',
+            okText: 'Generate suggestions',
+            body:
+                '<div class="ws-field"><label>AI staff member</label><select id="apAiAgent" class="ws-select">' +
+                    agents.map(function (a) {
+                        return '<option value="' + esc(a.id) + '">' + esc(a.emoji || '🤖') + ' ' + esc(a.name) + ' — ' + esc(a.role || 'staff') + '</option>';
+                    }).join('') +
+                '</select></div>' +
+                '<div class="ws-field" style="margin-top:10px;"><label>How many</label><select id="apAiCount" class="ws-select">' + options(['3', '5', '8'], '5') + '</select></div>' +
+                '<div class="ws-field" style="margin-top:10px;"><label>Context (optional)</label><textarea id="apAiContext" class="ws-textarea" rows="5" placeholder="Anything the staff member should focus on, e.g. the Websites Workshop or the security review."></textarea></div>' +
+                '<div class="ws-hint" id="apAiMsg" style="margin-top:8px;">Leave the context empty to review the app as a whole.</div>',
+            ok: async function () {
+                var agentId = val('apAiAgent');
+                var count = Number(val('apAiCount')) || 5;
+                var msg = $('apAiMsg');
+                var btn = $('apModalOk');
+                if (msg) msg.textContent = 'The staff member is reading the app and writing suggestions…';
+                if (btn) btn.textContent = '⏳ Thinking…';
+                try {
+                    var r = await agentChat(agentId, buildPrompt(val('apAiContext'), count));
+                    var items = parseSuggestionJson(r.reply);
+                    if (!items || !items.length) {
+                        items = [{ title: 'AI review notes', detail: String(r.reply || '').slice(0, 6000), category: 'Product', priority: 'medium' }];
+                    }
+                    var who = agents.filter(function (a) { return a.id === agentId; })[0] || {};
+                    var added = 0;
+                    for (var i = 0; i < items.length && i < count; i++) {
+                        var it = items[i] || {};
+                        var title = String(it.title || it.suggestion || '').trim().slice(0, 200);
+                        if (!title) continue;
+                        await api('/suggestion/add', { method: 'POST', body: {
+                            title: title,
+                            detail: String(it.detail || it.why || it.body || '').slice(0, 6000),
+                            category: it.category,
+                            priority: it.priority,
+                            source: 'ai',
+                            by: agentId,
+                            byName: who.name || ''
+                        } });
+                        added++;
+                    }
+                    closeModal();
+                    await load(true);
+                    tab('suggest');
+                    toast('✅ ' + added + ' suggestion(s) added');
+                } catch (e) {
+                    if (msg) msg.textContent = '⚠️ ' + e.message;
+                    if (btn) btn.textContent = 'Generate suggestions';
+                    toast('⚠️ ' + e.message);
+                }
+            }
+        });
+    }
+
+    /* ---------------- exports ---------------- */
+    window.apTab = tab;
+    window.apLoad = load;
+    window.apToggleClosed = toggleClosed;
+    window.apAddTask = addTask;
+    window.apEditTask = editTask;
+    window.apTaskStatus = taskStatus;
+    window.apRemoveTask = removeTask;
+    window.apCancelTask = cancelTask;
+    window.apAddSuggestion = addSuggestion;
+    window.apEditSuggestion = editSuggestion;
+    window.apTransferSuggestion = transferSuggestion;
+    window.apCancelSuggestion = cancelSuggestion;
+    window.apRestoreSuggestion = restoreSuggestion;
+    window.apRemoveSuggestion = removeSuggestion;
+    window.apAskAI = askAI;
+    window.apModalOk = modalOk;
+    window.apModalClose = modalClose;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var sec = $('appProcSection');
+        if (sec && sec.classList.contains('active')) load(false);
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeModal();
+        });
+    });
+})();
+</script>
+
 <script src="/cloudflare-lab.js"></script>
 </body>
 </html>

@@ -24,6 +24,7 @@ import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
 import { registerWorkshopRoutes } from './workshopApi.mjs';
+import { registerAppProcessRoutes } from './appProcessApi.mjs';
 import { registerPricesRoutes } from './pricesApi.mjs';
 import { registerRuleBookRoutes } from './ruleBookApi.mjs';
 import { registerBusinessRoutes } from './businessTankApi.mjs';
@@ -185,6 +186,8 @@ registerContactIntelRoutes(app, db);
 registerOfficeRoutes(app, db);
 // Ã°Å¸Ââ€”Ã¯Â¸Â Websites Workshop (site takeover inspection, manager + engineers, health checks)
 registerWorkshopRoutes(app, db);
+// 📋 WhatAnAgent App Processes (app to-do, completed, owner/AI suggestions)
+registerAppProcessRoutes(app, db);
 registerPricesRoutes(app, db);
 // Ã°Å¸â€œâ€“ Rule Book (app-wide rules for every AI, starting with the Roman Hindi/Urdu rule)
 registerRuleBookRoutes(app, db);
