@@ -21,6 +21,7 @@ import { registerCommissionRoutes } from './commissionApi.mjs';
 import { registerCandlRoutes } from './candlApi.mjs';
 import { registerCandlWhatsAppRoutes } from './candlWhatsApp.mjs';
 import { registerCandlBlInboxRoutes, startCandlBlWatcher } from './candlBlWatcher.mjs';
+import { registerCandlXrayRoutes } from './candlBlXray.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -184,6 +185,8 @@ registerCandlWhatsAppRoutes(app);
 // 🤖 BL Inbox — the assigned AI reads BLs posted in that group, files them to Google Drive and
 // reports any shipper/consignee/port/agent difference to the group and to the boss.
 registerCandlBlInboxRoutes(app);
+// 🔬 BL X-Ray Checkup — reads a whole BL into named fields and checks each one against the app.
+registerCandlXrayRoutes(app);
 startCandlBlWatcher();
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);

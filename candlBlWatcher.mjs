@@ -67,7 +67,7 @@ function writeJson(file, value) {
   }
 }
 
-const readReference = () => readJson(REF_FILE, { masters: [], drafts: [], updatedAt: 0 });
+export const readReference = () => readJson(REF_FILE, { masters: [], drafts: [], updatedAt: 0 });
 const readInbox = () => readJson(INBOX_FILE, { lastTs: {}, items: [] });
 
 // ── media archive ───────────────────────────────────────────────────────────
@@ -306,7 +306,7 @@ export function checkBlAgainstReference(fields, reference) {
 }
 
 // ── PDF text ────────────────────────────────────────────────────────────────
-async function pdfToText(buffer) {
+export async function pdfToText(buffer) {
   const { PDFParse } = require('pdf-parse');
   const parsed = await new PDFParse({ data: buffer }).getText();
   const text = String((parsed && parsed.text) || '');

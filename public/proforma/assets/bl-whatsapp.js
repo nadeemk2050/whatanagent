@@ -45,6 +45,10 @@
     inboxTimer: null,
     chat: null,
     chatBusy: false,
+    xray: null,
+    xrayBusy: false,
+    xrayFor: '',
+    xrayRules: null,
     busy: false
   };
 
@@ -429,11 +433,18 @@
               'a clean BL is confirmed to you only.' +
             '</div>' +
           '</div>' +
-          '<button type="button" id="blwa-scan-now" style="' + buttonStyle('primary', !selected) + '"' +
-            (selected ? '' : ' disabled title="Select a group first"') + '>' +
-            (state.scanning ? '⏳ Checking…' : '⚡ Check the group now') +
-          '</button>' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<button type="button" id="blwa-xray-open" style="' + buttonStyle('green', !selected) + '"' +
+              (selected ? '' : ' disabled title="Select a group first"') + '>' +
+              (state.xrayBusy ? '\u23f3 Reading\u2026' : '\ud83d\udd2c BL X-Ray Checkup') +
+            '</button>' +
+            '<button type="button" id="blwa-scan-now" style="' + buttonStyle('primary', !selected) + '"' +
+              (selected ? '' : ' disabled title="Select a group first"') + '>' +
+              (state.scanning ? '\u23f3 Checking\u2026' : '\u26a1 Check the group now') +
+            '</button>' +
+          '</div>' +
         '</div>' +
+        '<div id="blwa-xray" style="margin-top:14px"></div>' +
         '<div id="blwa-inbox" style="margin-top:14px"></div>' +
       '</div>' +
 
@@ -473,6 +484,9 @@
     const scanBtn = wrap.querySelector('#blwa-scan-now');
     if (scanBtn && selected) scanBtn.addEventListener('click', guard(() => scanNow(wrap)));
 
+    const xrayBtn = wrap.querySelector('#blwa-xray-open');
+    if (xrayBtn && selected) xrayBtn.addEventListener('click', guard(() => xrayNewest(wrap)));
+
     // wire step 5
     const chatBtn = wrap.querySelector('#blwa-load-chat');
     if (chatBtn && selected) chatBtn.addEventListener('click', guard(() => loadChat(wrap)));
@@ -480,6 +494,7 @@
     renderBls(wrap);
     renderAgents(wrap);
     renderInbox(wrap);
+    renderXray(wrap);
     renderChat(wrap);
   }
 
@@ -591,9 +606,11 @@
             '<span style="margin-left:auto;font-size:11px;color:#64748b">' + esc(item.message_ts ? new Date(item.message_ts).toLocaleString() : '') + '</span>' +
           '</div>' +
           detail +
-          '<div style="margin-top:6px;display:flex;gap:14px;font-size:11.5px;color:#94a3b8;flex-wrap:wrap">' +
+          '<div style="margin-top:6px;display:flex;gap:14px;font-size:11.5px;color:#94a3b8;flex-wrap:wrap;align-items:center">' +
             '<span>' + esc(item.source_file_name || '') + '</span>' +
             driveLink +
+            '<button type="button" data-blwa-xray="' + esc(item.id) + '" style="' + buttonStyle('ghost') +
+              ';padding:3px 9px;font-size:11px">\ud83d\udd2c X-Ray</button>' +
             (item.notified && item.notified.group ? '<span style="color:#6ee7b7">reported in group</span>' : '') +
           '</div>' +
         '</div>';
@@ -601,6 +618,177 @@
 
     host.innerHTML = refLine +
       '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden">' + rows + '</div>';
+
+    host.querySelectorAll('[data-blwa-xray]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        const item = (state.inbox || []).find(i => i && String(i.id) === String(b.dataset.blwaXray));
+        if (item) runXray(wrap, item);
+      }));
+    });
+  }
+
+  // ── step 4b: BL X-Ray Checkup ───────────────────────────────────────────
+  const XRAY_STATUS = {
+    ok: ['OK', 'rgba(16,185,129,.16)', 'rgba(16,185,129,.5)', '#34d399'],
+    mismatch: ['DIFFERS', 'rgba(239,68,68,.18)', 'rgba(239,68,68,.55)', '#fca5a5'],
+    missing: ['MISSING', 'rgba(245,158,11,.16)', 'rgba(245,158,11,.5)', '#fbbf24'],
+    invalid: ['INVALID', 'rgba(239,68,68,.18)', 'rgba(239,68,68,.55)', '#fca5a5'],
+    unknown: ['NO REFERENCE', 'rgba(148,163,184,.16)', 'rgba(148,163,184,.4)', '#cbd5e1']
+  };
+
+  function xrayChip(status) {
+    const m = XRAY_STATUS[status] || XRAY_STATUS.unknown;
+    return '<span style="font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:20px;' +
+      'white-space:nowrap;background:' + m[1] + ';border:1px solid ' + m[2] + ';color:' + m[3] + '">' + m[0] + '</span>';
+  }
+
+  /** The header button x-rays the newest BL the AI has read from this group. */
+  function xrayNewest(wrap) {
+    const list = state.inbox || [];
+    if (!list.length) {
+      toast('No BL read from this group yet \u2014 press \u201cCheck the group now\u201d first.', 'error');
+      return;
+    }
+    const readable = list.find(i => i && i.check && ['ok', 'mismatch', 'unknown', 'no-reference'].indexOf(i.check.verdict) !== -1);
+    runXray(wrap, readable || list[0]);
+  }
+
+  async function runXray(wrap, item) {
+    if (!item || state.xrayBusy) return;
+    state.xrayBusy = true;
+    state.xrayFor = item.id || item.message_id || '';
+    state.xray = null;
+    renderSection(wrap);
+    try {
+      const r = await apiFetch('/wa/xray', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jid: item.jid || state.groupJid,
+          message_id: item.message_id || item.id,
+          file_name: item.source_file_name || ''
+        })
+      });
+      state.xray = r;
+      if (!state.xrayRules) loadXrayRules(wrap);
+    } catch (e) {
+      state.xray = { ok: false, error: e.message, file_name: item.source_file_name || '' };
+      toast('X-Ray: ' + e.message, 'error');
+    } finally {
+      state.xrayBusy = false;
+      renderSection(wrap);
+    }
+  }
+
+  async function loadXrayRules(wrap) {
+    try {
+      const r = await apiFetch('/wa/xray/rules');
+      state.xrayRules = r;
+      renderXray(wrap);
+    } catch (e) { /* the panel still renders without the rule */ }
+  }
+
+  async function saveXrayRule(wrap) {
+    const input = wrap.querySelector('#blwa-xray-free-days');
+    const raw = input ? input.value.trim() : '';
+    try {
+      const r = await apiFetch('/wa/xray/rules', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ free_days_default: raw, free_days_by_port: (state.xrayRules && state.xrayRules.free_days_by_port) || {} })
+      });
+      state.xrayRules = r.rules || r;
+      toast('Free-days rule saved \u2014 press BL X-Ray Checkup again to re-check.');
+      renderXray(wrap);
+    } catch (e) {
+      toast('Could not save the rule: ' + e.message, 'error');
+    }
+  }
+
+  function renderXray(wrap) {
+    const host = wrap.querySelector('#blwa-xray');
+    if (!host) return;
+
+    if (state.xrayBusy) {
+      host.innerHTML = '<div style="padding:12px 14px;border-radius:10px;background:rgba(56,189,248,.08);' +
+        'border:1px dashed rgba(56,189,248,.4);font-size:12.5px;color:#7dd3fc">\ud83d\udd2c Reading the whole BL and checking every field\u2026</div>';
+      return;
+    }
+    if (!state.xray) { host.innerHTML = ''; return; }
+
+    const closeBtn = '<button type="button" id="blwa-xray-close" style="' + buttonStyle('ghost') + ';padding:5px 10px;font-size:11.5px">\u2715 Close X-Ray</button>';
+
+    if (state.xray.ok === false) {
+      host.innerHTML = '<div style="padding:13px 15px;border-radius:10px;background:rgba(239,68,68,.1);' +
+        'border:1px solid rgba(239,68,68,.4);font-size:12.5px;color:#fca5a5">' +
+        esc(state.xray.error || 'X-Ray failed') +
+        '</div><div style="margin-top:10px">' + closeBtn + '</div>';
+      const b = host.querySelector('#blwa-xray-close');
+      if (b) b.addEventListener('click', guard(() => { state.xray = null; renderSection(wrap); }));
+      return;
+    }
+
+    const x = state.xray;
+    const sum = x.summary || {};
+    const summaryChips = ['mismatch', 'missing', 'invalid', 'ok', 'unknown']
+      .filter(k => (sum[k] || 0) > 0)
+      .map(k => '<span style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">' + xrayChip(k) +
+        '<b style="font-size:12px;color:#cbd5e1">' + (sum[k] || 0) + '</b></span>').join('');
+
+    const rows = (x.checks || []).map(c => {
+      const expected = c.expected ? '<div style="font-size:11.5px;color:#94a3b8;margin-top:2px">in app: ' + esc(c.expected) + '</div>' : '';
+      return '<div style="padding:9px 12px;border-top:1px solid rgba(148,163,184,.12)">' +
+        '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+          xrayChip(c.status) +
+          '<b style="font-size:12.5px;color:#e2e8f0">' + esc(c.label) + '</b>' +
+          '<span style="font-size:12.5px;color:' + (c.status === 'mismatch' || c.status === 'invalid' ? '#fca5a5' : '#cbd5e1') + '">' +
+            esc(c.got || '\u2014') + '</span>' +
+        '</div>' +
+        expected +
+        (c.note ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">' + esc(c.note) + '</div>' : '') +
+      '</div>';
+    }).join('');
+
+    const groupBlocks = (x.groups || []).map(g => {
+      const fields = g.fields.map(f =>
+        '<div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:4px 0;border-top:1px solid rgba(148,163,184,.08)">' +
+          '<div style="font-size:11.5px;color:#94a3b8">' + esc(f.label) + '</div>' +
+          '<div style="font-size:12.5px;color:' + (f.value ? '#e2e8f0' : '#475569') + '">' + (esc(f.value) || '\u2014') + '</div>' +
+        '</div>').join('');
+      return '<div style="margin-top:12px">' +
+        '<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:#7dd3fc;font-weight:800;margin-bottom:4px">' + esc(g.label) + '</div>' +
+        fields + '</div>';
+    }).join('');
+
+    const ruleNow = state.xrayRules && state.xrayRules.free_days_default ? String(state.xrayRules.free_days_default) : '';
+
+    host.innerHTML = '' +
+      '<div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;overflow:hidden;background:rgba(56,189,248,.04)">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 13px;background:rgba(56,189,248,.08)">' +
+          '<b style="font-size:13px;color:#fff">\ud83d\udd2c BL X-Ray \u2014 ' + esc(x.file_name || 'document') + '</b>' +
+          '<span style="font-size:11px;color:#94a3b8">read by ' + esc(x.extraction_source || '?') +
+            (x.media_source ? ' \u00b7 file from ' + esc(x.media_source) : '') + '</span>' +
+          '<span style="margin-left:auto">' + closeBtn + '</span>' +
+        '</div>' +
+        '<div style="padding:11px 13px">' +
+          '<div style="margin-bottom:8px">' + (summaryChips || '<span style="font-size:12px;color:#64748b">No checks ran.</span>') + '</div>' +
+          '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden">' + rows + '</div>' +
+          '<div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:rgba(148,163,184,.06);' +
+            'border:1px solid rgba(148,163,184,.2);display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+            '<span style="font-size:12px;color:#cbd5e1">Free days you expect by default:</span>' +
+            '<input id="blwa-xray-free-days" type="number" min="0" max="365" value="' + esc(ruleNow) + '" ' +
+              'placeholder="e.g. 14" style="width:90px;padding:6px 9px;border-radius:8px;background:#0f172a;' +
+              'border:1px solid rgba(148,163,184,.35);color:#e2e8f0;font-size:12.5px">' +
+            '<button type="button" id="blwa-xray-rule-save" style="' + buttonStyle('ghost') + ';padding:6px 11px;font-size:11.5px">Save rule</button>' +
+            '<span style="font-size:11px;color:#64748b">Compared with the free days printed on the BL.</span>' +
+          '</div>' +
+          groupBlocks +
+        '</div>' +
+      '</div>';
+
+    const close = host.querySelector('#blwa-xray-close');
+    if (close) close.addEventListener('click', guard(() => { state.xray = null; renderSection(wrap); }));
+    const save = host.querySelector('#blwa-xray-rule-save');
+    if (save) save.addEventListener('click', guard(() => saveXrayRule(wrap)));
   }
 
   // ── step 5: the group's chat + files ─────────────────────────────────────
