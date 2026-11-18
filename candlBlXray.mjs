@@ -33,10 +33,10 @@ import { recordAiCall } from './aiTracker.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
 import {
   lookupArchivedMedia, readReference, saveToArchive, ensureArchiveText,
-  readSidecarFields, writeSidecarFields,
+  readSidecarFields, writeSidecarFields, clearArchiveText,
   setBlSettingsProvider, blSettings
 } from './candlBlWatcher.mjs';
-import { extractTextFromBuffer } from './blText.mjs';
+import { extractTextFromBuffer, visionConfigured } from './blText.mjs';
 import { downloadWaWebMedia } from './waWebClient.js';
 
 const require = createRequire(import.meta.url);
@@ -292,7 +292,7 @@ async function extractWithAi(text, settings = {}) {
     cachedTokens: cachedTokensFrom(data),
     durationMs: Date.now() - started
   });
-  return parseJsonObject(content);
+  return { parsed: parseJsonObject(content), raw: content, finishReason: data?.choices?.[0]?.finish_reason || '' };
 }
 
 /** Regex pass — answers alone when there is no AI key, and fills AI gaps otherwise. */
@@ -449,9 +449,13 @@ export async function extractXray(text, settings = {}) {
   let aiError = '';
   let source = 'local';
   try {
-    ai = await extractWithAi(text, settings);
+    const res = await extractWithAi(text, settings);
+    ai = res.parsed;
     if (ai && typeof ai === 'object') source = 'ai';
-    else aiError = 'the model returned no usable JSON';
+    else {
+      const why = res.finishReason === 'length' ? 'the reply was cut off before the JSON closed' : 'the model returned no usable JSON';
+      aiError = why + (res.raw ? ': ' + String(res.raw).replace(/\s+/g, ' ').slice(0, 140) : ' (empty reply)');
+    }
   } catch (e) {
     aiError = String((e && e.message) || e).slice(0, 200);
     console.warn('[BL-XRAY] AI read failed, using the local parser:', sstr(aiError, 160));
@@ -666,6 +670,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
     const jid = sstr(body.jid, 120).trim();
     const messageId = sstr(body.message_id, 90).trim();
     const pastedText = String(body.text || '').slice(0, MAX_TEXT_CHARS);
+    const retry = !!body.retry;          // force a fresh read (ignores the kept text and cached fields)
 
     let fileName = sstr(body.file_name, 160) || 'pasted text';
     let mediaSource = '';
@@ -681,6 +686,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
       if (archived) {
         fileName = archived.fileName || fileName;
         mediaSource = 'archive';
+        if (retry) clearArchiveText(jid, messageId);
 
         // The text sidecar is the whole point: it was paid for once, so reading it now is free.
         // ensureArchiveText also re-does a sidecar written by an older, weaker reader.
@@ -747,7 +753,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
     const cache = canCache ? readSidecarFields(jid, messageId) : null;
     // Only a cache written by the model is trusted: a local-parser result is cheap to redo and may
     // simply reflect a moment when the AI call failed.
-    const cacheUsable = !!(cache && cache.v === XRAY_CACHE_VERSION && cache.hash === hash &&
+    const cacheUsable = !retry && !!(cache && cache.v === XRAY_CACHE_VERSION && cache.hash === hash &&
       cache.fields && cache.extraction_source === 'ai');
     if (cacheUsable) {
       fields = cache.fields;
@@ -797,6 +803,7 @@ export function registerCandlXrayRoutes(app, opts = {}) {
       text_chars: String(text).length,
       text_error: textError,
       ai_error: aiError,
+      ocr_configured: visionConfigured(settings),
       read_at: readAt,
       cached: cached,
       cached_at: cachedAt,

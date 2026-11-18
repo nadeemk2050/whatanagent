@@ -764,7 +764,7 @@
     runXray(wrap, readable || list[0]);
   }
 
-  async function runXray(wrap, item) {
+  async function runXray(wrap, item, opts) {
     if (!item || state.xrayBusy) return;
     state.xrayBusy = true;
     state.xrayFor = item.id || item.message_id || '';
@@ -777,7 +777,8 @@
         body: JSON.stringify({
           jid: item.jid || state.groupJid,
           message_id: item.message_id || item.id,
-          file_name: item.source_file_name || ''
+          file_name: item.source_file_name || '',
+          retry: !!(opts && opts.retry)
         })
       });
       state.xray = r;
@@ -827,6 +828,7 @@
     if (!state.xray) { host.innerHTML = ''; return; }
 
     const closeBtn = '<button type="button" id="blwa-xray-close" style="' + buttonStyle('ghost') + ';padding:5px 10px;font-size:11.5px">\u2715 Close X-Ray</button>';
+    const retryBtn = '<button type="button" id="blwa-xray-retry" style="' + buttonStyle('ghost') + ';padding:5px 10px;font-size:11.5px">\u21bb Re-read</button>';
 
     if (state.xray.ok === false) {
       host.innerHTML = '<div style="padding:13px 15px;border-radius:10px;background:rgba(239,68,68,.1);' +
@@ -883,7 +885,7 @@
             (x.media_source ? ' \u00b7 file from ' + esc(x.media_source) : '') +
             (x.text_source ? ' \u00b7 text ' + esc(x.text_source) : '') +
           '</span>' +
-          '<span style="margin-left:auto">' + closeBtn + '</span>' +
+          '<span style="margin-left:auto;display:flex;gap:7px">' + (x.ok === false ? '' : retryBtn) + closeBtn + '</span>' +
         '</div>' +
         '<div style="padding:11px 13px">' +
           ((x.text_error || x.ai_error)
@@ -915,6 +917,11 @@
 
     const close = host.querySelector('#blwa-xray-close');
     if (close) close.addEventListener('click', guard(() => { state.xray = null; renderSection(wrap); }));
+    const retry = host.querySelector('#blwa-xray-retry');
+    if (retry) retry.addEventListener('click', guard(() => {
+      const item = (state.inbox || []).find(i => i && String(i.id) === String(state.xrayFor));
+      if (item) runXray(wrap, item, { retry: true });
+    }));
     const save = host.querySelector('#blwa-xray-rule-save');
     if (save) save.addEventListener('click', guard(() => saveXrayRule(wrap)));
   }

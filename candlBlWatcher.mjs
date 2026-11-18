@@ -205,6 +205,15 @@ export function archiveSidecars(jid, id) {
   return { rec: rec, text: base + '.txt', fields: base + '.xray.json' };
 }
 
+/** Throw away a kept text so the next read re-extracts it (after a reader improvement). */
+export function clearArchiveText(jid, id) {
+  const p = archiveSidecars(jid, id);
+  if (!p) return false;
+  try { fs.unlinkSync(p.text); } catch (e) { /* nothing kept */ }
+  patchMediaRecord(jid, id, { text_source: '', text_chars: 0, text_error: '', text_version: 0 });
+  return true;
+}
+
 export function readSidecarText(jid, id) {
   const p = archiveSidecars(jid, id);
   if (!p) return null;

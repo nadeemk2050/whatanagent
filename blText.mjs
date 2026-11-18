@@ -53,6 +53,11 @@ export async function pdfToText(buffer) {
   return String((parsed && parsed.text) || '').slice(0, MAX_TEXT_CHARS);
 }
 
+/** True when a vision reader is actually configured (env or settings document). */
+export function visionConfigured(settings = {}) {
+  return !!String((settings && (settings.GEMINI_API_KEY || settings.geminiApiKey)) || process.env.GEMINI_API_KEY || '').trim();
+}
+
 /** Read a document or photo with Gemini vision. Used for scans, photos and image-only PDFs. */
 export async function ocrWithVision(buffer, mimetype, settings = {}) {
   const key = String(
