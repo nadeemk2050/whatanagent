@@ -863,7 +863,8 @@
       const fields = g.fields.map(f =>
         '<div style="display:grid;grid-template-columns:170px 1fr;gap:10px;padding:4px 0;border-top:1px solid rgba(148,163,184,.08)">' +
           '<div style="font-size:11.5px;color:#94a3b8">' + esc(f.label) + '</div>' +
-          '<div style="font-size:12.5px;color:' + (f.value ? '#e2e8f0' : '#475569') + '">' + (esc(f.value) || '\u2014') + '</div>' +
+          '<div style="font-size:12.5px;color:' + (f.value ? '#e2e8f0' : '#475569') + '">' + (esc(f.value) || '\u2014') +
+            (f.note ? ' <span style="font-size:10.5px;color:#fbbf24">(' + esc(f.note) + ')</span>' : '') + '</div>' +
         '</div>').join('');
       return '<div style="margin-top:12px">' +
         '<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:#7dd3fc;font-weight:800;margin-bottom:4px">' + esc(g.label) + '</div>' +

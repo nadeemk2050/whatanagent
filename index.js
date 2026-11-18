@@ -184,9 +184,9 @@ registerCommissionRoutes(app);
 registerCandlWhatsAppRoutes(app);
 // 🤖 BL Inbox — the assigned AI reads BLs posted in that group, files them to Google Drive and
 // reports any shipper/consignee/port/agent difference to the group and to the boss.
-registerCandlBlInboxRoutes(app);
+registerCandlBlInboxRoutes(app, { getSettings });
 // 🔬 BL X-Ray Checkup — reads a whole BL into named fields and checks each one against the app.
-registerCandlXrayRoutes(app);
+registerCandlXrayRoutes(app, { getSettings });
 startCandlBlWatcher();
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);

@@ -22,6 +22,30 @@ const require = createRequire(import.meta.url);
 const MAX_TEXT_CHARS = 60000;
 const MIN_USEFUL_CHARS = 40;      // below this a PDF has effectively no text layer
 
+/**
+ * Does this text layer look unusable?
+ *
+ * Many carrier B/Ls (MSC among them) produce a text layer where the printed labels sit in one
+ * block and the values in another, plus runs of barcode digits. Feeding that to a model invites
+ * it to pair a label with the wrong value, so such a page is read as an IMAGE instead - vision
+ * sees the real layout.
+ */
+export function looksScrambledText(text) {
+  const t = String(text || '');
+  if (t.length < 200) return false;
+
+  if ((t.match(/\d{30,}/g) || []).length >= 2) return true;   // barcode / OCR noise
+
+  const lines = t.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 12) return false;
+
+  const labelOnly = lines.filter(l =>
+    l.length <= 90 && (/:$/.test(l) || /^\(.*\)$/.test(l) || /^[A-Z0-9 ,.&\/()'\u2019\-]{3,}$/.test(l))
+  ).length;
+
+  return (labelOnly / lines.length) >= 0.5;
+}
+
 /** Text layer of a PDF. Throws when the PDF cannot be parsed at all. */
 export async function pdfToText(buffer) {
   const { PDFParse } = require('pdf-parse');
@@ -30,9 +54,13 @@ export async function pdfToText(buffer) {
 }
 
 /** Read a document or photo with Gemini vision. Used for scans, photos and image-only PDFs. */
-export async function ocrWithVision(buffer, mimetype) {
-  const key = String(process.env.GEMINI_API_KEY || '').trim();
-  if (!key) throw new Error('GEMINI_API_KEY is not set on the server');
+export async function ocrWithVision(buffer, mimetype, settings = {}) {
+  const key = String(
+    (settings && (settings.GEMINI_API_KEY || settings.geminiApiKey)) ||
+    process.env.GEMINI_API_KEY ||
+    ''
+  ).trim();
+  if (!key) throw new Error('no Gemini key configured (settings or GEMINI_API_KEY)');
 
   const mime = String(mimetype || 'application/pdf').split(';')[0].trim().toLowerCase();
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -79,20 +107,23 @@ export async function extractTextFromBuffer(buffer, opts = {}) {
   if (isPdf) {
     let text = '';
     try { text = await pdfToText(buffer); } catch (e) { text = ''; }
-    if (String(text).trim().length >= MIN_USEFUL_CHARS) return { text: text, source: 'pdf-text' };
 
-    // No text layer (or almost none): it is a scan, so read it as an image.
+    const usable = String(text).trim().length >= MIN_USEFUL_CHARS;
+    if (usable && !looksScrambledText(text)) return { text: text, source: 'pdf-text' };
+
+    // Either there is no text layer (a scan) or the layer is scrambled (labels divorced from
+    // their values). Reading the page as an image is the only reliable option for both.
     try {
-      const ocr = await ocrWithVision(buffer, 'application/pdf');
+      const ocr = await ocrWithVision(buffer, 'application/pdf', opts.settings || {});
       return { text: ocr.text, source: ocr.source };
     } catch (e) {
-      return { text: text || '', source: text ? 'pdf-text-thin' : 'none' };
+      return { text: text || '', source: text ? (usable ? 'pdf-text-scrambled' : 'pdf-text-thin') : 'none' };
     }
   }
 
   if (isImage) {
     try {
-      const ocr = await ocrWithVision(buffer, mimetype || 'image/jpeg');
+      const ocr = await ocrWithVision(buffer, mimetype || 'image/jpeg', opts.settings || {});
       return { text: ocr.text, source: ocr.source };
     } catch (e) {
       return { text: '', source: 'none' };

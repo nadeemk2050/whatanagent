@@ -71,6 +71,25 @@ function writeJson(file, value) {
 export const readReference = () => readJson(REF_FILE, { masters: [], drafts: [], updatedAt: 0 });
 const readInbox = () => readJson(INBOX_FILE, { lastTs: {}, items: [] });
 
+// ── settings (provider keys live in the Firestore settings document) ─────────
+// OCR needs the Gemini key, and the rest of the app reads it from settings rather than the
+// environment. Cached briefly: settings change rarely and this runs on every extraction.
+let blSettingsProvider = null;
+let blSettingsCache = { at: 0, value: {} };
+
+export function setBlSettingsProvider(fn) {
+  if (typeof fn === 'function') { blSettingsProvider = fn; blSettingsCache = { at: 0, value: {} }; }
+}
+
+export async function blSettings() {
+  if (Date.now() - blSettingsCache.at < 60000) return blSettingsCache.value;
+  let value = {};
+  try { if (blSettingsProvider) value = (await blSettingsProvider()) || {}; }
+  catch (e) { value = {}; }
+  blSettingsCache = { at: Date.now(), value: value };
+  return value;
+}
+
 // ── media archive ───────────────────────────────────────────────────────────
 // WHY THIS EXISTS
 // WhatsApp media links expire and the raw message is dropped from the in-memory cache, so a
@@ -83,6 +102,9 @@ const MEDIA_INDEX_FILE = path.join(MEDIA_DIR, 'index.json');
 const MAX_MEDIA_BYTES = 900 * 1024 * 1024;      // whole archive; oldest files drop first
 const MAX_ONE_FILE_BYTES = 40 * 1024 * 1024;    // one document
 const ARCHIVE_TYPES = new Set(['document', 'image']);
+// Bump when text extraction improves: a kept .txt from an older reader must be redone, otherwise
+// the better reader never reaches files that were already read once.
+const SIDECAR_TEXT_VERSION = 2;
 
 const readMediaIndex = () => readJson(MEDIA_INDEX_FILE, { totalBytes: 0, items: {} });
 const mediaSafe = (v) => String(v == null ? '' : v).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 90) || 'x';
@@ -228,7 +250,8 @@ export async function ensureArchiveText(jid, id) {
   if (!p) return null;
 
   const existing = readSidecarText(jid, id);
-  if (existing) {
+  const fresh = existing && (Number(p.rec && p.rec.text_version) || 0) === SIDECAR_TEXT_VERSION;
+  if (fresh) {
     return { text: existing, source: (p.rec && p.rec.text_source) || 'sidecar', at: (p.rec && p.rec.text_at) || 0 };
   }
 
@@ -236,7 +259,11 @@ export async function ensureArchiveText(jid, id) {
     return { text: '', source: 'too-large', at: Date.now() };
   }
 
-  const got = await extractTextFromFile(p.rec.abs, { mimetype: p.rec.mimetype, fileName: p.rec.fileName });
+  const got = await extractTextFromFile(p.rec.abs, {
+    mimetype: p.rec.mimetype,
+    fileName: p.rec.fileName,
+    settings: await blSettings()
+  });
   const text = String((got && got.text) || '').trim();
   if (!text) {
     patchMediaRecord(jid, id, { text_source: 'none', text_chars: 0, text_at: Date.now() });
@@ -247,7 +274,12 @@ export async function ensureArchiveText(jid, id) {
   catch (e) { /* the text is still usable in memory */ }
 
   const at = Date.now();
-  patchMediaRecord(jid, id, { text_source: got.source || 'text', text_chars: text.length, text_at: at });
+  patchMediaRecord(jid, id, {
+    text_source: got.source || 'text',
+    text_chars: text.length,
+    text_at: at,
+    text_version: SIDECAR_TEXT_VERSION
+  });
   console.log('[BL-INBOX] 📄 text ready (' + (got.source || 'text') + ', ' + text.length + ' chars) for ' + sstr(p.rec.fileName, 40));
   return { text: text, source: got.source || 'text', at: at };
 }
@@ -273,7 +305,7 @@ async function pumpTextQueue() {
     while (textQueue.length) {
       const job = textQueue.shift();
       try {
-        if (!readSidecarText(job.jid, job.id)) await ensureArchiveText(job.jid, job.id);
+        await ensureArchiveText(job.jid, job.id);
       } catch (e) {
         console.warn('[BL-INBOX] text extraction failed:', sstr(e.message || e, 140));
       } finally {
@@ -728,7 +760,8 @@ export function startCandlBlWatcher() {
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────
-export function registerCandlBlInboxRoutes(app) {
+export function registerCandlBlInboxRoutes(app, opts = {}) {
+  if (opts && typeof opts.getSettings === 'function') setBlSettingsProvider(opts.getSettings);
   const expectedKey = String(process.env.CANDL_WA_KEY || '').trim();
   const guard = (req, res, next) => {
     if (!expectedKey) return next();
