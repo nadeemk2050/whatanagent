@@ -20,6 +20,7 @@ import { registerTradeAccountsRoutes, attachTradeDb } from './tradeAccountsApi.m
 import { registerCommissionRoutes } from './commissionApi.mjs';
 import { registerCandlRoutes } from './candlApi.mjs';
 import { registerCandlWhatsAppRoutes } from './candlWhatsApp.mjs';
+import { registerCandlBlInboxRoutes, startCandlBlWatcher } from './candlBlWatcher.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -180,6 +181,10 @@ registerCommissionRoutes(app);
 // 📱 BL Checking Station — "Interaction with WhatsApp": pick the working group, pull the BLs
 // posted in it, and assign the AI staff member (AI Staff Academy) that runs that group.
 registerCandlWhatsAppRoutes(app);
+// 🤖 BL Inbox — the assigned AI reads BLs posted in that group, files them to Google Drive and
+// reports any shipper/consignee/port/agent difference to the group and to the boss.
+registerCandlBlInboxRoutes(app);
+startCandlBlWatcher();
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
 // Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);

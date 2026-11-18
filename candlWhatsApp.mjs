@@ -65,6 +65,16 @@ function writeStore(store) {
   }
 }
 
+/** Groups the owner has given to an AI staff member (read by the BL watcher). */
+export function listAssignments() {
+  try {
+    const store = readStore();
+    return Object.values(store.assignments || {});
+  } catch (e) {
+    return [];
+  }
+}
+
 // ── WhatsApp reads (never throw: the station must still render when offline) ──
 async function safeGroups(force) {
   try {

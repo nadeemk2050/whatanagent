@@ -40,6 +40,9 @@
     groupName: '',
     bls: [],
     assignment: null,
+    inbox: null,
+    reference: null,
+    inboxTimer: null,
     busy: false
   };
 
@@ -209,6 +212,7 @@
 
   // ── overlay section ──────────────────────────────────────────────────────
   function closeWhatsApp() {
+    if (state.inboxTimer) { clearInterval(state.inboxTimer); state.inboxTimer = null; }
     const ov = document.getElementById(OVERLAY_ID);
     if (ov) ov.remove();
   }
@@ -248,6 +252,45 @@
     document.body.appendChild(ov);
     renderSection(wrap);
     loadStatus(wrap);
+    syncReference();
+    loadInbox(wrap);
+    if (state.inboxTimer) clearInterval(state.inboxTimer);
+    state.inboxTimer = setInterval(guard(() => loadInbox(wrap, { quiet: true })), 25000);
+  }
+
+  /**
+   * The app's records live in the browser, so the server is handed the small set it needs to
+   * judge an incoming BL: your saved masters (shipper / consignee / port / agent) + your drafts.
+   */
+  function buildReference() {
+    const masters = (jget('ot_masters_cache', []) || []).map(m => ({
+      category: m.category, name: m.name, details: m.details
+    }));
+    const all = jget(DRAFTS_KEY, {}) || {};
+    const drafts = Array.isArray(all[stationKey()]) ? all[stationKey()] : [];
+    return {
+      masters,
+      drafts: drafts.map(d => ({
+        bl_number: d.bl_number, shipper_name: d.shipper_name, consignee_name: d.consignee_name,
+        vessel_name: d.vessel_name, port_of_loading: d.port_of_loading, shipping_agent: d.shipping_agent,
+        container_numbers: d.container_numbers, container_numbers_text: d.container_numbers_text,
+        proforma_number: d.proforma_number
+      }))
+    };
+  }
+
+  async function syncReference() {
+    try {
+      const body = buildReference();
+      const r = await apiFetch('/wa/reference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      state.reference = { masters: r.masters, drafts: r.drafts, updatedAt: r.updatedAt };
+    } catch (e) {
+      state.reference = null;
+    }
   }
 
   /** The connection chip starts as "unknown" — always ask the server before showing a verdict. */
@@ -369,6 +412,25 @@
         '<div id="blwa-agents" style="margin-top:14px"></div>' +
       '</div>' +
 
+      // ── STEP 4 ─────────────────────────────────────────────────────────────
+      '<div style="' + cardStyle() + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:15px;font-weight:800;color:#fff">4. AI checks (automatic)</div>' +
+            '<div style="font-size:12.5px;color:#94a3b8;margin-top:3px">' +
+              'Every BL posted in the assigned group is read, filed to Google Drive and compared with your saved ' +
+              'shipper / consignee / port / agent. A difference is reported in the group and to your WhatsApp; ' +
+              'a clean BL is confirmed to you only.' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" id="blwa-scan-now" style="' + buttonStyle('primary', !selected) + '"' +
+            (selected ? '' : ' disabled title="Select a group first"') + '>' +
+            (state.scanning ? '⏳ Checking…' : '⚡ Check the group now') +
+          '</button>' +
+        '</div>' +
+        '<div id="blwa-inbox" style="margin-top:14px"></div>' +
+      '</div>' +
+
       '<div style="font-size:11.5px;color:#64748b;padding:0 2px 8px">' +
         'BL rows can be pushed into the station form (fields are filled for you to verify) or parked in ' +
         '<b style="color:#94a3b8">BL Drafts</b>. Drafts written from here appear in the station list after the app is reloaded.' +
@@ -382,8 +444,126 @@
     const fetchBtn = wrap.querySelector('#blwa-fetch-bls');
     if (fetchBtn && selected) fetchBtn.addEventListener('click', guard(() => fetchBls(wrap)));
 
+    // wire step 4
+    const scanBtn = wrap.querySelector('#blwa-scan-now');
+    if (scanBtn && selected) scanBtn.addEventListener('click', guard(() => scanNow(wrap)));
+
     renderBls(wrap);
     renderAgents(wrap);
+    renderInbox(wrap);
+  }
+
+  // ── step 4: automatic checks ─────────────────────────────────────────────
+  async function loadInbox(wrap, opts) {
+    const quiet = !!(opts && opts.quiet);
+    try {
+      const q = state.groupJid ? ('?jid=' + encodeURIComponent(state.groupJid)) : '';
+      const data = await apiFetch('/wa/bl-inbox' + q);
+      state.inbox = Array.isArray(data.items) ? data.items : [];
+      if (typeof data.referenceUpdatedAt === 'number') state.referenceUpdatedAt = data.referenceUpdatedAt;
+      renderInbox(wrap);
+    } catch (e) {
+      state.inbox = state.inbox || [];
+      if (!quiet) toast('Could not read the AI inbox: ' + e.message, 'error');
+    }
+  }
+
+  async function scanNow(wrap) {
+    if (!state.groupJid || state.scanning) return;
+    state.scanning = true;
+    renderSection(wrap);
+    try {
+      await syncReference();
+      const r = await apiFetch('/wa/bl-inbox/scan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: state.groupJid })
+      });
+      const first = (r.results || [])[0] || {};
+      if (first.ok === false) toast(first.error || 'Scan failed', 'error');
+      else if (!first.processed) toast('Checked — no new BL document in this group yet.');
+      else toast('Checked ' + first.processed + ' BL document(s).');
+    } catch (e) {
+      toast('Scan failed: ' + e.message, 'error');
+    } finally {
+      state.scanning = false;
+      await loadInbox(wrap, { quiet: true });
+      renderSection(wrap);
+    }
+  }
+
+  function verdictChip(item) {
+    const v = (item.check && item.check.verdict) || item.status || 'pending';
+    const map = {
+      mismatch: ['MISMATCH', 'rgba(239,68,68,.18)', 'rgba(239,68,68,.55)', '#fca5a5'],
+      unknown: ['CHECK', 'rgba(245,158,11,.16)', 'rgba(245,158,11,.5)', '#fbbf24'],
+      ok: ['OK', 'rgba(16,185,129,.16)', 'rgba(16,185,129,.5)', '#34d399'],
+      'no-reference': ['NO REFERENCE', 'rgba(148,163,184,.16)', 'rgba(148,163,184,.4)', '#cbd5e1'],
+      'not-a-bl': ['NOT A BL', 'rgba(148,163,184,.14)', 'rgba(148,163,184,.35)', '#94a3b8'],
+      unreadable: ['UNREADABLE', 'rgba(148,163,184,.14)', 'rgba(148,163,184,.35)', '#94a3b8'],
+      error: ['ERROR', 'rgba(239,68,68,.14)', 'rgba(239,68,68,.45)', '#fca5a5']
+    };
+    const m = map[v] || map['no-reference'];
+    return '<span style="font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 8px;border-radius:20px;' +
+      'background:' + m[1] + ';border:1px solid ' + m[2] + ';color:' + m[3] + '">' + m[0] + '</span>';
+  }
+
+  function renderInbox(wrap) {
+    const host = wrap.querySelector('#blwa-inbox');
+    if (!host) return;
+
+    const refLine = '<div style="font-size:11.5px;color:#64748b;margin-bottom:9px">' +
+      (state.reference
+        ? 'Comparing against your app: ' + state.reference.drafts + ' BL draft(s) and ' + state.reference.masters + ' saved master(s).'
+        : 'Your app\u2019s reference (masters + drafts) is synced automatically when this section opens.') +
+      '</div>';
+
+    if (state.inbox === null) {
+      host.innerHTML = refLine + '<div style="font-size:12.5px;color:#7dd3fc">Loading AI checks\u2026</div>';
+      return;
+    }
+    if (!state.inbox.length) {
+      host.innerHTML = refLine +
+        '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
+        'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">' +
+        (state.groupJid
+          ? 'No BL has been read from this group yet. The AI checks every 30 seconds once a group is assigned; you can press \u201cCheck the group now\u201d.'
+          : 'Select a group and assign an AI staff member \u2014 checks start automatically.') +
+        '</div>';
+      return;
+    }
+
+    const rows = state.inbox.map((item) => {
+      const f = item.fields || {};
+      const issues = (item.check && item.check.issues) || [];
+      const driveLink = item.drive && item.drive.ok && item.drive.web_view_link
+        ? '<a href="' + esc(item.drive.web_view_link) + '" target="_blank" rel="noreferrer" style="color:#7dd3fc;font-weight:700;text-decoration:none">Drive \u2197</a>'
+        : '<span style="color:#64748b">' + esc((item.drive && item.drive.reason) || 'not filed') + '</span>';
+      const detail = issues.length
+        ? '<ul style="margin:5px 0 0 16px;padding:0;font-size:11.5px;color:#cbd5e1">' + issues.map(i =>
+            '<li>' + esc(i.label) + (i.severity === 'mismatch'
+              ? ': <b style="color:#fca5a5">' + esc(i.got) + '</b> (app: ' + esc(i.expected) + ')'
+              : ': ' + esc(i.got) + ' <span style="color:#94a3b8">(' + esc(i.note || '') + ')</span>') + '</li>'
+          ).join('') + '</ul>'
+        : (item.error ? '<div style="font-size:11.5px;color:#fca5a5;margin-top:4px">' + esc(item.error) + '</div>' : '');
+      return '' +
+        '<div style="padding:11px 13px;border-top:1px solid rgba(148,163,184,.14)">' +
+          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">' +
+            verdictChip(item) +
+            '<span style="font-weight:800;color:#fbbf24;font-family:ui-monospace,Consolas,monospace">' + esc(f.bl_number || item.source_file_name || 'document') + '</span>' +
+            (f.vessel_name ? '<span style="font-size:11.5px;color:#94a3b8">' + esc(f.vessel_name) + '</span>' : '') +
+            '<span style="margin-left:auto;font-size:11px;color:#64748b">' + esc(item.message_ts ? new Date(item.message_ts).toLocaleString() : '') + '</span>' +
+          '</div>' +
+          detail +
+          '<div style="margin-top:6px;display:flex;gap:14px;font-size:11.5px;color:#94a3b8;flex-wrap:wrap">' +
+            '<span>' + esc(item.source_file_name || '') + '</span>' +
+            driveLink +
+            (item.notified && item.notified.group ? '<span style="color:#6ee7b7">reported in group</span>' : '') +
+          '</div>' +
+        '</div>';
+    }).join('');
+
+    host.innerHTML = refLine +
+      '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden">' + rows + '</div>';
   }
 
   function renderBls(wrap) {
