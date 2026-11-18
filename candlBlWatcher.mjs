@@ -286,17 +286,25 @@ async function pumpTextQueue() {
 }
 
 // Groups the owner has opted in to media saving for (they must be assigned to an AI staff member).
-let archiveTargetsCache = { at: 0, set: new Set() };
+let archiveTargetsCache = { at: 0, set: new Set(), names: new Map() };
 function archiveTargets() {
   if (Date.now() - archiveTargetsCache.at < 15000) return archiveTargetsCache.set;
   const set = new Set();
+  const names = new Map();
   for (const a of listAssignments()) {
     if (!a || !a.jid || !a.jid.endsWith('@g.us')) continue;
     if (a.powers && a.powers.saveMedia === false) continue;
     set.add(a.jid);
+    if (a.groupName) names.set(a.jid, a.groupName);
   }
-  archiveTargetsCache = { at: Date.now(), set: set };
+  archiveTargetsCache = { at: Date.now(), set: set, names: names };
   return set;
+}
+
+/** The friendly group name for a jid, or '' when the group is not assigned. */
+function groupNameFor(jid) {
+  archiveTargets();
+  return archiveTargetsCache.names.get(jid) || '';
 }
 
 /**
@@ -317,7 +325,7 @@ export async function archiveIncomingMedia(rawMsg, meta) {
     }
 
     const media = await downloadWaWebMediaRaw(rawMsg);
-    const rec = await saveToArchive(meta.jid, meta.messageId, media, meta.timestamp);
+    const rec = await saveToArchive(meta.jid, meta.messageId, media, meta.timestamp, groupNameFor(meta.jid));
     if (rec) console.log('[BL-INBOX] 🗄 archived ' + rec.fileName + ' (' + Math.round(rec.size / 1024) + ' KB) from ' + sstr(meta.jid, 30));
     return rec;
   } catch (e) {
@@ -818,6 +826,13 @@ export function registerCandlBlInboxRoutes(app) {
     const idx = readMediaIndex();
     idx.items = idx.items || {};
 
+    // Files archived by the arrival hook used to have no group name. Fill it in on read so the
+    // folder never shows a bare jid just because the record is old.
+    const assignmentNames = new Map();
+    try {
+      for (const a of listAssignments()) if (a && a.jid && a.groupName) assignmentNames.set(a.jid, a.groupName);
+    } catch (e) { /* listings still work without names */ }
+
     // Trust the disk, not the index: a file can disappear (manual delete, lost volume), and a
     // stale entry would then inflate the reported size forever. A global listing also drops the
     // dead entries so the index heals itself.
@@ -833,6 +848,7 @@ export function registerCandlBlInboxRoutes(app) {
         continue;
       }
       if (jid && r.jid !== jid) continue;
+      if (!r.group_name && assignmentNames.has(r.jid)) r.group_name = assignmentNames.get(r.jid);
       all.push({ r: r, size: st.size });
     }
     if (dropped) writeJson(MEDIA_INDEX_FILE, idx);
