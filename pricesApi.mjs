@@ -11,11 +11,23 @@ import { wrapContent } from './alqaryan-site/build/chrome.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const FB_PAGE_ID = process.env.FB_PAGE_ID || '1383856674820826';
-// A Page token is a credential: environment only. It must never be committed again.
-// When it is absent, the website publish still runs and Facebook is skipped with a note.
-const FB_TOKEN = String(process.env.FB_PAGE_TOKEN || '').trim();
 
 let gDb = null;
+
+async function getFbToken(database) {
+  if (process.env.FB_PAGE_TOKEN) return String(process.env.FB_PAGE_TOKEN).trim();
+  const dbToUse = database || gDb;
+  if (dbToUse) {
+    try {
+      const wsSnap = await getDoc(doc(dbToUse, 'appData', 'websitesWorkshop'));
+      const wsAq = wsSnap.data()?.sites?.['alqaryangroup.com'];
+      if (wsAq?.host?.fbPageToken) return wsAq.host.fbPageToken;
+    } catch (e) {
+      console.warn('[PRICES] getFbToken error:', e.message);
+    }
+  }
+  return '';
+}
 
 async function getWpCredentials(database) {
   let user = 'whatanagent';
@@ -191,11 +203,12 @@ export function registerPricesRoutes(app, db) {
       const savedWp = await wpRes.json();
       const articleUrl = savedWp.link || `${creds.site}/${slug}/`;
 
-      // 3. Post to Facebook Page via Meta Graph API (skipped cleanly when no token is configured)
+      // 3. Post to Facebook Page via Meta Graph API
       let fbResult = null;
       let fbNote = '';
-      if ( ! FB_TOKEN ) {
-        fbNote = 'Facebook skipped: FB_PAGE_TOKEN is not set on the server.';
+      const fbToken = await getFbToken(gDb);
+      if ( ! fbToken ) {
+        fbNote = 'Facebook skipped: FB_PAGE_TOKEN is not set on the server or in websitesWorkshop.';
         console.warn('[PRICES] ' + fbNote);
       } else {
         try {
@@ -207,7 +220,7 @@ export function registerPricesRoutes(app, db) {
             body: JSON.stringify({
               message: fbMessage,
               link: articleUrl,
-              access_token: FB_TOKEN
+              access_token: fbToken
             })
           });
           fbResult = await fbRes.json();
