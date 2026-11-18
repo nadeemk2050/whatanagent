@@ -88,15 +88,21 @@ while ( have_posts() ) :
 	?>
 	<div class="sm-wrap sm-single">
 
-		<nav class="sm-crumbs" aria-label="Breadcrumb">
-			<a href="<?php echo esc_url( home_url( '/' ) ); ?>">Home</a>
-			<span aria-hidden="true">/</span>
-			<a href="<?php echo esc_url( $archive ); ?>">Scrap Market</a>
-			<?php if ( $material ) : ?>
-				<?php $link = get_term_link( $material ); ?>
+		<nav class="sm-crumbs" aria-label="Breadcrumb" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+			<div>
+				<a href="<?php echo esc_url( home_url( '/' ) ); ?>">Home</a>
 				<span aria-hidden="true">/</span>
-				<a href="<?php echo esc_url( is_wp_error( $link ) ? $archive : $link ); ?>"><?php echo esc_html( $material->name ); ?></a>
-			<?php endif; ?>
+				<a href="<?php echo esc_url( $archive ); ?>">Scrap Market</a>
+				<?php if ( $material ) : ?>
+					<?php $link = get_term_link( $material ); ?>
+					<span aria-hidden="true">/</span>
+					<a href="<?php echo esc_url( is_wp_error( $link ) ? $archive : $link ); ?>"><?php echo esc_html( $material->name ); ?></a>
+				<?php endif; ?>
+			</div>
+			<a class="sm-crumbs-fb" href="https://www.facebook.com/profile.php?id=61596816023674" target="_blank" rel="noopener noreferrer" title="View Al Qaryan Industries LLC Official Facebook Page" style="display:inline-flex;align-items:center;gap:6px;background:#1877f2;color:#ffffff;padding:4px 11px;border-radius:18px;font-size:0.8rem;font-weight:600;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,0.15);">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:block;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+				<span>Facebook Page</span>
+			</a>
 		</nav>
 
 		<?php if ( isset( $_GET['sm_msg'] ) && 'reported' === sanitize_key( wp_unslash( $_GET['sm_msg'] ) ) ) : ?>

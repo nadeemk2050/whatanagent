@@ -47,7 +47,13 @@ $has_filters = '' !== $search || '' !== $material || '' !== $region || '' !== $q
 
 	<div class="sm-topbar">
 		<div class="sm-topbar__main">
-			<h1 class="sm-topbar__title"><?php echo esc_html( $heading ); ?></h1>
+			<div style="display:inline-flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.35rem;">
+				<h1 class="sm-topbar__title" style="margin:0;"><?php echo esc_html( $heading ); ?></h1>
+				<a class="sm-topbar-fb-link" href="https://www.facebook.com/profile.php?id=61596816023674" target="_blank" rel="noopener noreferrer" title="Visit Al Qaryan Industries LLC on Facebook" style="display:inline-flex;align-items:center;gap:6px;background:#1877f2;color:#ffffff;padding:4px 11px;border-radius:18px;font-size:0.82rem;font-weight:600;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,0.15);transition:transform 0.15s ease;">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:block;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+					<span>Al Qaryan Facebook</span>
+				</a>
+			</div>
 			<nav class="sm-topbar__tabs" aria-label="Listing type">
 				<a class="sm-tab<?php echo '' === $kind_now ? ' is-active' : ''; ?>"
 					href="<?php echo esc_url( sm_market_url( array( 'kind' => '' ) ) ); ?>">

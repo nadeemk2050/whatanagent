@@ -3,7 +3,7 @@
  * Plugin Name:       Al Qaryan Scrap Market
  * Plugin URI:        https://alqaryangroup.com/scrap-market/
  * Description:       "Scrap Market" listings for alqaryangroup.com — custom post type, taxonomies, Product/Offer schema, IndexNow pings and a guaranteed-300 KB image pipeline. Self-contained so a theme switch cannot take it down.
- * Version:           0.3.8
+ * Version:           0.3.9
  * Requires at least: 6.4
  * Requires PHP:      8.0
  * Author:            Al Qaryan Industries
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SM_VERSION', '0.3.8' );
+define( 'SM_VERSION', '0.3.9' );
 define( 'SM_FILE', __FILE__ );
 define( 'SM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SM_URL', plugin_dir_url( __FILE__ ) );
@@ -322,3 +322,60 @@ function sm_render_settings() {
 		wp_safe_redirect( admin_url( 'options-general.php?page=scrap-market&sm_fb_tested=1' ) );
 		exit;
 	} );
+
+/**
+ * Render sleek Top-Left Facebook Page link across the whole site and Scrap Market.
+ */
+add_action( 'wp_footer', function () {
+	?>
+	<script id="sm-global-fb-script">
+	(function() {
+		var fbUrl = 'https://www.facebook.com/profile.php?id=61596816023674';
+		var fbSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>';
+
+		// 1. In standard site header (.q-brand) on top left
+		var brand = document.querySelector('.q-site-head .q-brand');
+		if (brand && !document.querySelector('.q-head-fb')) {
+			var a = document.createElement('a');
+			a.className = 'q-head-fb';
+			a.href = fbUrl;
+			a.target = '_blank';
+			a.rel = 'noopener noreferrer';
+			a.title = 'Follow Al Qaryan Industries LLC on Facebook';
+			a.setAttribute('aria-label', 'Al Qaryan Facebook Page');
+			a.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;background:#1877f2;color:#ffffff;border-radius:50%;text-decoration:none;margin-left:8px;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform 0.15s ease;';
+			a.innerHTML = fbSvg;
+			brand.parentNode.insertBefore(a, brand.nextSibling);
+		}
+
+		// 2. In Scrap Market topbar (.sm-topbar__main) on top left
+		var smTitle = document.querySelector('.sm-topbar__title');
+		if (smTitle && !document.querySelector('.sm-topbar-fb-badge')) {
+			var smFb = document.createElement('a');
+			smFb.className = 'sm-topbar-fb-badge';
+			smFb.href = fbUrl;
+			smFb.target = '_blank';
+			smFb.rel = 'noopener noreferrer';
+			smFb.title = 'Al Qaryan Industries Official Facebook Page';
+			smFb.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:#1877f2;color:#ffffff;padding:5px 12px;border-radius:18px;font-size:0.82rem;font-weight:600;text-decoration:none;margin-left:12px;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+			smFb.innerHTML = fbSvg + '<span>Facebook Page</span>';
+			smTitle.parentNode.insertBefore(smFb, smTitle.nextSibling);
+		}
+
+		// 3. In single listing breadcrumbs (.sm-crumbs)
+		var crumbs = document.querySelector('.sm-crumbs');
+		if (crumbs && !document.querySelector('.sm-crumbs-fb')) {
+			var crumbFb = document.createElement('a');
+			crumbFb.className = 'sm-crumbs-fb';
+			crumbFb.href = fbUrl;
+			crumbFb.target = '_blank';
+			crumbFb.rel = 'noopener noreferrer';
+			crumbFb.title = 'Al Qaryan Industries Official Facebook Page';
+			crumbFb.style.cssText = 'float:right;display:inline-flex;align-items:center;gap:6px;background:#1877f2;color:#ffffff;padding:4px 10px;border-radius:16px;font-size:0.8rem;font-weight:600;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,0.15);';
+			crumbFb.innerHTML = fbSvg + '<span>Facebook Page</span>';
+			crumbs.appendChild(crumbFb);
+		}
+	})();
+	</script>
+	<?php
+} );

@@ -3,7 +3,7 @@ $root = Resolve-Path .
 $dist = Join-Path $root 'alqaryan-site\dist'
 $tempDir = Join-Path $dist 'temp_pkg'
 $targetDir = Join-Path $tempDir 'alqaryan-scrap-market'
-$zipPath = Join-Path $dist 'alqaryan-scrap-market-0.3.8.zip'
+$zipPath = Join-Path $dist 'alqaryan-scrap-market-0.3.9.zip'
 
 if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null

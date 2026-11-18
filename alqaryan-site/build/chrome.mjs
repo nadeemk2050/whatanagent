@@ -14,10 +14,15 @@ export const EMAIL = 'info@alqaryangroup.com';
 export const HEAD = `
 <header class="q-site-head">
   <div class="q-site-head__inner">
-    <a class="q-brand" href="/">
-      <span class="q-brand__mark">AQ</span>
-      <span class="q-brand__name">Al Qaryan <em>Industries</em></span>
-    </a>
+    <div class="q-brand-wrap" style="display:inline-flex;align-items:center;gap:0.6rem;">
+      <a class="q-brand" href="/">
+        <span class="q-brand__mark">AQ</span>
+        <span class="q-brand__name">Al Qaryan <em>Industries</em></span>
+      </a>
+      <a class="q-head-fb" href="https://www.facebook.com/profile.php?id=61596816023674" target="_blank" rel="noopener noreferrer" title="Follow Al Qaryan Industries on Facebook" aria-label="Al Qaryan Facebook Page" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;background:#1877f2;color:#ffffff;border-radius:50%;text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform 0.15s ease;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:block;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+      </a>
+    </div>
     <nav class="q-nav" aria-label="Main navigation">
       <a href="/about/">About</a>
       <a href="/services/">Services</a>
@@ -50,6 +55,7 @@ export const FOOT = `
       <a href="/sustainability/">Sustainability</a>
       <a href="/news/">News &amp; insights</a>
       <a href="/machinery-inventions/">Machinery &amp; tech</a>
+      <a href="https://www.facebook.com/profile.php?id=61596816023674" target="_blank" rel="noopener noreferrer" style="color:#1877f2;font-weight:600;">Official Facebook Page &rarr;</a>
       <a href="/faq/">FAQ</a>
     </div>
     <div class="q-site-foot__col">
