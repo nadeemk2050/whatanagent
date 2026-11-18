@@ -33,7 +33,7 @@ import express from 'express';
 import { createRequire } from 'module';
 import { extractBlFields } from './candlBl.mjs';
 import { listAssignments } from './candlWhatsApp.mjs';
-import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage } from './waWebClient.js';
+import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage, downloadWaWebMediaRaw, addWaMediaListener } from './waWebClient.js';
 
 const require = createRequire(import.meta.url);
 const gdrive = require('./candlGdrive.cjs');
@@ -69,6 +69,131 @@ function writeJson(file, value) {
 
 const readReference = () => readJson(REF_FILE, { masters: [], drafts: [], updatedAt: 0 });
 const readInbox = () => readJson(INBOX_FILE, { lastTs: {}, items: [] });
+
+// ── media archive ───────────────────────────────────────────────────────────
+// WHY THIS EXISTS
+// WhatsApp media links expire and the raw message is dropped from the in-memory cache, so a
+// document that is not fetched within minutes of arriving can NEVER be fetched again. Fetching
+// on demand from a 3-month-old chat therefore fails by design - no amount of VPS or Firebase
+// changes that. The only reliable answer is to copy the bytes the moment they land, which is
+// what this archive does, keyed by (group, message id) and stored on the VPS disk.
+const MEDIA_DIR = path.join(DATA_DIR, 'wa-media');
+const MEDIA_INDEX_FILE = path.join(MEDIA_DIR, 'index.json');
+const MAX_MEDIA_BYTES = 900 * 1024 * 1024;      // whole archive; oldest files drop first
+const MAX_ONE_FILE_BYTES = 40 * 1024 * 1024;    // one document
+const ARCHIVE_TYPES = new Set(['document', 'image']);
+
+const readMediaIndex = () => readJson(MEDIA_INDEX_FILE, { totalBytes: 0, items: {} });
+const mediaSafe = (v) => String(v == null ? '' : v).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 90) || 'x';
+const archiveKey = (jid, id) => sstr(jid, 90) + '|' + sstr(id, 90);
+
+/** A file we already hold for this message, or null. */
+function archivedFromIndex(idx, jid, id) {
+  const hit = idx && idx.items ? idx.items[archiveKey(jid, id)] : null;
+  if (!hit || !hit.file) return null;
+  const abs = path.join(MEDIA_DIR, hit.file);
+  try {
+    const st = fs.statSync(abs);
+    return st.size ? Object.assign({}, hit, { abs: abs, size: st.size }) : null;
+  } catch (e) { return null; }
+}
+
+const lookupArchivedMedia = (jid, id) => archivedFromIndex(readMediaIndex(), jid, id);
+export { lookupArchivedMedia };
+
+/** Oldest-first eviction so the disk never fills up. */
+function pruneArchive(idx) {
+  if (!idx || !idx.items || idx.totalBytes <= MAX_MEDIA_BYTES) return;
+  const rows = Object.values(idx.items).sort((a, b) => (a.at || 0) - (b.at || 0));
+  for (const r of rows) {
+    if (idx.totalBytes <= MAX_MEDIA_BYTES) break;
+    try { fs.unlinkSync(path.join(MEDIA_DIR, r.file)); } catch (e) { /* already gone */ }
+    idx.totalBytes -= (r.size || 0);
+    delete idx.items[archiveKey(r.jid, r.id)];
+  }
+}
+
+/** Write bytes into the archive and index them. Returns the index record. */
+export async function saveToArchive(jid, id, media, ts, groupName) {
+  if (!jid || !id || !media || !media.buffer || !media.buffer.length) return null;
+  if (media.buffer.length > MAX_ONE_FILE_BYTES) return null;
+
+  const groupDir = mediaSafe(String(jid).split('@')[0]);
+  const ext = (String(media.fileName || '').match(/\.[A-Za-z0-9]{1,8}$/) || ['.bin'])[0];
+  const rel = path.join(groupDir, mediaSafe(id) + ext);
+  const abs = path.join(MEDIA_DIR, rel);
+
+  try {
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, media.buffer);
+  } catch (e) {
+    console.warn('[BL-INBOX] could not write media file:', sstr(e.message, 120));
+    return null;
+  }
+
+  const idx = readMediaIndex();
+  idx.items = idx.items || {};
+  const key = archiveKey(jid, id);
+  const old = idx.items[key];
+  if (old) idx.totalBytes = Math.max(0, (idx.totalBytes || 0) - (old.size || 0));
+  const rec = {
+    jid: sstr(jid, 90),
+    id: sstr(id, 90),
+    file: rel,
+    fileName: sstr(media.fileName || ('media' + ext), 160),
+    mimetype: sstr(media.mimetype || 'application/octet-stream', 120),
+    size: media.buffer.length,
+    ts: Number(ts) || Date.now(),
+    at: Date.now(),
+    group_name: sstr(groupName || '', 90)
+  };
+  idx.items[key] = rec;
+  idx.totalBytes = Number(idx.totalBytes || 0) + rec.size;
+  pruneArchive(idx);
+  writeJson(MEDIA_INDEX_FILE, idx);
+  return rec;
+}
+
+// Groups the owner has opted in to media saving for (they must be assigned to an AI staff member).
+let archiveTargetsCache = { at: 0, set: new Set() };
+function archiveTargets() {
+  if (Date.now() - archiveTargetsCache.at < 15000) return archiveTargetsCache.set;
+  const set = new Set();
+  for (const a of listAssignments()) {
+    if (!a || !a.jid || !a.jid.endsWith('@g.us')) continue;
+    if (a.powers && a.powers.saveMedia === false) continue;
+    set.add(a.jid);
+  }
+  archiveTargetsCache = { at: Date.now(), set: set };
+  return set;
+}
+
+/**
+ * Arrival-time hook: copy the bytes while WhatsApp still allows it.
+ * Called for every live media message; does nothing unless the group is opted in.
+ */
+export async function archiveIncomingMedia(rawMsg, meta) {
+  try {
+    if (!rawMsg || !meta || !meta.jid || !meta.messageId) return null;
+    if (!ARCHIVE_TYPES.has(meta.mediaType)) return null;
+    if (!archiveTargets().has(meta.jid)) return null;
+    if (lookupArchivedMedia(meta.jid, meta.messageId)) return null;   // already have it
+
+    const hinted = Number((meta.mediaInfo && meta.mediaInfo.fileLength) || 0);
+    if (hinted > MAX_ONE_FILE_BYTES) {
+      console.warn('[BL-INBOX] media too large to archive (' + Math.round(hinted / 1048576) + ' MB) for ' + sstr(meta.messageId, 40));
+      return null;
+    }
+
+    const media = await downloadWaWebMediaRaw(rawMsg);
+    const rec = await saveToArchive(meta.jid, meta.messageId, media, meta.timestamp);
+    if (rec) console.log('[BL-INBOX] 🗄 archived ' + rec.fileName + ' (' + Math.round(rec.size / 1024) + ' KB) from ' + sstr(meta.jid, 30));
+    return rec;
+  } catch (e) {
+    console.warn('[BL-INBOX] media archive skipped:', sstr(e.message || e, 120));
+    return null;
+  }
+}
 
 // ── text comparison ─────────────────────────────────────────────────────────
 const norm = (v) => String(v == null ? '' : v)
@@ -293,17 +418,34 @@ async function processDocument(assignment, msg, groupName, reference, state) {
     at: Date.now()
   };
 
-  let media;
-  try {
-    media = await downloadWaWebMedia(assignment.jid, msg.id);
-  } catch (e) {
-    const item = Object.assign(base, {
-      status: 'error',
-      error: 'Could not download the document from WhatsApp (' + sstr(e.message, 120) + '). It is only downloadable while it is still in the recent-message cache.',
-      check: { verdict: 'error', issues: [], matched: [] }
-    });
-    state.items.unshift(item);
-    return item;
+  let media = null;
+  let mediaSource = '';
+
+  // 0. Prefer our own copy: the archive does not depend on WhatsApp still serving the media.
+  const archived = lookupArchivedMedia(assignment.jid, msg.id);
+  if (archived) {
+    try {
+      media = { buffer: fs.readFileSync(archived.abs), fileName: archived.fileName, mimetype: archived.mimetype };
+      mediaSource = 'archive';
+    } catch (e) { media = null; }
+  }
+
+  // 1. Fall back to a live download, and keep a permanent copy of the bytes we just obtained.
+  if (!media) {
+    try {
+      media = await downloadWaWebMedia(assignment.jid, msg.id);
+      mediaSource = 'whatsapp';
+      await saveToArchive(assignment.jid, msg.id, media, msg.timestamp, groupName);
+    } catch (e) {
+      const item = Object.assign(base, {
+        status: 'awaiting-media',
+        error: 'This file arrived before media saving was on for this group, and WhatsApp no longer serves it (' +
+          sstr(e.message, 120) + '). Forward it into the group once — the AI will read it, check it and file it automatically.',
+        check: { verdict: 'awaiting-media', issues: [], matched: [] }
+      });
+      state.items.unshift(item);
+      return item;
+    }
   }
 
   // 1. Save the original to Drive first — even if reading the text fails, the file is safe.
@@ -342,6 +484,7 @@ async function processDocument(assignment, msg, groupName, reference, state) {
   const item = Object.assign(base, {
     status: 'checked',
     extraction_source: source,
+    media_source: mediaSource,
     drive,
     fields,
     check
@@ -439,6 +582,9 @@ let starter = false;
 export function startCandlBlWatcher() {
   if (starter) return;
   starter = true;
+  // Copy media the moment it arrives: WhatsApp media links expire, so this is the only moment a
+  // BL can be captured for good. Listening costs nothing for groups the owner has not opted in.
+  addWaMediaListener(archiveIncomingMedia);
   setTimeout(tick, 45 * 1000);              // let WhatsApp finish connecting first
   const timer = setInterval(tick, TICK_MS);
   if (typeof timer.unref === 'function') timer.unref();
@@ -497,6 +643,86 @@ export function registerCandlBlInboxRoutes(app) {
     const out = [];
     for (const a of assignments) out.push(Object.assign({ jid: a.jid }, await scanGroup(a, { force: true })));
     res.json({ ok: true, results: out });
+  });
+
+  // ── the group's chat, readable from the station ──────────────────────────
+  app.get(PREFIX + '/chat', guard, async (req, res) => {
+    const jid = sstr(req.query.jid, 120).trim();
+    if (!jid) return res.status(400).json({ ok: false, error: 'Which group? Pass ?jid=' });
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 200, 500));
+
+    let messages = [];
+    try { messages = await readChatMessagesForOwner(jid, limit); }
+    catch (e) { return res.json({ ok: false, error: sstr(e.message || e, 150), messages: [] }); }
+
+    const idx = readMediaIndex();
+    const assignment = listAssignments().find(a => a && a.jid === jid) || {};
+    const rows = messages.map((m) => {
+      const hit = archivedFromIndex(idx, jid, m.id);
+      return {
+        id: sstr(m.id, 90),
+        from_me: !!m.fromMe,
+        sender: sstr(m.fromMe ? 'You' : (m.senderName || ''), 80),
+        text: sstr(m.text, 400),
+        ts: Number(m.timestamp) || 0,
+        media_type: m.mediaType || '',
+        file_name: sstr((m.mediaInfo && m.mediaInfo.fileName) || '', 160),
+        archived: !!hit,
+        size: hit ? hit.size : 0,
+        download_url: hit ? (PREFIX + '/media?jid=' + encodeURIComponent(jid) + '&id=' + encodeURIComponent(m.id)) : ''
+      };
+    });
+
+    res.json({
+      ok: true,
+      jid: jid,
+      group_name: sstr(assignment.groupName || '', 90),
+      total: rows.length,
+      archived_files: rows.filter(r => r.archived).length,
+      messages: rows
+    });
+  });
+
+  // Serve an archived file back to the station (or straight to the browser).
+  app.get(PREFIX + '/media', guard, (req, res) => {
+    const jid = sstr(req.query.jid, 120).trim();
+    const id = sstr(req.query.id, 90).trim();
+    const hit = lookupArchivedMedia(jid, id);
+    if (!hit) return res.status(404).json({ ok: false, error: 'That file is not in the archive.' });
+    res.setHeader('Content-Type', hit.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Length', String(hit.size));
+    res.setHeader('Content-Disposition', 'inline; filename="' + mediaSafe(hit.fileName) + '"');
+    fs.createReadStream(hit.abs).on('error', () => { try { res.end(); } catch (e) { /* client gone */ } }).pipe(res);
+  });
+
+  // Copy one archived file to Google Drive — permanent, shareable, independent of this server.
+  app.post(PREFIX + '/media/save', guard, express.json({ limit: '256kb' }), async (req, res) => {
+    const jid = sstr((req.body || {}).jid, 120).trim();
+    const id = sstr((req.body || {}).id, 90).trim();
+    const hit = lookupArchivedMedia(jid, id);
+    if (!hit) return res.status(404).json({ ok: false, error: 'That file is not in the archive yet.' });
+
+    const conn = await gdrive.checkConnection();
+    if (!conn.connected) return res.status(503).json({ ok: false, error: conn.reason || 'Google Drive is not connected' });
+    if (gdrive.isMockMode && gdrive.isMockMode()) return res.status(503).json({ ok: false, error: 'Google Drive is in mock mode' });
+
+    try {
+      const root = await gdrive.getOrCreateRootFolder();
+      const box = await gdrive.getOrCreateSubfolder(root, 'WhatsApp Media');
+      const group = await gdrive.getOrCreateSubfolder(box || root, sstr(hit.group_name || jid.split('@')[0], 90).replace(/[\\/:*?"<>|]+/g, '_'));
+      const month = await gdrive.getOrCreateSubfolder(group || box || root, new Date().toISOString().slice(0, 7));
+      const uploaded = await gdrive.uploadFile(hit.abs, mediaSafe(hit.fileName), hit.mimetype || 'application/pdf', month || group || box || root);
+      if (!uploaded || !uploaded.id || String(uploaded.id).startsWith('file_')) {
+        return res.status(502).json({ ok: false, error: 'Drive returned no real file id' });
+      }
+      res.json({
+        ok: true,
+        file_id: uploaded.id,
+        web_view_link: uploaded.webViewLink || ('https://drive.google.com/file/d/' + uploaded.id + '/view')
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: sstr(e.message || e, 160) });
+    }
   });
 
   app.post(PREFIX + '/bl-inbox/notify', guard, express.json({ limit: '1mb' }), async (req, res) => {

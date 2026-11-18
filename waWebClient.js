@@ -3616,6 +3616,21 @@ function upsertMessageToChat(msg, isHistorySync = false) {
     rawMessagesMap.delete(firstKey);
   }
 
+  // Hand live media to the archiver while the media keys are still valid. History sync is
+  // excluded on purpose: it replays years of old messages whose links are long dead, so every
+  // attempt would be a guaranteed failure that only costs bandwidth.
+  if (mediaType && mediaType !== 'sticker' && !isHistorySync) {
+    emitWaMedia(msg, {
+      jid: jid,
+      messageId: msgId,
+      mediaType: mediaType,
+      mediaInfo: mediaInfo,
+      timestamp: timestamp,
+      fromMe: fromMe,
+      senderName: fromMe ? 'You' : (pushName || name)
+    });
+  }
+
   let chat = waWebState.chats.get(jid);
   if (!chat) {
     chat = {
@@ -5336,9 +5351,21 @@ export async function initWaWeb(db = null) {
 
 // Helper: Download full media on-demand when clicked
 export async function downloadWaWebMedia(jid, msgId) {
-  if (!sock) throw new Error('WhatsApp Web not connected');
   const rawMsg = rawMessagesMap.get(`${jid}_${msgId}`);
   if (!rawMsg) throw new Error('Message media is no longer in temporary memory cache');
+  return downloadWaWebMediaRaw(rawMsg);
+}
+
+/**
+ * Download media straight from a raw Baileys message.
+ *
+ * Used by the arrival-time archiver: WhatsApp media links expire after a few weeks and the raw
+ * message is dropped from the 1000-entry cache, so a document that is not fetched the moment it
+ * arrives can never be fetched again. Callers should treat a failure here as permanent.
+ */
+export async function downloadWaWebMediaRaw(rawMsg) {
+  if (!sock) throw new Error('WhatsApp Web not connected');
+  if (!rawMsg || !rawMsg.message) throw new Error('No message to download');
 
   try {
     const buffer = await downloadMediaMessage(
@@ -5351,14 +5378,35 @@ export async function downloadWaWebMedia(jid, msgId) {
       }
     );
 
-    const { mediaType, mediaInfo } = parseMessageContent(rawMsg);
+    const { mediaInfo, mediaType } = parseMessageContent(rawMsg);
+    const fallback = (mediaType || 'file') + '_' + ((rawMsg.key && rawMsg.key.id) || Date.now());
     return {
       buffer,
       mimetype: mediaInfo?.mimetype || 'application/octet-stream',
-      fileName: mediaInfo?.fileName || `media_${msgId}`
+      fileName: mediaInfo?.fileName || fallback
     };
   } catch (err) {
     throw new Error('Failed to download media: ' + err.message);
+  }
+}
+
+// ── media arrival listeners ──────────────────────────────────────────────────
+// A listener is given the raw message the moment live media lands, while the media keys are
+// still valid. Only ONE module should need this: the BL inbox archiver.
+const waMediaListeners = new Set();
+
+export function addWaMediaListener(fn) {
+  if (typeof fn !== 'function') return () => {};
+  waMediaListeners.add(fn);
+  return () => waMediaListeners.delete(fn);
+}
+
+function emitWaMedia(msg, meta) {
+  for (const fn of waMediaListeners) {
+    try {
+      const r = fn(msg, meta);
+      if (r && typeof r.catch === 'function') r.catch(() => {});
+    } catch (e) { /* a failing listener must never break the message pipeline */ }
   }
 }
 

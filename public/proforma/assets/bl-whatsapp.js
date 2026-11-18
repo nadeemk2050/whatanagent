@@ -43,6 +43,8 @@
     inbox: null,
     reference: null,
     inboxTimer: null,
+    chat: null,
+    chatBusy: false,
     busy: false
   };
 
@@ -331,11 +333,15 @@
   }
 
   function buttonStyle(kind, disabled) {
-    const accent = {
+    const palette = {
       primary: ['rgba(56,189,248,.2)', 'rgba(56,189,248,.65)', '#7dd3fc'],
       green: ['rgba(16,185,129,.16)', 'rgba(16,185,129,.6)', '#6ee7b7'],
-      ghost: ['rgba(255,255,255,.05)', 'rgba(148,163,184,.32)', '#cbd5e1']
-    }[kind || 'primary'];
+      ghost: ['rgba(255,255,255,.05)', 'rgba(148,163,184,.32)', '#cbd5e1'],
+      secondary: ['rgba(255,255,255,.05)', 'rgba(148,163,184,.32)', '#cbd5e1']
+    };
+    // Never let an unknown variant throw here: this runs while the section is being built, so a
+    // crash would blank the page. An unstyled button is a much better failure.
+    const accent = palette[kind] || palette[kind || 'primary'] || palette.primary;
     return 'display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:10px;' +
       'cursor:' + (disabled ? 'not-allowed' : 'pointer') + ';' +
       (disabled ? 'opacity:.45;' : '') +
@@ -431,6 +437,25 @@
         '<div id="blwa-inbox" style="margin-top:14px"></div>' +
       '</div>' +
 
+      // ── STEP 5 ─────────────────────────────────────────────────────────────
+      '<div style="' + cardStyle() + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+          '<div>' +
+            '<div style="font-size:15px;font-weight:800;color:#fff">5. Chat &amp; files of this group</div>' +
+            '<div style="font-size:12.5px;color:#94a3b8;margin-top:3px">' +
+              'Read what the group has been saying and open the files the AI has already saved. ' +
+              'WhatsApp only lets a file be downloaded while it is fresh, so files are copied the moment ' +
+              'they arrive \u2014 anything from before saving was switched on has to be forwarded once.' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" id="blwa-load-chat" style="' + buttonStyle('secondary', !selected) + '"' +
+            (selected ? '' : ' disabled title="Select a group first"') + '>' +
+            (state.chatBusy ? '\u23f3 Loading\u2026' : '\ud83d\udcac Load chat') +
+          '</button>' +
+        '</div>' +
+        '<div id="blwa-chat" style="margin-top:14px"></div>' +
+      '</div>' +
+
       '<div style="font-size:11.5px;color:#64748b;padding:0 2px 8px">' +
         'BL rows can be pushed into the station form (fields are filled for you to verify) or parked in ' +
         '<b style="color:#94a3b8">BL Drafts</b>. Drafts written from here appear in the station list after the app is reloaded.' +
@@ -448,9 +473,14 @@
     const scanBtn = wrap.querySelector('#blwa-scan-now');
     if (scanBtn && selected) scanBtn.addEventListener('click', guard(() => scanNow(wrap)));
 
+    // wire step 5
+    const chatBtn = wrap.querySelector('#blwa-load-chat');
+    if (chatBtn && selected) chatBtn.addEventListener('click', guard(() => loadChat(wrap)));
+
     renderBls(wrap);
     renderAgents(wrap);
     renderInbox(wrap);
+    renderChat(wrap);
   }
 
   // ── step 4: automatic checks ─────────────────────────────────────────────
@@ -499,6 +529,7 @@
       unknown: ['CHECK', 'rgba(245,158,11,.16)', 'rgba(245,158,11,.5)', '#fbbf24'],
       ok: ['OK', 'rgba(16,185,129,.16)', 'rgba(16,185,129,.5)', '#34d399'],
       'no-reference': ['NO REFERENCE', 'rgba(148,163,184,.16)', 'rgba(148,163,184,.4)', '#cbd5e1'],
+      'awaiting-media': ['NEED FILE', 'rgba(245,158,11,.16)', 'rgba(245,158,11,.5)', '#fbbf24'],
       'not-a-bl': ['NOT A BL', 'rgba(148,163,184,.14)', 'rgba(148,163,184,.35)', '#94a3b8'],
       unreadable: ['UNREADABLE', 'rgba(148,163,184,.14)', 'rgba(148,163,184,.35)', '#94a3b8'],
       error: ['ERROR', 'rgba(239,68,68,.14)', 'rgba(239,68,68,.45)', '#fca5a5']
@@ -570,6 +601,103 @@
 
     host.innerHTML = refLine +
       '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden">' + rows + '</div>';
+  }
+
+  // ── step 5: the group's chat + files ─────────────────────────────────────
+  /** Absolute URL for an archived file, using whichever API host answered. */
+  function mediaUrl(jid, id) {
+    const base = state.base || (apiCandidates()[0] || '');
+    return base + '/wa/media?jid=' + encodeURIComponent(jid) + '&id=' + encodeURIComponent(id);
+  }
+
+  async function loadChat(wrap) {
+    if (!state.groupJid || state.chatBusy) return;
+    state.chatBusy = true;
+    renderSection(wrap);
+    try {
+      const data = await apiFetch('/wa/chat?limit=200&jid=' + encodeURIComponent(state.groupJid));
+      if (data.ok === false) toast(data.error || 'Could not read this chat', 'error');
+      state.chat = Array.isArray(data.messages) ? data.messages : [];
+      state.chatArchived = Number(data.archived_files) || 0;
+    } catch (e) {
+      toast('Could not read this chat: ' + e.message, 'error');
+      state.chat = state.chat || [];
+    } finally {
+      state.chatBusy = false;
+      renderSection(wrap);
+    }
+  }
+
+  async function saveMediaToDrive(wrap, jid, id) {
+    try {
+      const r = await apiFetch('/wa/media/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: jid, id: id })
+      });
+      if (r && r.web_view_link) {
+        toast('Saved to Google Drive.');
+        window.open(r.web_view_link, '_blank', 'noopener');
+      } else {
+        toast('Saved, but Drive returned no link.', 'error');
+      }
+    } catch (e) {
+      toast('Drive save failed: ' + e.message, 'error');
+    }
+  }
+
+  function renderChat(wrap) {
+    const host = wrap.querySelector('#blwa-chat');
+    if (!host) return;
+
+    if (state.chat === null || state.chat === undefined) {
+      host.innerHTML = '<div style="font-size:12.5px;color:#94a3b8">' +
+        (state.groupJid
+          ? 'Press \u201cLoad chat\u201d to read this group\u2019s latest 200 messages.'
+          : 'Select a group first, then press \u201cLoad chat\u201d.') +
+        '</div>';
+      return;
+    }
+    if (!state.chat.length) {
+      host.innerHTML = '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
+        'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">No messages in memory for this group right now.</div>';
+      return;
+    }
+
+    const rows = state.chat.slice().reverse().map((m) => {
+      const time = m.ts ? new Date(m.ts).toLocaleString() : '';
+      const isDoc = m.media_type === 'document' || m.media_type === 'image';
+      let fileBit = '';
+      if (isDoc) {
+        fileBit = m.archived
+          ? '<div style="margin-top:4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+              '<a href="' + esc(mediaUrl(state.groupJid, m.id)) + '" target="_blank" rel="noreferrer" ' +
+                'style="color:#7dd3fc;font-weight:700;text-decoration:none">\ud83d\udcce ' + esc(m.file_name || 'Open file') + ' \u2197</a>' +
+              '<button type="button" data-blwa-drive="' + esc(m.id) + '" style="' + buttonStyle('ghost') + ';padding:4px 9px;font-size:11px">Save to Drive</button>' +
+            '</div>'
+          : '<div style="margin-top:4px;font-size:11.5px;color:#fbbf24">\ud83d\udcce ' + esc(m.file_name || m.media_type) +
+            ' \u2014 not saved (arrived before saving was on; forward it once)</div>';
+      }
+      return '' +
+        '<div style="padding:9px 12px;border-top:1px solid rgba(148,163,184,.12)">' +
+          '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">' +
+            '<span style="font-weight:800;color:' + (m.from_me ? '#6ee7b7' : '#7dd3fc') + ';font-size:12px">' + esc(m.sender || (m.from_me ? 'You' : 'Member')) + '</span>' +
+            '<span style="margin-left:auto;font-size:11px;color:#64748b">' + esc(time) + '</span>' +
+          '</div>' +
+          '<div style="font-size:12.5px;color:#cbd5e1;margin-top:2px;white-space:pre-wrap">' + esc(m.text || '') + '</div>' +
+          fileBit +
+        '</div>';
+    }).join('');
+
+    const head = '<div style="font-size:11.5px;color:#64748b;margin-bottom:9px">' +
+      state.chat.length + ' message(s) \u00b7 ' + (state.chatArchived || 0) + ' file(s) saved by the AI' +
+      '</div>';
+
+    host.innerHTML = head +
+      '<div style="border:1px solid rgba(148,163,184,.18);border-radius:10px;overflow:hidden;max-height:420px;overflow-y:auto">' + rows + '</div>';
+
+    host.querySelectorAll('[data-blwa-drive]').forEach((b) => {
+      b.addEventListener('click', guard(() => saveMediaToDrive(wrap, state.groupJid, b.dataset.blwaDrive)));
+    });
   }
 
   function renderBls(wrap) {
@@ -644,7 +772,7 @@
       '</div>';
       return;
     }
-    const p = (a && a.powers) || { readBls: true, extractPdf: true, draftReplies: false, autoReply: false, notifyOwner: true };
+    const p = (a && a.powers) || { readBls: true, extractPdf: true, saveMedia: true, draftReplies: false, autoReply: false, notifyOwner: true };
     const power = (key, label) =>
       '<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#cbd5e1;cursor:pointer">' +
         '<input type="checkbox" data-blwa-power="' + key + '"' + (p[key] ? ' checked' : '') +
@@ -672,6 +800,7 @@
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px;margin-top:14px">' +
         power('readBls', 'Read BLs from this group') +
         power('extractPdf', 'Read attached BL PDFs') +
+        power('saveMedia', 'Save the group\u2019s files (documents & photos)') +
         power('draftReplies', 'Draft replies for approval') +
         power('autoReply', 'Reply automatically') +
         power('notifyOwner', 'Notify me of new BLs') +
