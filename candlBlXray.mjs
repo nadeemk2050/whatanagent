@@ -45,6 +45,9 @@ const DATA_DIR = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data
 const RULES_FILE = path.join(DATA_DIR, 'candl-wa-xray-rules.json');
 const AI_TIMEOUT_MS = 60000;
 const MAX_TEXT_CHARS = 60000;
+// Bump whenever the extraction logic or the prompt changes: the text hash alone cannot tell a
+// better extraction from the same text, so a stale cache would keep serving the old answer.
+const XRAY_CACHE_VERSION = 2;
 
 const sstr = (v, n = 400) => String(v == null ? '' : v).slice(0, n);
 
@@ -217,6 +220,7 @@ ${FIELDS.map(f => '- "' + f.key + '": ' + f.label).join('\n')}
 
 RULES
 - Use "" (empty string) for anything the document does not contain. Never invent a value.
+- "bl_number" is the number printed in the B/L No. / Bill of Lading No. field. It is NEVER a container number, a seal number or a booking number.
 - "container_numbers" must be a JSON array of ISO 6346 numbers (4 letters + 7 digits), no spaces.
 - "free_days", "detention_free_days", "storage_free_days": digits only, e.g. "14".
 - Keep ports as printed, e.g. "JEBEL ALI, UAE".
@@ -379,6 +383,24 @@ export function extractXrayLocal(text) {
   return out;
 }
 
+/**
+ * The B/L number is the one field where a wrong guess poisons everything else: it decides which
+ * saved draft the BL is compared against. When the document prints an explicit "B/L No." label,
+ * that labelled value is authoritative, so it wins over a model that mistook a container or
+ * booking token for it (seen in production: MEDUALU18574 instead of EBKG19393286).
+ */
+export function preferLabelledBlNumber(text, aiValue, localValue) {
+  const labelled = /(?:B\/L\s*NO\.?|BL\s*NO\.?|BILL\s*OF\s*LADING\s*NO\.?)\s*[:.]?\s*([A-Z0-9][A-Z0-9\/\-]{4,25})/i.exec(String(text || ''));
+  if (!labelled || !labelled[1]) return aiValue || localValue || '';
+  const printed = String(labelled[1]).trim().toUpperCase();
+  if (!/[0-9]/.test(printed)) return aiValue || localValue || '';   // label followed by a word, not a number
+  const ai = String(aiValue || '').trim().toUpperCase();
+  if (ai && ai === printed) return aiValue;
+  const local = String(localValue || '').trim().toUpperCase();
+  if (local && local === printed) return localValue;
+  return printed;
+}
+
 /** AI first, local regex for anything the AI left empty. */
 export async function extractXray(text, settings = {}) {
   const local = extractXrayLocal(text);
@@ -409,6 +431,10 @@ export async function extractXray(text, settings = {}) {
     }
     fields[key] = v;
   }
+
+  // The labelled B/L number beats any model guess (see preferLabelledBlNumber).
+  fields.bl_number = preferLabelledBlNumber(text, fields.bl_number, local.bl_number);
+
   return { source, fields };
 }
 
@@ -671,7 +697,7 @@ export function registerCandlXrayRoutes(app) {
     let cachedAt = 0;
 
     const cache = canCache ? readSidecarFields(jid, messageId) : null;
-    if (cache && cache.hash === hash && cache.fields) {
+    if (cache && cache.v === XRAY_CACHE_VERSION && cache.hash === hash && cache.fields) {
       fields = cache.fields;
       extractionSource = cache.extraction_source || 'cache';
       cached = true;
@@ -682,6 +708,7 @@ export function registerCandlXrayRoutes(app) {
       extractionSource = ex.source;
       if (canCache) {
         const wrote = writeSidecarFields(jid, messageId, {
+          v: XRAY_CACHE_VERSION,
           hash: hash,
           at: Date.now(),
           extraction_source: ex.source,
