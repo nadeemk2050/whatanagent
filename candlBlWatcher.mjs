@@ -33,7 +33,7 @@ import express from 'express';
 import { createRequire } from 'module';
 import { extractBlFields } from './candlBl.mjs';
 import { listAssignments } from './candlWhatsApp.mjs';
-import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage, downloadWaWebMediaRaw, addWaMediaListener } from './waWebClient.js';
+import { downloadWaWebMedia, getWaWebStatus, readChatMessagesForOwner, sendWaWebMessage, downloadWaWebMediaRaw, addWaMediaListener, addWaMessageListener } from './waWebClient.js';
 import { extractTextFromBuffer, extractTextFromFile, pdfToText } from './blText.mjs';
 
 const require = createRequire(import.meta.url);
@@ -43,7 +43,12 @@ const PREFIX = '/candl/api/wa';
 const DATA_DIR = process.env.CANDL_DATA_DIR || path.resolve(process.cwd(), 'data');
 const REF_FILE = path.join(DATA_DIR, 'candl-wa-reference.json');
 const INBOX_FILE = path.join(DATA_DIR, 'candl-wa-bl-inbox.json');
-const TICK_MS = 30 * 1000;          // the WhatsApp raw-message cache holds ~1000 msgs, so stay quick
+// A group is read the moment something arrives in it (see queueScanForGroup). This sweep is only a
+// backstop for what an event cannot cover: messages that arrived while the server was down and
+// were replayed by history sync, which raises no live event.
+const SAFETY_TICK_MS = 15 * 60 * 1000;
+const SAFETY_FIRST_TICK_MS = 60 * 1000;
+const EVENT_DEBOUNCE_MS = 4000;      // let a burst of messages settle before reading the group
 const MAX_DOCS_PER_TICK = 3;
 const MAX_TEXT_CHARS = 60000;
 
@@ -699,6 +704,46 @@ export function isBlCandidate(msg) {
 
 let ticking = false;
 
+/** Groups the owner has handed to an AI staff member that is allowed to read BLs. */
+function watchedGroups() {
+  try {
+    return listAssignments().filter(a =>
+      a && a.jid && a.jid.endsWith('@g.us') && (!a.powers || a.powers.readBls !== false));
+  } catch (e) { return []; }
+}
+
+// ── event-driven scanning ───────────────────────────────────────────────────
+// One pending scan per group: a group that receives ten messages in a row is read once, after the
+// burst, not ten times. This is what keeps a quiet group completely free.
+const pendingScans = new Map();
+
+export function queueScanForGroup(jid) {
+  if (!jid || !String(jid).endsWith('@g.us')) return false;
+  if (pendingScans.has(jid)) return true;
+
+  const watched = watchedGroups().some(a => a.jid === jid);
+  if (!watched) return false;                      // not assigned (yet): nothing to watch
+
+  const timer = setTimeout(() => {
+    pendingScans.delete(jid);
+    const assignment = watchedGroups().find(a => a.jid === jid);
+    if (!assignment) return;
+    scanGroup(assignment).catch((e) => console.warn('[BL-INBOX] event scan failed:', sstr(e.message || e, 140)));
+  }, EVENT_DEBOUNCE_MS);
+  if (typeof timer.unref === 'function') timer.unref();
+
+  pendingScans.set(jid, timer);
+  return true;
+}
+
+/** Every live message in a watched group triggers one debounced read of that group. */
+function onLiveMessage(msg, meta) {
+  try {
+    if (!meta || !meta.jid) return;
+    queueScanForGroup(meta.jid);
+  } catch (e) { /* never break the WhatsApp pipeline for this */ }
+}
+
 export async function scanGroup(assignment, { force = false } = {}) {
   const state = readInbox();
   const reference = readReference();
@@ -740,14 +785,12 @@ export async function scanGroup(assignment, { force = false } = {}) {
   return { ok: true, processed: processed.length, scanned: messages.length, items: processed.map(i => ({ id: i.id, bl_number: i.fields && i.fields.bl_number, verdict: i.check && i.check.verdict, status: i.status })) };
 }
 
-async function tick() {
+export async function tick() {
   if (ticking) return;
   ticking = true;
   try {
     if (getWaWebStatus().status !== 'connected') return;      // only the node that owns the session
-    const assignments = listAssignments().filter(a =>
-      a && a.jid && a.jid.endsWith('@g.us') && (!a.powers || a.powers.readBls !== false));
-    for (const a of assignments) await scanGroup(a);
+    for (const a of watchedGroups()) await scanGroup(a);
   } catch (e) {
     console.warn('[BL-INBOX] tick error:', sstr(e.message || e, 160));
   } finally {
@@ -762,10 +805,23 @@ export function startCandlBlWatcher() {
   // Copy media the moment it arrives: WhatsApp media links expire, so this is the only moment a
   // BL can be captured for good. Listening costs nothing for groups the owner has not opted in.
   addWaMediaListener(archiveIncomingMedia);
-  setTimeout(tick, 45 * 1000);              // let WhatsApp finish connecting first
-  const timer = setInterval(tick, TICK_MS);
+  // Read a group when it becomes active instead of polling it around the clock.
+  addWaMessageListener(onLiveMessage);
+  setTimeout(tick, SAFETY_FIRST_TICK_MS);    // let WhatsApp finish connecting first
+  const timer = setInterval(tick, SAFETY_TICK_MS);
   if (typeof timer.unref === 'function') timer.unref();
-  console.log('[BL-INBOX] 🤖 BL watcher started — every ' + (TICK_MS / 1000) + 's over assigned groups');
+  console.log('[BL-INBOX] 🤖 BL watcher ready — reads a group when a message arrives; safety sweep every ' +
+    (SAFETY_TICK_MS / 60000) + ' min');
+}
+
+/** Small introspection hook for tests and diagnostics. */
+export function watcherStats() {
+  return {
+    pending_scans: pendingScans.size,
+    watched_groups: watchedGroups().length,
+    safety_tick_ms: SAFETY_TICK_MS,
+    event_debounce_ms: EVENT_DEBOUNCE_MS
+  };
 }
 
 // ── routes ──────────────────────────────────────────────────────────────────

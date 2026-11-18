@@ -689,8 +689,8 @@
         '<div style="padding:12px 14px;border-radius:10px;background:rgba(148,163,184,.06);' +
         'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">' +
         (state.groupJid
-          ? 'No BL has been read from this group yet. The AI checks every 30 seconds once a group is assigned; you can press \u201cCheck the group now\u201d.'
-          : 'Select a group and assign an AI staff member \u2014 checks start automatically.') +
+          ? 'No BL has been read from this group yet. Once a group is assigned, a BL is read the moment it is posted; you can also press \u201cCheck the group now\u201d.'
+          : 'Select a group and assign an AI staff member \u2014 checks then start as messages arrive.') +
         '</div>';
       return;
     }

@@ -3619,16 +3619,19 @@ function upsertMessageToChat(msg, isHistorySync = false) {
   // Hand live media to the archiver while the media keys are still valid. History sync is
   // excluded on purpose: it replays years of old messages whose links are long dead, so every
   // attempt would be a guaranteed failure that only costs bandwidth.
-  if (mediaType && mediaType !== 'sticker' && !isHistorySync) {
-    emitWaMedia(msg, {
+  if (!isHistorySync) {
+    const meta = {
       jid: jid,
       messageId: msgId,
       mediaType: mediaType,
       mediaInfo: mediaInfo,
       timestamp: timestamp,
       fromMe: fromMe,
+      text: text,
       senderName: fromMe ? 'You' : (pushName || name)
-    });
+    };
+    emitWaMessage(msg, meta);
+    if (mediaType && mediaType !== 'sticker') emitWaMedia(msg, meta);
   }
 
   let chat = waWebState.chats.get(jid);
@@ -5403,6 +5406,26 @@ export function addWaMediaListener(fn) {
 
 function emitWaMedia(msg, meta) {
   for (const fn of waMediaListeners) {
+    try {
+      const r = fn(msg, meta);
+      if (r && typeof r.catch === 'function') r.catch(() => {});
+    } catch (e) { /* a failing listener must never break the message pipeline */ }
+  }
+}
+
+// ── live message listeners ──────────────────────────────────────────────────
+// Every live (not history-synced) message, text or media. Used to react the moment a group is
+// active instead of polling it on a timer: a BL is checked when it arrives, not up to a minute later.
+const waMessageListeners = new Set();
+
+export function addWaMessageListener(fn) {
+  if (typeof fn !== 'function') return () => {};
+  waMessageListeners.add(fn);
+  return () => waMessageListeners.delete(fn);
+}
+
+function emitWaMessage(msg, meta) {
+  for (const fn of waMessageListeners) {
     try {
       const r = fn(msg, meta);
       if (r && typeof r.catch === 'function') r.catch(() => {});
