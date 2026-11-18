@@ -55,6 +55,10 @@
     xrayRules: null,
     mediaList: null,
     mediaBusy: false,
+    view: 'workspace',          // 'workspace' | 'drafts'
+    draftReport: null,
+    draftReportId: '',
+    draftReportBusy: false,
     busy: false
   };
 
@@ -360,7 +364,53 @@
       ';font:800 13px system-ui;letter-spacing:.02em';
   }
 
+  /**
+   * The section has two tabs: the live WhatsApp workspace, and the draft register that holds every
+   * BL moved to draft. Always resolve the OUTER container, because handlers deep inside the view
+   * call this too and must never nest a second tab strip.
+   */
   function renderSection(wrap) {
+    const outer = (wrap && wrap.id === 'blwa-wrap')
+      ? wrap
+      : (document.getElementById('blwa-wrap') || wrap);
+    if (!outer) return;
+
+    const active = state.view === 'drafts' ? 'drafts' : 'workspace';
+    const tab = (key, label) =>
+      '<button type="button" data-blwa-view="' + key + '" style="padding:8px 15px;border-radius:9px;cursor:pointer;' +
+      'font:800 12px/1 system-ui;letter-spacing:.04em;white-space:nowrap;' +
+      'background:' + (active === key ? 'rgba(56,189,248,.22)' : 'rgba(255,255,255,.04)') + ';' +
+      'border:1px solid ' + (active === key ? 'rgba(56,189,248,.6)' : 'rgba(148,163,184,.28)') + ';' +
+      'color:' + (active === key ? '#7dd3fc' : '#94a3b8') + '">' + label + '</button>';
+
+    outer.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:2px 2px 12px;' +
+        'border-bottom:1px solid rgba(148,163,184,.18);margin-bottom:16px">' +
+        tab('workspace', '\ud83d\udcac WORKSPACE') +
+        tab('drafts', '\ud83d\udcc4 BL DRAFTS DETAILS') +
+        '<span style="margin-left:auto;font-size:11.5px;color:#64748b">' +
+          (active === 'drafts'
+            ? 'Every BL moved to draft, with its checked details'
+            : 'Group, BLs, AI staff and automatic checks') +
+        '</span>' +
+      '</div>' +
+      '<div id="blwa-view"></div>';
+
+    outer.querySelectorAll('[data-blwa-view]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        state.view = b.dataset.blwaView === 'drafts' ? 'drafts' : 'workspace';
+        renderSection(outer);
+        if (state.view === 'drafts') enrichDrafts(outer);
+      }));
+    });
+
+    const host = outer.querySelector('#blwa-view');
+    if (!host) return;
+    if (active === 'drafts') renderDraftsView(host, outer);
+    else renderWorkspace(host, outer);
+  }
+
+  function renderWorkspace(wrap) {
     const selected = state.groupJid;
 
     wrap.innerHTML = '' +
@@ -1563,6 +1613,286 @@
   }
 
   // ── park a fetched BL in the station's BL Drafts list ────────────────────
+  // ── BL DRAFTS DETAILS ──────────────────────────────────────────────────
+  function readDrafts() {
+    const all = jget(DRAFTS_KEY, {});
+    const key = stationKey();
+    const arr = Array.isArray(all[key]) ? all[key] : [];
+    return arr.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  }
+
+  function patchDraft(id, patch) {
+    const key = stationKey();
+    const all = jget(DRAFTS_KEY, {});
+    const arr = Array.isArray(all[key]) ? all[key] : [];
+    const i = arr.findIndex(d => d && d.id === id);
+    if (i < 0) return false;
+    arr[i] = Object.assign({}, arr[i], patch);
+    all[key] = arr;
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(all)); return true; }
+    catch (e) { toast('Could not update the draft: ' + e.message, 'error'); return false; }
+  }
+
+  function removeDraft(id) {
+    const key = stationKey();
+    const all = jget(DRAFTS_KEY, {});
+    all[key] = (Array.isArray(all[key]) ? all[key] : []).filter(d => d && d.id !== id);
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(all)); } catch (e) { /* full */ }
+  }
+
+  /** Read one named field out of an X-Ray response. */
+  function xrayField(r, key) {
+    for (const g of (r && r.groups) || []) {
+      const f = (g.fields || []).find(x => x.key === key);
+      if (f && f.value) return String(f.value);
+    }
+    return '';
+  }
+
+  /** Copy the checked details onto the draft so the register shows real values, not blanks. */
+  function applyXrayToDraft(id, r) {
+    const sum = (r && r.summary) || {};
+    patchDraft(id, {
+      shipper_name: xrayField(r, 'shipper_name'),
+      consignee_name: xrayField(r, 'consignee_name'),
+      item_description: xrayField(r, 'description_of_goods'),
+      net_qty: xrayField(r, 'net_weight') || xrayField(r, 'packages_count'),
+      port_of_loading: xrayField(r, 'port_of_loading'),
+      final_destination: xrayField(r, 'port_of_discharge') || xrayField(r, 'place_of_delivery'),
+      vessel_name: xrayField(r, 'vessel_name') || '',
+      xray_at: Date.now(),
+      xray_source: (r && r.extraction_source) || '',
+      xray_summary: {
+        ok: Number(sum.ok) || 0,
+        mismatch: Number(sum.mismatch) || 0,
+        missing: Number(sum.missing) || 0,
+        invalid: Number(sum.invalid) || 0,
+        unknown: Number(sum.unknown) || 0
+      }
+    });
+  }
+
+  /** Fill in drafts that were saved before their file had been read (max 2 per pass, cached server side). */
+  async function enrichDrafts(wrap) {
+    const pending = readDrafts().filter(d => d && d.file && d.file.jid && d.file.message_id && !d.xray_at);
+    if (!pending.length) return;
+    for (const d of pending.slice(0, 2)) {
+      try {
+        const r = await apiFetch('/wa/xray', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jid: d.file.jid, message_id: d.file.message_id })
+        });
+        if (r && r.ok !== false) applyXrayToDraft(d.id, r);
+      } catch (e) { /* the row keeps whatever it already had */ }
+    }
+    renderSection(wrap);
+  }
+
+  async function openDraftReport(wrap, draft) {
+    if (state.draftReportBusy) return;
+    state.draftReportId = draft.id;
+    state.draftReportBusy = true;
+    state.draftReport = null;
+    renderSection(wrap);
+    try {
+      const r = await apiFetch('/wa/xray', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jid: draft.file.jid, message_id: draft.file.message_id })
+      });
+      state.draftReport = r;
+      if (r && r.ok !== false) applyXrayToDraft(draft.id, r);
+    } catch (e) {
+      state.draftReport = { ok: false, error: e.message };
+    } finally {
+      state.draftReportBusy = false;
+      renderSection(wrap);
+    }
+  }
+
+  function reportChip(status) {
+    const map = {
+      ok: ['OK', 'rgba(16,185,129,.16)', 'rgba(16,185,129,.5)', '#34d399'],
+      mismatch: ['DIFFERS', 'rgba(239,68,68,.18)', 'rgba(239,68,68,.55)', '#fca5a5'],
+      missing: ['MISSING', 'rgba(245,158,11,.16)', 'rgba(245,158,11,.5)', '#fbbf24'],
+      invalid: ['INVALID', 'rgba(239,68,68,.18)', 'rgba(239,68,68,.55)', '#fca5a5'],
+      unknown: ['NO REFERENCE', 'rgba(148,163,184,.16)', 'rgba(148,163,184,.4)', '#cbd5e1']
+    };
+    const m = map[status] || map.unknown;
+    return '<span style="font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:20px;' +
+      'white-space:nowrap;background:' + m[1] + ';border:1px solid ' + m[2] + ';color:' + m[3] + '">' + m[0] + '</span>';
+  }
+
+  function renderDraftReport() {
+    if (!state.draftReportId) return '';
+    if (state.draftReportBusy) {
+      return '<div style="padding:11px 13px;border-radius:10px;background:rgba(56,189,248,.08);' +
+        'border:1px dashed rgba(56,189,248,.4);font-size:12.5px;color:#7dd3fc;margin-bottom:12px">' +
+        '\ud83d\udd2c Reading the file again for its full report\u2026</div>';
+    }
+    const r = state.draftReport;
+    if (!r) return '';
+    const close = '<button type="button" id="blwa-report-close" style="' + buttonStyle('ghost') + ';padding:4px 10px;font-size:11.5px">\u2715 Close report</button>';
+    if (r.ok === false) {
+      return '<div style="padding:11px 13px;border-radius:10px;background:rgba(239,68,68,.1);' +
+        'border:1px solid rgba(239,68,68,.4);font-size:12.5px;color:#fca5a5;margin-bottom:12px">' +
+        esc(r.error || 'Could not read this file') + '<div style="margin-top:8px">' + close + '</div></div>';
+    }
+
+    const checks = (r.checks || []).map(c =>
+      '<div style="display:flex;align-items:baseline;gap:8px;padding:4px 0;border-top:1px solid rgba(148,163,184,.1);flex-wrap:wrap">' +
+        reportChip(c.status) +
+        '<b style="font-size:12px;color:#e2e8f0;min-width:130px">' + esc(c.label) + '</b>' +
+        '<span style="font-size:12px;color:' + (c.status === 'mismatch' || c.status === 'invalid' ? '#fca5a5' : '#cbd5e1') + '">' + esc(c.got || '\u2014') + '</span>' +
+        (c.expected ? '<span style="font-size:11px;color:#94a3b8">app: ' + esc(c.expected) + '</span>' : '') +
+      '</div>').join('');
+
+    const groups = (r.groups || []).map(g =>
+      '<div style="margin-top:10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;' +
+      'color:#7dd3fc;font-weight:800;margin-bottom:3px">' + esc(g.label) + '</div>' +
+      (g.fields || []).filter(f => f.value).map(f =>
+        '<div style="display:grid;grid-template-columns:170px 1fr;gap:8px;padding:2px 0;font-size:11.5px">' +
+          '<span style="color:#94a3b8">' + esc(f.label) + '</span>' +
+          '<span style="color:#e2e8f0">' + esc(f.value) + '</span>' +
+        '</div>').join('') + '</div>').join('');
+
+    return '<div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;overflow:hidden;' +
+        'background:rgba(56,189,248,.04);margin-bottom:14px">' +
+      '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px;background:rgba(56,189,248,.08)">' +
+        '<b style="font-size:12.5px;color:#fff">\ud83d\udd2c AI X-Ray report \u2014 ' + esc(r.file_name || '') + '</b>' +
+        '<span style="font-size:11px;color:#94a3b8">' + esc(r.extraction_source || '') + (r.cached ? ' \u00b7 cached' : '') + '</span>' +
+        '<span style="margin-left:auto">' + close + '</span>' +
+      '</div>' +
+      '<div style="padding:10px 12px;max-height:420px;overflow-y:auto">' +
+        ((r.text_error || r.ai_error)
+          ? '<div style="font-size:11.5px;color:#fbbf24;margin-bottom:8px">Limited read \u2014 ' +
+              esc([r.text_error ? 'text: ' + r.text_error : '', r.ai_error ? 'fields: ' + r.ai_error : ''].filter(Boolean).join(' \u00b7 ')) + '</div>'
+          : '') +
+        checks + groups +
+      '</div></div>';
+  }
+
+  function draftCell(text, mono) {
+    const t = String(text || '');
+    return t
+      ? '<td style="padding:8px 9px;font-size:12px;color:#cbd5e1;max-width:190px;overflow:hidden;text-overflow:ellipsis;' +
+        'white-space:nowrap' + (mono ? ';font-family:ui-monospace,Consolas,monospace;color:#fbbf24;font-weight:800' : '') + '" title="' + esc(t) + '">' + esc(t) + '</td>'
+      : '<td style="padding:8px 9px;color:#475569">\u2014</td>';
+  }
+
+  function renderDraftsView(host, outer) {
+    const drafts = readDrafts();
+    const report = renderDraftReport();
+
+    const head = '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<div>' +
+        '<div style="font-size:16px;font-weight:800;color:#fff">\ud83d\udcc4 BL DRAFTS DETAILS</div>' +
+        '<div style="font-size:12.5px;color:#94a3b8;margin-top:3px">' +
+          'Every BL moved to draft from a group, with the details the AI read from the file and its X-Ray result. ' +
+          'Drafts stay on this device and do not count as registered BLs.' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-left:auto;display:flex;gap:8px">' +
+        '<button type="button" id="blwa-drafts-refresh" style="' + buttonStyle('ghost') + ';padding:7px 12px;font-size:12px">\u21bb Refresh</button>' +
+      '</div>' +
+    '</div>';
+
+    if (!drafts.length) {
+      host.innerHTML = report + head +
+        '<div style="padding:14px 16px;border-radius:10px;background:rgba(148,163,184,.06);' +
+        'border:1px dashed rgba(148,163,184,.3);font-size:12.5px;color:#94a3b8">' +
+        'No drafts yet. In the Workspace tab, fetch the BLs of a group and press ' +
+        '<b style="color:#94a3b8">Save as draft</b> \u2014 the BL arrives here with its details filled in.' +
+        '</div>';
+      wireDraftButtons(host, outer);
+      return;
+    }
+
+    const rows = drafts.map(d => {
+      const sum = d.xray_summary || null;
+      const chips = sum
+        ? ['mismatch', 'missing', 'invalid', 'ok', 'unknown']
+            .filter(k => (sum[k] || 0) > 0)
+            .map(k => reportChip(k) + ' <b style="font-size:11px;color:#94a3b8">' + sum[k] + '</b>')
+            .join(' ')
+        : '<span style="font-size:11px;color:#64748b">' + (d.file && d.file.message_id ? 'ready to read' : 'no file') + '</span>';
+      const fileLink = (d.file && d.file.jid && d.file.message_id)
+        ? '<a href="' + esc(mediaUrl(d.file.jid, d.file.message_id)) + '" target="_blank" rel="noreferrer" ' +
+            'style="color:#7dd3fc;font-weight:700;text-decoration:none;font-size:11.5px">\ud83d\udcce Open \u2197</a>'
+        : '<span style="font-size:11px;color:#64748b">not saved</span>';
+      return '<tr style="border-top:1px solid rgba(148,163,184,.12)">' +
+        draftCell(d.bl_number, true) +
+        draftCell(d.shipper_name) +
+        draftCell(d.consignee_name) +
+        draftCell(d.item_description) +
+        draftCell(d.net_qty) +
+        draftCell(d.port_of_loading) +
+        draftCell(d.final_destination) +
+        '<td style="padding:8px 9px;max-width:210px">' + chips +
+          '<div style="margin-top:4px"><button type="button" data-blwa-report="' + esc(d.id) + '" style="' +
+            buttonStyle('ghost') + ';padding:2px 8px;font-size:10.5px">View report</button></div></td>' +
+        '<td style="padding:8px 9px">' + fileLink + '</td>' +
+        '<td style="padding:8px 9px;text-align:right;white-space:nowrap">' +
+          '<button type="button" data-blwa-draft-use="' + esc(d.id) + '" style="' + buttonStyle('primary') + ';padding:3px 8px;font-size:10.5px">Use in BL form</button> ' +
+          '<button type="button" data-blwa-draft-del="' + esc(d.id) + '" style="' + buttonStyle('ghost') + ';padding:3px 8px;font-size:10.5px;color:#fca5a5">Delete</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    host.innerHTML = report + head +
+      '<div style="font-size:11.5px;color:#64748b;margin-bottom:6px">' + drafts.length + ' draft(s)</div>' +
+      '<div style="overflow-x:auto;border:1px solid rgba(148,163,184,.18);border-radius:10px">' +
+        '<table style="width:100%;border-collapse:collapse;min-width:1080px">' +
+          '<thead><tr style="background:rgba(148,163,184,.08);text-align:left;color:#94a3b8;font-size:10px;' +
+            'text-transform:uppercase;letter-spacing:.05em">' +
+            '<th style="padding:8px 9px">BL No.</th>' +
+            '<th style="padding:8px 9px">Shipper</th>' +
+            '<th style="padding:8px 9px">Consignee</th>' +
+            '<th style="padding:8px 9px">Item description</th>' +
+            '<th style="padding:8px 9px">Net qty</th>' +
+            '<th style="padding:8px 9px">Loading port</th>' +
+            '<th style="padding:8px 9px">Final destination</th>' +
+            '<th style="padding:8px 9px">AI X-Ray</th>' +
+            '<th style="padding:8px 9px">File</th>' +
+            '<th style="padding:8px 9px;text-align:right">Action</th>' +
+          '</tr></thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    wireDraftButtons(host, outer);
+  }
+
+  function wireDraftButtons(host, outer) {
+    const refresh = host.querySelector('#blwa-drafts-refresh');
+    if (refresh) refresh.addEventListener('click', guard(() => { renderSection(outer); enrichDrafts(outer); }));
+
+    const cls = host.querySelector('#blwa-report-close');
+    if (cls) cls.addEventListener('click', guard(() => { state.draftReport = null; state.draftReportId = ''; renderSection(outer); }));
+
+    host.querySelectorAll('[data-blwa-report]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        const d = readDrafts().find(x => x && x.id === b.dataset.blwaReport);
+        if (d && d.file && d.file.jid && d.file.message_id) openDraftReport(outer, d);
+        else toast('This draft has no saved file to read.', 'error');
+      }));
+    });
+
+    host.querySelectorAll('[data-blwa-draft-use]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        const d = readDrafts().find(x => x && x.id === b.dataset.blwaDraftUse);
+        if (d) fillBlForm(d);
+      }));
+    });
+
+    host.querySelectorAll('[data-blwa-draft-del]').forEach((b) => {
+      b.addEventListener('click', guard(() => {
+        removeDraft(b.dataset.blwaDraftDel);
+        toast('Draft removed.');
+        renderSection(outer);
+      }));
+    });
+  }
+
   function saveDraft(row) {
     if (!row) return;
     const key = stationKey();
@@ -1584,7 +1914,13 @@
       arrival_date: '',
       source: 'whatsapp',
       source_group: state.groupName || '',
-      source_message_id: row.message_id || ''
+      source_message_id: row.message_id || '',
+      // Where the original file lives, so the draft can always be opened and re-read.
+      file: {
+        jid: row.group_jid || state.groupJid || '',
+        message_id: row.message_id || '',
+        name: (row.document_names || [])[0] || ''
+      }
     };
     const at = arr.findIndex(d => d && String(d.bl_number || '').toUpperCase() === String(draft.bl_number).toUpperCase());
     if (at >= 0) arr[at] = Object.assign({}, arr[at], draft, { id: arr[at].id });
@@ -1592,13 +1928,45 @@
     all[key] = arr.slice(0, 500);
     try {
       localStorage.setItem(DRAFTS_KEY, JSON.stringify(all));
-      toast('BL ' + draft.bl_number + ' saved to BL Drafts. Reload the app (F5) to see it in the station list.');
+      toast('BL ' + draft.bl_number + ' moved to BL DRAFTS DETAILS.');
     } catch (e) {
       toast('Could not save the draft: ' + e.message, 'error');
+      return;
+    }
+    // Show the register straight away, then fill the details from the saved file.
+    state.view = 'drafts';
+    const outer = document.getElementById('blwa-wrap');
+    if (outer) {
+      renderSection(outer);
+      enrichDrafts(outer);
     }
   }
 
   // ── keep the tab strip present across React re-renders ───────────────────
+  // The bundle still renders its own "BL DRAFTS SECTION" inside the All BLs tab. Drafts now live in
+  // one place only (the WhatsApp tab), so that block is hidden whenever React paints it again.
+  // It is hidden rather than deleted: a refresh brings it back, so nothing is destroyed.
+  let lastLegacyScan = 0;
+  function hideLegacyDraftsSection() {
+    if (Date.now() - lastLegacyScan < 1500) return;
+    lastLegacyScan = Date.now();
+    const nodes = document.querySelectorAll('span,div,h3,h4');
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      if (n.getAttribute('data-blwa-hidden')) continue;
+      if (!/^BL DRAFTS SECTION$/i.test((n.textContent || '').trim())) continue;
+      let el = n;
+      for (let up = 0; up < 6 && el && el !== document.body; up++) {
+        if (el.tagName === 'SECTION') break;
+        el = el.parentElement;
+      }
+      if (el && el !== document.body && el.tagName === 'SECTION') {
+        el.style.display = 'none';
+        el.setAttribute('data-blwa-hidden', '1');
+      }
+    }
+  }
+
   let scheduled = false;
   function scheduleEnsure() {
     if (scheduled) return;
@@ -1608,6 +1976,7 @@
       // This runs on every React re-render. A throw here would escape into the app's global
       // error overlay and blank the whole page, so a bug can only ever cost us the tab.
       try { ensureTabs(); } catch (e) { console.warn('[BL-WA] tab injection failed:', e && e.message); }
+      try { hideLegacyDraftsSection(); } catch (e) { /* hiding is cosmetic: never crash for it */ }
     });
   }
 
