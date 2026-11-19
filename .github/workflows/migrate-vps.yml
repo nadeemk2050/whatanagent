@@ -1,0 +1,141 @@
+name: Migrate VPS
+
+# =============================================================================
+# Moves WhatAnAgent from the old Tencent instance to the new one, using the same
+# deploy key as the normal deploy. Run it from the Actions tab, one mode at a time.
+#
+#   1. test-new   prove SSH to the new server works (do this first)
+#   2. bootstrap  clone the repo + run deploy/install.sh on the new server
+#   3. export     stop the app on the old server and write the migration tarball
+#   4. transfer   copy that tarball to the new server
+#   5. import     restore it and start the service on the new server
+#   6. verify     check the app answers on the new server
+#
+# The key must be authorised on BOTH servers, otherwise steps 1-6 fail with
+# "Permission denied (publickey)". See deploy/MIGRATION.md.
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'test-new | show-key | bootstrap | export | transfer | import | verify'
+        required: true
+        default: 'test-new'
+      old_host:
+        description: 'Old server IP'
+        required: true
+        default: '101.32.170.58'
+      new_host:
+        description: 'New server IP'
+        required: true
+        default: '43.156.245.176'
+      domain:
+        description: 'Public domain for the new Caddy config'
+        required: false
+        default: 'whatanagent.duckdns.org'
+
+concurrency:
+  group: migrate-vps
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OLDP: ${{ inputs.old_host }}
+      NEWP: ${{ inputs.new_host }}
+      DOMAIN: ${{ inputs.domain }}
+      MODE: ${{ inputs.mode }}
+
+    steps:
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          for h in "$OLDP" "$NEWP"; do
+            ssh-keyscan -H "$h" >> ~/.ssh/known_hosts 2>/dev/null || true
+          done
+          ssh-add -l >/dev/null 2>&1 || true
+          echo "mode=$MODE  old=$OLDP  new=$NEWP"
+
+      - name: show-key (what the old server accepts)
+        if: inputs.mode == 'show-key'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "ubuntu@$OLDP" \
+            'echo "--- authorized_keys on OLD ---"; cat ~/.ssh/authorized_keys'
+
+      - name: test-new (does the deploy key work on the new server?)
+        if: inputs.mode == 'test-new'
+        run: |
+          set -o pipefail
+          if ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "ubuntu@$NEWP" \
+              'echo SSH_OK; whoami; uname -a; free -m | head -2; df -h / | tail -1; command -v git || echo "git missing"'; then
+            echo "::notice::SSH to the new server works."
+          else
+            echo "::error::Cannot SSH to the new server. Bind the deploy key to it (Tencent -> SSH Keys -> Bind) or paste the key from 'show-key' into ~/.ssh/authorized_keys via OrcaTerm."
+            exit 1
+          fi
+
+      - name: bootstrap (install the app on the new server)
+        if: inputs.mode == 'bootstrap'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "ubuntu@$NEWP" "
+            set -e
+            sudo apt-get update -y >/dev/null
+            sudo apt-get install -y git curl ca-certificates >/dev/null
+            if [ ! -d /opt/whatanagent/.git ]; then
+              sudo git clone --depth 1 https://github.com/nadeemk2050/whatanagent.git /opt/whatanagent
+            else
+              echo 'repo already present'
+            fi
+            sudo DOMAIN='$DOMAIN' bash /opt/whatanagent/deploy/install.sh
+            echo '--- installed ---'
+            systemctl is-enabled whatanagent || true
+            node -v
+          "
+
+      - name: export (stop the app on the old server and package it)
+        if: inputs.mode == 'export'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "ubuntu@$OLDP" \
+            'sudo bash /opt/whatanagent/deploy/migrate-export.sh'
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$OLDP" \
+            'ls -t /opt/whatanagent/backups/whatanagent-migrate-*.tar.gz | head -1'
+
+      - name: transfer (old -> runner -> new)
+        if: inputs.mode == 'transfer'
+        run: |
+          set -e
+          TARBALL=$(ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$OLDP" \
+            'ls -t /opt/whatanagent/backups/whatanagent-migrate-*.tar.gz | head -1')
+          echo "tarball: $TARBALL"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$OLDP:$TARBALL" /tmp/
+          BASE=$(basename "$TARBALL")
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes "/tmp/$BASE" "ubuntu@$NEWP:/tmp/"
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$NEWP" "ls -lh /tmp/$BASE"
+          echo "BASENAME=$BASE" >> "$GITHUB_ENV"
+
+      - name: import (restore and start on the new server)
+        if: inputs.mode == 'import'
+        run: |
+          set -e
+          TARBALL=$(ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$NEWP" \
+            'ls -t /tmp/whatanagent-migrate-*.tar.gz | head -1')
+          echo "importing: $TARBALL"
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "ubuntu@$NEWP" \
+            "sudo bash /opt/whatanagent/deploy/migrate-import.sh '$TARBALL'"
+
+      - name: verify (does the new server answer?)
+        if: inputs.mode == 'verify'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 "ubuntu@$NEWP" '
+            echo "--- service ---"; systemctl is-active whatanagent || true
+            echo "--- local health ---"; curl -s -m 10 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/api/warmup || true
+            echo "--- whatsapp ---"; curl -s -m 20 http://127.0.0.1:3000/candl/api/wa/status || true
+            echo
+            echo "--- last log lines ---"; sudo journalctl -u whatanagent -n 15 --no-pager || true
+            echo "--- disk ---"; df -h / | tail -1
+          '
