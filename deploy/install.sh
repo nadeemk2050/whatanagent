@@ -97,7 +97,17 @@ fi
 
 # ---------------------------------------------------------------- systemd
 log "Installing systemd service"
-sed "s|__APP_DIR__|$APP_DIR|g; s|__RUN_USER__|$RUN_USER|g" "$APP_DIR/deploy/whatanagent.service" \
+# Node's heap is sized from real RAM: a 2 GB box keeps 1 GB, a 4 GB box gets 2 GB, which is what
+# stops a large PDF or an image batch from being killed mid-run. Capped so the OS and Caddy always
+# have headroom.
+TOTAL_MB="$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null || echo 2048)"
+HEAP_MB=$(( ${TOTAL_MB:-2048} / 2 ))
+[ "$HEAP_MB" -lt 1024 ] && HEAP_MB=1024
+[ "$HEAP_MB" -gt 3072 ] && HEAP_MB=3072
+echo "    RAM ${TOTAL_MB}MB -> node heap ${HEAP_MB}MB"
+
+sed "s|__APP_DIR__|$APP_DIR|g; s|__RUN_USER__|$RUN_USER|g; s|__HEAP_MB__|$HEAP_MB|g" \
+  "$APP_DIR/deploy/whatanagent.service" \
   > /etc/systemd/system/whatanagent.service
 systemctl daemon-reload
 systemctl enable whatanagent >/dev/null

@@ -10,7 +10,7 @@ User=__RUN_USER__
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env
 Environment=NODE_ENV=production
-Environment=NODE_OPTIONS=--max-old-space-size=1024
+Environment=NODE_OPTIONS=--max-old-space-size=__HEAP_MB__
 ExecStart=/usr/bin/node index.js
 Restart=always
 RestartSec=5
