@@ -70,8 +70,8 @@ systemctl is-active "$SERVICE" && echo "    service is running" || warn "service
 
 echo
 echo "Verify from here:"
-echo "  curl -s -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:3000/api/warmup"
-echo "  curl -s https://\\$DOMAIN/candl/api/wa/status"
+echo "  curl -s -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:3000/healthz"
+echo "  curl -s http://127.0.0.1:3000/candl/api/wa/status"
 echo "  journalctl -u $SERVICE -f"
 echo
 echo "Then, only once the new server is verified, keep the OLD one stopped or destroy it."
