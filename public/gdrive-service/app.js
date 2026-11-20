@@ -261,7 +261,7 @@
   }
 
   function pollApps(driveId, since, tries) {
-    if (tries > 20) return;
+    if (tries > 45) return;                    // ~4 minutes: a big drive is slow to walk
     setTimeout(async () => {
       if (!$('#appsBody')) return;              // the dialog was closed
       try {
@@ -272,7 +272,7 @@
       } catch (e) {
         pollApps(driveId, since, tries + 1);
       }
-    }, 4000);
+    }, 5000);
   }
 
   function showApps(driveId, email, alias) {
