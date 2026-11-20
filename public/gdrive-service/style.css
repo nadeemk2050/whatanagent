@@ -106,6 +106,12 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
   background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--muted);
   font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
 .modal-x:hover{color:#fff;background:rgba(255,255,255,.12)}
+/* Long tables (apps in a drive) must scroll inside the dialog, not off screen. */
+.modal-card{max-height:86vh;display:flex;flex-direction:column}
+.modal-card.wide{max-width:940px}
+#modalBody{overflow:auto;min-height:0}
+.modal-card .row.end{flex:0 0 auto}
+tfoot th{background:rgba(56,189,248,.08);color:#7dd3fc;text-transform:none;letter-spacing:0;font-size:11.5px}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:120;padding:11px 16px;
   border-radius:10px;font-size:12.5px;font-weight:700;background:#0f172a;border:1px solid var(--line);color:#e2e8f0}

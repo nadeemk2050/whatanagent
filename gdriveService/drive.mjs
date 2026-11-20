@@ -203,3 +203,43 @@ export async function deleteRemote(account, fileId) {
   await drive.files.delete({ fileId: fileId, supportsAllDrives: true }, { timeout: 30000 });
   return true;
 }
+
+/**
+ * What is actually inside one folder: how many files, and how many bytes.
+ * Used by the "apps in this drive" panel, so the numbers match what the owner
+ * sees in Drive — including files added there by hand, not only ours.
+ */
+export async function folderUsage(account, folderId, opts) {
+  const drive = driveFor(account);
+  const id = String(folderId || '').trim();
+  if (!id) throw new Error('No Drive folder is linked to this app yet');
+
+  const maxFiles = Math.max(1, Math.min(Number(opts && opts.maxFiles) || 5000, 20000));
+  let files = 0;
+  let bytes = 0;
+  let folders = 0;
+  let scanned = 0;
+  let pageToken = '';
+
+  do {
+    const res = await drive.files.list({
+      q: `'${q(id)}' in parents and trashed = false`,
+      fields: 'nextPageToken, files(id,name,size,mimeType)',
+      pageSize: 1000,
+      pageToken: pageToken || undefined,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    }, { timeout: TIMEOUT_MS });
+
+    const items = (res.data && res.data.files) || [];
+    for (const f of items) {
+      scanned += 1;
+      if (f.mimeType === FOLDER_MIME) { folders += 1; continue; }
+      files += 1;
+      bytes += Number(f.size) || 0;
+    }
+    pageToken = (res.data && res.data.nextPageToken) || '';
+  } while (pageToken && scanned < maxFiles);
+
+  return { files, bytes, folders, truncated: !!pageToken };
+}

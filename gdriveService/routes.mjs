@@ -23,7 +23,7 @@ import {
 import {
   encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint
 } from './crypto.mjs';
-import { testCredentials, getQuota, ensureClientFolder, deleteRemote, downloadRemote, invalidateDrive } from './drive.mjs';
+import { testCredentials, getQuota, ensureClientFolder, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
 import { storeUploadedFile, tmpDir, retryFile, localFileMatches } from './queue.mjs';
 import { SEED_EMAIL } from './seed.mjs';
 
@@ -359,6 +359,50 @@ export function registerGDriveServiceRoutes(app, multer) {
     res.json({ ok: true, clients: listClients(account.id).map(publicClient) });
   });
 
+  /**
+   * "Apps in this drive" — per-app folder size, read live from Google Drive.
+   * Pass ?live=0 to answer from the local counters (fast, no Drive calls).
+   */
+  router.get('/accounts/:id/apps', adminGuard, async (req, res) => {
+    const account = getAccount(req.params.id);
+    if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
+
+    const live = req.query.live !== '0';
+    const apps = [];
+
+    for (const c of listClients(account.id).map(publicClient)) {
+      const row = Object.assign({}, c, {
+        live: false,
+        live_error: '',
+        drive_files: 0,
+        drive_bytes: 0,
+        drive_folders: 0
+      });
+      if (live && c.folder_id) {
+        try {
+          const usage = await folderUsage(account, c.folder_id);
+          row.live = true;
+          row.drive_files = usage.files;
+          row.drive_bytes = usage.bytes;
+          row.drive_folders = usage.folders;
+        } catch (e) {
+          row.live_error = sstr((e && e.message) || e, 200);
+        }
+      }
+      apps.push(row);
+    }
+
+    const totals = apps.reduce((acc, r) => {
+      acc.files += Number(r.drive_files) || 0;
+      acc.bytes += Number(r.drive_bytes) || 0;
+      acc.recorded_files += Number(r.files_count) || 0;
+      acc.recorded_bytes += Number(r.bytes_used) || 0;
+      return acc;
+    }, { files: 0, bytes: 0, recorded_files: 0, recorded_bytes: 0 });
+
+    res.json({ ok: true, live, apps, totals });
+  });
+
   router.post('/accounts/:id/clients', adminGuard, express.json({ limit: '64kb' }), async (req, res) => {
     const account = getAccount(req.params.id);
     if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
@@ -366,6 +410,9 @@ export function registerGDriveServiceRoutes(app, multer) {
     const body = req.body || {};
     const name = sstr(body.name, 80).trim();
     if (!name) return res.status(400).json({ ok: false, error: 'Client app name is required' });
+
+    // The folder is where this app's files actually land; it defaults to the app name.
+    const folderName = sstr(body.folder_name, 80).replace(/[\\/]+/g, ' ').trim() || name;
 
     const scope = SCOPES.includes(body.scope) ? body.scope : 'read_upload';
     const rateLimit = Math.max(1, Math.min(Number(body.rate_limit) || 60, 6000));
@@ -378,7 +425,7 @@ export function registerGDriveServiceRoutes(app, multer) {
     }
 
     try {
-      const folderId = await ensureClientFolder(account, name);
+      const folderId = await ensureClientFolder(account, folderName);
       const apiKey = newApiKey();
       const client = insertClient({
         drive_id: account.id,
@@ -387,13 +434,13 @@ export function registerGDriveServiceRoutes(app, multer) {
         key_hash: sha256(apiKey),
         key_hint: keyHint(apiKey),
         folder_id: folderId,
-        folder_name: name,
+        folder_name: folderName,
         scope,
         rate_limit: rateLimit,
         expires_at: expiresAt,
         status: 'active'
       });
-      audit({ drive_id: account.id, client_id: client.id, action: 'client.created', detail: name + ' (' + scope + ')' });
+      audit({ drive_id: account.id, client_id: client.id, action: 'client.created', detail: name + ' → folder "' + folderName + '" (' + scope + ')' });
       // The plaintext key is returned exactly once.
       res.json({ ok: true, client: publicClient(client), api_key: apiKey });
     } catch (e) {

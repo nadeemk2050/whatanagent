@@ -112,8 +112,10 @@
   }
 
   // ── modal ────────────────────────────────────────────────────────────────
-  function openModal(title, bodyHtml, actions, extraHtml) {
+  function openModal(title, bodyHtml, actions, extraHtml, opts) {
     const modal = $('#modal');
+    const card = $('.modal-card');
+    if (card) card.classList.toggle('wide', !!(opts && opts.wide));
     $('#modalTitle').textContent = title;
     $('#modalBody').innerHTML = (bodyHtml || '') + (extraHtml || '');
     const row = $('#modalActions');
@@ -162,16 +164,100 @@
     }
   }
 
-  function goToService(id, alias) {
-    confirmModal(
-      'Open service page?',
-      'Do you want to open / initialize the <b>Dedicated API Service Page</b> for <b>' + esc(alias) + '</b>?',
-      'Yes, open it',
-      () => {
-        history.pushState({}, '', '/gdrive-service/' + id);
-        route();
-      }
-    );
+  function openService(id) {
+    history.pushState({}, '', '/gdrive-service/' + id);
+    route();
+  }
+
+  /**
+   * Clicking a drive asks two things: open the service page, or look at the apps
+   * already storing files in it (with the live size of each app folder).
+   */
+  function driveActions(id, alias, email) {
+    openModal('Open drive?',
+      '<div style="margin-bottom:10px"><b>' + esc(alias) + '</b>' +
+        (email ? ' <span class="dim">· ' + esc(email) + '</span>' : '') + '</div>' +
+      '<div>Do you want to open / initialize the <b>Dedicated API Service Page</b> for this Google Drive?</div>' +
+      '<div class="muted" style="margin-top:6px">Or see the list of apps using it — how many files each app folder holds and how much storage it uses.</div>',
+      [
+        { label: 'No', kind: 'ghost', onClick: closeModal },
+        {
+          label: '📱 See apps in this drive', kind: 'ghost',
+          onClick: () => { closeModal(); showApps(id, alias); }
+        },
+        {
+          label: 'Yes, open page', kind: 'primary',
+          onClick: () => { closeModal(); openService(id); }
+        }
+      ]);
+  }
+
+  // ── apps inside one drive ────────────────────────────────────────────────
+  function clientStatusPill(c) {
+    if (c.status === 'revoked') return '<span class="pill pill-muted">revoked</span>';
+    if (c.expired || c.status === 'expired') return '<span class="pill pill-warn">expired</span>';
+    if (c.status === 'active') return '<span class="pill pill-ok">active</span>';
+    return '<span class="pill pill-muted">' + esc(c.status) + '</span>';
+  }
+
+  function appsTableHtml(d) {
+    const apps = d.apps || [];
+    if (!apps.length) {
+      return '<div class="pad muted">No app key has been created for this drive yet.' +
+        '<div style="margin-top:6px">Open the service page to create the first one.</div></div>';
+    }
+    const rows = apps.map((a) => {
+      const bytes = a.live ? a.drive_bytes : a.bytes_used;
+      const files = a.live ? a.drive_files : a.files_count;
+      return '<tr>' +
+        '<td><b>' + esc(a.name) + '</b><div class="dim mono" style="font-size:10.5px">' + esc(a.serial) + '</div></td>' +
+        '<td>' + (a.folder_url
+          ? '<a href="' + esc(a.folder_url) + '" target="_blank" rel="noreferrer">' + esc(a.folder_name) + ' ↗</a>'
+          : '<span class="dim">not created yet</span>') + '</td>' +
+        '<td class="mono">' + files +
+          (a.live && a.drive_folders ? ' <span class="dim">(+' + a.drive_folders + ' subfolders)</span>' : '') + '</td>' +
+        '<td class="mono">' + fmtBytes(bytes) + '</td>' +
+        '<td>' + clientStatusPill(a) +
+          (a.live_error ? '<div style="font-size:10.5px;color:#fca5a5;max-width:220px">' + esc(a.live_error.slice(0, 90)) + '</div>' : '') +
+        '</td>' +
+        '</tr>';
+    }).join('');
+
+    const t = d.totals || {};
+    return '<div class="tablewrap"><table style="min-width:640px"><thead><tr>' +
+        '<th>App</th><th>Drive folder</th><th>Files in folder</th><th>Storage used</th><th>Status</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody>' +
+      '<tfoot><tr><th colspan="2">Total · ' + apps.length + ' app' + (apps.length === 1 ? '' : 's') + '</th>' +
+        '<th class="mono">' + (Number(t.files) || 0) + '</th>' +
+        '<th class="mono">' + fmtBytes(t.bytes) + '</th><th></th></tr></tfoot></table></div>' +
+      '<div class="muted" style="margin-top:8px">' +
+        (d.live
+          ? 'Live from Google Drive — includes files you added to the folder yourself.'
+          : 'From the local upload records (Drive was not queried).') +
+      '</div>';
+  }
+
+  async function loadApps(driveId) {
+    const host = $('#appsBody');
+    if (host) host.innerHTML = '<div class="pad muted">Reading each app folder from Google Drive…</div>';
+    try {
+      const data = await api('/accounts/' + driveId + '/apps');
+      const target = $('#appsBody');
+      if (target) target.innerHTML = appsTableHtml(data);
+    } catch (e) {
+      const target = $('#appsBody');
+      if (target) target.innerHTML = '<div class="pad" style="color:#fca5a5">' + esc(e.message) + '</div>';
+    }
+  }
+
+  function showApps(driveId, alias) {
+    openModal('Apps in ' + (alias || 'this drive'), '<div id="appsBody"></div>',
+      [
+        { label: 'Close', kind: 'ghost', onClick: closeModal },
+        { label: '↻ Refresh', kind: 'ghost', onClick: () => loadApps(driveId) },
+        { label: 'Open service page', kind: 'primary', onClick: () => { closeModal(); openService(driveId); } }
+      ], '', { wide: true });
+    loadApps(driveId);
   }
 
   // ── health / quota rendering ─────────────────────────────────────────────
@@ -274,7 +360,7 @@
       ev.stopPropagation();
       const id = n.getAttribute('data-open');
       const acc = S.accounts.find((x) => String(x.id) === String(id));
-      goToService(id, (acc && acc.alias) || 'this drive');
+      driveActions(id, (acc && acc.alias) || 'this drive', (acc && acc.email) || '');
     }));
     $$('[data-retest]', host).forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -626,6 +712,8 @@
         '<h3>Generate a new client API key</h3>' +
         '<form id="clientForm"><div class="grid">' +
           '<label>Client app name<span class="req">*</span><input name="name" required placeholder="EasyInvoice"></label>' +
+          '<label>Drive folder name<span class="hint">(where this app’s files are stored)</span>' +
+            '<input name="folder_name" placeholder="defaults to the app name"></label>' +
           '<label>Access expiry<select name="ttl_days">' +
             '<option value="30">30 days</option><option value="90">90 days</option>' +
             '<option value="365">1 year</option><option value="0" selected>Lifetime</option>' +
@@ -749,6 +837,7 @@
     const f = ev.target;
     const body = {
       name: String(f.elements.name.value || '').trim(),
+      folder_name: String(f.elements.folder_name ? f.elements.folder_name.value : '').trim(),
       ttl_days: Number(f.elements.ttl_days.value) || 0,
       scope: f.elements.scope.value,
       rate_limit: Number(f.elements.rate_limit.value) || 60
