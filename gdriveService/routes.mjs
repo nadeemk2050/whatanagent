@@ -18,7 +18,7 @@ import {
   listAccounts, getAccount, insertAccount, updateAccount, deleteAccount,
   listClients, getClient, getClientBySerial, insertClient, updateClient, deleteClient,
   getFile, insertFile, listFiles, updateFile, deleteFileRow, fileStats, clientStats,
-  listAudit, audit, CACHE_ROOT, getSubfolder, saveSubfolder
+  listAudit, audit, CACHE_ROOT, getSubfolder, saveSubfolder, listSubfolders
 } from './db.mjs';
 import {
   encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint,
@@ -98,6 +98,7 @@ function clientAuth(need) {
 
     const scope = client.scope || 'read_upload';
     const allowed =
+      need === 'status' ||
       scope === 'full' ||
       (need === 'upload' && (scope === 'upload' || scope === 'read_upload')) ||
       (need === 'read' && scope === 'read_upload');
@@ -584,6 +585,33 @@ export function registerGDriveServiceRoutes(app, multer) {
   });
 
   publicRouter.get('/health', (req, res) => res.json({ ok: true, service: 'gdrive-service-centre' }));
+
+  /** Who does this key belong to? Used by an app's "Test connection" button. */
+  publicRouter.get('/me', clientAuth('status'), (req, res) => {
+    const c = req.gdClient;
+    const a = req.gdAccount;
+    res.json({
+      ok: true,
+      client: {
+        id: c.id,
+        name: c.name,
+        serial: c.serial,
+        scope: c.scope,
+        folder_id: c.folder_id,
+        folder_name: c.folder_name || c.name,
+        rate_limit: c.rate_limit,
+        expires_at: c.expires_at
+      },
+      drive: {
+        alias: a.alias,
+        email: a.email,
+        retention_hours: a.retention_hours,
+        quota_used: a.quota_used,
+        quota_total: a.quota_total
+      },
+      subfolders: listSubfolders(c.id).map((s) => s.name)
+    });
+  });
 
   publicRouter.post('/file', clientAuth('upload'), upload.single('file'), async (req, res) => {
     const client = req.gdClient;
