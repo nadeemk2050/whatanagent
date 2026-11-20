@@ -190,7 +190,7 @@ registerCandlBlInboxRoutes(app, { getSettings });
 registerCandlXrayRoutes(app, { getSettings });
 startCandlBlWatcher();
 // ☁️ GDrive API Service Centre — multi-tenant Google Drive gateway (own DB, own queue, own UI).
-registerGDriveService(app, multer);
+registerGDriveService(app);
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
 // Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
