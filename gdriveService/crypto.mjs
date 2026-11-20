@@ -99,3 +99,28 @@ export function newSerial() {
 
 /** Last 4 characters of a key, safe to show in a table. */
 export const keyHint = (key) => '…' + String(key || '').slice(-4);
+
+// ── openable document links ─────────────────────────────────────────────────
+// A browser <a href> cannot send the x-api-key header, and an app should never
+// paste its key into a URL. So every upload gets a permanent signature of its
+// own uuid: the link opens that one document and reveals nothing else.
+const LINK_PREFIX = 'file-link:';
+
+function linkMac(uuid) {
+  return crypto.createHmac('sha256', loadKey()).update(LINK_PREFIX + String(uuid)).digest('base64url').slice(0, 22);
+}
+
+/** Signature to append as ?link=… to GET /api/v1/gdrive/file/:uuid */
+export function signFileLink(uuid) {
+  return linkMac(uuid);
+}
+
+/** Constant-time check of a ?link= signature. */
+export function verifyFileLink(uuid, sig) {
+  const given = String(sig || '');
+  if (!given) return false;
+  const expected = linkMac(uuid);
+  const A = Buffer.from(given);
+  const B = Buffer.from(expected);
+  return A.length === B.length && crypto.timingSafeEqual(A, B);
+}

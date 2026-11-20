@@ -109,12 +109,33 @@ CREATE TABLE IF NOT EXISTS gdrive_audit (
   at         INTEGER NOT NULL
 );
 
+-- One row per (client, subfolder name) so a per-branch folder is looked up
+-- once and then reused without another Drive search.
+CREATE TABLE IF NOT EXISTS gdrive_subfolders (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id  INTEGER NOT NULL REFERENCES gdrive_clients(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  folder_id  TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(client_id, name)
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_queue ON gdrive_files(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_files_drive ON gdrive_files(drive_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_files_cleanup ON gdrive_files(status, uploaded_at);
 CREATE INDEX IF NOT EXISTS idx_clients_drive ON gdrive_clients(drive_id);
 CREATE INDEX IF NOT EXISTS idx_audit_drive ON gdrive_audit(drive_id, at DESC);
+CREATE INDEX IF NOT EXISTS idx_subfolders_client ON gdrive_subfolders(client_id);
 `);
+
+// Columns added after the first release, added in place on an existing database.
+function ensureColumn(table, column, definition) {
+  const cols = db.prepare('PRAGMA table_info(' + table + ')').all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + definition);
+  }
+}
+ensureColumn('gdrive_files', 'subfolder', "TEXT DEFAULT ''");
 
 const now = () => Date.now();
 
@@ -213,6 +234,24 @@ export function deleteClient(id) {
   db.prepare('DELETE FROM gdrive_clients WHERE id = ?').run(Number(id));
 }
 
+// ── subfolders (one per branch / project inside a client folder) ─────────────
+export function getSubfolder(clientId, name) {
+  return db.prepare('SELECT * FROM gdrive_subfolders WHERE client_id = ? AND name = ?')
+    .get(Number(clientId), String(name)) || null;
+}
+
+export function saveSubfolder(clientId, name, folderId) {
+  db.prepare(`INSERT INTO gdrive_subfolders (client_id, name, folder_id, created_at)
+    VALUES (?,?,?,?)
+    ON CONFLICT(client_id, name) DO UPDATE SET folder_id = excluded.folder_id`)
+    .run(Number(clientId), String(name), String(folderId), now());
+  return getSubfolder(clientId, name);
+}
+
+export function listSubfolders(clientId) {
+  return db.prepare('SELECT * FROM gdrive_subfolders WHERE client_id = ? ORDER BY name ASC').all(Number(clientId));
+}
+
 export function bumpClientUsage(clientId, bytes) {
   db.prepare('UPDATE gdrive_clients SET files_count = files_count + 1, bytes_used = bytes_used + ?, last_used_at = ? WHERE id = ?')
     .run(Number(bytes) || 0, now(), Number(clientId));
@@ -222,11 +261,11 @@ export function bumpClientUsage(clientId, bytes) {
 export function insertFile(f) {
   db.prepare(`INSERT INTO gdrive_files
     (id, drive_id, client_id, client_name, original_name, mime, size, local_path, md5,
-     gdrive_folder_id, status, next_attempt_at, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+     gdrive_folder_id, subfolder, status, next_attempt_at, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     f.id, Number(f.drive_id), f.client_id ? Number(f.client_id) : null, f.client_name || '',
     f.original_name, f.mime || 'application/octet-stream', Number(f.size) || 0, f.local_path,
-    f.md5 || '', f.gdrive_folder_id || '', 'QUEUED', now(), now()
+    f.md5 || '', f.gdrive_folder_id || '', f.subfolder || '', 'QUEUED', now(), now()
   );
   return getFile(f.id);
 }
@@ -242,7 +281,7 @@ export function listFiles(driveId, limit = 50) {
 
 export function updateFile(id, patch) {
   const allowed = ['status', 'attempts', 'next_attempt_at', 'error', 'gdrive_file_id', 'gdrive_folder_id',
-    'md5', 'uploaded_at', 'verified_at', 'cleaned_at', 'downloads', 'size', 'local_path'];
+    'md5', 'uploaded_at', 'verified_at', 'cleaned_at', 'downloads', 'size', 'local_path', 'subfolder'];
   const sets = [];
   const vals = [];
   for (const k of allowed) {

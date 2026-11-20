@@ -611,7 +611,8 @@
     if (!files.length) return '<tr><td colspan="7" class="muted">No files yet. Upload one from a client app to see it here.</td></tr>';
     return files.map((f) => '' +
       '<tr>' +
-        '<td class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + esc(f.name) + '</td>' +
+        '<td class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">' + esc(f.name) +
+          (f.subfolder ? '<div class="dim" style="font-size:10.5px">📁 ' + esc(f.subfolder) + '</div>' : '') + '</td>' +
         '<td>' + esc(f.client_name || '—') + '</td>' +
         '<td class="mono">' + fmtBytes(f.size) + '</td>' +
         '<td>' + statusChip(f.status) +
@@ -621,6 +622,7 @@
         '<td style="white-space:nowrap">' +
           (f.status === 'FAILED' ? '<button class="btn small green" data-retry="' + esc(f.id) + '">Retry</button> ' : '') +
           (f.gdrive_link ? '<a class="btn small ghost" href="' + esc(f.gdrive_link) + '" target="_blank" rel="noreferrer">Drive ↗</a> ' : '') +
+          (f.link ? '<button class="btn small ghost" data-copylink="' + esc(f.link) + '">Link</button> ' : '') +
           (f.local_present ? '<a class="btn small ghost" href="/gdrive/api/files/' + esc(f.id) + '/peek" target="_blank">Local</a> ' : '') +
           '<button class="btn small danger" data-delfile="' + esc(f.id) + '">Delete</button>' +
         '</td>' +
@@ -793,6 +795,9 @@
     const snippets = t.getAttribute('data-snippets');
     if (snippets) { ev.preventDefault(); return showSnippets(snippets); }
 
+    const copyLink = t.getAttribute('data-copylink');
+    if (copyLink) { ev.preventDefault(); return copyText(location.origin + copyLink); }
+
     const extend = t.getAttribute('data-extend');
     if (extend) { ev.preventDefault(); return extendClient(extend); }
 
@@ -908,8 +913,9 @@
       'curl -X POST "' + base + '/file" \\\n' +
       '  -H "x-api-key: <YOUR_API_KEY>" \\\n' +
       '  -H "x-client-serial: ' + serial + '" \\\n' +
-      '  -F "file=@/path/to/invoice.pdf"\n\n' +
-      '# → { "ok": true, "file_uuid": "…" }  (returns in milliseconds)';
+      '  -F "file=@/path/to/invoice.pdf" \\\n' +
+      '  -F "folder=Karachi Branch"   # optional subfolder\n\n' +
+      '# → { "ok": true, "file_uuid": "…", "url": "…?link=…" }  (returns in milliseconds)';
     const curlDownload =
       'curl -L "' + base + '/file/<FILE_UUID>" \\\n' +
       '  -H "x-api-key: <YOUR_API_KEY>" \\\n' +
@@ -919,22 +925,24 @@
     const jsUpload =
       "const fd = new FormData();\n" +
       "fd.append('file', fileInput.files[0]);\n" +
+      "fd.append('folder', 'Karachi Branch');   // optional subfolder\n" +
       "const res = await fetch('" + base + "/file', {\n" +
       "  method: 'POST',\n" +
       "  headers: { 'x-api-key': '<YOUR_API_KEY>', 'x-client-serial': '" + serial + "' },\n" +
       "  body: fd\n" +
       "});\n" +
-      "const { file_uuid } = await res.json();";
+      "const { file_uuid, url } = await res.json();   // url opens in a browser";
     const nodeUpload =
       "import fs from 'fs';\n" +
       "const fd = new FormData();\n" +
       "fd.append('file', new Blob([fs.readFileSync('./invoice.pdf')]), 'invoice.pdf');\n" +
+      "fd.append('folder', 'Karachi Branch');   // optional subfolder\n" +
       "const res = await fetch('" + base + "/file', {\n" +
       "  method: 'POST',\n" +
       "  headers: { 'x-api-key': '<YOUR_API_KEY>', 'x-client-serial': '" + serial + "' },\n" +
       "  body: fd\n" +
       "});\n" +
-      "const { file_uuid } = await res.json();";
+      "const { file_uuid, url } = await res.json();";
 
     const box = (title, code) =>
       '<div style="margin-top:10px"><div class="muted" style="font-weight:800;color:#7dd3fc">' + title + '</div>' +

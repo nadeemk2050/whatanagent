@@ -18,18 +18,27 @@ import {
   listAccounts, getAccount, insertAccount, updateAccount, deleteAccount,
   listClients, getClient, getClientBySerial, insertClient, updateClient, deleteClient,
   getFile, insertFile, listFiles, updateFile, deleteFileRow, fileStats, clientStats,
-  listAudit, audit, CACHE_ROOT
+  listAudit, audit, CACHE_ROOT, getSubfolder, saveSubfolder
 } from './db.mjs';
 import {
-  encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint
+  encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint,
+  signFileLink, verifyFileLink
 } from './crypto.mjs';
-import { testCredentials, getQuota, ensureClientFolder, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
+import { testCredentials, getQuota, ensureClientFolder, ensureFolder, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
 import { storeUploadedFile, tmpDir, retryFile, localFileMatches } from './queue.mjs';
 import { SEED_EMAIL } from './seed.mjs';
 
 const PAGE_DIR = path.join(process.cwd(), 'public', 'gdrive-service');
 const SCOPES = ['upload', 'read_upload', 'full'];
 const SCOPE_LABEL = { upload: 'Upload only', read_upload: 'Read & upload', full: 'Full access' };
+
+/** Absolute base URL for links handed to client apps. */
+function publicBase(req) {
+  const fixed = String(process.env.GDRIVE_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (fixed) return fixed;
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+  return proto + '://' + String(req.get('host') || 'localhost');
+}
 
 const sstr = (v, n = 200) => String(v == null ? '' : v).slice(0, n);
 const safeName = (v) => String(v || 'file').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 140) || 'file';
@@ -175,6 +184,8 @@ function publicFile(f) {
     local_present: local,
     local_path: f.local_path || '',
     downloads: f.downloads || 0,
+    subfolder: f.subfolder || '',
+    link: '/api/v1/gdrive/file/' + f.id + '?link=' + signFileLink(f.id),
     created_at: f.created_at,
     uploaded_at: f.uploaded_at,
     cleaned_at: f.cleaned_at
@@ -560,6 +571,18 @@ export function registerGDriveServiceRoutes(app, multer) {
   const maxMb = Math.max(1, Number(process.env.GDRIVE_MAX_UPLOAD_MB) || 200);
   const upload = multer({ dest: tmpDir(), limits: { fileSize: maxMb * 1024 * 1024 } });
 
+  // Apps live on other domains (a static site, a desktop tool), so they call this
+  // API cross-origin. Credentials travel in headers, never in cookies.
+  publicRouter.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'x-api-key, x-client-serial, x-gdrive-folder, content-type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Expose-Headers', 'X-GDrive-Source, Content-Disposition');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    return next();
+  });
+
   publicRouter.get('/health', (req, res) => res.json({ ok: true, service: 'gdrive-service-centre' }));
 
   publicRouter.post('/file', clientAuth('upload'), upload.single('file'), async (req, res) => {
@@ -570,8 +593,25 @@ export function registerGDriveServiceRoutes(app, multer) {
     try {
       let folderId = client.folder_id;
       if (!folderId) {
-        folderId = await ensureClientFolder(account, client.name);
-        updateClient(client.id, { folder_id: folderId, folder_name: client.name });
+        folderId = await ensureClientFolder(account, client.folder_name || client.name);
+        updateClient(client.id, { folder_id: folderId });
+      }
+      const appFolderId = folderId;
+
+      // Optional subfolder inside the app folder: one per branch, project, month…
+      const subfolder = sstr(
+        (req.body && req.body.folder) || req.get('x-gdrive-folder') || '', 80
+      ).replace(/[\\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+      if (subfolder) {
+        const cached = getSubfolder(client.id, subfolder);
+        if (cached && cached.folder_id) {
+          folderId = cached.folder_id;
+        } else {
+          folderId = await ensureFolder(account, subfolder, appFolderId);
+          saveSubfolder(client.id, subfolder, folderId);
+          audit({ drive_id: account.id, client_id: client.id, action: 'subfolder.ready', detail: subfolder });
+        }
       }
 
       const stored = await storeUploadedFile(req.file.path, req.file.originalname, account.id, client.id);
@@ -585,7 +625,8 @@ export function registerGDriveServiceRoutes(app, multer) {
         size: stored.size,
         local_path: stored.abs,
         md5: stored.md5,
-        gdrive_folder_id: folderId
+        gdrive_folder_id: folderId,
+        subfolder
       });
       audit({ drive_id: account.id, client_id: client.id, action: 'file.received', detail: row.original_name, ip: req.ip });
 
@@ -595,6 +636,9 @@ export function registerGDriveServiceRoutes(app, multer) {
         name: row.original_name,
         size: row.size,
         status: row.status,
+        folder: row.subfolder || '',
+        // A plain link the calling app can put straight into an <a href>.
+        url: publicBase(req) + '/api/v1/gdrive/file/' + row.id + '?link=' + signFileLink(row.id),
         expires_from_vps_at: Date.now() + (Number(account.retention_hours) || 24) * 3600 * 1000
       });
     } catch (e) {
@@ -603,9 +647,30 @@ export function registerGDriveServiceRoutes(app, multer) {
     }
   });
 
-  publicRouter.get('/file/:uuid', clientAuth('read'), async (req, res) => {
+  /**
+   * Read access: API headers for programs, or a signed ?link= for browsers.
+   * The link only opens the file it was minted for — no key ever appears in a URL.
+   */
+  function readAuth(req, res, next) {
+    if (req.headers['x-api-key'] || req.headers['x-client-serial']) {
+      return clientAuth('read')(req, res, next);
+    }
+    const sig = String(req.query.link || '');
+    if (!sig || !verifyFileLink(req.params.uuid, sig)) {
+      return res.status(401).json({ ok: false, error: 'Send x-api-key + x-client-serial, or open a link signed for this file' });
+    }
     const file = getFile(req.params.uuid);
-    if (!file || file.drive_id !== req.gdClient.drive_id) {
+    if (!file) return res.status(404).json({ ok: false, error: 'File not found' });
+    const account = getAccount(file.drive_id);
+    if (!account) return res.status(503).json({ ok: false, error: 'The Google Drive behind this file was removed' });
+    req.gdFile = file;
+    req.gdAccount = account;
+    return next();
+  }
+
+  publicRouter.get('/file/:uuid', readAuth, async (req, res) => {
+    const file = req.gdFile || getFile(req.params.uuid);
+    if (!file || (req.gdClient && file.drive_id !== req.gdClient.drive_id)) {
       return res.status(404).json({ ok: false, error: 'File not found for this drive' });
     }
     updateFile(file.id, { downloads: (Number(file.downloads) || 0) + 1 });
