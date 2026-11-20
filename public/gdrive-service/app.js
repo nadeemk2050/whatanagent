@@ -183,7 +183,7 @@
         { label: 'No', kind: 'ghost', onClick: closeModal },
         {
           label: '📱 See apps in this drive', kind: 'ghost',
-          onClick: () => { closeModal(); showApps(id, alias); }
+          onClick: () => { closeModal(); showApps(id, email, alias); }
         },
         {
           label: 'Yes, open page', kind: 'primary',
@@ -225,7 +225,7 @@
 
     const t = d.totals || {};
     return '<div class="tablewrap"><table style="min-width:640px"><thead><tr>' +
-        '<th>App</th><th>Drive folder</th><th>Files in folder</th><th>Storage used</th><th>Status</th>' +
+        '<th>App</th><th>Drive folder</th><th>Files (incl. subfolders)</th><th>Storage used</th><th>Status</th>' +
       '</tr></thead><tbody>' + rows + '</tbody>' +
       '<tfoot><tr><th colspan="2">Total · ' + apps.length + ' app' + (apps.length === 1 ? '' : 's') + '</th>' +
         '<th class="mono">' + (Number(t.files) || 0) + '</th>' +
@@ -250,13 +250,23 @@
     }
   }
 
-  function showApps(driveId, alias) {
-    openModal('Apps in ' + (alias || 'this drive'), '<div id="appsBody"></div>',
+  function showApps(driveId, email, alias) {
+    openModal('Apps in ' + (email || alias || 'this drive'),
+      '<div id="appsBody"></div>',
       [
         { label: 'Close', kind: 'ghost', onClick: closeModal },
         { label: '↻ Refresh', kind: 'ghost', onClick: () => loadApps(driveId) },
         { label: 'Open service page', kind: 'primary', onClick: () => { closeModal(); openService(driveId); } }
       ], '', { wide: true });
+
+    const body = $('#modalBody');
+    if (body && alias) {
+      const line = document.createElement('div');
+      line.className = 'muted';
+      line.style.cssText = 'margin-bottom:8px';
+      line.textContent = 'Drive: ' + alias;
+      body.insertBefore(line, body.firstChild);
+    }
     loadApps(driveId);
   }
 

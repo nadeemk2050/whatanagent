@@ -208,38 +208,77 @@ export async function deleteRemote(account, fileId) {
  * What is actually inside one folder: how many files, and how many bytes.
  * Used by the "apps in this drive" panel, so the numbers match what the owner
  * sees in Drive — including files added there by hand, not only ours.
+ *
+ * Counts nested subfolders too (a VAT app keeps one folder per branch), and can
+ * skip folders that belong to another app so a drive-wide tracker does not
+ * count its neighbours twice.
  */
 export async function folderUsage(account, folderId, opts) {
   const drive = driveFor(account);
-  const id = String(folderId || '').trim();
-  if (!id) throw new Error('No Drive folder is linked to this app yet');
+  const rootId = String(folderId || '').trim();
+  if (!rootId) throw new Error('No Drive folder is linked to this app yet');
 
-  const maxFiles = Math.max(1, Math.min(Number(opts && opts.maxFiles) || 5000, 20000));
+  const options = opts || {};
+  const maxEntries = Math.max(1, Math.min(Number(options.maxEntries) || 5000, 50000));
+  const maxFolders = Math.max(1, Math.min(Number(options.maxFolders) || 80, 500));
+  const exclude = new Set((options.exclude || []).map((v) => String(v || '').trim()).filter(Boolean));
+  exclude.delete(rootId);
+
   let files = 0;
   let bytes = 0;
   let folders = 0;
   let scanned = 0;
-  let pageToken = '';
+  let foldersSeen = 0;
 
-  do {
-    const res = await drive.files.list({
-      q: `'${q(id)}' in parents and trashed = false`,
-      fields: 'nextPageToken, files(id,name,size,mimeType)',
-      pageSize: 1000,
-      pageToken: pageToken || undefined,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true
-    }, { timeout: TIMEOUT_MS });
+  const queue = [rootId];
+  const visited = new Set(queue);
 
-    const items = (res.data && res.data.files) || [];
-    for (const f of items) {
-      scanned += 1;
-      if (f.mimeType === FOLDER_MIME) { folders += 1; continue; }
-      files += 1;
-      bytes += Number(f.size) || 0;
-    }
-    pageToken = (res.data && res.data.nextPageToken) || '';
-  } while (pageToken && scanned < maxFiles);
+  while (queue.length && scanned < maxEntries && foldersSeen < maxFolders) {
+    const current = queue.shift();
+    foldersSeen += 1;
+    let pageToken = '';
 
-  return { files, bytes, folders, truncated: !!pageToken };
+    do {
+      const res = await drive.files.list({
+        q: `'${q(current)}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id,name,size,mimeType)',
+        pageSize: 1000,
+        pageToken: pageToken || undefined,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true
+      }, { timeout: TIMEOUT_MS });
+
+      const items = (res.data && res.data.files) || [];
+      for (const f of items) {
+        scanned += 1;
+        if (f.mimeType === FOLDER_MIME) {
+          if (!exclude.has(f.id)) {
+            folders += 1;
+            if (!visited.has(f.id)) { visited.add(f.id); queue.push(f.id); }
+          }
+        } else {
+          files += 1;
+          bytes += Number(f.size) || 0;
+        }
+        if (scanned >= maxEntries) break;
+      }
+      pageToken = (res.data && res.data.nextPageToken) || '';
+    } while (pageToken && scanned < maxEntries);
+  }
+
+  return { files, bytes, folders, truncated: scanned >= maxEntries || queue.length > 0 };
+}
+
+/** Name and id of an existing folder, checked against the live Drive. */
+export async function folderInfo(account, folderId) {
+  const drive = driveFor(account);
+  const res = await drive.files.get({
+    fileId: String(folderId || '').trim(),
+    fields: 'id,name,mimeType,trashed',
+    supportsAllDrives: true
+  }, { timeout: 30000 });
+  const f = res.data || {};
+  if (!f.id || f.trashed) throw new Error('That Drive folder is missing or trashed');
+  if (f.mimeType !== FOLDER_MIME) throw new Error('That Drive id is a file, not a folder');
+  return { id: f.id, name: f.name || 'Folder' };
 }

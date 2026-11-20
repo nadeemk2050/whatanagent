@@ -24,7 +24,7 @@ import {
   encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint,
   signFileLink, verifyFileLink
 } from './crypto.mjs';
-import { testCredentials, getQuota, ensureClientFolder, ensureFolder, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
+import { testCredentials, getQuota, ensureClientFolder, ensureFolder, folderInfo, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
 import { storeUploadedFile, tmpDir, retryFile, localFileMatches } from './queue.mjs';
 import { SEED_EMAIL } from './seed.mjs';
 
@@ -381,8 +381,14 @@ export function registerGDriveServiceRoutes(app, multer) {
 
     const live = req.query.live !== '0';
     const apps = [];
+    const clients = listClients(account.id).map(publicClient);
 
-    for (const c of listClients(account.id).map(publicClient)) {
+    // A drive-wide tracker (one client pointed at the shared root) must not count
+    // the folders that belong to the other apps again.
+    const ownedFolders = new Map();
+    for (const c of clients) if (c.folder_id) ownedFolders.set(c.folder_id, c.id);
+
+    for (const c of clients) {
       const row = Object.assign({}, c, {
         live: false,
         live_error: '',
@@ -392,7 +398,9 @@ export function registerGDriveServiceRoutes(app, multer) {
       });
       if (live && c.folder_id) {
         try {
-          const usage = await folderUsage(account, c.folder_id);
+          const exclude = [];
+          for (const [fid, ownerId] of ownedFolders) if (ownerId !== c.id) exclude.push(fid);
+          const usage = await folderUsage(account, c.folder_id, { exclude });
           row.live = true;
           row.drive_files = usage.files;
           row.drive_bytes = usage.bytes;
@@ -425,6 +433,9 @@ export function registerGDriveServiceRoutes(app, multer) {
 
     // The folder is where this app's files actually land; it defaults to the app name.
     const folderName = sstr(body.folder_name, 80).replace(/[\\/]+/g, ' ').trim() || name;
+    // An existing folder can be linked instead of created (used to track an app
+    // that already writes to the drive with its own credentials).
+    const existingFolderId = sstr(body.folder_id, 160).trim();
 
     const scope = SCOPES.includes(body.scope) ? body.scope : 'read_upload';
     const rateLimit = Math.max(1, Math.min(Number(body.rate_limit) || 60, 6000));
@@ -437,7 +448,17 @@ export function registerGDriveServiceRoutes(app, multer) {
     }
 
     try {
-      const folderId = await ensureClientFolder(account, folderName);
+      let folderId = '';
+      let finalFolderName = folderName;
+
+      if (existingFolderId) {
+        const info = await folderInfo(account, existingFolderId);
+        folderId = info.id;
+        finalFolderName = info.name;
+      } else {
+        folderId = await ensureClientFolder(account, folderName);
+      }
+
       const apiKey = newApiKey();
       const client = insertClient({
         drive_id: account.id,
@@ -446,13 +467,13 @@ export function registerGDriveServiceRoutes(app, multer) {
         key_hash: sha256(apiKey),
         key_hint: keyHint(apiKey),
         folder_id: folderId,
-        folder_name: folderName,
+        folder_name: finalFolderName,
         scope,
         rate_limit: rateLimit,
         expires_at: expiresAt,
         status: 'active'
       });
-      audit({ drive_id: account.id, client_id: client.id, action: 'client.created', detail: name + ' → folder "' + folderName + '" (' + scope + ')' });
+      audit({ drive_id: account.id, client_id: client.id, action: 'client.created', detail: name + ' → folder "' + finalFolderName + '" (' + scope + ')' });
       // The plaintext key is returned exactly once.
       res.json({ ok: true, client: publicClient(client), api_key: apiKey });
     } catch (e) {
