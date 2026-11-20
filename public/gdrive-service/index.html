@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GDrive API Service Centre</title>
+<link rel="stylesheet" href="/gdrive-service/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <a class="back" id="backLink" href="/admin.html" title="Back to WhatAnAgent">←</a>
+    <div class="brand">
+      <span class="logo">☁️</span>
+      <div>
+        <h1>GDrive API Service Centre</h1>
+        <p id="subtitle">Connect Google Drives and serve them to your apps with one API</p>
+      </div>
+    </div>
+    <div class="topright">
+      <span id="connPill" class="pill pill-muted">connecting…</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="hubTabs">
+    <button class="tab active" data-tab="add">➕ Add GDrive Details</button>
+    <button class="tab" data-tab="list">📋 View Saved GDrives</button>
+  </nav>
+
+  <main id="hub">
+    <!-- ── ADD ─────────────────────────────────────────────────────────── -->
+    <section id="tab-add" class="panel">
+      <div class="card">
+        <h2>Add Google Drive Details</h2>
+        <p class="muted">Credentials are sealed with AES-256-GCM before they touch the database. Nothing is sent anywhere except Google.</p>
+
+        <form id="addForm" autocomplete="off">
+          <div class="grid">
+            <label>Account label / alias <span class="req">*</span>
+              <input name="alias" required placeholder="Karachi Warehouse Docs">
+            </label>
+            <label>Google account email <span class="req">*</span>
+              <input name="email" type="email" required placeholder="name@gmail.com">
+            </label>
+            <label class="span2">Google Cloud Client ID <span class="req">*</span>
+              <input name="client_id" required placeholder="1234567890-abc.apps.googleusercontent.com">
+            </label>
+            <label>Google Cloud Client Secret <span class="req">*</span>
+              <span class="secret">
+                <input name="client_secret" type="password" required placeholder="GOCSPX-…">
+                <button type="button" class="eye" data-eye="client_secret">show</button>
+              </span>
+            </label>
+            <label>OAuth2 Refresh Token <span class="req">*</span>
+              <span class="secret">
+                <input name="refresh_token" type="password" required placeholder="1//0g…">
+                <button type="button" class="eye" data-eye="refresh_token">show</button>
+              </span>
+            </label>
+            <label>Root folder ID <span class="hint">(optional)</span>
+              <input name="root_folder_id" placeholder="Leave blank to create folders in My Drive">
+            </label>
+            <label>VPS buffer / auto-delete after (hours)
+              <input name="retention_hours" type="number" min="1" max="720" value="24">
+            </label>
+            <label>Storage quota alert (GB) <span class="hint">(optional)</span>
+              <input name="quota_alert_gb" type="number" min="0" step="1" placeholder="e.g. 12">
+            </label>
+            <label>Status
+              <select name="status">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="row">
+            <button type="button" class="btn ghost" id="testBtn">🔌 Test Connection &amp; Verify Token</button>
+            <button type="submit" class="btn primary">💾 Save GDrive Account</button>
+          </div>
+          <div id="addResult" class="result" hidden></div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ── LIST ────────────────────────────────────────────────────────── -->
+    <section id="tab-list" class="panel" hidden>
+      <div class="card">
+        <div class="row between">
+          <h2>Saved Google Drives</h2>
+          <div class="row">
+            <input id="search" class="search" placeholder="Search alias or email…">
+            <button class="btn ghost" id="refreshList">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="accountsTable" class="tablewrap"><div class="muted pad">Loading…</div></div>
+      </div>
+    </section>
+  </main>
+
+  <main id="service" hidden></main>
+</div>
+
+<!-- confirmation modal -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <h3 id="modalTitle">Confirm</h3>
+    <div id="modalBody" class="muted"></div>
+    <div class="row end" id="modalActions"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script defer src="/gdrive-service/static/app.js"></script>
+</body>
+</html>
