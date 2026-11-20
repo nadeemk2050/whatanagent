@@ -120,6 +120,18 @@ CREATE TABLE IF NOT EXISTS gdrive_subfolders (
   UNIQUE(client_id, name)
 );
 
+-- Last measured size of each app folder. A drive with hundreds of subfolders
+-- cannot be walked inside one web request, so a worker keeps this fresh.
+CREATE TABLE IF NOT EXISTS gdrive_folder_stats (
+  client_id  INTEGER PRIMARY KEY REFERENCES gdrive_clients(id) ON DELETE CASCADE,
+  files      INTEGER NOT NULL DEFAULT 0,
+  bytes      INTEGER NOT NULL DEFAULT 0,
+  folders    INTEGER NOT NULL DEFAULT 0,
+  truncated  INTEGER NOT NULL DEFAULT 0,
+  error      TEXT DEFAULT '',
+  updated_at INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_queue ON gdrive_files(status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_files_drive ON gdrive_files(drive_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_files_cleanup ON gdrive_files(status, uploaded_at);
@@ -250,6 +262,28 @@ export function saveSubfolder(clientId, name, folderId) {
 
 export function listSubfolders(clientId) {
   return db.prepare('SELECT * FROM gdrive_subfolders WHERE client_id = ? ORDER BY name ASC').all(Number(clientId));
+}
+
+// ── measured folder sizes ───────────────────────────────────────────────────
+export function getFolderStats(clientId) {
+  return db.prepare('SELECT * FROM gdrive_folder_stats WHERE client_id = ?').get(Number(clientId)) || null;
+}
+
+export function listFolderStats(driveId) {
+  return db.prepare(`SELECT s.* FROM gdrive_folder_stats s
+    JOIN gdrive_clients c ON c.id = s.client_id
+    WHERE c.drive_id = ?`).all(Number(driveId));
+}
+
+export function saveFolderStats(clientId, s) {
+  db.prepare(`INSERT INTO gdrive_folder_stats (client_id, files, bytes, folders, truncated, error, updated_at)
+    VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(client_id) DO UPDATE SET
+      files = excluded.files, bytes = excluded.bytes, folders = excluded.folders,
+      truncated = excluded.truncated, error = excluded.error, updated_at = excluded.updated_at`)
+    .run(Number(clientId), Number(s.files) || 0, Number(s.bytes) || 0, Number(s.folders) || 0,
+      s.truncated ? 1 : 0, String(s.error || '').slice(0, 200), now());
+  return getFolderStats(clientId);
 }
 
 export function bumpClientUsage(clientId, bytes) {

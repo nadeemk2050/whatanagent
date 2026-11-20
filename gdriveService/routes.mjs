@@ -18,14 +18,14 @@ import {
   listAccounts, getAccount, insertAccount, updateAccount, deleteAccount,
   listClients, getClient, getClientBySerial, insertClient, updateClient, deleteClient,
   getFile, insertFile, listFiles, updateFile, deleteFileRow, fileStats, clientStats,
-  listAudit, audit, CACHE_ROOT, getSubfolder, saveSubfolder, listSubfolders
+  listAudit, audit, CACHE_ROOT, getSubfolder, saveSubfolder, listSubfolders, listFolderStats
 } from './db.mjs';
 import {
   encryptSecret, decryptSecret, sha256, newApiKey, newSerial, keyHint,
   signFileLink, verifyFileLink
 } from './crypto.mjs';
-import { testCredentials, getQuota, ensureClientFolder, ensureFolder, folderInfo, deleteRemote, downloadRemote, invalidateDrive, folderUsage } from './drive.mjs';
-import { storeUploadedFile, tmpDir, retryFile, localFileMatches } from './queue.mjs';
+import { testCredentials, getQuota, ensureClientFolder, ensureFolder, folderInfo, deleteRemote, downloadRemote, invalidateDrive } from './drive.mjs';
+import { storeUploadedFile, tmpDir, retryFile, localFileMatches, scanDriveStats, statsBusy } from './queue.mjs';
 import { SEED_EMAIL } from './seed.mjs';
 
 const PAGE_DIR = path.join(process.cwd(), 'public', 'gdrive-service');
@@ -372,45 +372,34 @@ export function registerGDriveServiceRoutes(app, multer) {
   });
 
   /**
-   * "Apps in this drive" — per-app folder size, read live from Google Drive.
-   * Pass ?live=0 to answer from the local counters (fast, no Drive calls).
+   * "Apps in this drive" — each app's measured folder size.
+   * The numbers come from a background scan (?refresh=1 starts one), because a
+   * drive with hundreds of subfolders cannot be walked inside one request.
    */
-  router.get('/accounts/:id/apps', adminGuard, async (req, res) => {
+  router.get('/accounts/:id/apps', adminGuard, (req, res) => {
     const account = getAccount(req.params.id);
     if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
 
-    const live = req.query.live !== '0';
-    const apps = [];
-    const clients = listClients(account.id).map(publicClient);
-
-    // A drive-wide tracker (one client pointed at the shared root) must not count
-    // the folders that belong to the other apps again.
-    const ownedFolders = new Map();
-    for (const c of clients) if (c.folder_id) ownedFolders.set(c.folder_id, c.id);
-
-    for (const c of clients) {
-      const row = Object.assign({}, c, {
-        live: false,
-        live_error: '',
-        drive_files: 0,
-        drive_bytes: 0,
-        drive_folders: 0
-      });
-      if (live && c.folder_id) {
-        try {
-          const exclude = [];
-          for (const [fid, ownerId] of ownedFolders) if (ownerId !== c.id) exclude.push(fid);
-          const usage = await folderUsage(account, c.folder_id, { exclude });
-          row.live = true;
-          row.drive_files = usage.files;
-          row.drive_bytes = usage.bytes;
-          row.drive_folders = usage.folders;
-        } catch (e) {
-          row.live_error = sstr((e && e.message) || e, 200);
-        }
-      }
-      apps.push(row);
+    if (req.query.refresh === '1') {
+      // Fire and forget: the panel polls for the result.
+      scanDriveStats(account.id).catch(() => {});
     }
+
+    const clients = listClients(account.id).map(publicClient);
+    const stats = new Map(listFolderStats(account.id).map((s) => [Number(s.client_id), s]));
+
+    const apps = clients.map((c) => {
+      const s = stats.get(Number(c.id)) || null;
+      return Object.assign({}, c, {
+        live: !!s && !s.error,
+        live_error: s ? (s.error || '') : '',
+        drive_files: s ? Number(s.files) || 0 : 0,
+        drive_bytes: s ? Number(s.bytes) || 0 : 0,
+        drive_folders: s ? Number(s.folders) || 0 : 0,
+        stats_at: s ? Number(s.updated_at) || 0 : 0,
+        truncated: !!(s && s.truncated)
+      });
+    });
 
     const totals = apps.reduce((acc, r) => {
       acc.files += Number(r.drive_files) || 0;
@@ -420,7 +409,14 @@ export function registerGDriveServiceRoutes(app, multer) {
       return acc;
     }, { files: 0, bytes: 0, recorded_files: 0, recorded_bytes: 0 });
 
-    res.json({ ok: true, live, apps, totals });
+    res.json({
+      ok: true,
+      live: true,
+      scanning: statsBusy(),
+      stats_at: apps.reduce((m, a) => Math.max(m, Number(a.stats_at) || 0), 0),
+      apps,
+      totals
+    });
   });
 
   router.post('/accounts/:id/clients', adminGuard, express.json({ limit: '64kb' }), async (req, res) => {

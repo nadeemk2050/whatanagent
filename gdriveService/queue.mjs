@@ -16,14 +16,16 @@ import path from 'path';
 import crypto from 'crypto';
 import db, {
   CACHE_ROOT, getAccount, updateAccount, updateFile, getFile, dueJobs,
-  filesReadyForCleanup, audit, bumpClientUsage, listAccounts, updateClient
+  filesReadyForCleanup, audit, bumpClientUsage, listAccounts, updateClient,
+  listClients, saveFolderStats
 } from './db.mjs';
 import { md5File, md5Hex } from './crypto.mjs';
-import { uploadLocalFile, getRemoteFile, getQuota, ensureClientFolder } from './drive.mjs';
+import { uploadLocalFile, getRemoteFile, getQuota, ensureClientFolder, folderUsage } from './drive.mjs';
 
 const WORKER_TICK_MS = Number(process.env.GDRIVE_WORKER_MS) || 3000;
 const CLEAN_TICK_MS = Number(process.env.GDRIVE_CLEAN_MS) || 10 * 60 * 1000;
 const HEALTH_TICK_MS = Number(process.env.GDRIVE_HEALTH_MS) || 30 * 60 * 1000;
+const STATS_TICK_MS = Number(process.env.GDRIVE_STATS_MS) || 15 * 60 * 1000;
 const MAX_ATTEMPTS = Number(process.env.GDRIVE_MAX_ATTEMPTS) || 8;
 const CONCURRENCY = Math.max(1, Math.min(Number(process.env.GDRIVE_CONCURRENCY) || 2, 8));
 
@@ -31,6 +33,7 @@ const running = new Set();
 let workerTimer = null;
 let cleanTimer = null;
 let healthTimer = null;
+let statsTimer = null;
 let stopped = false;
 
 const safeName = (v) => String(v || 'file').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 140) || 'file';
@@ -246,6 +249,56 @@ async function cleanupTick() {
   }
 }
 
+/**
+ * Measure every app folder of one drive and store the result.
+ * A drive with hundreds of subfolders needs a minute of Drive calls, so this
+ * runs in the background and never inside a web request.
+ */
+let statsRunning = false;
+
+export async function scanDriveStats(driveId) {
+  if (statsRunning) return 0;
+  const account = getAccount(driveId);
+  if (!account) return 0;
+
+  const clients = listClients(account.id);
+  const owned = new Map();
+  for (const c of clients) if (c.folder_id) owned.set(c.folder_id, c.id);
+
+  statsRunning = true;
+  let done = 0;
+  try {
+    for (const c of clients) {
+      if (!c.folder_id) continue;
+      const exclude = [];
+      for (const [fid, ownerId] of owned) if (ownerId !== c.id) exclude.push(fid);
+      try {
+        const usage = await folderUsage(account, c.folder_id, { exclude, maxFolders: 600, maxEntries: 20000 });
+        saveFolderStats(c.id, {
+          files: usage.files, bytes: usage.bytes, folders: usage.folders,
+          truncated: usage.truncated, error: ''
+        });
+      } catch (e) {
+        saveFolderStats(c.id, { files: 0, bytes: 0, folders: 0, error: String((e && e.message) || e).slice(0, 200) });
+      }
+      done += 1;
+    }
+  } finally {
+    statsRunning = false;
+  }
+  if (done) console.log('[GDRIVE] 📏 measured ' + done + ' app folder(s) on drive ' + account.id);
+  return done;
+}
+
+export const statsBusy = () => statsRunning;
+
+async function statsTick() {
+  if (stopped || statsRunning) return;
+  for (const account of listAccounts()) {
+    try { await scanDriveStats(account.id); } catch (e) { /* logged inside */ }
+  }
+}
+
 async function healthTick() {
   if (stopped) return;
   for (const account of listAccounts()) {
@@ -275,19 +328,21 @@ export function startGDriveWorkers() {
   workerTimer = setInterval(workerTick, WORKER_TICK_MS);
   cleanTimer = setInterval(cleanupTick, CLEAN_TICK_MS);
   healthTimer = setInterval(healthTick, HEALTH_TICK_MS);
-  for (const t of [workerTimer, cleanTimer, healthTimer]) {
+  statsTimer = setInterval(statsTick, STATS_TICK_MS);
+  for (const t of [workerTimer, cleanTimer, healthTimer, statsTimer]) {
     if (typeof t.unref === 'function') t.unref();
   }
   setTimeout(() => { workerTick(); }, 5000);
   setTimeout(() => { healthTick(); }, 15000);
+  setTimeout(() => { statsTick(); }, 45000);
   console.log('[GDRIVE] ⚙️ service workers started — upload queue every ' + (WORKER_TICK_MS / 1000) +
     's, retention sweep every ' + Math.round(CLEAN_TICK_MS / 60000) + ' min, concurrency ' + CONCURRENCY);
 }
 
 export function stopGDriveWorkers() {
   stopped = true;
-  clearInterval(workerTimer); clearInterval(cleanTimer); clearInterval(healthTimer);
-  workerTimer = cleanTimer = healthTimer = null;
+  clearInterval(workerTimer); clearInterval(cleanTimer); clearInterval(healthTimer); clearInterval(statsTimer);
+  workerTimer = cleanTimer = healthTimer = statsTimer = null;
 }
 
 /** Manual retry from the UI: reset a FAILED (or stuck) job. */

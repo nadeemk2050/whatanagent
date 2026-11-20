@@ -224,6 +224,7 @@
     }).join('');
 
     const t = d.totals || {};
+    const when = d.stats_at ? fmtDate(d.stats_at) : 'not measured yet';
     return '<div class="tablewrap"><table style="min-width:640px"><thead><tr>' +
         '<th>App</th><th>Drive folder</th><th>Files (incl. subfolders)</th><th>Storage used</th><th>Status</th>' +
       '</tr></thead><tbody>' + rows + '</tbody>' +
@@ -231,23 +232,47 @@
         '<th class="mono">' + (Number(t.files) || 0) + '</th>' +
         '<th class="mono">' + fmtBytes(t.bytes) + '</th><th></th></tr></tfoot></table></div>' +
       '<div class="muted" style="margin-top:8px">' +
-        (d.live
-          ? 'Live from Google Drive — includes files you added to the folder yourself.'
-          : 'From the local upload records (Drive was not queried).') +
+        'Measured from Google Drive (includes files you added to the folder yourself) · ' +
+        (d.scanning ? '<b>scanning now…</b>' : 'updated ' + when) +
       '</div>';
   }
 
-  async function loadApps(driveId) {
+  async function loadApps(driveId, opts) {
+    const force = !!(opts && opts.refresh);
     const host = $('#appsBody');
-    if (host) host.innerHTML = '<div class="pad muted">Reading each app folder from Google Drive…</div>';
+    if (force && host) {
+      host.innerHTML = '<div class="pad muted">Scanning the Drive folders… the numbers update as soon as it finishes.</div>';
+    } else if (host && !host.innerHTML) {
+      host.innerHTML = '<div class="pad muted">Reading saved measurements…</div>';
+    }
+
     try {
-      const data = await api('/accounts/' + driveId + '/apps');
+      const data = await api('/accounts/' + driveId + '/apps' + (force ? '?refresh=1' : ''));
       const target = $('#appsBody');
       if (target) target.innerHTML = appsTableHtml(data);
+
+      // A big drive is walked in the background; keep looking until it is done.
+      if (data.scanning) pollApps(driveId, Number(data.stats_at) || 0, 0);
+      if (!data.stats_at && !data.scanning) loadApps(driveId, { refresh: true });
     } catch (e) {
       const target = $('#appsBody');
       if (target) target.innerHTML = '<div class="pad" style="color:#fca5a5">' + esc(e.message) + '</div>';
     }
+  }
+
+  function pollApps(driveId, since, tries) {
+    if (tries > 20) return;
+    setTimeout(async () => {
+      if (!$('#appsBody')) return;              // the dialog was closed
+      try {
+        const d = await api('/accounts/' + driveId + '/apps');
+        const target = $('#appsBody');
+        if (target) target.innerHTML = appsTableHtml(d);
+        if (d.scanning || (Number(d.stats_at) || 0) === since) pollApps(driveId, since, tries + 1);
+      } catch (e) {
+        pollApps(driveId, since, tries + 1);
+      }
+    }, 4000);
   }
 
   function showApps(driveId, email, alias) {
@@ -255,7 +280,7 @@
       '<div id="appsBody"></div>',
       [
         { label: 'Close', kind: 'ghost', onClick: closeModal },
-        { label: '↻ Refresh', kind: 'ghost', onClick: () => loadApps(driveId) },
+        { label: '↻ Refresh', kind: 'ghost', onClick: () => loadApps(driveId, { refresh: true }) },
         { label: 'Open service page', kind: 'primary', onClick: () => { closeModal(); openService(driveId); } }
       ], '', { wide: true });
 
