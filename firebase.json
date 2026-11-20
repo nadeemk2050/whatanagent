@@ -17,6 +17,18 @@
       { "source": "/commission-accounts", "destination": "/commission.html" },
       { "source": "/commission-account", "destination": "/commission.html" }
     ],
+    "redirects": [
+      {
+        "source": "/gdrive-service",
+        "destination": "https://whatanagent.duckdns.org/gdrive-service",
+        "type": 302
+      },
+      {
+        "source": "/gdrive-service/**",
+        "destination": "https://whatanagent.duckdns.org/gdrive-service",
+        "type": 302
+      }
+    ],
     "headers": [
       {
         "source": "/proforma/assets/bl-whatsapp.js",
