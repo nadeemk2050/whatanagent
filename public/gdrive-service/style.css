@@ -5,6 +5,10 @@
   --blue:#38bdf8; --green:#34d399; --amber:#fbbf24; --red:#f87171; --violet:#a78bfa;
 }
 *{box-sizing:border-box}
+/* The `hidden` attribute must always win: .modal sets display:flex for layout, and an
+   author rule beats the browser's built-in [hidden] rule, which left the dialog stuck
+   on screen. */
+[hidden]{display:none !important}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
   font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 a{color:var(--blue)}
@@ -95,9 +99,13 @@ tr.clickable:hover td{background:rgba(56,189,248,.06)}
 
 .modal{position:fixed;inset:0;z-index:80;background:rgba(3,7,18,.72);backdrop-filter:blur(4px);
   display:flex;align-items:center;justify-content:center;padding:18px}
-.modal-card{width:100%;max-width:560px;background:var(--panel2);border:1px solid rgba(56,189,248,.35);
+.modal-card{position:relative;width:100%;max-width:560px;background:var(--panel2);border:1px solid rgba(56,189,248,.35);
   border-radius:14px;padding:20px;box-shadow:0 25px 60px rgba(0,0,0,.6)}
-.modal-card h3{margin:0 0 8px;font-size:16px}
+.modal-card h3{margin:0 0 8px;font-size:16px;padding-right:26px}
+.modal-x{position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:8px;cursor:pointer;
+  background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--muted);
+  font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.modal-x:hover{color:#fff;background:rgba(255,255,255,.12)}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:120;padding:11px 16px;
   border-radius:10px;font-size:12.5px;font-weight:700;background:#0f172a;border:1px solid var(--line);color:#e2e8f0}

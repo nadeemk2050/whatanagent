@@ -13,6 +13,7 @@
     driveId: '',
     overview: null,
     poll: null,
+    retryTimer: null,
     busy: false
   };
 
@@ -126,7 +127,10 @@
     });
     modal.hidden = false;
   }
-  function closeModal() { $('#modal').hidden = true; }
+  function closeModal() {
+    const modal = $('#modal');
+    if (modal) modal.hidden = true;
+  }
   function confirmModal(title, html, yesLabel, onYes) {
     openModal(title, html, [
       { label: 'No', kind: 'ghost', onClick: closeModal },
@@ -198,6 +202,8 @@
   async function loadAccounts() {
     try {
       const data = await api('/accounts');
+      clearTimeout(S.retryTimer);
+      S.retryTimer = null;
       S.accounts = data.accounts || [];
       renderAccounts();
       const sys = await api('/system').catch(() => null);
@@ -208,9 +214,13 @@
         $('#connPill').textContent = 'token required';
       }
     } catch (e) {
-      $('#connPill').className = 'pill pill-bad';
-      $('#connPill').textContent = 'offline';
-      $('#accountsTable').innerHTML = '<div class="pad" style="color:#fca5a5">' + esc(e.message) + '</div>';
+      // A deploy restarts the server, so a failed first load usually heals itself.
+      $('#connPill').className = 'pill pill-warn';
+      $('#connPill').textContent = 'reconnecting…';
+      $('#accountsTable').innerHTML = '<div class="pad" style="color:#fca5a5">' + esc(e.message) + '</div>' +
+        '<div class="pad muted">The service may be restarting. Retrying automatically…</div>';
+      clearTimeout(S.retryTimer);
+      S.retryTimer = setTimeout(loadAccounts, 4000);
     }
   }
 
@@ -871,6 +881,11 @@
       route();
     });
     $('#modal').addEventListener('click', (ev) => { if (ev.target === $('#modal')) closeModal(); });
+    const modalClose = $('#modalClose');
+    if (modalClose) modalClose.addEventListener('click', closeModal);
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && !$('#modal').hidden) closeModal();
+    });
     window.addEventListener('popstate', route);
     window.addEventListener('beforeunload', stopPoll);
 

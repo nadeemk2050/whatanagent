@@ -1,4 +1,4 @@
-const CACHE_NAME = 'whatanagent-v9';
+const CACHE_NAME = 'whatanagent-v10';
 const ASSETS = [
   '/manifest.json',
   '/icon-192.png',
@@ -40,6 +40,7 @@ self.addEventListener('fetch', (e) => {
   // Never intercept API calls, Firestore, external CDNs, or HTML pages
   if (
     url.pathname.startsWith('/api') || 
+    url.pathname.startsWith('/gdrive') ||   // GDrive Service Centre: live dashboard + its API
     url.pathname.endsWith('.html') || 
     url.pathname === '/' ||
     e.request.mode === 'navigate' ||

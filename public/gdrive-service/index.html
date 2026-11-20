@@ -48,13 +48,13 @@
             </label>
             <label>Google Cloud Client Secret <span class="req">*</span>
               <span class="secret">
-                <input name="client_secret" type="password" required placeholder="GOCSPX-…">
+                <input name="client_secret" type="password" required autocomplete="new-password" placeholder="GOCSPX-…">
                 <button type="button" class="eye" data-eye="client_secret">show</button>
               </span>
             </label>
             <label>OAuth2 Refresh Token <span class="req">*</span>
               <span class="secret">
-                <input name="refresh_token" type="password" required placeholder="1//0g…">
+                <input name="refresh_token" type="password" required autocomplete="new-password" placeholder="1//0g…">
                 <button type="button" class="eye" data-eye="refresh_token">show</button>
               </span>
             </label>
@@ -105,6 +105,7 @@
 <!-- confirmation modal -->
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
+    <button type="button" class="modal-x" id="modalClose" aria-label="Close" title="Close">✕</button>
     <h3 id="modalTitle">Confirm</h3>
     <div id="modalBody" class="muted"></div>
     <div class="row end" id="modalActions"></div>
