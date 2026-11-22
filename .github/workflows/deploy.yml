@@ -3,9 +3,13 @@ name: Deploy to Tencent Lighthouse
 # =============================================================================
 # This replaces Render's autoDeploy: every push to master goes live on the VPS.
 # Requires three repository secrets (Settings -> Secrets and variables -> Actions):
-#   DEPLOY_HOST     101.32.170.58
+#   DEPLOY_HOST     the live server's public IP (currently 43.156.245.176)
 #   DEPLOY_USER     ubuntu
 #   DEPLOY_SSH_KEY  private key whose public half is in the server's authorized_keys
+#
+# Optional fourth secret keeps AlignTasks storage alive on a fresh server:
+#   ALIGN_SERVICE_ACCOUNT_JSON  Firebase service-account key (raw JSON or base64)
+#                               -> deploy/set-align-key.sh writes it with 0600 perms
 # =============================================================================
 
 on:
@@ -41,6 +45,21 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
               "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
               "BRANCH=${GITHUB_REF_NAME} bash /opt/whatanagent/deploy/deploy.sh"
+
+      # The AlignTasks Admin SDK key lives outside the repo by design, so a new server
+      # starts without it and every /api/align/task/* call answers 503. Write it from a
+      # repository secret; if the secret is absent the existing file is left untouched.
+      - name: Sync AlignTasks service-account key
+        env:
+          SAJSON: ${{ secrets.ALIGN_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$SAJSON" ]; then
+            echo "::notice::ALIGN_SERVICE_ACCOUNT_JSON is not set - leaving the server key untouched"
+            exit 0
+          fi
+          printf '%s' "$SAJSON" | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=20 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "bash /opt/whatanagent/deploy/set-align-key.sh"
 
       # Google Drive credentials for the Containers & Lots file service (/candl/api).
       # They live in repository secrets and are written into the server's .env, so no secret is

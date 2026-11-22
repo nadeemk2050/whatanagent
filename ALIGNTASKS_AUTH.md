@@ -67,6 +67,13 @@ Plus an append-only `taskEvents` trail (`created`, `updated`, `completed`,
 | Session/unlock HMAC key | `/opt/whatanagent/data/secret.key` (chmod 600) | Firestore, git |
 | Firebase service account | `/opt/whatanagent-data/serviceAccountKey.json` (chmod 600, outside the repo) | git |
 
+The service-account key is also stored as the repository secret **`ALIGN_SERVICE_ACCOUNT_JSON`**
+(raw JSON or base64). On every deploy the workflow pipes it to
+`deploy/set-align-key.sh`, which validates it and writes the file above with 0600 perms —
+so a freshly created server comes up with AlignTasks storage already working. Without that
+secret (or that file) every `/api/align/task/*` call returns **503** and the board reports
+"The server is restarting".
+
 Passwords are stored with **scrypt (N=16384) + per-user salt** and compared in
 constant time. Plaintext is never stored, logged or transmitted anywhere except
 the login request itself.
