@@ -19,6 +19,7 @@ import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, ruleBookText, enforceScript as romaniseScript } from './ruleBook.mjs';
 import { HUMAN_WARM_SALES_STYLE } from './personaStyle.mjs';
+import { humanizeReplyText, splitWhatsAppMessages, typingDelayMs } from './humanVoice.mjs';
 import { orderParts, cacheStats, cachedTokensFrom, stableFingerprint, logCacheShape } from './promptCache.mjs';
 import { sendPush } from './alignPush.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
@@ -5231,13 +5232,9 @@ export async function initWaWeb(db = null) {
                     console.log('[WA-WEB BRAIN] 📥 Draft saved for approval (' + remoteJid + ') - nothing sent');
                     return;
                   }
-                  // Human-feel delay + typing indicator (optional per contact)
-                  if (brain && brain.humanDelay) {
-                    try { if (sock && waWebState.status === 'connected') await sock.sendPresenceUpdate('composing', remoteJid); } catch (e) { /* presence optional */ }
-                    const waitMs = (4 + Math.floor(Math.random() * 9)) * 1000; // 4-12s
-                    await new Promise(r => setTimeout(r, waitMs));
-                  }
-                  await sendWaWebMessage(remoteJid, finalReply);
+                  // Human pacing: 1–3 short messages, typing indicator, natural pause.
+                  // brain.humanDelay adds a longer first pause (4–12 s).
+                  await sendHumanizedReply(remoteJid, finalReply, { initialDelay: !!(brain && brain.humanDelay) });
                   console.log('[WA-WEB AUTO-REPLY] 🟢 Successfully Auto-replied to ' + remoteJid + ': ' + finalReply);
 
                   // 🏢 Office bookkeeping for the staff member who actually answered.
@@ -5709,6 +5706,29 @@ export async function sendWaWebMessage(to, text) {
   scheduleHistorySaveToFirestore();
 
   return { success: true, messageId: result?.key?.id };
+}
+
+/**
+ * Send an AI reply the way a person would: clean the text, split it into short
+ * messages, show “typing…” and pause naturally between them.
+ * initialDelay adds the optional per-contact 4–12 s pause before the first part.
+ */
+export async function sendHumanizedReply(to, text, opts = {}) {
+  const jid = String(to || '').includes('@')
+    ? String(to)
+    : String(to || '').replace(/\D/g, '') + '@s.whatsapp.net';
+  const parts = splitWhatsAppMessages(text, { maxMessages: 3, maxLen: 320 });
+  let last = null;
+  for (let i = 0; i < parts.length; i++) {
+    try { if (sock && waWebState.status === 'connected') await sock.sendPresenceUpdate('composing', jid); } catch (e) { /* presence optional */ }
+    const wait = (i === 0 && opts.initialDelay)
+      ? (4000 + Math.floor(Math.random() * 8000))
+      : typingDelayMs(parts[i]);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    last = await sendWaWebMessage(jid, parts[i]);
+    try { if (sock && waWebState.status === 'connected') await sock.sendPresenceUpdate('paused', jid); } catch (e) { /* presence optional */ }
+  }
+  return last;
 }
 
 // Helper: Logout & reset
@@ -6265,7 +6285,7 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
 export async function generateWaWebAutoBotReply(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null, opts = {}) {
   try {
     const reply = await generateWaWebAutoBotReplyInner(jid, customerMessage, overridePrompt, mediaData, targetModel, opts);
-    if (reply) return reply;
+    if (reply) return overridePrompt ? reply : humanizeReplyText(reply);
   } catch (e) {
     console.warn('[WA-WEB AGENT] primary attempt failed:', (e.message || '').slice(0, 140));
   }
@@ -6283,7 +6303,7 @@ export async function generateWaWebAutoBotReply(jid, customerMessage, overridePr
     const reply = await generateWaWebAutoBotReplyInner(jid, customerMessage, null, mediaData, null, { forceDefault: true });
     if (reply) {
       await logFallback({ chat: jid, assigned, used: DEFAULT_AGENT_ID, reason: 'assigned staff did not answer (error/timeout/empty)' });
-      return reply;
+      return humanizeReplyText(reply);
     }
   } catch (e) {
     await logFallback({ chat: jid, assigned, used: DEFAULT_AGENT_ID, reason: 'retry failed: ' + (e.message || '').slice(0, 120) });
@@ -6307,6 +6327,13 @@ export function waReplyMaxTokens() {
   if (Number.isFinite(n) && n >= 120) return Math.min(4000, Math.round(n));
   return 900;
 }
+
+// Slightly warmer than 0.4 so replies read naturally instead of robotic. 0.2 sounds
+// stiff; 1.0 wanders. Override per server with WA_REPLY_TEMPERATURE.
+const WA_REPLY_TEMPERATURE = (() => {
+  const n = Number(process.env.WA_REPLY_TEMPERATURE);
+  return Number.isFinite(n) ? Math.min(1, Math.max(0.2, n)) : 0.6;
+})();
 
 async function generateWaWebAutoBotReplyInner(jid, customerMessage, overridePrompt = null, mediaData = null, targetModel = null, opts = {}) {
   if (!globalDb) return null;
@@ -6636,7 +6663,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
               const comp = await openai.chat.completions.create({
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: dm,
-                temperature: 0.4,
+                temperature: WA_REPLY_TEMPERATURE,
                 max_tokens: replyMaxTokens,
                 ...deepseekOpenAIOptions(deepseekBase)
               });
@@ -6652,7 +6679,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
               const comp = await openai.chat.completions.create({
                 messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
                 model: qm,
-                temperature: 0.4,
+                temperature: WA_REPLY_TEMPERATURE,
                 max_tokens: replyMaxTokens,
                 extra_body: { enable_thinking: false }
               });
@@ -6779,7 +6806,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
               ] }
             ],
             model: qwenVisionModel,
-            temperature: 0.4,
+            temperature: WA_REPLY_TEMPERATURE,
             max_tokens: replyMaxTokens
           });
           const qReply = comp.choices[0]?.message?.content;
@@ -6858,7 +6885,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
                 }
               ],
               model: chosenModel.startsWith('gpt') ? chosenModel : 'gpt-4o',
-              temperature: 0.4,
+              temperature: WA_REPLY_TEMPERATURE,
               max_tokens: replyMaxTokens
             });
             return comp.choices[0]?.message?.content || null;
@@ -6879,7 +6906,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           { role: 'user', content: customerMessage }
         ],
         model: deepseekModel,
-        temperature: 0.4,
+        temperature: WA_REPLY_TEMPERATURE,
         max_tokens: replyMaxTokens,
         ...deepseekOpenAIOptions(deepseekBase)
       });
@@ -6927,7 +6954,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           { role: 'user', content: customerMessage }
         ],
         model: qm,
-        temperature: 0.4,
+        temperature: WA_REPLY_TEMPERATURE,
         max_tokens: replyMaxTokens,
         extra_body: { enable_thinking: false }
       });
@@ -6954,7 +6981,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           { role: 'user', content: customerMessage }
         ],
         model: chosenModel || 'gpt-4o-mini',
-        temperature: 0.4,
+        temperature: WA_REPLY_TEMPERATURE,
         max_tokens: replyMaxTokens
       });
       const t = comp.choices[0]?.message?.content || null;
@@ -6977,7 +7004,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       const comp = await openai.chat.completions.create({
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
         model: deepseekModel,
-        temperature: 0.4,
+        temperature: WA_REPLY_TEMPERATURE,
         max_tokens: replyMaxTokens,
         ...deepseekOpenAIOptions(deepseekBase)
       });
@@ -7023,7 +7050,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           const comp = await openai.chat.completions.create({
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
             model: qm,
-            temperature: 0.4,
+            temperature: WA_REPLY_TEMPERATURE,
             max_tokens: replyMaxTokens,
             extra_body: { enable_thinking: false }
           });
@@ -7072,7 +7099,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         const comp = await openai.chat.completions.create({
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
           model: 'gpt-4o-mini',
-          temperature: 0.4
+          temperature: WA_REPLY_TEMPERATURE
         });
         const t = comp.choices[0]?.message?.content || null;
         if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via OpenAI fallback'); return t; }

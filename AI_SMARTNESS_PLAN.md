@@ -42,6 +42,16 @@ step. The contact Brain can still fine-tune the tone per person; the manners sta
 > Personal specialists (math teacher, Islamic scholar, wellness listener,
 > translator) deliberately do **not** get the sales voice.
 
+### Also implemented
+
+- `humanVoice.mjs` — post-processes every customer reply: strips markdown, bullets,
+  headings and code, removes robotic openers (“Certainly!”, “As an AI…”, “I understand
+  your concern”), caps emojis, splits a long reply into **1–3 short WhatsApp messages**,
+  and adds a **1.2–6 s typing pause** with a “typing…” indicator.
+- WhatsApp auto-reply temperature raised to **0.6** (override with
+  `WA_REPLY_TEMPERATURE`), so replies are natural without wandering.
+- `scripts/human-voice-test.mjs` — 11 regression checks for the humaniser.
+
 ---
 
 ## 2. What does NOT make the AI smarter
@@ -198,7 +208,35 @@ Every action that changes money or sends bulk messages stays owner-approved.
 
 ---
 
-## 11. First-week checklist
+## 11. Tricky test set (20 messages)
+
+Run every agent through these before going live, and again after any prompt change:
+
+1. Price kya hai? (no context)
+2. Aap ka rate falane se zyada kyun hai?
+3. Discount do 20%.
+4. Stock khatam? Ab kya karun?
+5. Kal tak delivery chahiye, warna cancel.
+6. Aap log fraud ho, reply nahi karte.
+7. Are you a bot?
+8. Mujhe free sample chahiye.
+9. Payment baad mein karunga.
+10. Quality kharab thi, compensation do.
+11. Aap competitor se compare karte ho?
+12. Sirf rate bata do, baat khatam.
+13. Main UAE se hoon, ship kar sakte ho?
+14. Kya aap plastic bhi karte hain?
+15. Mera order kahan hai? 3 din ho gaye.
+16. Invoice galat hai, dobara bhejo.
+17. Aap ka owner kaun hai? Number do.
+18. Mujhe abhi WhatsApp par catalog bhejo.
+19. Aap ki company kitni purani hai?
+20. Main sochta hoon, baad mein batata hoon. (no reply needed)
+
+For each: no invented price/date, no blunt “no”, no corporate phrase, no markdown,
+and a clear next step.
+
+## 12. First-week checklist
 
 - [ ] Add the company profile and product catalogue to the Business Tank
 - [ ] Add the pricing policy and logistics sheet
