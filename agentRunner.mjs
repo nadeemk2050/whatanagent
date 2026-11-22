@@ -13,6 +13,7 @@ import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEX
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
+import { HUMAN_WARM_SALES_STYLE, usesHumanWarmStyle } from './personaStyle.mjs';
 import { tankPromptText } from './businessTank.mjs';
 
 const DISPATCH_BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
@@ -166,6 +167,10 @@ export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '', 
   // same agent is the per-contact learned notes (see buildVolatileContext). Providers cache a
   // repeated prompt PREFIX and bill those tokens ~10x cheaper, so the stable block ends here
   // and the volatile tail is appended after the rule book.
+  // 😊 Shared customer-facing voice (Zaheer + every business agent). Static text, so it
+  // belongs in the cached prefix; UNIVERSAL_SAFETY stays last because it has top priority.
+  if (usesHumanWarmStyle(a)) s += HUMAN_WARM_SALES_STYLE;
+
   s += UNIVERSAL_SAFETY;
   return s;
 }

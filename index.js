@@ -37,6 +37,8 @@ import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceRepor
 import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
 import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
+import { HUMAN_WARM_SALES_STYLE } from './personaStyle.mjs';
+import { cachedTokensFrom } from './promptCache.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { 
@@ -745,6 +747,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     
     let prompt = (tempKnowledge.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
     prompt += NO_HINDI_LANGUAGE_RULE + '\n\n';
+    prompt += HUMAN_WARM_SALES_STYLE + '\n\n';
     if (tempKnowledge.customKnowledgeText) prompt += '--- BUSINESS BACKGROUND ---\n' + tempKnowledge.customKnowledgeText + '\n\n';
     if (Array.isArray(tempKnowledge.faqs)) {
       prompt += '--- FAQS ---\n' + tempKnowledge.faqs.map(f => 'Q: ' + f.question + '\nA: ' + f.answer).join('\n') + '\n\n';
@@ -755,6 +758,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     prompt += '\nUser/Customer message: ' + message;
 
     let reply = '';
+    let kbProvider = '', kbModelUsed = '', kbUsage = null;
     const kbModel = (tempKnowledge && tempKnowledge.aiModel) || '';
     if ((kbModel.startsWith('qwen') || kbModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
       const qwenKeyT = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
@@ -767,6 +771,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
         temperature: 0.4
       });
       reply = comp.choices[0]?.message?.content || '';
+      kbProvider = 'qwen'; kbModelUsed = qwenModelT; kbUsage = comp.usage || null;
     } else if (hasDeepSeek(settings)) {
       const ds = resolveDeepSeek(settings);
       const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 30000 });
@@ -777,15 +782,18 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
         ...deepseekOpenAIOptions(ds.base)
       });
       reply = comp.choices[0]?.message?.content || '';
+      kbProvider = 'deepseek'; kbModelUsed = ds.model; kbUsage = comp.usage || null;
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL });
       const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       reply = r.response.text() || '';
+      kbProvider = 'gemini'; kbModelUsed = GEMINI_TEXT_MODEL; kbUsage = r.response.usageMetadata || null;
     } else {
       reply = 'DeepSeek or Gemini API Key is required to test AI response.';
     }
 
+    trackDashboardAi('WA knowledge-base test', kbProvider, kbModelUsed, kbUsage, message, reply);
     res.json({ reply: reply.trim() });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -822,7 +830,7 @@ YOUR CAPABILITIES & RULES:
 3. When summarizing, give executive bullet points highlighting key decisions, customer status, pending actions, and financial/order details.
 4. When identifying action items, clearly list who owes what action, deadlines, and urgency.
 5. You can discuss any conversation happening in WhatsApp Web, answer questions, provide sales advice, negotiate strategies, and compose responses.
-6. ${NO_HINDI_LANGUAGE_RULE}`;
+6. ${NO_HINDI_LANGUAGE_RULE}${HUMAN_WARM_SALES_STYLE}`;
 
     if (chatContext) {
       systemPrompt += `\n\n--- ACTIVE CONVERSATION CONTEXT ---
@@ -871,6 +879,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
 
     const chosenModel = model || GEMINI_FLASH_DEFAULT;
     let reply = '';
+    let usedProvider = '', usedModel = '', usedUsage = null;
 
     if ((chosenModel.startsWith('qwen') || chosenModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
       const qwenKeyC = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
@@ -883,6 +892,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         temperature: 0.5
       });
       reply = completion.choices[0]?.message?.content || '';
+      usedProvider = 'qwen'; usedModel = qwenModelC; usedUsage = completion.usage || null;
     } else if (chosenModel.startsWith('deepseek') && hasDeepSeek(settings)) {
       const ds = resolveDeepSeek(settings);
       const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 60000 });
@@ -893,6 +903,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         ...deepseekOpenAIOptions(ds.base)
       });
       reply = completion.choices[0]?.message?.content || '';
+      usedProvider = 'deepseek'; usedModel = ds.model; usedUsage = completion.usage || null;
     } else if (chosenModel.startsWith('gemini') && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
@@ -901,6 +912,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
+      usedProvider = 'gemini'; usedModel = gemModel; usedUsage = result.response.usageMetadata || null;
     } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && (settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY)) {
       const key = settings.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
       const openai = new OpenAI({ apiKey: key, timeout: 60000 });
@@ -910,6 +922,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         temperature: 0.5
       });
       reply = completion.choices[0]?.message?.content || '';
+      usedProvider = 'openai'; usedModel = chosenModel || 'gpt-4o-mini'; usedUsage = completion.usage || null;
     } else if (hasDeepSeek(settings)) {
       const ds = resolveDeepSeek(settings);
       const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key, timeout: 60000 });
@@ -920,6 +933,7 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
         ...deepseekOpenAIOptions(ds.base)
       });
       reply = completion.choices[0]?.message?.content || '';
+      usedProvider = 'deepseek'; usedModel = ds.model; usedUsage = completion.usage || null;
     } else if (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
       const key = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
       const genAI = new GoogleGenerativeAI(key);
@@ -927,10 +941,12 @@ ${allChats.map((c, i) => `${i + 1}. ${c.name} (+${c.phone}) - Unread: ${c.unread
       const contents = [{ role: 'user', parts: [{ text: systemPrompt + '\n\n' + userInstruction }] }];
       const result = await m.generateContent({ contents });
       reply = result.response.text() || '';
+      usedProvider = 'gemini'; usedModel = GEMINI_TEXT_MODEL; usedUsage = result.response.usageMetadata || null;
     } else {
       reply = "AI Assistant is ready, but no AI API Key is configured in settings yet. Please add your Gemini or DeepSeek API Key.";
     }
 
+    if (usedProvider) trackDashboardAi('WA copilot assistant', usedProvider, usedModel, usedUsage, userInstruction, reply);
     res.json({
       reply: reply.trim(),
       mode: mode || 'chat',
@@ -1131,6 +1147,24 @@ function safeTruncate(s, n) {
 // Business language policy: never send Hindi/Devanagari text - Urdu, Roman Urdu, English, Arabic and other languages are fine.
 const NO_HINDI_LANGUAGE_RULE = "STRICT LANGUAGE RULE (NEVER BREAK): NEVER write or send text in Hindi (Devanagari script or Hindi-style wording) in ANY message. Allowed languages: English, Roman Urdu, Urdu (Arabic script), Arabic, and any other language the customer uses. If the customer writes or speaks Hindi, ALWAYS reply in clear Roman Urdu (Urdu written in English letters) or English - NEVER in Hindi/Devanagari.";
 
+// Dashboard / Meta-bot AI calls used to be invisible in the usage panel because this file
+// imported recordAiCall but never called it. One small helper keeps every site consistent.
+function trackDashboardAi(area, provider, model, usage, prompt, response) {
+  try {
+    recordAiCall({
+      provider: provider || 'unknown',
+      model: model || 'unknown',
+      area: area || 'Dashboard AI',
+      isAutoFetch: false,
+      prompt: sanitizeText(prompt || '').slice(0, 1000),
+      response: String(response || '').slice(0, 1000),
+      tokensIn: (usage && (usage.prompt_tokens || usage.promptTokenCount)) || 0,
+      tokensOut: (usage && (usage.completion_tokens || usage.candidatesTokenCount)) || 0,
+      cachedTokens: cachedTokensFrom(usage || {})
+    });
+  } catch (e) { /* tracking is best effort */ }
+}
+
 async function generateAIResponse(userPrompt, senderNumber, settings) {
   const provider = settings.ACTIVE_AI_PROVIDER || 'deepseek';
 
@@ -1180,12 +1214,12 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     } catch (err) { needsGreeting = true; }
 
     let systemInstruction = 
-      "You are a strict, efficient AI customer assistant for a company. " +
+      "You are a warm, sharp, well-mannered AI customer assistant for a company. " +
       "CRITICAL RULE: You MUST ONLY answer questions using the exact information provided in the Knowledge Base, Product Catalog, and FAQs sections below. Treat all these sections as your source of truth. " +
       "If the user asks something that is NOT in these sections, you MUST handle it according to the FALLBACK RULE below. " +
       "Do NOT hallucinate, invent, or assume any information outside of these sections. " +
       "You are fully capable of speaking Arabic, Roman Urdu, and English fluently based on the user's choice. " +
-      "Keep responses helpful, professional, and concise.\n\n" + NO_HINDI_LANGUAGE_RULE + "\n\n";
+      "Keep responses warm, natural and concise — like a real person texting.\n\n" + NO_HINDI_LANGUAGE_RULE + "\n\n" + HUMAN_WARM_SALES_STYLE + "\n\n";
       
     if (needsGreeting) {
       systemInstruction += "LANGUAGE RULE: Because this is the first interaction today, you MUST include this exact message at the end of your response: '(We can talk in Arabic / Roman Urdu and English easily. If you want, you can select other language, otherwise continue in English)'.\n\n";
@@ -1202,7 +1236,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     if (voice === 'friendly') {
       systemInstruction += "TONE & STYLE RULE: Be warm, friendly, supportive, and use business-friendly emojis (Ã°Å¸ËœÅ , Ã°Å¸â€˜Â, Ã°Å¸Å’Å¸, etc.) to keep the conversation engaging.\n\n";
     } else if (voice === 'professional') {
-      systemInstruction += "TONE & STYLE RULE: Be formal, professional, highly direct, and concise. Avoid all emojis. Keep responses strictly factual and business-formal.\n\n";
+      systemInstruction += "TONE & STYLE RULE: Be clear, reliable and business-appropriate, but still warm and natural — never stiff or corporate. Avoid emojis unless the customer uses them.\n\n";
     } else if (voice === 'sales') {
       systemInstruction += "TONE & STYLE RULE: Be highly persuasive, sales-driven, engaging, and proactive. Emphasize value and steer the conversation towards gathering their requirements and contact info.\n\n";
     }
@@ -1210,7 +1244,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     // Inject Fallback Rule
     const fallback = kb.fallbackAction || 'say_dont_know';
     if (fallback === 'say_dont_know') {
-      systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, you MUST politely refuse to answer and state that you do not have that information.\n\n";
+      systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, never refuse bluntly. Politely say you will confirm that detail with the team and come back to them, or offer one short helpful next step.\n\n";
     } else if (fallback === 'suggest_handover') {
       systemInstruction += "FALLBACK RULE: If the user asks about something NOT in the Knowledge Base, you MUST politely say: 'I will connect you to a representative who can look into that for you right now.' and you MUST append the hidden tag [HANDOVER] to the very end of your reply. Do not let the user see the [HANDOVER] tag.\n\n";
     } else if (fallback === 'ask_email') {
@@ -1300,6 +1334,9 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
     };
     const custOrder = orderedProviders(provider, custHasKey);
     let custErr = null;
+    let usedProvider = '';
+    let usedModel = '';
+    let usedUsage = null;
     for (const p of custOrder) {
       try {
         if (p === 'gemini') {
@@ -1307,6 +1344,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
           const gModel = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL, systemInstruction: sanitizeText(systemInstruction) });
           const result = await gModel.generateContent({ contents: geminiContents });
           finalReply = (result.response.text() || '').trim();
+          usedProvider = 'gemini'; usedModel = GEMINI_TEXT_MODEL; usedUsage = result.response.usageMetadata || null;
         } else if (p === 'qwen') {
           const qKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
           const qBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
@@ -1317,6 +1355,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
             temperature: 0.7,
           });
           finalReply = (completion.choices[0].message.content || '').trim();
+          usedProvider = 'qwen'; usedModel = settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash'; usedUsage = completion.usage || null;
         } else {
           const ds = resolveDeepSeek(settings);
           const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key });
@@ -1327,9 +1366,10 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
             ...deepseekOpenAIOptions(ds.base)
           });
           finalReply = (completion.choices[0].message.content || '').trim();
+          usedProvider = 'deepseek'; usedModel = ds.model; usedUsage = completion.usage || null;
         }
         if (finalReply) {
-          if (p !== provider) console.log('[AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          if (p !== provider) console.log('[AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
           break;
         }
       } catch (e) {
@@ -1338,6 +1378,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       }
     }
     if (!finalReply) throw custErr || new Error('No AI provider could generate a reply');
+    trackDashboardAi('Meta bot / dashboard assistant', usedProvider, usedModel, usedUsage, userPrompt, finalReply);
 
     // Parse Lead Tag
     const leadMatch = finalReply.match(/\[LEAD:\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\]/i);
@@ -1448,7 +1489,9 @@ async function extractDocumentWithAI(fileBuffer, mimeType, settings) {
       }
     ]
   });
-  return response.response.text().trim();
+  const out = response.response.text().trim();
+  trackDashboardAi('Document OCR', 'gemini', GEMINI_FLASH_DEFAULT, response.response.usageMetadata, 'uploaded document', out);
+  return out;
 }
 
 // Loads boss settings from the Knowledge Base document (with safe defaults)
@@ -1714,6 +1757,9 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
     const bossOrder = orderedProviders(provider, bossHasKey);
     let finalReply = "";
     let bossErr = null;
+    let usedProvider = '';
+    let usedModel = '';
+    let usedUsage = null;
     for (const p of bossOrder) {
       try {
         if (p === 'gemini') {
@@ -1721,6 +1767,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
           const gModel = genAI.getGenerativeModel({ model: GEMINI_TEXT_MODEL, systemInstruction: sanitizeText(systemInstruction) });
           const result = await gModel.generateContent({ contents: geminiContents });
           finalReply = (result.response.text() || '').trim();
+          usedProvider = 'gemini'; usedModel = GEMINI_TEXT_MODEL; usedUsage = result.response.usageMetadata || null;
         } else if (p === 'qwen') {
           const qKey = settings.QWEN_API_KEY || process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
           const qBase = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
@@ -1731,6 +1778,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
             temperature: 0.3,
           });
           finalReply = (completion.choices[0].message.content || '').trim();
+          usedProvider = 'qwen'; usedModel = settings.QWEN_MODEL || process.env.QWEN_MODEL || 'qwen3.8-flash'; usedUsage = completion.usage || null;
         } else {
           const ds = resolveDeepSeek(settings);
           const openai = new OpenAI({ baseURL: ds.base, apiKey: ds.key });
@@ -1741,9 +1789,10 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
             ...deepseekOpenAIOptions(ds.base)
           });
           finalReply = (completion.choices[0].message.content || '').trim();
+          usedProvider = 'deepseek'; usedModel = ds.model; usedUsage = completion.usage || null;
         }
         if (finalReply) {
-          if (p !== provider) console.log('[BOSS AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
+          if (p !== provider) console.log('[BOSS AI] Ã¢â€ºâ€˜Ã¯Â¸Â Fallback provider used: ' + p + ' (selected: ' + provider + ')');
           break;
         }
       } catch (e) {
@@ -1752,6 +1801,7 @@ async function generateBossAIResponse(userPrompt, senderNumber, settings, bossCf
       }
     }
     if (!finalReply) throw bossErr || new Error('No AI provider could answer');
+    trackDashboardAi('Boss chat', usedProvider, usedModel, usedUsage, userPrompt, finalReply);
 
     return (finalReply || "").trim();
   } catch (error) {
@@ -2521,6 +2571,7 @@ app.post('/api/ai/suggest', async (req, res) => {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: (field === 'faq' || field === 'product') ? { responseMimeType: "application/json" } : {}
     });
+    trackDashboardAi('Content suggestion (' + field + ')', 'gemini', GEMINI_FLASH_DEFAULT, response.response.usageMetadata, prompt, response.response.text());
 
     let resultText = response.response.text().trim();
     if (field === 'faq' || field === 'product') {
@@ -2657,7 +2708,7 @@ app.post('/api/ai/suggest-chat-reply', async (req, res) => {
       "Draft a helpful, highly accurate, and friendly response to the customer's last message based strictly on the facts.\n" +
       "Respond ONLY with the drafted response. Do not include any meta comments, explanation, or tags.\n\n" +
       "### KNOWLEDGE BASE ###\n" + knowledgeBase + "\n\n" +
-      (faqText ? "### FAQ ###\n" + faqText : "");
+      (faqText ? "### FAQ ###\n" + faqText : "") + HUMAN_WARM_SALES_STYLE;
 
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
@@ -2666,7 +2717,9 @@ app.post('/api/ai/suggest-chat-reply', async (req, res) => {
     });
 
     const result = await model.generateContent({ contents: geminiContents });
-    res.json({ success: true, suggestion: result.response.text().trim() });
+    const suggestion = result.response.text().trim();
+    trackDashboardAi('Chat reply suggestion', 'gemini', GEMINI_FLASH_DEFAULT, result.response.usageMetadata, (messages[messages.length - 1] || {}).text, suggestion);
+    res.json({ success: true, suggestion });
   } catch (err) {
     console.error('Suggest chat reply error:', err.message);
     res.status(500).json({ error: err.message });
@@ -2702,6 +2755,7 @@ app.post('/api/ai/extract-contacts', async (req, res) => {
       contents: [{ role: 'user', parts: parts }],
       generationConfig: { responseMimeType: "application/json" }
     });
+    trackDashboardAi('Contact import OCR', 'gemini', GEMINI_FLASH_DEFAULT, response.response.usageMetadata, fileName || 'file', '');
 
     let text = response.response.text().trim();
     if (text.startsWith('```json')) text = text.substring(7);
@@ -3559,7 +3613,9 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
       temperature: 0.4
     });
     console.log('[AI WORKSPACE] qwen reply in ' + (Date.now() - t0) + 'ms');
-    return (completion.choices[0].message.content || '').trim();
+    const qTxt = (completion.choices[0].message.content || '').trim();
+    trackDashboardAi('SEO workspace', 'qwen', settings.QWEN_MODEL || 'qwen3.8-flash', completion.usage, systemPrompt, qTxt);
+    return qTxt;
   }
   if (model === 'gemini') {
     if (!settings.GEMINI_API_KEY) throw new Error('Gemini API key is not configured.');
@@ -3578,7 +3634,9 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
       }
     });
     const result = await generateContentWithRetry(gm, { contents });
-    return result.response.text().trim();
+    const gTxt = result.response.text().trim();
+    trackDashboardAi('SEO workspace', 'gemini', GEMINI_FLASH_DEFAULT, result.response.usageMetadata, systemPrompt, gTxt);
+    return gTxt;
   }
   const ds = resolveDeepSeek(settings);
   if (!ds.key) throw new Error('DeepSeek API key is not configured.');
@@ -3591,7 +3649,9 @@ async function workspaceModelReplyOnce(systemPrompt, messages, model, settings) 
     ...deepseekOpenAIOptions(ds.base)
   });
   console.log('[AI WORKSPACE] ' + ds.model + ' reply in ' + (Date.now() - t0) + 'ms (' + ((completion.usage && completion.usage.total_tokens) || '?') + ' tokens)');
-  return (completion.choices[0].message.content || '').trim();
+  const dsTxt = (completion.choices[0].message.content || '').trim();
+  trackDashboardAi('SEO workspace', 'deepseek', ds.model, completion.usage, systemPrompt, dsTxt);
+  return dsTxt;
 }
 
 app.post('/api/seo/ai-chat', async (req, res) => {
