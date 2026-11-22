@@ -101,6 +101,7 @@ function clientAuth(need) {
       need === 'status' ||
       scope === 'full' ||
       (need === 'upload' && (scope === 'upload' || scope === 'read_upload')) ||
+      (need === 'delete' && (scope === 'upload' || scope === 'read_upload')) ||
       (need === 'read' && scope === 'read_upload');
     if (!allowed) return res.status(403).json({ ok: false, error: 'This API key cannot ' + need });
 
