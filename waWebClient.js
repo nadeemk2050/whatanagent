@@ -20,6 +20,7 @@ import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, ruleBookText, enforceScript as romaniseScript } from './ruleBook.mjs';
 import { HUMAN_WARM_SALES_STYLE } from './personaStyle.mjs';
 import { humanizeReplyText, splitWhatsAppMessages, typingDelayMs } from './humanVoice.mjs';
+import { handleReminderReply } from './reminderEngine.mjs';
 import { orderParts, cacheStats, cachedTokensFrom, stableFingerprint, logCacheShape } from './promptCache.mjs';
 import { sendPush } from './alignPush.mjs';
 import { prepareMediaForAi } from './mediaPrep.mjs';
@@ -5026,6 +5027,15 @@ export async function initWaWeb(db = null) {
                   const handledByCond = await handleConditionalTaskReply(remoteJid, effectiveText || ('[' + (mediaType || 'media') + ']'), mediaType);
                   if (handledByCond) return;
                 } catch (e) { console.warn('[COND TASK] reply handling error:', e.message); }
+              }
+
+              // ⏰ Reminder plans: understand a reply to an active reminder before the normal bot.
+              // Returning true suppresses the normal auto-reply so the person gets one clear answer.
+              if (!isBossNumber) {
+                try {
+                  const handledByReminder = await handleReminderReply(remoteJid, effectiveText || ('[' + (mediaType || 'media') + ']'));
+                  if (handledByReminder) return;
+                } catch (e) { console.warn('[REMINDER] reply handling error:', e.message); }
               }
 
               // (Boss identity + passcode were already computed above, before the cooldown checks)

@@ -24,6 +24,7 @@ import { registerCandlBlInboxRoutes, startCandlBlWatcher } from './candlBlWatche
 import { registerCandlXrayRoutes } from './candlBlXray.mjs';
 import { registerGDriveService } from './gdriveService/index.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
+import { attachReminderDeps, registerReminderRoutes, reminderTick } from './reminderEngine.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
 import { registerOfficeRoutes, maybeStaffDailyReport } from './officeApi.mjs';
@@ -48,6 +49,7 @@ import {
   getWaWebMessages, 
   getWaWebMessagesPage, 
   sendWaWebMessage, 
+  sendHumanizedReply,
   logoutWaWeb, 
   downloadWaWebMedia,
   getWaWebSyncStats,
@@ -102,6 +104,15 @@ attachBrainDb(db);
 
 // AI Activity Tracker & Master Auto-Fetch Kill Switch needs Firestore
 attachAiTrackerDb(db);
+
+// ⏰ Reminder engine: stateful, self-deciding follow-ups (medicine, walk, custom).
+// send helpers are injected here so reminderEngine never imports waWebClient (no cycle).
+attachReminderDeps({
+  db,
+  send: sendWaWebMessage,
+  sendHuman: sendHumanizedReply,
+  getBossNumber: async () => { try { const c = await getBossConfig(); return c.number || ''; } catch (e) { return ''; } }
+});
 
 dotenv.config();
 
@@ -195,6 +206,9 @@ startCandlBlWatcher();
 registerGDriveService(app);
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
+// ⏰ Reminder plans API (admin-token guarded) + a simple management page.
+registerReminderRoutes(app, { adminToken: process.env.ADMIN_TOKEN });
+app.get('/reminders', (req, res) => res.sendFile(path.join(__dirname, 'public', 'reminders.html')));
 // Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
 // Firestore is only the one-time migration source / fallback.
 try { const info = initContactStore(db); console.log('[CONTACT-DB] mode=' + info.mode + (info.path ? ' file=' + info.path : '')); } catch (e) { console.warn('[CONTACT-DB] init failed:', e.message); }
@@ -4877,6 +4891,8 @@ function startFollowUpScheduler() {
     schedulerState = 'active';
     processFollowUpScheduler();
     processAiTasks();
+    // ⏰ Reminder plans: self-deciding follow-ups (medicine, walk, custom)
+    reminderTick().catch((e) => console.warn('[REMINDER] tick error:', (e && e.message) || e));
     // Browsing News Agent: auto-refreshes the merged non-repeated news every 5 hours
     if (newsAgent && typeof newsAgent.maybeAutoRefresh === 'function') {
       newsAgent.maybeAutoRefresh();
