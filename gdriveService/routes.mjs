@@ -44,6 +44,11 @@ const sstr = (v, n = 200) => String(v == null ? '' : v).slice(0, n);
 const safeName = (v) => String(v || 'file').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 140) || 'file';
 
 /** RFC 5987 filename for the Content-Disposition header. */
+function dispositionInline(name) {
+  const ascii = safeName(name).replace(/[^ -~]/g, '_');
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(safeName(name))}`;
+}
+
 function disposition(name) {
   const ascii = safeName(name).replace(/[^\x20-\x7e]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(safeName(name))}`;
@@ -721,10 +726,15 @@ export function registerGDriveServiceRoutes(app, multer) {
     }
     updateFile(file.id, { downloads: (Number(file.downloads) || 0) + 1 });
 
+    // ?inline=1 serves PDFs/images in the browser instead of downloading.
+    const wantsInline = String(req.query.inline || '') === '1'
+      && /^(application\/pdf|image\/|video\/|audio\/|text\/plain)/i.test(file.mime || '');
+    const sendDisposition = wantsInline ? dispositionInline(file.original_name) : disposition(file.original_name);
+
     // 1. On the VPS → serve instantly.
     if (file.local_path && fs.existsSync(file.local_path)) {
       res.setHeader('Content-Type', file.mime || 'application/octet-stream');
-      res.setHeader('Content-Disposition', disposition(file.original_name));
+      res.setHeader('Content-Disposition', sendDisposition);
       res.setHeader('X-GDrive-Source', 'vps-cache');
       return fs.createReadStream(file.local_path)
         .on('error', () => { try { res.destroy(); } catch (e) { /* ignore */ } })
@@ -738,7 +748,7 @@ export function registerGDriveServiceRoutes(app, multer) {
     try {
       const stream = await downloadRemote(req.gdAccount, file.gdrive_file_id);
       res.setHeader('Content-Type', file.mime || 'application/octet-stream');
-      res.setHeader('Content-Disposition', disposition(file.original_name));
+      res.setHeader('Content-Disposition', sendDisposition);
       res.setHeader('X-GDrive-Source', 'google-drive');
       stream.on('error', () => { try { res.destroy(); } catch (e) { /* ignore */ } });
       stream.pipe(res);
