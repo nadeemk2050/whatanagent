@@ -15,6 +15,11 @@ name: Deploy to Tencent Lighthouse
 on:
   push:
     branches: [master]
+    # Documentation-only pushes should not restart the live service. A push that
+    # also contains code still deploys normally.
+    paths-ignore:
+      - '**.md'
+      - 'business-tank-products-template.csv'
   workflow_dispatch:        # lets you deploy manually from the Actions tab
 
 concurrency:
