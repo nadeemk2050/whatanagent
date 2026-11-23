@@ -1936,6 +1936,14 @@ const ALIGN_MAX_ALERTS_PER_DAY = 5;
 let alignDigestTimer = null;
 const alignAlertCounts = new Map();          // "email|YYYY-MM-DD" -> count
 const alignHandledMsgIds = new Set();        // replies we already answered (AI must stay quiet)
+function markAlignHandled(id) {
+  if (!id) return;
+  alignHandledMsgIds.add(String(id));
+  if (alignHandledMsgIds.size > 2000) {
+    const first = alignHandledMsgIds.values().next().value;
+    alignHandledMsgIds.delete(first);
+  }
+}
 const reminderWaIndex = new Map();           // wa message id -> { taskId, kind, email }
 
 function alignDubaiHour(ms = Date.now()) {
@@ -2133,7 +2141,7 @@ async function handleAlignTaskReaction(msg, reaction) {
       completedBy: email || '', completedByEmail: email || '', completedByName: who,
       completedVia: 'whatsapp-reaction', ackState: 'done'
     }).catch(() => {});
-    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
+    if (msg.key.id) markAlignHandled(msg.key.id);
     const label = hit.desc ? ' "' + String(hit.desc).slice(0, 80) + '"' : '';
     await sendWaWebMessage(jid, '✅ Marked done' + label + ' — thanks ' + who + '!');
     return true;
@@ -2166,7 +2174,7 @@ async function handleAlignStaffReply(msg) {
     }
     if (jid.endsWith('@g.us') && !quotedAllowed && !inFetchGroup) return false;
     if (!quotedAllowed && !email && !inFetchGroup) return false;
-    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
+    if (msg.key.id) markAlignHandled(msg.key.id);
 
     // 📌 Quoted reply to a specific task reminder: complete / snooze / ack that exact task.
     if (quotedAllowed) {
