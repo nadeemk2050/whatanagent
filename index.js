@@ -786,7 +786,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
       // silently make every trial return the Qwen answer. A trial must use the model it names.
       const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: sandboxModel, generationConfig: { maxOutputTokens: 400 } });
+      const model = genAI.getGenerativeModel({ model: sandboxModel, generationConfig: { maxOutputTokens: 400, temperature: 0.6 } });
       const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       reply = r.response.text() || '';
       kbProvider = 'gemini'; kbModelUsed = sandboxModel; kbUsage = r.response.usageMetadata || null;
