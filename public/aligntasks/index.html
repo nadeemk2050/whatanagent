@@ -832,6 +832,7 @@
                 <button id="menu-crm" class="ats-menu-item">CRM</button>
                                 <button id="menu-wa-account" class="ats-menu-item">WhatsApp number</button>
                                 <button id="menu-group-updates" class="ats-menu-item">Group Updates</button>
+                                <button id="menu-fetch-group" class="ats-menu-item">WhatsApp Task Fetch Group</button>
                                 <button id="menu-push-notify" class="ats-menu-item">Notifications</button>
                                 <button id="menu-install-app" class="ats-menu-item">Install</button>
                                 <div class="ats-menu-sep"></div>
@@ -1366,6 +1367,31 @@
                 <div class="flex justify-between items-center pt-1">
                     <p id="gu-status" class="text-xs"></p>
                     <button id="gu-save" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="fetch-group-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">WhatsApp Task Fetch Group</h3>
+                <button id="fetch-group-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto space-y-4">
+                <p class="text-xs text-gray-500">Choose one WhatsApp group. Every message written or forwarded there becomes a task in <b>Tasks for All</b>, created by <b>wtasksfg</b>. Capture works even if the bot is not replying in that group.</p>
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Fetch group</label>
+                    <select id="fg-group" class="w-full mt-1 p-2 border border-gray-300 rounded-lg text-sm bg-white">
+                        <option value="">Loading groups…</option>
+                    </select>
+                </div>
+                <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="fg-enabled" class="h-4 w-4 mt-0.5" />
+                    <span><b>Enabled</b> — capture every new message from this group.</span>
+                </label>
+                <div class="flex justify-between items-center pt-1">
+                    <p id="fg-status" class="text-xs"></p>
+                    <button id="fg-save" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700">Save</button>
                 </div>
             </div>
         </div>
@@ -4449,6 +4475,63 @@
                         updatedBy: (currentUser && currentUser.email) || ''
                     }, { merge: true });
                     statusEl.innerText = 'Saved — updates will be sent to "' + name + '".';
+                    statusEl.className = 'text-xs text-green-600';
+                } catch (e) {
+                    statusEl.innerText = 'Error: ' + (e.message || e);
+                    statusEl.className = 'text-xs text-red-600';
+                }
+            }
+
+            async function openFetchGroup() {
+                const modal = document.getElementById('fetch-group-modal');
+                modal.classList.remove('hidden');
+                const statusEl = document.getElementById('fg-status');
+                statusEl.innerText = '';
+                statusEl.className = 'text-xs';
+                const sel = document.getElementById('fg-group');
+                sel.innerHTML = '<option value="">Loading…</option>';
+                let cfg = { enabled: false, jid: '', name: '' };
+                try { cfg = await window.alignApi('/fetch-group'); } catch (e) { /* shown below */ }
+                let groups = [];
+                try {
+                    const live = await window.alignApi('/wa/groups');
+                    groups = (live && live.groups) || [];
+                } catch (e) {
+                    try {
+                        const gi = await db.doc('appData/alignWaGroupsIndex').get();
+                        groups = (gi.exists && Array.isArray((gi.data() || {}).groups)) ? gi.data().groups : [];
+                    } catch (e2) { groups = []; }
+                }
+                const seen = new Set();
+                const opts = [];
+                for (const g of groups) {
+                    const jid = String((g && g.jid) || '');
+                    if (!jid || seen.has(jid)) continue;
+                    seen.add(jid);
+                    opts.push({ jid, label: String((g && g.name) || jid) });
+                }
+                opts.sort((a, b) => a.label.localeCompare(b.label));
+                sel.innerHTML = '<option value="">— choose a group —</option>' +
+                    opts.map(o => '<option value="' + o.jid.replace(/"/g, '&quot;') + '" data-name="' + waEsc(o.label).replace(/"/g, '&quot;') + '">' + waEsc(o.label) + '</option>').join('');
+                if (cfg.jid && !opts.some(o => o.jid === cfg.jid)) {
+                    sel.innerHTML += '<option value="' + String(cfg.jid).replace(/"/g, '&quot;') + '" data-name="' + waEsc(cfg.name || cfg.jid).replace(/"/g, '&quot;') + '">' + waEsc((cfg.name || cfg.jid) + ' (current)') + '</option>';
+                }
+                if (cfg.jid) sel.value = cfg.jid;
+                document.getElementById('fg-enabled').checked = !!cfg.enabled;
+                statusEl.innerText = cfg.enabled ? 'Capturing from this group.' : 'Capture is off.';
+                statusEl.className = 'text-xs ' + (cfg.enabled ? 'text-green-600' : 'text-gray-500');
+            }
+
+            async function saveFetchGroup() {
+                const statusEl = document.getElementById('fg-status');
+                try {
+                    const sel = document.getElementById('fg-group');
+                    const jid = String(sel.value || '').trim();
+                    const enabled = document.getElementById('fg-enabled').checked;
+                    if (enabled && !/@g\.us$/i.test(jid)) throw new Error('Choose a WhatsApp group first.');
+                    const name = sel.options[sel.selectedIndex] ? String(sel.options[sel.selectedIndex].getAttribute('data-name') || jid).replace(/^⭐ /, '') : jid;
+                    const saved = await window.alignApi('/fetch-group', { method: 'POST', body: { enabled, jid, name } });
+                    statusEl.innerText = saved.enabled ? ('Saved — capturing "' + (saved.name || jid) + '".') : 'Saved — capture is off.';
                     statusEl.className = 'text-xs text-green-600';
                 } catch (e) {
                     statusEl.innerText = 'Error: ' + (e.message || e);
@@ -7783,6 +7866,17 @@
             document.getElementById('menu-group-updates').addEventListener('click', () => {
                 accountMenu.classList.add('hidden');
                 openGroupUpdates();
+            });
+            document.getElementById('menu-fetch-group').addEventListener('click', () => {
+                accountMenu.classList.add('hidden');
+                openFetchGroup();
+            });
+            document.getElementById('fetch-group-close').addEventListener('click', () => {
+                document.getElementById('fetch-group-modal').classList.add('hidden');
+            });
+            document.getElementById('fg-save').addEventListener('click', saveFetchGroup);
+            document.getElementById('fetch-group-modal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('fetch-group-modal')) document.getElementById('fetch-group-modal').classList.add('hidden');
             });
             menuEditProfile.addEventListener('click', () => {
                 accountMenu.classList.add('hidden');

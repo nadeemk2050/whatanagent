@@ -19,6 +19,7 @@ import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, ruleBookText, enforceScript as romaniseScript } from './ruleBook.mjs';
 import { getGlobalPersonaText } from './personaStore.mjs';
+import { getFetchGroupConfig } from './fetchGroupConfig.mjs';
 import { humanizeReplyText, splitWhatsAppMessages, typingDelayMs } from './humanVoice.mjs';
 import { handleReminderReply } from './reminderEngine.mjs';
 import { orderParts, cacheStats, cachedTokensFrom, stableFingerprint, logCacheShape } from './promptCache.mjs';
@@ -1169,6 +1170,65 @@ export async function runDashboardBossCommand(text, opts = {}) {
   } catch (e) {
     console.warn('[BOSS DASHBOARD] Error:', e.message);
     return { ok: false, error: e.message || 'Boss command failed.' };
+  }
+}
+
+// 📥 WhatsApp Task Fetch Group: any message in the chosen group becomes a "Tasks for All" task.
+// Runs before auto-reply/scope checks, so the group can be one the bot never answers.
+const fetchGroupProcessedIds = new Set();
+async function captureFetchGroupTask(msg) {
+  try {
+    const jid = msg && msg.key && msg.key.remoteJid;
+    if (!jid || !String(jid).endsWith('@g.us')) return;
+    const cfg = await getFetchGroupConfig();
+    if (!cfg.enabled || !cfg.jid || cfg.jid !== jid) return;
+    const msgId = msg.key && msg.key.id ? String(msg.key.id) : '';
+    if (!msgId || fetchGroupProcessedIds.has(msgId)) return;
+    if (botSentMessageIds.has(msgId)) return;
+
+    const parsed = parseMessageContent(msg) || {};
+    let body = String(parsed.text || '').trim();
+    if (!body) {
+      const mt = parsed.mediaType;
+      if (!mt) return;
+      const label = mt === 'document' ? 'Document' : mt === 'image' ? 'Image' : mt === 'audio' ? 'Voice note' : 'Media';
+      const fname = parsed.mediaInfo && parsed.mediaInfo.fileName ? ': ' + parsed.mediaInfo.fileName : '';
+      body = '[' + label + fname + ']';
+    }
+
+    fetchGroupProcessedIds.add(msgId);
+    if (fetchGroupProcessedIds.size > 3000) {
+      const first = fetchGroupProcessedIds.values().next().value;
+      fetchGroupProcessedIds.delete(first);
+    }
+
+    try {
+      const teamId = await getPrimaryAlignTeamId();
+      const owner = await alignTasksOwnerAdmin();
+      const task = {
+        description: body.slice(0, 2000),
+        status: 'To Do',
+        comments: [],
+        createdAt: new Date(),
+        createdBy: 'wtasksfg',
+        createdByName: 'WhatsApp Task Fetch Group',
+        ownerAdminUid: owner.uid,
+        ownerAdminEmail: owner.email,
+        source: 'whatsapp-fetch-group',
+        sourceGroupJid: jid,
+        sourceGroupName: cfg.name || '',
+        sourceMessageId: msgId,
+        sourceSender: String(msg.pushName || (msg.key && msg.key.participant) || '')
+      };
+      if (teamId) task.teamId = teamId;
+      await alignBoardAdd('tasks_for_all', task);
+      console.log('[FETCH GROUP] ➕ Task from "' + (cfg.name || jid) + '": ' + body.slice(0, 60));
+    } catch (e) {
+      fetchGroupProcessedIds.delete(msgId);
+      throw e;
+    }
+  } catch (e) {
+    console.warn('[FETCH GROUP] capture failed:', (e && e.message) || e);
   }
 }
 
@@ -4856,6 +4916,10 @@ export async function initWaWeb(db = null) {
         // Team replies to AlignTasks reminders (DONE 2 / ON IT / SNOOZE 1h / PENDING) are handled
         // here, before the AI sees them — so a staff reply is never answered as a customer chat.
         m.messages.forEach(msg => { handleAlignStaffReply(msg).catch(() => {}); });
+
+        // 📥 WhatsApp Task Fetch Group: capture before any auto-reply/scope checks.
+        // Only NEW messages (not history sync), so a reconnect never backfills old tasks.
+        if (m.type === 'notify') m.messages.forEach(msg => { captureFetchGroupTask(msg).catch(() => {}); });
 
         // Mr. Zaheer: quietly completes the Contact Book entry of AI-active chats (debounced, capped)
         if (m.type === 'notify') {

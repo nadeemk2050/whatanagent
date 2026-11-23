@@ -20,6 +20,7 @@ import { listAgents } from './agentsStore.mjs';
 import {
   ALIGN_BASE, board, alignDb, alignAuth, alignAdminStatus
 } from './alignAdmin.mjs';
+import { getFetchGroupConfig, setFetchGroupConfig } from './fetchGroupConfig.mjs';
 import {
   loginStaff, verifyStaffSession, verifyTeamUnlock, verifyAnyTeamUnlock, issueStaffSession,
   upsertStaff, listStaff, getStaffByHandle, getStaffByUid, deleteStaff,
@@ -792,6 +793,30 @@ export function registerAlignRoutes(app) {
       res.json({ ok: true, total: list.length, groups: list.slice(0, 2000), at: Date.now() });
     } catch (e) {
       res.status(500).json({ ok: false, error: sstr(e.message, 160) });
+    }
+  });
+
+  // 📥 WhatsApp Task Fetch Group: one group whose messages become "Tasks for All".
+  app.get(api + '/fetch-group', requireStaff, async (req, res) => {
+    try { res.json({ ok: true, ...(await getFetchGroupConfig()) }); }
+    catch (e) { res.status(500).json({ ok: false, error: sstr(e.message || e, 160) }); }
+  });
+
+  app.post(api + '/fetch-group', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const jid = sstr(b.jid, 120).trim();
+      const enabled = !!b.enabled;
+      if (enabled && !/@g\.us$/i.test(jid)) return bad(res, 'Choose a WhatsApp group first.');
+      const saved = await setFetchGroupConfig(
+        { enabled, jid, name: sstr(b.name, 160) },
+        (req.staff && req.staff.handle) || 'staff'
+      );
+      authAudit({ action: 'fetch_group_config', handle: (req.staff && req.staff.handle) || '', note: enabled ? ('on: ' + jid) : 'off' });
+      res.json({ ok: true, ...saved });
+    } catch (e) {
+      if (e && e.code === 'align-no-admin') return noAdmin(res);
+      res.status(500).json({ ok: false, error: sstr(e.message || e, 160) });
     }
   });
 
