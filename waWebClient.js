@@ -1212,6 +1212,14 @@ async function captureFetchGroupTask(msg) {
       body = '[' + label + fname + ']';
     }
 
+    // 🙅 "Finished" / "Okay" / "Done" are completion replies, not new tasks. Skip them unless
+    // they quote a message (a quoted reply is a command about an existing task).
+    const shortAck = /^\s*(?:(?:the\s+)?(?:task|job|work)\s+(?:is\s+)?)?(done|finished|complete[d]?|ok|okay|got\s*it|on\s*it|onit|working|snooze|mute|pending|status|ho\s*gaya|kar\s*diya|mukammal|kaam\s*ho\s*gaya)\s*[.!]*\s*$/i;
+    if (!quotedMessageId(msg) && body.length <= 40 && shortAck.test(body)) {
+      console.log('[FETCH GROUP] ⏭️ skipped ack message: ' + body.slice(0, 40));
+      return;
+    }
+
     fetchGroupProcessedIds.add(msgId);
     if (fetchGroupProcessedIds.size > 3000) {
       const first = fetchGroupProcessedIds.values().next().value;
@@ -1237,7 +1245,13 @@ async function captureFetchGroupTask(msg) {
         sourceSender: String(msg.pushName || (msg.key && msg.key.participant) || '')
       };
       if (teamId) task.teamId = teamId;
-      await alignBoardAdd('tasks_for_all', task);
+      const ref = await alignBoardAdd('tasks_for_all', task);
+      // Index the source message right away so a quoted reply / 👍 reaction on it resolves
+      // without a Firestore lookup and still works after a server restart.
+      reminderWaIndex.set(msgId, {
+        taskId: ref.id, kind: 'shared', email: '',
+        desc: String(body).slice(0, 120), source: 'whatsapp-fetch-group'
+      });
       console.log('[FETCH GROUP] ➕ Task from "' + (cfg.name || jid) + '": ' + body.slice(0, 60));
     } catch (e) {
       fetchGroupProcessedIds.delete(msgId);
@@ -2073,14 +2087,62 @@ function quotedMessageId(msg) {
     (m.stickerMessage && m.stickerMessage.contextInfo);
   return c && c.stanzaId ? String(c.stanzaId) : '';
 }
-function quotedTaskFrom(msg) {
-  const id = quotedMessageId(msg);
+
+
+// Find the task a quoted message or reaction points to. Checks the in-memory index first,
+// then the board itself by sourceMessageId (so it still works after a restart).
+async function findTaskByMessageId(id) {
   if (!id) return null;
-  const hit = reminderWaIndex.get(id);
-  return hit ? Object.assign({ messageId: id }, hit) : null;
+  const mem = reminderWaIndex.get(id);
+  if (mem) return Object.assign({ messageId: id }, mem);
+  try {
+    const rows = await alignBoardDocs('tasks_for_all', { field: 'sourceMessageId', value: id, limit: 1 });
+    if (rows.length) {
+      const t = rows[0];
+      const rec = {
+        messageId: id, taskId: t.id, kind: 'shared', email: '',
+        desc: String(t.description || '').slice(0, 120), source: 'whatsapp-fetch-group'
+      };
+      reminderWaIndex.set(id, rec);
+      return rec;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+async function resolveQuotedTask(msg) {
+  return findTaskByMessageId(quotedMessageId(msg));
+}
+
+// 👍 / ✅ reactions on a task message also complete it.
+async function handleAlignTaskReaction(msg, reaction) {
+  try {
+    const emoji = String((reaction && reaction.text) || '').trim();
+    if (!['✅', '✔️', '✔', '👍', '👌', '🆗'].includes(emoji)) return false;
+    const targetId = String((reaction.key && reaction.key.id) || '');
+    if (!targetId) return false;
+    const hit = await findTaskByMessageId(targetId);
+    if (!hit) return false;
+    const jid = (msg.key && msg.key.remoteJid) || '';
+    const senderJid = String(jid).endsWith('@g.us') ? String(msg.key.participant || '') : jid;
+    const phone = (resolveRealPhoneNumber(senderJid) || String(senderJid).split('@')[0]).replace(/[^0-9]/g, '');
+    const email = alignEmailByPhone(phone);
+    if (hit.source !== 'whatsapp-fetch-group' && !email) return false;
+    const who = (email && (alignStaffWaMap.get(email) || {}).name) || String(msg.pushName || '').trim() || (phone ? '+' + phone : 'Team member');
+    await alignTaskWrite(hit.taskId, hit.kind, {
+      status: 'Done', completedAt: new Date(),
+      completedBy: email || '', completedByEmail: email || '', completedByName: who,
+      completedVia: 'whatsapp-reaction', ackState: 'done'
+    }).catch(() => {});
+    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
+    const label = hit.desc ? ' "' + String(hit.desc).slice(0, 80) + '"' : '';
+    await sendWaWebMessage(jid, '✅ Marked done' + label + ' — thanks ' + who + '!');
+    return true;
+  } catch (e) { return false; }
 }
 async function handleAlignStaffReply(msg) {
   try {
+    const reaction = msg && msg.message && msg.message.reactionMessage;
+    if (reaction) return await handleAlignTaskReaction(msg, reaction);
     if (!msg || !msg.key || msg.key.fromMe) return false;
     const jid = msg.key.remoteJid || '';
     if (!jid || jid === 'status@broadcast') return false;
@@ -2091,17 +2153,24 @@ async function handleAlignStaffReply(msg) {
     const senderJid = jid.endsWith('@g.us') ? String(msg.key.participant || '') : jid;
     const phone = (resolveRealPhoneNumber(senderJid) || String(senderJid).split('@')[0]).replace(/[^0-9]/g, '');
     const email = alignEmailByPhone(phone);
-    if (!email) return false;
-    const who = (alignStaffWaMap.get(email) || {}).name || email.split('@')[0];
+    const mappedName = email ? (alignStaffWaMap.get(email) || {}).name : '';
+    const who = mappedName || String(msg.pushName || '').trim() || (phone ? '+' + phone : 'Team member');
     const low = t.toLowerCase();
-    const quoted = quotedTaskFrom(msg);
-    if (jid.endsWith('@g.us') && !quoted) return false;
+    const isDoneText = /\b(done|finished|complete[d]?|completed|ho\s*gaya|kar\s*diya|mukammal)\b/.test(low) || /^✅|^✔|^👍|^👌|^🆗/.test(t);
+    const quoted = await resolveQuotedTask(msg);
+    const quotedAllowed = quoted && (quoted.source === 'whatsapp-fetch-group' || !!email);
+    let inFetchGroup = false;
+    if (jid.endsWith('@g.us')) {
+      const cfg = await getFetchGroupConfig().catch(() => null);
+      inFetchGroup = !!(cfg && cfg.enabled && cfg.jid && cfg.jid === jid);
+    }
+    if (jid.endsWith('@g.us') && !quotedAllowed && !inFetchGroup) return false;
+    if (!quotedAllowed && !email && !inFetchGroup) return false;
     if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
 
     // 📌 Quoted reply to a specific task reminder: complete / snooze / ack that exact task.
-    if (quoted) {
-      const isDone = /\b(done|finished|complete[d]?|completed|ho\s*gaya|kar\s*diya|mukammal)\b/.test(low) || /^✅|^✔|^👍|^👌|^🆗/.test(t);
-      if (isDone) {
+    if (quotedAllowed) {
+      if (isDoneText) {
         await alignTaskWrite(quoted.taskId, quoted.kind, {
           status: 'Done', completedAt: new Date(),
           completedBy: email, completedByEmail: email, completedByName: who,
@@ -2129,6 +2198,42 @@ async function handleAlignStaffReply(msg) {
         return true;
       }
     }
+
+    // 📥 Fetch group, bare "Finished" with no quote and no 👍: complete the newest open task
+    // created from this same sender's message, and say which one so a mistake is visible.
+    if (inFetchGroup && isDoneText) {
+      const senderName = String(msg.pushName || '').trim();
+      const open = [];
+      if (senderName) {
+        for (const [id, e] of alignTasksCache.entries()) {
+          const d = (e && e.data) || {};
+          if (e.src !== 'tasks_for_all') continue;
+          if (d.source !== 'whatsapp-fetch-group' || d.sourceGroupJid !== jid) continue;
+          if (String(d.status || '') === 'Done') continue;
+          if (String(d.sourceSender || '') !== senderName) continue;
+          const ts = d.createdAt && d.createdAt.toMillis ? d.createdAt.toMillis() : Number(d.createdAt || 0);
+          open.push({ id: id, data: d, ts: ts });
+        }
+      }
+      open.sort((a, b) => b.ts - a.ts);
+      const target = open[0];
+      if (!target) {
+        await sendWaWebMessage(jid, '📋 Which task is done? Quote the task message and reply *Done*, or react 👍 to it.');
+        return true;
+      }
+      await alignTaskWrite(target.id, 'shared', {
+        status: 'Done', completedAt: new Date(),
+        completedBy: email || '', completedByEmail: email || '', completedByName: who,
+        completedVia: 'whatsapp-group-reply', ackState: 'done'
+      }).catch(() => {});
+      const label = String(target.data.description || '').slice(0, 80);
+      await sendWaWebMessage(jid, '✅ Marked done "' + label + '" — thanks ' + who + '!');
+      return true;
+    }
+
+    // Fetch-group task handled above and the sender is not linked to a board account:
+    // there is no personal digest to touch, so stop here quietly.
+    if (!email) return true;
 
     const dg = await alignDigestRef(email).catch(() => null);
     let items = (dg && dg.data && Array.isArray(dg.data.items)) ? dg.data.items.slice() : [];
