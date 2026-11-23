@@ -14,6 +14,7 @@ import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
 import { HUMAN_WARM_SALES_STYLE, usesHumanWarmStyle } from './personaStyle.mjs';
+import { getEffectivePersonaForAgent } from './personaStore.mjs';
 import { tankPromptText } from './businessTank.mjs';
 
 const DISPATCH_BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
@@ -167,9 +168,10 @@ export function buildAgentSystemPrompt(agent, blocks = {}, businessKbText = '', 
   // same agent is the per-contact learned notes (see buildVolatileContext). Providers cache a
   // repeated prompt PREFIX and bill those tokens ~10x cheaper, so the stable block ends here
   // and the volatile tail is appended after the rule book.
-  // 😊 Shared customer-facing voice (Zaheer + every business agent). Static text, so it
-  // belongs in the cached prefix; UNIVERSAL_SAFETY stays last because it has top priority.
-  if (usesHumanWarmStyle(a)) s += HUMAN_WARM_SALES_STYLE;
+  // 🎭 Persona / Voice: the owner's global voice, or this agent's own override.
+  // Specialist agents keep their card tone unless an override is set.
+  const persona = (opts && opts.personaText) || (usesHumanWarmStyle(a) ? HUMAN_WARM_SALES_STYLE : '');
+  if (persona) s += persona;
 
   s += UNIVERSAL_SAFETY;
   return s;
@@ -377,10 +379,11 @@ export async function callAgentModel({
 export async function runAgent(agent, messages, { purpose = 'chat', businessKbText = '', temperature, maxTokens, forJid = '', model, fallbackModel, preferBackground } = {}) {
   if (!agent) throw new Error('Agent not found');
   const blocks = await getCompiledBlocks(agent.id);
+  const personaText = await getEffectivePersonaForAgent(agent);
   // 📖 App Rule Book applies to every staff agent, every purpose.
   // Order matters for cost: stable persona/knowledge/rules first, volatile per-contact notes
   // last, so the provider's context cache can reuse the prefix on the next call.
-  const stable = await withRuleBook(buildAgentSystemPrompt(agent, blocks, businessKbText), 'academy');
+  const stable = await withRuleBook(buildAgentSystemPrompt(agent, blocks, businessKbText, { personaText }), 'academy');
   const system = stable + buildVolatileContext(agent, { forJid });
 
   const spend = todaySpend('AI Staff', agent.name);

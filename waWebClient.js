@@ -18,7 +18,7 @@ import { evaluateReplyPolicy, recordUsage } from './officeControls.mjs';
 import { audit } from './auditLog.mjs';
 import { touchClientActivity } from './assignmentEvents.mjs';
 import { withRuleBook, ruleBookText, enforceScript as romaniseScript } from './ruleBook.mjs';
-import { HUMAN_WARM_SALES_STYLE } from './personaStyle.mjs';
+import { getGlobalPersonaText } from './personaStore.mjs';
 import { humanizeReplyText, splitWhatsAppMessages, typingDelayMs } from './humanVoice.mjs';
 import { handleReminderReply } from './reminderEngine.mjs';
 import { orderParts, cacheStats, cachedTokensFrom, stableFingerprint, logCacheShape } from './promptCache.mjs';
@@ -6511,7 +6511,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       // 😊 Shared human-warm sales voice. Static text, so it belongs in the stable prefix;
       // placed before the contact Brain on purpose, so the Brain can still fine-tune the
       // tone for this person while the manners (warmth, no promises, no blunt refusal) stay.
-      stableParts.push(HUMAN_WARM_SALES_STYLE);
+      stableParts.push(await getGlobalPersonaText());
 
       // Contact Book duty: ask Mr. Zaheer's missing data naturally (max one item per reply)
       // — never for family (the duty prompt itself also checks, this is the second belt).

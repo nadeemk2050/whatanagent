@@ -101,6 +101,7 @@ export function sanitizeAgent(raw = {}, existing = {}) {
   a.useBusinessTank = asBool(raw.useBusinessTank != null ? raw.useBusinessTank : existing.useBusinessTank, false);
   a.allowedTools = arr(raw.allowedTools != null ? raw.allowedTools : existing.allowedTools, 60, 25);
   a.systemPrompt = sstr(raw.systemPrompt != null ? raw.systemPrompt : existing.systemPrompt, 12000);
+  a.personaVoice = sstr(raw.personaVoice != null ? raw.personaVoice : existing.personaVoice, 8000);
   a.promptVersion = Number(raw.promptVersion != null ? raw.promptVersion : existing.promptVersion) || 1;
   a.requireApprovalForWrites = asBool(raw.requireApprovalForWrites != null ? raw.requireApprovalForWrites : existing.requireApprovalForWrites, true);
   a.dailyBudgetUsd = Number(raw.dailyBudgetUsd != null ? raw.dailyBudgetUsd : existing.dailyBudgetUsd) || 0.25;

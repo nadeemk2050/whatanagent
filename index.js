@@ -38,7 +38,7 @@ import { installBandwidthTracker, bandwidthReport, resetBandwidth, instanceRepor
 import { mediaPrepReport, mediaSelfTest } from './mediaPrep.mjs';
 import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
-import { HUMAN_WARM_SALES_STYLE } from './personaStyle.mjs';
+import { attachPersonaDb, registerPersonaRoutes, getGlobalPersonaText } from './personaStore.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
@@ -104,6 +104,7 @@ attachBrainDb(db);
 
 // AI Activity Tracker & Master Auto-Fetch Kill Switch needs Firestore
 attachAiTrackerDb(db);
+attachPersonaDb(db);
 
 // ⏰ Reminder engine: stateful, self-deciding follow-ups (medicine, walk, custom).
 // send helpers are injected here so reminderEngine never imports waWebClient (no cycle).
@@ -208,6 +209,7 @@ registerGDriveService(app);
 registerAgentsRoutes(app, db);
 // ⏰ Reminder plans API (admin-token guarded) + a simple management page.
 registerReminderRoutes(app, { adminToken: process.env.ADMIN_TOKEN });
+registerPersonaRoutes(app, { adminToken: process.env.ADMIN_TOKEN });
 app.get('/reminders', (req, res) => res.sendFile(path.join(__dirname, 'public', 'reminders.html')));
 // Ã°Å¸â€œâ€¡ Contact Book: thousands of rows now live in local SQLite (free reads, instant listing);
 // Firestore is only the one-time migration source / fallback.
@@ -761,7 +763,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     
     let prompt = (tempKnowledge.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n';
     prompt += NO_HINDI_LANGUAGE_RULE + '\n\n';
-    prompt += HUMAN_WARM_SALES_STYLE + '\n\n';
+    prompt += (await getGlobalPersonaText()) + '\n\n';
     if (tempKnowledge.customKnowledgeText) prompt += '--- BUSINESS BACKGROUND ---\n' + tempKnowledge.customKnowledgeText + '\n\n';
     if (Array.isArray(tempKnowledge.faqs)) {
       prompt += '--- FAQS ---\n' + tempKnowledge.faqs.map(f => 'Q: ' + f.question + '\nA: ' + f.answer).join('\n') + '\n\n';
@@ -844,7 +846,7 @@ YOUR CAPABILITIES & RULES:
 3. When summarizing, give executive bullet points highlighting key decisions, customer status, pending actions, and financial/order details.
 4. When identifying action items, clearly list who owes what action, deadlines, and urgency.
 5. You can discuss any conversation happening in WhatsApp Web, answer questions, provide sales advice, negotiate strategies, and compose responses.
-6. ${NO_HINDI_LANGUAGE_RULE}${HUMAN_WARM_SALES_STYLE}`;
+6. ${NO_HINDI_LANGUAGE_RULE}${await getGlobalPersonaText()}`;
 
     if (chatContext) {
       systemPrompt += `\n\n--- ACTIVE CONVERSATION CONTEXT ---
@@ -1233,7 +1235,7 @@ async function generateAIResponse(userPrompt, senderNumber, settings) {
       "If the user asks something that is NOT in these sections, you MUST handle it according to the FALLBACK RULE below. " +
       "Do NOT hallucinate, invent, or assume any information outside of these sections. " +
       "You are fully capable of speaking Arabic, Roman Urdu, and English fluently based on the user's choice. " +
-      "Keep responses warm, natural and concise — like a real person texting.\n\n" + NO_HINDI_LANGUAGE_RULE + "\n\n" + HUMAN_WARM_SALES_STYLE + "\n\n";
+      "Keep responses warm, natural and concise — like a real person texting.\n\n" + NO_HINDI_LANGUAGE_RULE + "\n\n" + (await getGlobalPersonaText()) + "\n\n";
       
     if (needsGreeting) {
       systemInstruction += "LANGUAGE RULE: Because this is the first interaction today, you MUST include this exact message at the end of your response: '(We can talk in Arabic / Roman Urdu and English easily. If you want, you can select other language, otherwise continue in English)'.\n\n";
@@ -2722,7 +2724,7 @@ app.post('/api/ai/suggest-chat-reply', async (req, res) => {
       "Draft a helpful, highly accurate, and friendly response to the customer's last message based strictly on the facts.\n" +
       "Respond ONLY with the drafted response. Do not include any meta comments, explanation, or tags.\n\n" +
       "### KNOWLEDGE BASE ###\n" + knowledgeBase + "\n\n" +
-      (faqText ? "### FAQ ###\n" + faqText : "") + HUMAN_WARM_SALES_STYLE;
+      (faqText ? "### FAQ ###\n" + faqText : "") + (await getGlobalPersonaText());
 
     const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({

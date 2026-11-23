@@ -64,6 +64,16 @@
   .sheet-head .grow { flex:1; min-width:160px; }
   .sheet-body { padding:16px; }
   .sheet-tabs { display:flex; gap:6px; overflow-x:auto; padding:10px 16px; background:#e2e8f0; }
+  /* Full-screen training room + office (no more narrow centred sheet) */
+  #detailOverlay, #officeOverlay { padding:0 !important; overflow:hidden; }
+  #detailOverlay .sheet, #officeOverlay .sheet {
+    max-width:none !important; width:100vw !important; height:100vh !important;
+    max-height:100vh !important; border-radius:0 !important; margin:0 !important;
+    display:flex; flex-direction:column;
+  }
+  #detailOverlay .sheet-head, #officeOverlay .sheet-head { flex:0 0 auto; }
+  #detailOverlay .sheet-tabs, #officeOverlay .sheet-tabs { flex:0 0 auto; }
+  #detailOverlay .sheet-body, #officeOverlay .sheet-body { flex:1 1 auto; overflow-y:auto; padding:18px 20px 60px; }
   .st { white-space:nowrap; border:1px solid #94a3b8; background:#fff; color:#334155; border-radius:16px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; }
   .st.active { background:#0f172a; color:#fff; border-color:#0f172a; }
   label.f { display:block; font-size:11.5px; font-weight:700; color:#334155; margin:10px 0 4px; }
@@ -468,10 +478,47 @@ function renderTabs() {
     '<button class="tab ' + (S.tab === 'all' ? 'active' : '') + '" onclick="setTab(\'all\')" style="border-color:#0ea5e9;color:' + (S.tab === 'all' ? '#fff' : '#0369a1') + ';' + (S.tab === 'all' ? 'background:#0ea5e9;' : 'background:#f0f9ff;') + '">👥 All Staff (' + S.agents.length + ')</button>' +
     '<button class="tab ' + (S.tab === 'offices' ? 'active' : '') + '" onclick="setTab(\'offices\')" style="border-color:#7c3aed;color:' + (S.tab === 'offices' ? '#fff' : '#5b21b6') + ';' + (S.tab === 'offices' ? 'background:#7c3aed;' : 'background:#f5f3ff;') + '">    🏢 Offices of Staff</button>' +
         '<button class="tab ' + (S.tab === 'business' ? 'active' : '') + '" onclick="setTab(\'business\')" style="border-color:#0d9488;color:' + (S.tab === 'business' ? '#fff' : '#0f766e') + ';' + (S.tab === 'business' ? 'background:#0d9488;' : 'background:#f0fdfa;') + '">🧠 Business Data Tank</button>' +
-        '<button class="tab ' + (S.tab === 'cvs' ? 'active' : '') + '" onclick="setTab(\'cvs\')" style="border-color:#d97706;color:' + (S.tab === 'cvs' ? '#fff' : '#b45309') + ';' + (S.tab === 'cvs' ? 'background:#d97706;' : 'background:#fffbeb;') + '">📄 Ready-to-Insert CVs' + (S.cvs ? ' (' + S.cvs.length + ')' : '') + '</button>';
+        '<button class="tab ' + (S.tab === 'cvs' ? 'active' : '') + '" onclick="setTab(\'cvs\')" style="border-color:#d97706;color:' + (S.tab === 'cvs' ? '#fff' : '#b45309') + ';' + (S.tab === 'cvs' ? 'background:#d97706;' : 'background:#fffbeb;') + '">📄 Ready-to-Insert CVs' + (S.cvs ? ' (' + S.cvs.length + ')' : '') + '</button>' +
+            '<button class="tab ' + (S.tab === 'persona' ? 'active' : '') + '" onclick="setTab(\'persona\')" style="border-color:#db2777;color:' + (S.tab === 'persona' ? '#fff' : '#be185d') + ';' + (S.tab === 'persona' ? 'background:#db2777;' : 'background:#fdf2f8;') + '">🎭 Persona / Voice</button>';
     }
 
     function setTab(k) { S.tab = k; renderTabs(); renderCounters(); renderCards(); }
+
+async function renderGlobalPersona() {
+  const box = $('cards');
+  box.innerHTML = '<div class="x">Loading voice…</div>';
+  try {
+    const d = await api('/api/persona');
+    box.innerHTML =
+      '<div class="sect" style="max-width:1100px;margin:0 auto;">' +
+        '<h4>🎭 Global Persona / Voice — applies to every customer-facing AI</h4>' +
+        '<div class="x" style="margin-bottom:8px;">Zaheer, WhatsApp auto-replies, the Meta bot and every business agent use this voice. A contact\'s Brain can still fine-tune the tone, and each office can override this with its own voice. The Rule Book and safety rules always win.</div>' +
+        (d.isDefault ? '<div class="x" style="color:#0f766e;margin-bottom:6px;">Currently using the built-in HUMAN CORE.</div>' : '<div class="x" style="color:#7c3aed;margin-bottom:6px;">Currently using your custom global voice.</div>') +
+        '<textarea id="globalPersona" class="f" style="min-height:360px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;">' + esc(d.text || '') + '</textarea>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+          '<button class="btn btn-primary" onclick="saveGlobalPersona()">💾 Save global voice</button>' +
+          '<button class="btn btn-ghost" onclick="resetGlobalPersona()">♻️ Reset to built-in</button>' +
+        '</div>' +
+      '</div>';
+  } catch (e) {
+    box.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>';
+  }
+}
+async function saveGlobalPersona() {
+  try {
+    await api('/api/persona', { method: 'POST', body: JSON.stringify({ text: $('globalPersona').value }) });
+    toast('✅ Global voice saved — applies to every AI');
+    renderGlobalPersona();
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function resetGlobalPersona() {
+  if (!confirm('Reset the global voice to the built-in HUMAN CORE?')) return;
+  try {
+    await api('/api/persona/reset', { method: 'POST', body: '{}' });
+    toast('♻️ Global voice reset');
+    renderGlobalPersona();
+  } catch (e) { toast('❌ ' + e.message); }
+}
 
 function renderCards() {
   const box0 = $('cards'), empty0 = $('cardsEmpty');
@@ -497,6 +544,13 @@ function renderCards() {
     empty0.classList.add('hidden');
     if (typeof window.renderBusinessTank === 'function') window.renderBusinessTank();
     else box0.innerHTML = '<div class="x">Business Data Tank script failed to load.</div>';
+    return;
+  }
+
+  // 🎭 Global Persona / Voice
+  if (S.tab === 'persona') {
+    empty0.classList.add('hidden');
+    renderGlobalPersona();
     return;
   }
 
@@ -751,7 +805,7 @@ async function saveHire() {
 const DETAIL_TABS = [
   ['overview', '📋 Overview'], ['learning', '🌱 Learn from Chats'], ['knowledge', '📚 Knowledge'],
   ['examples', '💬 Examples'], ['chat', '🧪 Test Chat'], ['lessons', '🎯 Corrections'],
-  ['scorecard', '📝 Scorecard'], ['guardrails', '🛡️ Guardrails'], ['prompt', '🧩 Prompt'],
+  ['scorecard', '📝 Scorecard'], ['guardrails', '🛡️ Guardrails'], ['persona', '🎭 Persona & Voice'], ['prompt', '🧩 Prompt'],
   ['tools', '🛠️ Tools'], ['usage', '📈 Usage']
 ];
 
@@ -768,6 +822,10 @@ async function openDetail(id, tab) {
       '<button class="st ' + (S.detailTab === k ? 'active' : '') + '" onclick="openDetail(\'' + esc(id) + '\',\'' + k + '\')">' + label + '</button>').join('');
     $('dBody').innerHTML = renderDetailTab();
     $('detailOverlay').classList.add('open');
+    if (S.detailTab === 'persona') {
+      try { S.personaGlobal = await api('/api/persona'); } catch (e) { S.personaGlobal = null; }
+      $('dBody').innerHTML = renderDetailTab();
+    }
     if (S.detailTab === 'usage') loadUsage(id);
     if (S.detailTab === 'learning') loadLearningPanel();
   } catch (e) { toast('❌ ' + e.message); }
@@ -785,6 +843,7 @@ function renderDetailTab() {
   if (S.detailTab === 'lessons') return tabLessons(d);
   if (S.detailTab === 'scorecard') return tabTests(d, 'scorecard');
   if (S.detailTab === 'guardrails') return tabTests(d, 'guardrail');
+  if (S.detailTab === 'persona') return tabPersona(d);
   if (S.detailTab === 'prompt') return tabPrompt(d);
   if (S.detailTab === 'tools') return tabTools(d);
   if (S.detailTab === 'usage') return '<div id="usageBox" class="empty">Loading usage…</div>';
@@ -1242,6 +1301,42 @@ async function restorePrompt(version) {
   } catch (e) { toast('❌ ' + e.message); }
 }
 
+/* ---------------- persona / voice ---------------- */
+function tabPersona(d) {
+  const own = String(d.agent.personaVoice || '');
+  const g = S.personaGlobal || {};
+  return '<div class="sect"><h4>🎭 Persona / Voice — ' + esc(d.agent.name) + '</h4>' +
+    '<div class="x" style="margin-bottom:8px;">' +
+      (own.trim() ? 'This staff has its <b>own voice</b>, which overrides the global voice.' : 'This staff <b>inherits the global voice</b>. Add text below to give it its own voice.') +
+      ' The Rule Book and safety rules always apply.' +
+    '</div>' +
+    '<textarea class="f" id="agentPersona" style="min-height:300px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;" placeholder="Leave empty to inherit the global Persona / Voice">' + esc(own) + '</textarea>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
+      '<button class="btn btn-primary" onclick="saveAgentPersona()">💾 Save this staff\'s voice</button>' +
+      '<button class="btn btn-ghost" onclick="clearAgentPersona()">♻️ Inherit global (clear)</button>' +
+    '</div></div>' +
+    '<div class="sect"><h4>Global voice (reference)</h4>' +
+      '<div class="x" style="margin-bottom:6px;">This is what the staff receives when the box above is empty.</div>' +
+      '<pre style="white-space:pre-wrap;font-size:11.5px;background:#fff;border:1px solid var(--border);border-radius:9px;padding:10px;max-height:360px;overflow:auto;">' + esc(g.text || '') + '</pre></div>';
+}
+async function saveAgentPersona() {
+  const id = S.current.agent.id;
+  try {
+    await api('/api/persona/agent/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ text: $('agentPersona').value }) });
+    toast('✅ Persona saved for this staff');
+    await openDetail(id, 'persona');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+async function clearAgentPersona() {
+  const id = S.current.agent.id;
+  if (!confirm('Clear this staff\'s own voice and inherit the global voice?')) return;
+  try {
+    await api('/api/persona/agent/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ text: '' }) });
+    toast('♻️ Now inherits the global voice');
+    await openDetail(id, 'persona');
+  } catch (e) { toast('❌ ' + e.message); }
+}
+
 /* ---------------- tools ---------------- */
 async function tabTools(d) {
   const list = await api('/api/agents/' + encodeURIComponent(d.agent.id) + '/tools').catch(() => ({ tools: [], logs: [] }));
@@ -1395,7 +1490,7 @@ async function toggleStop(id, on) {
 
 /* ---------------- office overlay ---------------- */
 const OFFICE_TABS = [
-  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['prices', '📈 Prices Data'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'],
+  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['prices', '📈 Prices Data'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'], ['persona', '🎭 Persona & Voice'],
   ['tools', '🧰 Tools'], ['control', '🎛️ Control'], ['performance', '📊 Performance'], ['logs', '🗂️ Logs'],
   ['team', '👨‍👩‍👦 Team'], ['model', '🧠 Model']
 ];
@@ -1449,6 +1544,17 @@ async function linkTank(id, el) {
 
 async function opost(path, body) {
   return api('/api/office/' + path, { method: 'POST', body: JSON.stringify(body || {}) });
+}
+
+async function saveOfficePersona(clear) {
+  const d = O.cur; if (!d) return;
+  const id = d.office.id;
+  const text = clear ? '' : ($('oPersona') ? $('oPersona').value : '');
+  try {
+    await api('/api/persona/agent/' + encodeURIComponent(id), { method: 'POST', body: JSON.stringify({ text }) });
+    toast(clear ? '♻️ Inherits the global voice' : '✅ Office voice saved');
+    renderOfficeTab();
+  } catch (e) { toast('❌ ' + e.message); }
 }
 
 function renderOfficeTab() {
@@ -1531,6 +1637,26 @@ function renderOfficeTab() {
       oSect('Handled chats', (d.clients || []).length
         ? (d.clients || []).map(cx => '<div class="meta-row"><span>' + esc(cx.name) + '</span><span>' + esc(cx.type) + ' · ' + esc(cx.autonomy || 'auto') + '</span></div>').join('')
         : '<div class="x">No chats linked.</div>');
+    return;
+  }
+
+  if (O.tab === 'persona') {
+    b.innerHTML = '<div class="x">Loading persona…</div>';
+    Promise.all([
+      api('/api/persona/agent/' + encodeURIComponent(id)),
+      api('/api/persona')
+    ]).then(([own, global]) => {
+      b.innerHTML = oSect('🎭 Persona & Voice — ' + esc(a.name || 'this office'),
+        '<div style="font-size:12px;color:#475569;margin-bottom:8px;">' +
+        (own.inherits ? 'This office <b>inherits the global voice</b>.' : 'This office has its <b>own voice</b> (overrides the global).') +
+        ' The Rule Book and safety rules always apply.</div>' +
+        '<textarea id="oPersona" class="f" style="min-height:280px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;" placeholder="Leave empty to inherit the global voice">' + esc(own.text || '') + '</textarea>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">' +
+          '<button class="btn btn-primary btn-sm" onclick="saveOfficePersona(false)">💾 Save this office voice</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="saveOfficePersona(true)">♻️ Inherit global (clear)</button>' +
+        '</div>') +
+        oSect('Global voice (reference)', '<pre style="white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;max-height:300px;overflow:auto;">' + esc((global && global.text) || '') + '</pre>');
+    }).catch(e => { b.innerHTML = '<div class="x" style="color:#b91c1c;">❌ ' + esc(e.message) + '</div>'; });
     return;
   }
 
