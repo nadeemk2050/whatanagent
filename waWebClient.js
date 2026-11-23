@@ -1808,7 +1808,7 @@ async function alignNotifyTick() {
       try {
         const sent = await sendWaWebMessage(target + '@s.whatsapp.net', msg);
         await alignSetDoc(entry.ref, { reminderSentAt: now, ackState: 'awaiting' });
-        if (sent && sent.messageId) reminderWaIndex.set(sent.messageId, { taskId: entry.ref.id, kind: entry.src, email: ae });
+        if (sent && sent.messageId) reminderWaIndex.set(sent.messageId, { taskId: entry.ref.id, kind: entry.src === 'tasks' ? 'assigned' : 'shared', email: ae, desc: String(v.description || '').slice(0, 120) });
         if (ae) {
           sendPush({
             title: '⏰ Task due now',
@@ -2045,21 +2045,74 @@ async function maybeSendDailyDigest() {
 }
 
 // DONE / ON IT / SNOOZE / PENDING replies from team members (before the AI ever sees them).
-const ALIGN_ACK_RE = /^\s*(done|finished|complete[d]?|on\s*it|onit|ack|ok|okay|got\s*it|working|snooze|mute|pending|status)\b/i;
+const ALIGN_ACK_RE = /^\s*(?:(?:the\s+)?(?:task|job|work)\s+(?:is\s+)?)?(done|finished|complete[d]?|completed|on\s*it|onit|ack|ok|okay|got\s*it|working|snooze|mute|pending|status|ho\s*gaya|kar\s*diya|mukammal|kaam\s*ho\s*gaya)\b|^\s*(?:✅|✔️|✔|👍|👌|🆗)\s*$/i;
+function quotedMessageId(msg) {
+  const m = msg && msg.message;
+  if (!m) return '';
+  const c = (m.extendedTextMessage && m.extendedTextMessage.contextInfo) ||
+    (m.imageMessage && m.imageMessage.contextInfo) ||
+    (m.videoMessage && m.videoMessage.contextInfo) ||
+    (m.documentMessage && m.documentMessage.contextInfo) ||
+    (m.audioMessage && m.audioMessage.contextInfo) ||
+    (m.stickerMessage && m.stickerMessage.contextInfo);
+  return c && c.stanzaId ? String(c.stanzaId) : '';
+}
+function quotedTaskFrom(msg) {
+  const id = quotedMessageId(msg);
+  if (!id) return null;
+  const hit = reminderWaIndex.get(id);
+  return hit ? Object.assign({ messageId: id }, hit) : null;
+}
 async function handleAlignStaffReply(msg) {
   try {
     if (!msg || !msg.key || msg.key.fromMe) return false;
     const jid = msg.key.remoteJid || '';
-    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') return false;
+    if (!jid || jid === 'status@broadcast') return false;
     const parsed = parseMessageContent(msg);
     const t = String((parsed && parsed.text) || '').trim();
     if (!t || t.length > 140 || !ALIGN_ACK_RE.test(t)) return false;
-    const phone = (resolveRealPhoneNumber(jid) || jid.split('@')[0]).replace(/[^0-9]/g, '');
+
+    const senderJid = jid.endsWith('@g.us') ? String(msg.key.participant || '') : jid;
+    const phone = (resolveRealPhoneNumber(senderJid) || String(senderJid).split('@')[0]).replace(/[^0-9]/g, '');
     const email = alignEmailByPhone(phone);
     if (!email) return false;
-    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
     const who = (alignStaffWaMap.get(email) || {}).name || email.split('@')[0];
     const low = t.toLowerCase();
+    const quoted = quotedTaskFrom(msg);
+    if (jid.endsWith('@g.us') && !quoted) return false;
+    if (msg.key.id) alignHandledMsgIds.add(msg.key.id);
+
+    // 📌 Quoted reply to a specific task reminder: complete / snooze / ack that exact task.
+    if (quoted) {
+      const isDone = /\b(done|finished|complete[d]?|completed|ho\s*gaya|kar\s*diya|mukammal)\b/.test(low) || /^✅|^✔|^👍|^👌|^🆗/.test(t);
+      if (isDone) {
+        await alignTaskWrite(quoted.taskId, quoted.kind, {
+          status: 'Done', completedAt: new Date(),
+          completedBy: email, completedByEmail: email, completedByName: who,
+          completedVia: 'whatsapp-quoted-reply', ackState: 'done'
+        }).catch(() => {});
+        const label = quoted.desc ? ' "' + String(quoted.desc).slice(0, 80) + '"' : '';
+        await sendWaWebMessage(jid, '✅ Marked done' + label + ' — thanks ' + who + '!');
+        return true;
+      }
+      if (/snooze|mute/.test(low)) {
+        const m = low.match(/(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)/);
+        let ms = 60 * 60 * 1000;
+        if (m) {
+          const n = parseInt(m[1], 10);
+          const u = m[2][0];
+          ms = n * (u === 'd' ? 86400000 : (u === 'h' ? 3600000 : 60000));
+        }
+        await alignTaskWrite(quoted.taskId, quoted.kind, { ackState: 'snoozed', snoozedUntil: Date.now() + ms, ackByName: who, ackAt: Date.now() }).catch(() => {});
+        await sendWaWebMessage(jid, '⏰ Muted this task for ' + Math.round(ms / 60000) + ' min.');
+        return true;
+      }
+      if (/\b(on\s*it|onit|ack|ok|okay|working|got\s*it)\b/.test(low)) {
+        await alignTaskWrite(quoted.taskId, quoted.kind, { ackState: 'ack', ackAt: Date.now(), ackByName: who }).catch(() => {});
+        await sendWaWebMessage(jid, '👍 Noted — I will not nudge you about this one again today.');
+        return true;
+      }
+    }
 
     const dg = await alignDigestRef(email).catch(() => null);
     let items = (dg && dg.data && Array.isArray(dg.data.items)) ? dg.data.items.slice() : [];
@@ -2074,7 +2127,7 @@ async function handleAlignStaffReply(msg) {
     const nums = (t.match(/\d+/g) || []).map(n => parseInt(n, 10)).filter(n => n >= 1 && n <= items.length);
     const picked = nums.length ? nums.map(n => items[n - 1]).filter(Boolean) : (items.length === 1 ? [items[0]] : []);
 
-    if (/^snooze|^mute/.test(low)) {
+    if (/snooze|mute/.test(low)) {
       const m = low.match(/(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)/);
       let ms = 60 * 60 * 1000;
       if (m) {
@@ -2090,14 +2143,16 @@ async function handleAlignStaffReply(msg) {
       return true;
     }
 
-    if (/^done|^finished|^complete/.test(low)) {
+    if (/\b(done|finished|complete[d]?|completed|ho\s*gaya|kar\s*diya|mukammal)\b/.test(low)) {
       if (!picked.length) {
         await sendWaWebMessage(jid, '📋 Which one is done?\n\n' + alignListLines(items) + '\n\nReply *DONE 1* (or DONE 1,3).');
         return true;
       }
       for (const it of picked) {
         await alignTaskWrite(it.taskId, it.kind, {
-          status: 'Done', completedAt: new Date(), completedByName: who, completedVia: 'whatsapp-reply', ackState: 'done'
+          status: 'Done', completedAt: new Date(),
+          completedBy: email, completedByEmail: email, completedByName: who,
+          completedVia: 'whatsapp-reply', ackState: 'done'
         }).catch(() => {});
       }
       await sendWaWebMessage(jid, '✅ Marked done: ' + picked.length + ' task' + (picked.length === 1 ? '' : 's') + '.\n' + picked.map(p => '• ' + String(p.desc).slice(0, 60)).join('\n') +
@@ -2105,7 +2160,7 @@ async function handleAlignStaffReply(msg) {
       return true;
     }
 
-    if (/^pending|^status/.test(low)) {
+    if (/pending|status/.test(low)) {
       await sendWaWebMessage(jid, '📋 *Your pending tasks*\n\n' + alignListLines(items) + '\n\nReply *DONE 1* · *ON IT* · *SNOOZE 1h*.');
       return true;
     }
