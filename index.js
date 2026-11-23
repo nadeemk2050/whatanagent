@@ -785,11 +785,30 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     if (sandboxModel && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
       // silently make every trial return the Qwen answer. A trial must use the model it names.
-      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: sandboxModel, generationConfig: { maxOutputTokens: 400, temperature: 0.6 } });
-      const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-      reply = r.response.text() || '';
-      kbProvider = 'gemini'; kbModelUsed = sandboxModel; kbUsage = r.response.usageMetadata || null;
+      //
+      // Plain REST on purpose: `thinkingBudget: 0` is a generationConfig field the bundled SDK
+      // predates, and a WhatsApp reply must never pay for (or wait on) thinking tokens. Gemini
+      // 3.x thinks by default - that is why the first trial appeared to hang.
+      const sbKey = settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      const callSb = async (gen) => {
+        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(sandboxModel) + ':generateContent?key=' + encodeURIComponent(sbKey);
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: gen }) });
+        const j = await r.json();
+        if (j.error) throw new Error(j.error.message || 'Gemini error');
+        const parts = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts;
+        return { text: (parts || []).map(p => p.text || '').join('').trim(), usage: j.usageMetadata || null };
+      };
+      const base = { temperature: 0.6, maxOutputTokens: 400 };
+      let out;
+      try {
+        out = await callSb({ ...base, thinkingConfig: { thinkingBudget: 0 } });
+      } catch (e) {
+        // A model that refuses a zero thinking budget still deserves a fair trial.
+        if (!/thinking/i.test(String(e.message))) throw e;
+        out = await callSb(base);
+      }
+      reply = out.text;
+      kbProvider = 'gemini'; kbModelUsed = sandboxModel; kbUsage = out.usage;
     } else if ((kbModel.startsWith('qwen') || kbModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
       const qwenKeyT = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
       const qwenBaseT = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();

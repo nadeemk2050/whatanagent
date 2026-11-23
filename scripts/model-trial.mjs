@@ -33,7 +33,8 @@ async function post(path, body) {
   const r = await fetch(BASE + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000)
   });
   return r.json();
 }
@@ -79,6 +80,9 @@ function money(n) { return '$' + n.toFixed(6); }
       const { inTok, outTok } = tokensFrom(d.usage);
       totalIn += inTok; totalOut += outTok; totalMs += ms; ok += 1;
       replies.push({ msg, reply: String(d.reply || ''), inTok, outTok, ms });
+      // Print as we go: a slow model must not hide the results of the fast ones.
+      console.log('[' + model + ' ' + (replies.length) + '/' + MESSAGES.length + '] ' +
+        inTok + ' in / ' + outTok + ' out · ' + ms + ' ms');
     }
 
     rows.push({ model, totalIn, totalOut, totalMs, ok, replies });
