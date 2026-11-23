@@ -776,7 +776,21 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     let reply = '';
     let kbProvider = '', kbModelUsed = '', kbUsage = null;
     const kbModel = (tempKnowledge && tempKnowledge.aiModel) || '';
-    if ((kbModel.startsWith('qwen') || kbModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
+    // 🧪 Sandbox-only model override: lets the owner compare engines on the SAME prompt.
+    // Whitelisted on purpose - this route is public, so it must never be able to run an
+    // expensive model (Gemini 4 Carbon is $10/M output). Output is capped at 400 tokens.
+    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash'];
+    const forcedModel = String((req.body || {}).model || '').trim();
+    const sandboxModel = SANDBOX_MODELS.includes(forcedModel) ? forcedModel : '';
+    if (sandboxModel && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
+      // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
+      // silently make every trial return the Qwen answer. A trial must use the model it names.
+      const genAI = new GoogleGenerativeAI(settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: sandboxModel, generationConfig: { maxOutputTokens: 400 } });
+      const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      reply = r.response.text() || '';
+      kbProvider = 'gemini'; kbModelUsed = sandboxModel; kbUsage = r.response.usageMetadata || null;
+    } else if ((kbModel.startsWith('qwen') || kbModel === 'qwen') && (settings.QWEN_API_KEY || process.env.QWEN_API_KEY)) {
       const qwenKeyT = settings.QWEN_API_KEY || process.env.QWEN_API_KEY;
       const qwenBaseT = (settings.QWEN_BASE_URL || process.env.QWEN_BASE_URL || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').trim();
       const qwenModelT = kbModel === 'qwen' ? (settings.QWEN_MODEL || 'qwen3.8-flash') : kbModel;
@@ -810,7 +824,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     }
 
     trackDashboardAi('WA knowledge-base test', kbProvider, kbModelUsed, kbUsage, message, reply);
-    res.json({ reply: reply.trim() });
+    res.json({ reply: reply.trim(), provider: kbProvider, model: kbModelUsed, usage: kbUsage });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
