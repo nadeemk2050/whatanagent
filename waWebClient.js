@@ -1188,6 +1188,22 @@ async function captureFetchGroupTask(msg) {
 
     const parsed = parseMessageContent(msg) || {};
     let body = String(parsed.text || '').trim();
+
+    // 🎙️ Voice notes: transcribe first, so the task contains what was actually said
+    // instead of the "🎵 [Voice/Audio Note]" placeholder.
+    if (parsed.mediaType === 'audio') {
+      try {
+        const media = await downloadWaWebMediaRaw(msg);
+        const transcript = await transcribeAudioBuffer(media.buffer, media.mimetype);
+        if (transcript && transcript.trim()) {
+          body = '🎤 ' + transcript.trim();
+          console.log('[FETCH GROUP] 🎙️ voice note transcribed (' + body.length + ' chars)');
+        }
+      } catch (e) {
+        console.warn('[FETCH GROUP] audio transcription failed:', (e && e.message) || e);
+      }
+    }
+
     if (!body) {
       const mt = parsed.mediaType;
       if (!mt) return;
