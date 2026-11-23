@@ -11,6 +11,19 @@ export const DEEPSEEK_DIRECT_BASE = 'https://api.deepseek.com';
 export const DEEPSEEK_DASHSCOPE_MODEL = 'deepseek-v4.1-flash';
 export const DEEPSEEK_DIRECT_MODEL = 'deepseek-flash';
 
+// ============================================================================
+// 🆓 Z.ai (Zhipu) — OpenAI-compatible. Per Z.ai's pricing page, GLM-4.7-Flash,
+// GLM-4.5-Flash and GLM-4.6V-Flash are free of charge for input, cached input
+// and output. They are wired here ONLY as an opt-in trial engine: nothing in the
+// reply chain uses them until ZAI_API_KEY exists in the environment.
+// Free tier has unpublished rate limits and may use data for product
+// improvement - never promote these to a default without checking the terms.
+// ============================================================================
+export const ZAI_COMPAT_BASE = 'https://api.z.ai/api/paas/v4';
+export const GLM_FREE_TEXT_MODEL = 'glm-4.7-flash';
+export const GLM_FREE_VISION_MODEL = 'glm-4.6v-flash';
+export const GLM_FREE_MODELS = [GLM_FREE_TEXT_MODEL, 'glm-4.5-flash', GLM_FREE_VISION_MODEL];
+
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const first = (...vals) => {
   for (const v of vals) { const s = str(v); if (s) return s; }

@@ -40,7 +40,7 @@ import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { attachPersonaDb, registerPersonaRoutes, getGlobalPersonaText } from './personaStore.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId, ZAI_COMPAT_BASE, GLM_FREE_MODELS } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { 
   initWaWeb, 
@@ -779,10 +779,22 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     // 🧪 Sandbox-only model override: lets the owner compare engines on the SAME prompt.
     // Whitelisted on purpose - this route is public, so it must never be able to run an
     // expensive model (Gemini 4 Carbon is $10/M output). Output is capped at 400 tokens.
-    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash'];
+    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', ...GLM_FREE_MODELS];
     const forcedModel = String((req.body || {}).model || '').trim();
     const sandboxModel = SANDBOX_MODELS.includes(forcedModel) ? forcedModel : '';
-    if (sandboxModel && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
+    const sandboxGlm = /^glm-/.test(sandboxModel);
+    if (sandboxGlm && process.env.ZAI_API_KEY) {
+      // 🆓 Z.ai free models, same real prompt. Dormant until ZAI_API_KEY is set in .env.
+      const zai = new OpenAI({ baseURL: (process.env.ZAI_BASE_URL || ZAI_COMPAT_BASE), apiKey: process.env.ZAI_API_KEY, timeout: 45000 });
+      const comp = await zai.chat.completions.create({
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
+        model: sandboxModel,
+        temperature: 0.6,
+        max_tokens: 400
+      });
+      reply = comp.choices[0]?.message?.content || '';
+      kbProvider = 'zai'; kbModelUsed = sandboxModel; kbUsage = comp.usage || null;
+    } else if (sandboxModel && !sandboxGlm && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
       // silently make every trial return the Qwen answer. A trial must use the model it names.
       //

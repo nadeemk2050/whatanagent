@@ -18,7 +18,12 @@ const PRICES = {
   'gemini-3.1-flash-lite': { in: 0.25, out: 1.50 },
   'gemini-3.5-flash':      null,                       // legacy id, price not published
   'gemini-3.6-flash':      { in: 0.75, out: 3.75 },
-  'gemini-3.8-flash':      { in: 0.75, out: 3.75 }
+  'gemini-3.8-flash':      { in: 0.75, out: 3.75 },
+  // 🆓 Free on Z.ai's pricing page (input, cached input and output all $0).
+  // Needs ZAI_API_KEY in the server environment or the call returns an error.
+  'glm-4.7-flash':         { in: 0, out: 0 },
+  'glm-4.5-flash':         { in: 0, out: 0 },
+  'glm-4.6v-flash':        { in: 0, out: 0 }
 };
 
 const BASE = (process.argv[2] || 'https://whatanagent.duckdns.org').replace(/\/+$/, '');
@@ -57,14 +62,14 @@ function money(n) { return '$' + n.toFixed(6); }
   const rows = [];
 
   for (const model of models) {
-    const isGemini = model.startsWith('gemini');
+    const isQwen = model.startsWith('qwen');
     let totalIn = 0, totalOut = 0, totalMs = 0, ok = 0;
     const replies = [];
 
     for (const msg of MESSAGES) {
-      const body = isGemini
-        ? { message: msg, knowledge: kb, model }
-        : { message: msg, knowledge: { ...kb, aiModel: model } };
+      const body = isQwen
+        ? { message: msg, knowledge: { ...kb, aiModel: model } }
+        : { message: msg, knowledge: kb, model };
       const t0 = Date.now();
       let d;
       try {
