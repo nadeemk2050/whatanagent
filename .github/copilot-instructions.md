@@ -81,7 +81,7 @@ Rules that follow from it:
 
 ## Model ids
 
-Only three providers are routed: Qwen, DeepSeek and Gemini 2.5 Flash. Never type a model id in a
+Only three providers are routed: Qwen, DeepSeek and Gemini 3.8 Flash. Never type a model id in a
 new section - import it from [aiProviders.mjs](../aiProviders.mjs):
 
 ```js
@@ -90,9 +90,10 @@ import { QWEN_TEXT_MODEL, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MOD
 
 - Text work > `QWEN_TEXT_MODEL` (cheapest capable engine, $0.16/M in, $0.47/M out).
 - Something a model must choose for itself > `DEFAULT_TEXT_MODEL`.
-- Gemini > `GEMINI_TEXT_CHAIN` (Gemini 2.5 Flash only) and only for media: PDFs, audio, images.
+- Gemini > `GEMINI_TEXT_CHAIN` (Gemini 3.8 Flash only) and only for media: PDFs, audio, images.
 - A stored value that may be stale > wrap it in `normaliseModelId()` before using it.
 
-Gemini 3.x ids were removed on purpose (`gemini-3.5-flash` = $9.00/M output). Do not add them
-back; if a newer Gemini is genuinely needed, set `GEMINI_FALLBACK_MODELS` in the environment so the
-choice is visible and reversible.
+Gemini 2.5 Flash was retired: Google now answers `400 "no longer available to new users"` for it,
+so the media chain had to move. Gemini stays media-only - Qwen writes every text reply. Other
+Gemini ids (`3.5-flash` legacy, `3.6`, `3.1-flash-lite`) stay unrouted; if one is genuinely needed,
+set `GEMINI_FALLBACK_MODELS` in the environment so the choice is visible and reversible.

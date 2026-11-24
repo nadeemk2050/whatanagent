@@ -108,20 +108,21 @@ export function backgroundModelFor(settings = {}) {
 //
 //   qwen3.8-flash        in $0.16   cache $0.016   out $0.47   ← default for everything
 //   deepseek-v4.1-flash  in $0.30   cache $0.030   out $1.20   ← strict JSON only
-//   gemini-2.5-flash     in $0.30   cache    —     out $2.50   ← media only
+//   gemini-3.8-flash     in $0.75   cache $0.075   out $3.75   ← media only
 //
-// Gemini is 5x Qwen on output, so a Gemini text call that Qwen could have answered is pure
-// waste. Gemini is kept for what only it can do here: reading PDFs and audio. Every other
-// gradient (3.5 / 3.6 / 3.8 / "latest") was removed: 3.5 costs $9.00/M out — 19x Qwen — and
-// the newer ids are all $0.75/$3.75, i.e. more expensive than 2.5 with no feature this app
-// uses. Nothing is silently upgraded: if Gemini 2.5 fails, the stack falls back to Qwen,
-// which is both cheaper AND better for us than any Gemini text model.
+// Gemini is 5x+ Qwen on output, so a Gemini text call that Qwen could have answered is pure
+// waste. Gemini is kept for what only it can do here: reading PDFs and audio. Gemini 2.5 Flash
+// was retired by Google (400 "no longer available to new users"), so the media chain moved to
+// 3.8 Flash - the id Google's own error message recommends, and the only one this app needs.
+// Flash-Lite ids are cheaper on paper but have not been verified for invoice/PDF reading.
+// Nothing is silently upgraded: if Gemini fails, the stack falls back to Qwen, which is both
+// cheaper AND better for us than any Gemini text model.
 //
 // GEMINI_FALLBACK_MODELS is the escape hatch: set it to a comma-separated list (for example
-// "gemini-3.8-flash") if Gemini 2.5 is ever retired and media reading breaks.
+// "gemini-3.5-flash-lite") so a replacement is visible and reversible without a code edit.
 export const QWEN_TEXT_MODEL = 'qwen3.8-flash';
 export const QWEN_VISION_MODEL = 'qwen3.8-omni-flash';
-export const GEMINI_TEXT_MODEL = 'gemini-2.5-flash';
+export const GEMINI_TEXT_MODEL = 'gemini-3.8-flash';
 
 function geminiChain() {
   const extra = String(process.env.GEMINI_FALLBACK_MODELS || '')
@@ -129,7 +130,7 @@ function geminiChain() {
   return Array.from(new Set([GEMINI_TEXT_MODEL, ...extra]));
 }
 
-/** Ordered Gemini ids to try — Gemini 2.5 only unless GEMINI_FALLBACK_MODELS opts in. */
+/** Ordered Gemini ids to try — Gemini 3.8 Flash only unless GEMINI_FALLBACK_MODELS opts in. */
 export const GEMINI_TEXT_CHAIN = geminiChain();
 export const GEMINI_MEDIA_CHAIN = GEMINI_TEXT_CHAIN;
 export const GEMINI_AUDIO_CHAIN = GEMINI_TEXT_CHAIN;
@@ -144,14 +145,14 @@ export const DEFAULT_TEXT_MODEL = QWEN_TEXT_MODEL;
 // them (AI staff agents, the WhatsApp knowledge base), so any read path must normalise.
 //
 // They map to the CHEAPEST CAPABLE TEXT ENGINE (Qwen), not to another Gemini: every one of these
-// fields drives text generation, and Qwen writes text at $0.47/M output against Gemini's $2.50/M.
+// fields drives text generation, and Qwen writes text at $0.47/M output against Gemini's $3.75/M.
 // Gemini is still used where only it can work (PDF/audio reading) — that is decided by the
-// message's MIME type in waWebClient, not by a stored model id. Without this normalisation a
-// stored "gemini-3.8-flash" would keep billing $3.75/M output forever.
+// message's MIME type in waWebClient, not by a stored model id. 3.8 Flash is NOT in this map:
+// it is the routed media model now, so a stored 3.8 must stay 3.8.
 export const RETIRED_MODEL_MAP = {
+  'gemini-2.5-flash': DEFAULT_TEXT_MODEL,
   'gemini-3.5-flash': DEFAULT_TEXT_MODEL,
   'gemini-3.6-flash': DEFAULT_TEXT_MODEL,
-  'gemini-3.8-flash': DEFAULT_TEXT_MODEL,
   'gemini-flash-latest': DEFAULT_TEXT_MODEL,
   'gemini-2.0-flash': DEFAULT_TEXT_MODEL,
   'gemini-1.5-flash': DEFAULT_TEXT_MODEL
