@@ -121,11 +121,11 @@ const steps = {
   'llms-txt': S('done', 'Served at /llms.txt: company facts, all materials with their URLs, key pages.'),
   ga4: S('todo', 'The tag is wired behind SITE.ga4Id and stays inert until the ID exists. Two routes: create the property in analytics.google.com (3 clicks) and send the G- id, or enable the Analytics Admin API in Google Cloud project 625553715649 and add seo-agent-service-24may2026@dominonad.iam.gserviceaccount.com as Editor, after which scripts/ga4-setup.mjs creates the property and stream automatically.'),
   'ga4-gsc': S('todo', 'Link GA4 to Search Console once both exist.'),
-  gbp: S('todo', 'Google Business Profile needs the owner: Barka yard address, phone +968 7694 2126, category and verification.'),
+  gbp: S('done', 'Profile exists and is verified — confirmed on Google 24 Nov 2026 (blue badge, "You manage this Business Profile"). Name ARABIAN POLYPLAST, category Plastic products supplier, phone +968 7694 2126, address JV64+9Q As-Saqsuq, 4.7 from 3 reviews, 432 customer interactions. Two things to align: the profile still shows opening at 09:00 while the site says 07:00, and secondary categories are missing.'),
   'facebook-page': S('todo', 'No Facebook Page connected for this site.'),
   linkedin: S('todo', 'No LinkedIn company page yet.'),
   directories: S('todo', 'Tier-1 citations for Oman/GCC scrap traders, all with identical NAP.'),
-  reviews: S('todo', 'Blocked until the Google Business Profile is verified.'),
+  reviews: S('doing', '3 Google reviews at 4.7 already. Reply to all three within 48 hours, then ask every satisfied buyer after each shipment. Target 10 reviews by mid-2027.'),
   'case-studies': S('todo', 'Waiting on real shipment and processing facts from the owner.'),
   'core-web-vitals': S('done', 'Lighthouse mobile 24 Nov 2026: performance 100, LCP 1.2s, FCP 1.2s, CLS 0, TBT 50ms, no render-blocking resources once the stylesheet was inlined.'),
   'image-optimisation': S('todo', 'Pipeline ready and tested: drop originals in photos/, run node build/photos.mjs — WebP at 1600/900/450, EXIF auto-rotate, manifest with real dimensions. Waiting on the photos themselves.'),
@@ -213,7 +213,8 @@ const DONE_TEXTS = [
   'Publish the legal pages',
   'Confirm the business hours',
   'Verify arabianpolyplast.com in Google Search Console',
-  'Grant the GSC service account access to the new property'
+  'Grant the GSC service account access to the new property',
+  'Verify the Google Business Profile'
 ];
 const keptTodos = existingTodos.map(t => DONE_TEXTS.includes(t.text) && t.status !== 'done'
   ? { ...t, status: 'done', done: true, doneAt: NOW, updatedAt: NOW }
