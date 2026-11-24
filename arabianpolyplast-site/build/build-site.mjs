@@ -86,7 +86,7 @@ function breadcrumbLd(items) {
 const ld = (obj) => '<script type="application/ld+json">' + JSON.stringify(obj) + '</script>';
 
 // ---------------------------------------------------------------- layout
-function head({ title, desc, canonical, dir = 'ltr', altUrl = '' }) {
+function head({ title, desc, canonical, dir = 'ltr', hreflang }) {
   return `<!doctype html>
 <html lang="${dir === 'rtl' ? 'ar' : 'en'}" dir="${dir}">
 <head>
@@ -95,13 +95,18 @@ function head({ title, desc, canonical, dir = 'ltr', altUrl = '' }) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${esc(canonical)}">
-${altUrl ? `<link rel="alternate" hreflang="en" href="${esc(canonical)}">\n<link rel="alternate" hreflang="ar" href="${esc(altUrl)}">\n<link rel="alternate" hreflang="x-default" href="${esc(canonical)}">` : ''}
+${hreflang ? `<link rel="alternate" hreflang="en" href="${esc(hreflang.en)}">\n<link rel="alternate" hreflang="ar" href="${esc(hreflang.ar)}">\n<link rel="alternate" hreflang="x-default" href="${esc(hreflang.en)}">` : ''}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${esc(SITE.shortName)}">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(canonical)}">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${esc(url('/assets/og-image.png'))}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(SITE.shortName)} — plastic and metal scrap buyers, suppliers and exporters in Oman">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${esc(url('/assets/og-image.png'))}">
 <meta name="theme-color" content="#0f3d3a">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/styles.css">
@@ -282,7 +287,7 @@ ${ctaBand()}`;
     title: 'Scrap Buyers in Oman — PET, HDPE, PVC, UPVC, Aluminium & Iron | Arabian Polyplast',
     desc: SITE.description,
     canonical: url('/'),
-    altUrl: url('/ar/')
+    hreflang: { en: url('/'), ar: url('/ar/') }
   }, body + '\n' + ld(orgLd));
 }
 
@@ -394,7 +399,8 @@ function contactPage() {
   return layout({
     title: 'Contact — Arabian Polyplast, Barka, Oman',
     desc: 'Contact Arabian Polyplast Trading LLC in As-Saqsuq, Barka, Oman for plastic scrap purchases, sales and export enquiries.',
-    canonical: url('/contact.html')
+    canonical: url('/contact'),
+    hreflang: { en: url('/contact'), ar: url('/ar/contact') }
   }, body + '\n' + ld(orgLd));
 }
 
@@ -536,7 +542,7 @@ ${ctaBand()}`;
     desc: AR.home.intro,
     canonical: url('/ar/'),
     dir: 'rtl',
-    altUrl: url('/')
+    hreflang: { en: url('/'), ar: url('/ar/') }
   }, body + '\n' + ld(orgLd));
 }
 
@@ -570,9 +576,9 @@ function arContact() {
   return layout({
     title: 'اتصل بنا — Arabian Polyplast، بركاء، عُمان',
     desc: 'تواصل مع Arabian Polyplast Trading LLC في بركاء، سلطنة عُمان لشراء وبيع خردة البلاستيك والتصدير.',
-    canonical: url('/ar/contact.html'),
+    canonical: url('/ar/contact'),
     dir: 'rtl',
-    altUrl: url('/contact.html')
+    hreflang: { en: url('/contact'), ar: url('/ar/contact') }
   }, body + '\n' + ld(orgLd));
 }
 
@@ -641,7 +647,7 @@ fs.writeFileSync(path.join(DIST, '_redirects'),
 fs.writeFileSync(path.join(DIST, SITE.indexNowKey + '.txt'), SITE.indexNowKey + '\n', 'utf8');
 
 // copy assets
-for (const f of ['styles.css', 'app.js', 'favicon.svg']) {
+for (const f of ['styles.css', 'app.js', 'favicon.svg', 'og-image.png']) {
   fs.copyFileSync(path.join(SRC, f), path.join(DIST, 'assets', f));
 }
 
