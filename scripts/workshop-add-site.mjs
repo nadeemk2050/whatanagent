@@ -107,7 +107,7 @@ const wsSite = {
 // ---------------------------------------------------------------- process
 const S = (status, note) => ({ status, note, at: NOW });
 const steps = {
-  'gsc-property': S('todo', 'Not created yet. Add the domain property sc-domain:arabianpolyplast.com (DNS TXT) and grant the service account in gscAccess access to it.'),
+  'gsc-property': S('doing', 'Verification TXT google-site-verification=2thOxY5MKuIrpOY6My_OAzIPFjPDY8K4oLgTF4OejgY is live at the apex — confirmed through Cloudflare 1.1.1.1 and Google public DNS on 24 Nov 2026. Waiting for the Verify click in Search Console, after which the service account is added as a Full user and the sitemap is submitted with scripts/gsc-submit.mjs.'),
   'index-follow': S('done', 'Live check 24 Nov 2026: no noindex meta on any page, robots.txt allows everything.'),
   'robots-txt': S('done', 'Served at /robots.txt with Sitemap: https://arabianpolyplast.com/sitemap.xml, no Disallow.'),
   'sitemap-google': S('todo', 'Blocked by gsc-property. Submit /sitemap.xml (26 URLs) once the property exists.'),
