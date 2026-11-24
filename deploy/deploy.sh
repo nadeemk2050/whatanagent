@@ -31,16 +31,29 @@ git fetch --depth 1 origin "$BRANCH" || { echo "FATAL: git fetch failed"; exit 1
 NEW_SHA="$(git rev-parse "origin/$BRANCH")"
 if [ "$PREV_SHA" = "$NEW_SHA" ]; then
   log "already up to date (${NEW_SHA:0:8}) — restarting anyway to pick up .env changes"
+  DEPS_CHANGED=0
 else
   log "updating ${PREV_SHA:0:8} -> ${NEW_SHA:0:8}"
+  # Installing deps wipes node_modules WHILE the old process is still serving, so a message that
+  # arrives mid-install fails with "Cannot find module .../openai/index.mjs". Only reinstall when
+  # the dependency manifest actually changed (or node_modules is missing) — code-only deploys skip it.
+  if git diff --quiet "$PREV_SHA" "$NEW_SHA" -- package.json package-lock.json 2>/dev/null && [ -d node_modules ]; then
+    DEPS_CHANGED=0
+  else
+    DEPS_CHANGED=1
+  fi
   git reset --hard "$NEW_SHA" || { echo "FATAL: reset failed"; exit 1; }
 fi
 
-log "installing production dependencies"
-if [ -f package-lock.json ]; then
-  npm ci --omit=dev || npm install --omit=dev || { echo "FATAL: npm install failed"; exit 1; }
+if [ "$DEPS_CHANGED" -eq 1 ]; then
+  log "installing production dependencies (manifest changed)"
+  if [ -f package-lock.json ]; then
+    npm ci --omit=dev || npm install --omit=dev || { echo "FATAL: npm install failed"; exit 1; }
+  else
+    npm install --omit=dev || { echo "FATAL: npm install failed"; exit 1; }
+  fi
 else
-  npm install --omit=dev || { echo "FATAL: npm install failed"; exit 1; }
+  log "dependencies unchanged — skipping npm install (no mid-deploy module gaps)"
 fi
 
 log "restarting $SERVICE"
@@ -63,7 +76,7 @@ fi
 
 log "HEALTH CHECK FAILED — rolling back to ${PREV_SHA:0:8}"
 git reset --hard "$PREV_SHA"
-if [ -f package-lock.json ]; then npm ci --omit=dev >/dev/null 2>&1 || npm install --omit=dev >/dev/null 2>&1; fi
+if [ "$DEPS_CHANGED" -eq 1 ] && [ -f package-lock.json ]; then npm ci --omit=dev >/dev/null 2>&1 || npm install --omit=dev >/dev/null 2>&1; fi
 sudo systemctl restart "$SERVICE"
 sleep 5
 CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HEALTH_URL" 2>/dev/null)"
