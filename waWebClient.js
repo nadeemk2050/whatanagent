@@ -11,6 +11,7 @@ import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, e
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId, LUNA_TEXT_MODEL } from './aiProviders.mjs';
+import { faqPromptBlock } from './faqRetrieval.mjs';
 import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
@@ -6075,6 +6076,29 @@ export function getWaWebChatContext(jid) {
   };
 }
 
+// Recent one-to-one chats with enough history for the LLM Tank distiller (nightly auto-learn).
+// Group chatter is skipped on purpose: it is noisy and rarely contains reusable business answers.
+export function listWaWebChatsForTank({ minMessages = 6, limit = 30, maxChars = 6000 } = {}) {
+  const out = [];
+  for (const chat of waWebState.chats.values()) {
+    if (!chat || chat.isGroup) continue;
+    const msgs = Array.isArray(chat.messages) ? chat.messages : [];
+    if (msgs.length < minMessages) continue;
+    let transcript = '';
+    try { transcript = (getWaWebChatContext(chat.id) || {}).transcript || ''; } catch (e) { continue; }
+    if (!transcript || transcript === 'No messages recorded yet.') continue;
+    out.push({
+      jid: chat.id,
+      name: chat.name || '',
+      messageCount: msgs.length,
+      lastAt: chat.timestamp || 0,
+      transcript: transcript.slice(-maxChars)
+    });
+  }
+  out.sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  return out.slice(0, Math.max(1, Number(limit) || 30));
+}
+
 // Helper: Get overview of all active chats for AI Copilot general discussion
 export function getWaWebAllChatsSummary() {
   const chats = Array.from(waWebState.chats.values())
@@ -6540,7 +6564,7 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
     prompt += '--- BUSINESS BACKGROUND & POLICIES ---\n' + kb.customKnowledgeText.trim() + '\n\n';
   }
 
-  if (Array.isArray(kb.faqs) && kb.faqs.length > 0) {
+  if (!opts.omitFaqs && Array.isArray(kb.faqs) && kb.faqs.length > 0) {
     prompt += '--- FREQUENTLY ASKED QUESTIONS (FAQS) ---\n';
     kb.faqs.forEach((f, i) => {
       if (f.question && f.answer) {
@@ -6610,6 +6634,18 @@ export function waReplyMaxTokens() {
   if (Number.isFinite(n) && n >= 120) return Math.min(4000, Math.round(n));
   return 900;
 }
+
+// 📚 FAQ library size at which the prompt switches from "inline everything" to "retrieve what
+// THIS message needs". A small library stays inline (byte-identical prompt, best cache hit); a
+// large one would cost more, answer slower and get LESS accurate if dumped whole.
+const FAQ_INLINE_LIMIT = (() => {
+  const n = Number(process.env.FAQ_INLINE_LIMIT);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : 12;
+})();
+const FAQ_RETRIEVAL_TOP_K = (() => {
+  const n = Number(process.env.FAQ_RETRIEVAL_TOP_K);
+  return Number.isFinite(n) && n >= 1 ? Math.min(12, Math.round(n)) : 5;
+})();
 
 // Slightly warmer than 0.4 so replies read naturally instead of robotic. 0.2 sounds
 // stiff; 1.0 wanders. Override per server with WA_REPLY_TEMPERATURE.
@@ -6706,7 +6742,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     // 🌍 How many messages the CONTACT has sent in this chat (the incoming one is already in the
     // transcript). 1 = first message -> reply in English; 2+ = mirror their language, tone and need.
     const customerTurns = Math.max(1, (String((chatContext && chatContext.transcript) || '').match(/👤/g) || []).length);
-    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext, brainAgent, { customerTurns });
+    // 📚 FAQ RETRIEVAL: once the library is large, injecting every entry makes replies slower,
+    // costlier and less accurate. Score the incoming message and inject only the relevant few.
+    const allFaqs = Array.isArray(waWebKnowledgeBase.faqs) ? waWebKnowledgeBase.faqs : [];
+    const useFaqRetrieval = allFaqs.length > FAQ_INLINE_LIMIT;
+    const faqBlock = useFaqRetrieval
+      ? faqPromptBlock(customerMessage + '\n' + String((chatContext && chatContext.transcript) || '').slice(-2000), allFaqs, { topK: FAQ_RETRIEVAL_TOP_K })
+      : '';
+    if (useFaqRetrieval) console.log('[WA-WEB FAQ] library=' + allFaqs.length + ' -> ' + (faqBlock ? 'injecting matching entries' : 'nothing relevant for this message'));
+    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext, brainAgent, { customerTurns, omitFaqs: useFaqRetrieval });
 
     const cleanPhone = (jid || '').split('@')[0].split(':')[0];
     // Authoritative classification (address-book check), not the display name - the display name is
@@ -6775,6 +6819,12 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       systemPrompt = overridePrompt;
     } else {
       stableParts.push(knowledgePrompt);
+
+      // Retrieved FAQ entries are per-message, so they belong in the semi block: the stable prefix
+      // above still caches exactly as before, and an unrelated message simply adds nothing.
+      if (faqBlock) {
+        semiParts.push('--- 📚 RELEVANT FAQ FOR THIS MESSAGE (from the company library) ---\n' + faqBlock + '\n--- END RELEVANT FAQ ---');
+      }
 
       // 📖 APP RULE BOOK — fetched here rather than appended at the end, because
       // withRuleBook() appends and the appended text would land AFTER the transcript and

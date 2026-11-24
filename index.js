@@ -24,6 +24,7 @@ import { registerCandlBlInboxRoutes, startCandlBlWatcher } from './candlBlWatche
 import { registerCandlXrayRoutes } from './candlBlXray.mjs';
 import { registerGDriveService } from './gdriveService/index.mjs';
 import { registerAgentsRoutes, maybeAgentAutoLearn } from './agentsApi.mjs';
+import { registerLlmTankRoutes } from './llmTankApi.mjs';
 import { attachReminderDeps, registerReminderRoutes, reminderTick } from './reminderEngine.mjs';
 import { registerContactIntelRoutes } from './contactIntel.mjs';
 import { initContactStore, listContacts, getContact, setContact, deleteContact, bulkSetContacts, contactPhones, getContactStoreInfo } from './contactStore.mjs';
@@ -207,6 +208,8 @@ startCandlBlWatcher();
 registerGDriveService(app);
 // Ã°Å¸Å½â€œ AI Staff Academy (hire/train/deploy named AI staff; every route is fail-closed admin guarded)
 registerAgentsRoutes(app, db);
+// 🧠 LLM Tank — automatic learning from real chats, landed in an approval queue (admin guarded)
+const llmTankEngine = registerLlmTankRoutes(app, db);
 // ⏰ Reminder plans API (admin-token guarded) + a simple management page.
 registerReminderRoutes(app, { adminToken: process.env.ADMIN_TOKEN });
 registerPersonaRoutes(app, { adminToken: process.env.ADMIN_TOKEN });
@@ -4969,9 +4972,13 @@ function startFollowUpScheduler() {
     if (goldAgent && typeof goldAgent.maybePoll === 'function') {
       goldAgent.maybePoll();
     }
-    // Ã¯Â¿Â½Ã°Å¸Â§Â  Contact Brain: nightly-style learning Ã¢â‚¬â€ studies YOUR past messages per contact (self-throttled)
+    // Ã¯Â¿Â½Ã°Å¸Â§Â  Contact Brain: nightly-style learning Ã¢â‚¬â€ studies YOUR past messages per contact (self-throttled)
     if (brainEngine && typeof brainEngine.maybeLearn === 'function') {
       brainEngine.maybeLearn();
+    }
+    // 🧠 LLM Tank: nightly distillation of real chats into reviewable FAQ / note candidates
+    if (llmTankEngine && typeof llmTankEngine.maybeRun === 'function') {
+      llmTankEngine.maybeRun();
     }
     // Ã°Å¸Å’Â± AI Staff Academy: staff under training study their assigned WhatsApp chats (self-throttled, 6h)
     maybeAgentAutoLearn();
