@@ -340,6 +340,42 @@
             overflow: hidden !important;
         }
 
+        /* Edit Task = full-page "bleeding" form with its own scrollbar, so every field can be
+           read and reached without the modal trapping the page. */
+        #edit-task-modal {
+            padding: 0 !important;
+            align-items: stretch !important;
+            justify-content: stretch !important;
+        }
+        #edit-task-modal > div {
+            width: 100% !important;
+            max-width: none !important;
+            height: 100% !important;
+            max-height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            border-radius: 0 !important;
+            border: none !important;
+            overflow: hidden !important;
+        }
+        #edit-task-modal > div > div:first-child {
+            flex: none;
+        }
+        #edit-task-form {
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain;
+        }
+        /* Save button stays visible while the form scrolls. */
+        #edit-task-form > div:last-child {
+            position: sticky;
+            bottom: -24px;
+            background: #fbf8f0;
+            padding: 12px 0 4px;
+            border-top: 1px solid #e6e0d0;
+            z-index: 2;
+        }
+
         /* All Modal Headers: Brushed Titanium with Antique Gold Hairline */
         #notification-modal > div > div:first-child,
         #profile-modal > div > div:first-child,

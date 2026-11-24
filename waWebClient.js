@@ -1821,16 +1821,27 @@ async function alignNotifyTick() {
       const ae = String(v.assigneeEmail || '').toLowerCase();
       let target = '';
       let targetName = '';
-      if (ae && alignStaffWaMap.get(ae) && alignStaffWaMap.get(ae).wa) {
-        target = alignStaffWaMap.get(ae).wa;
-        targetName = alignStaffWaMap.get(ae).name || ae.split('@')[0];
+      const assignee = ae ? alignStaffWaMap.get(ae) : null;
+      if (assignee && assignee.wa) {
+        target = assignee.wa;
+        targetName = assignee.name || ae.split('@')[0];
       } else {
-        for (const s of alignStaffWaMap.values()) { if (s.wa) { target = s.wa; targetName = s.name || 'team'; break; } }
-        if (!target) target = normalizeWaNumber(waWebKnowledgeBase.bossPhone || (waWebKnowledgeBase.bossKnowledge && waWebKnowledgeBase.bossKnowledge.bossPhone) || '+971529244592');
+        // NEVER guess a recipient. A General/unassigned task (or an assignee with no WhatsApp
+        // number) belongs to the BOSS. Falling back to "the first staff member with a number"
+        // is exactly how a reminder for a task nobody assigned ended up in a colleague's chat.
+        const boss = normalizeWaNumber(
+          process.env.BOSS_PHONE ||
+          process.env.OWNER_PHONE_NUMBER ||
+          waWebKnowledgeBase.bossPhone ||
+          (waWebKnowledgeBase.bossKnowledge && waWebKnowledgeBase.bossKnowledge.bossPhone) ||
+          ''
+        );
+        target = boss;
+        targetName = boss ? 'Boss (owner)' : '';
       }
       if (!target) {
-        await alignSetDoc(entry.ref, { reminderSentAt: now, reminderSkipReason: 'no-whatsapp-number' }).catch(() => {});
-        console.log('[ALIGN WA] ⚠️ Task due but no WhatsApp number saved anywhere - reminder skipped: "' + String(v.description || '').substring(0, 50) + '"');
+        await alignSetDoc(entry.ref, { reminderSentAt: now, reminderSkipReason: 'no-owner-whatsapp-number' }).catch(() => {});
+        console.log('[ALIGN WA] ⚠️ Task due but no WhatsApp number for the assignee OR the owner - reminder skipped: "' + String(v.description || '').substring(0, 50) + '"');
         continue;
       }
       const dueStr = new Date(dueMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
