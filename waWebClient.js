@@ -10,7 +10,7 @@ import { doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, writeBatch
 import { brainPromptSectionForJid, getBrainForReply, getBrain, saveBrainDraft, escalateBrain, registerBrainAliasResolver, registerBrainPowersSaveHook, buildBrainPromptSection, isFamilyRelationship, isBusinessRelationship, maybeLearnVoice } from './contactBrain.mjs';
 import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mjs';
 import { recordAiCall } from './aiTracker.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId, LUNA_TEXT_MODEL } from './aiProviders.mjs';
 import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
@@ -6476,7 +6476,7 @@ function agentBusinessKbText() {
   return parts.join('\n\n');
 }
 
-export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null) {
+export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null, opts = {}) {
   // 🎓 AI Staff agent assigned to this contact: the agent's own prompt (plus its training
   // knowledge, corrections, examples and the universal safety block) replaces the generic
   // assistant prompt. With no agent the behaviour below is byte-for-byte unchanged.
@@ -6494,13 +6494,38 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
     return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '', { forJid });
   }
   const kb = waWebKnowledgeBase;
-  let prompt = identity + (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' +
-    '--- 🌍 UNIVERSAL MULTILINGUAL PROTOCOL (ALL LANGUAGES SUPPORTED) ---\n' +
-    '1. AUTO-DETECT SENDER LANGUAGE: Detect the language, script, or dialect of the customer (Arabic, English, Roman Urdu, Urdu script, Hindi, Roman Hindi, Tagalog, Russian, French, Spanish, Chinese, Malayalam, Bengali, Pashto, Persian/Farsi, etc.).\n' +
-    '2. NATIVE MIRRORING: You MUST reply in the EXACT SAME language, dialect, and script used by the customer. If they message in Arabic -> reply in natural business Arabic. If they write in Roman Urdu (e.g. "bhai price kya hai?") -> reply fluently in Roman Urdu. If English -> reply in English. EXCEPTION: Hindi is NEVER mirrored - see Rule 5.\n' +
-    '3. MULTIMODAL AUDIO/VOICE NOTES: Understand voice notes spoken in any language and respond in the same native language (except Hindi - Rule 5).\n' +
-    '4. PRESERVE ACCURACY: Keep prices, invoice numbers, product names, and dates crystal clear across all languages.\n' +
-    '5. 🚫 STRICT NO-HINDI RULE: NEVER write or send text in Hindi (Devanagari script or Hindi-style wording) - not even when the customer writes in Hindi. Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and any other language. If the customer uses Hindi, ALWAYS reply in clean Roman Urdu (Urdu in English letters) or English.\n\n';
+  // 🌍 LANGUAGE PROTOCOL. The owner's rule (2026-11): the FIRST reply in a chat is always clear
+  // English; from the SECOND contact message onward the assistant reads the transcript and mirrors
+  // the contact's language, script, tone and theme. When no turn count is known (dashboard tools,
+  // sandbox-style callers) the original always-mirror protocol is kept unchanged.
+  const turns = Number(opts && opts.customerTurns);
+  let languageBlock;
+  if (Number.isFinite(turns) && turns > 0 && turns <= 1) {
+    languageBlock =
+      '--- 🌍 LANGUAGE PROTOCOL (FIRST MESSAGE FROM THIS CONTACT) ---\n' +
+      '1. THIS REPLY IS IN ENGLISH: it is the contact\'s first message in this chat. Reply in clear, simple, professional English — even if they wrote in another language.\n' +
+      '2. READ THEM SILENTLY: note their language, script, dialect, tone, mood and the theme/need behind their message (prices, order, complaint, information) — you will mirror all of that from the next message onward.\n' +
+      '3. KEEP FACTS EXACT: prices, invoice numbers, product names, quantities and dates unchanged.\n' +
+      '4. 🚫 STRICT NO-HINDI RULE: NEVER write Hindi (Devanagari script or Hindi-style wording). Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and other languages. If the contact uses Hindi, mirror it later in clean Roman Urdu.\n\n';
+  } else if (Number.isFinite(turns) && turns > 1) {
+    languageBlock =
+      '--- 🌍 LANGUAGE PROTOCOL (CONVERSATION IN PROGRESS) ---\n' +
+      '1. ANALYSE FIRST: read the whole transcript and judge the contact\'s language, script, dialect, tone, register, mood and the THEME/NEED of the conversation (rate enquiry, order status, complaint, paperwork, small talk...).\n' +
+      '2. THEN MIRROR: reply in the SAME language and style they are using — English -> natural English; Roman Urdu -> fluent Roman Urdu; Urdu script -> Urdu script; Arabic -> natural business Arabic; any other language -> that language.\n' +
+      '3. IF THE SIGNAL IS UNCLEAR OR MIXED (only emojis, numbers, one word, or a language switch mid-chat), reply in clear English.\n' +
+      '4. ANSWER THE ACTUAL NEED in their own register: formal for a formal buyer, casual for a casual one; no tangents, no scripted sales lines.\n' +
+      '5. KEEP FACTS EXACT: prices, invoice numbers, product names, quantities and dates crystal clear in every language.\n' +
+      '6. 🚫 STRICT NO-HINDI RULE: NEVER write Hindi (Devanagari script or Hindi-style wording) — not even when the contact writes in Hindi. Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and other languages. If the contact uses Hindi, reply in clean Roman Urdu or English.\n\n';
+  } else {
+    languageBlock =
+      '--- 🌍 UNIVERSAL MULTILINGUAL PROTOCOL (ALL LANGUAGES SUPPORTED) ---\n' +
+      '1. AUTO-DETECT SENDER LANGUAGE: Detect the language, script, or dialect of the customer (Arabic, English, Roman Urdu, Urdu script, Hindi, Roman Hindi, Tagalog, Russian, French, Spanish, Chinese, Malayalam, Bengali, Pashto, Persian/Farsi, etc.).\n' +
+      '2. NATIVE MIRRORING: reply in the SAME language, dialect and script used by the customer. If they message in Arabic -> natural business Arabic. Roman Urdu (e.g. "bhai price kya hai?") -> fluent Roman Urdu. English -> English. EXCEPTION: Hindi is NEVER mirrored - see Rule 5.\n' +
+      '3. MULTIMODAL AUDIO/VOICE NOTES: understand voice notes in any language and respond in the same native language (except Hindi - Rule 5).\n' +
+      '4. PRESERVE ACCURACY: keep prices, invoice numbers, product names and dates crystal clear across all languages.\n' +
+      '5. 🚫 STRICT NO-HINDI RULE: NEVER write or send text in Hindi (Devanagari script or Hindi-style wording) - not even when the customer writes in Hindi. Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and any other language. If the customer uses Hindi, ALWAYS reply in clean Roman Urdu (Urdu in English letters) or English.\n\n';
+  }
+  let prompt = identity + (kb.systemPromptInstructions || 'You are the WhatsApp AI Business Assistant.') + '\n\n' + languageBlock;
 
   if (Array.isArray(kb.rules) && kb.rules.length > 0) {
     prompt += '--- STRICT MANDATORY AI RULES (MUST BE STRICTLY OBEYED) ---\n';
@@ -6678,7 +6703,10 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       } catch (e) { console.warn('[WA-WEB AGENT] resolve failed: ' + (e.message || '').slice(0, 120)); }
     }
 
-    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext, brainAgent);
+    // 🌍 How many messages the CONTACT has sent in this chat (the incoming one is already in the
+    // transcript). 1 = first message -> reply in English; 2+ = mirror their language, tone and need.
+    const customerTurns = Math.max(1, (String((chatContext && chatContext.transcript) || '').match(/👤/g) || []).length);
+    const knowledgePrompt = buildWaWebKnowledgeSystemPrompt(chatContext, brainAgent, { customerTurns });
 
     const cleanPhone = (jid || '').split('@')[0].split(':')[0];
     // Authoritative classification (address-book check), not the display name - the display name is
@@ -6875,7 +6903,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       targetModel
       || (brainAgent && !brainAgent.isDefault ? brainAgent.model : '')
       || waWebKnowledgeBase.aiModel
-      || DEFAULT_TEXT_MODEL
+      || (openaiKey ? LUNA_TEXT_MODEL : DEFAULT_TEXT_MODEL)
     );
     // Circuit breaker: when Gemini is out of quota, immediately move TEXT replies to the 2nd engine
     // in the chain (Qwen), and only then DeepSeek.
@@ -6929,6 +6957,20 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
               if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via DeepSeek ' + dm + ' fallback'); return t; }
             } catch (e) { noteProviderError('deepseek', e); console.warn('[WA-WEB AI] DeepSeek ' + dm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
           }
+        } else if (p === 'openai' && openaiKey) {
+          // GPT-6 Luna: `max_tokens` and non-default temperature are rejected by this family, so
+          // only max_completion_tokens is sent.
+          const { default: OpenAI } = await import('openai');
+          const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
+          try {
+            const comp = await openai.chat.completions.create({
+              messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userText }],
+              model: LUNA_TEXT_MODEL,
+              max_completion_tokens: replyMaxTokens
+            });
+            const t = (comp.choices[0]?.message?.content || '').trim();
+            if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via GPT-6 Luna fallback'); return t; }
+          } catch (e) { noteProviderError('openai', e); console.warn('[WA-WEB AI] Luna fallback failed: ' + (e.message || '').substring(0, 110)); }
         } else if (p === 'qwen' && qwenKey) {
           const { default: OpenAI } = await import('openai');
           const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
@@ -7142,9 +7184,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
                   ]
                 }
               ],
-              model: chosenModel.startsWith('gpt') ? chosenModel : 'gpt-4o',
-              temperature: WA_REPLY_TEMPERATURE,
-              max_tokens: replyMaxTokens
+              model: LUNA_TEXT_MODEL,
+              max_completion_tokens: replyMaxTokens
             });
             return comp.choices[0]?.message?.content || null;
           }
@@ -7230,7 +7271,9 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       });
       if (qtxt) return qtxt;
       throw new Error('Qwen returned an empty reply');
-    } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey) {
+    } else if ((chosenModel.startsWith('gpt') || chosenModel.startsWith('o')) && openaiKey && providerHealthy('openai')) {
+      // 💸 GPT-6 Luna, direct from OpenAI. Measured quirks: `max_tokens` is rejected (must be
+      // `max_completion_tokens`) and `temperature` only accepts its default — so neither is sent.
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
@@ -7238,14 +7281,13 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
           { role: 'system', content: systemPrompt },
           { role: 'user', content: customerMessage }
         ],
-        model: chosenModel || 'gpt-4o-mini',
-        temperature: WA_REPLY_TEMPERATURE,
-        max_tokens: replyMaxTokens
+        model: chosenModel === 'gpt' ? LUNA_TEXT_MODEL : chosenModel,
+        max_completion_tokens: replyMaxTokens
       });
       const t = comp.choices[0]?.message?.content || null;
       recordAiCall({
         provider: 'openai',
-        model: chosenModel || 'gpt-4o-mini',
+        model: chosenModel === 'gpt' ? LUNA_TEXT_MODEL : chosenModel,
         area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ')',
         isAutoFetch: false,
         prompt: customerMessage,
@@ -7255,8 +7297,38 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         cachedTokens: cachedTokensFrom(comp)
       });
       return t;
+    } else if (qwenKey && providerHealthy('qwen')) {
+      // Automatic Fallback 1: Qwen (cheapest competent engine — $0.47/M out against DeepSeek's
+      // $1.20 and Gemini's $3.75, so it backs up Luna before either of them is tried).
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
+      for (const qm of qwenCandidates) {
+        try {
+          const comp = await openai.chat.completions.create({
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
+            model: qm,
+            temperature: WA_REPLY_TEMPERATURE,
+            max_tokens: replyMaxTokens,
+            extra_body: { enable_thinking: false }
+          });
+          const t = (comp.choices[0]?.message?.content || '').trim();
+          if (!t) continue;
+          recordAiCall({
+            provider: 'qwen',
+            model: qm,
+            area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback 1]',
+            isAutoFetch: false,
+            prompt: customerMessage,
+            response: t,
+            tokensIn: comp.usage?.prompt_tokens || 0,
+            tokensOut: comp.usage?.completion_tokens || 0,
+            cachedTokens: cachedTokensFrom(comp)
+          });
+          return t;
+        } catch (e) { noteProviderError('qwen', e); console.warn('[WA-WEB AI] Qwen ' + qm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
+      }
     } else if (deepseekKey && providerHealthy('deepseek')) {
-      // Automatic Fallback 1: DeepSeek
+      // Automatic Fallback 2: DeepSeek
       const { default: OpenAI } = await import('openai');
       const openai = new OpenAI({ baseURL: deepseekBase, apiKey: deepseekKey, timeout: 45000 });
       const comp = await openai.chat.completions.create({
@@ -7280,7 +7352,8 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       });
       return t;
     } else if (geminiKey && providerHealthy('gemini')) {
-      // Automatic Fallback 2: Gemini (2.5 Flash only — see aiProviders.mjs)
+      // Automatic Fallback 3: Gemini (the media engine — only reached when Luna, Qwen and DeepSeek
+      // are all unavailable).
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(geminiKey);
       const model = genAI.getGenerativeModel({ model: GEMINI_TEXT_CHAIN[0], generationConfig: { maxOutputTokens: replyMaxTokens } });
@@ -7298,36 +7371,6 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         cachedTokens: cachedTokensFrom(res.response)
       });
       return t;
-    } else if (qwenKey && providerHealthy('qwen')) {
-      // Automatic Fallback 3: Qwen (Alibaba Model Studio, OpenAI-compatible) — the most reliable
-      // engine whenever Gemini is out of quota and the DeepSeek key is unavailable.
-      const { default: OpenAI } = await import('openai');
-      const openai = new OpenAI({ baseURL: qwenBase, apiKey: qwenKey, timeout: 45000 });
-      for (const qm of qwenCandidates) {
-        try {
-          const comp = await openai.chat.completions.create({
-            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customerMessage }],
-            model: qm,
-            temperature: WA_REPLY_TEMPERATURE,
-            max_tokens: replyMaxTokens,
-            extra_body: { enable_thinking: false }
-          });
-          const t = (comp.choices[0]?.message?.content || '').trim();
-          if (!t) continue;
-          recordAiCall({
-            provider: 'qwen',
-            model: qm,
-            area: 'WhatsApp Auto-Reply (' + (senderName || 'Customer') + ') [Fallback 3]',
-            isAutoFetch: false,
-            prompt: customerMessage,
-            response: t,
-            tokensIn: comp.usage?.prompt_tokens || 0,
-            tokensOut: comp.usage?.completion_tokens || 0,
-            cachedTokens: cachedTokensFrom(comp)
-          });
-          return t;
-        } catch (e) { noteProviderError('qwen', e); console.warn('[WA-WEB AI] Qwen ' + qm + ' fallback failed: ' + (e.message || '').substring(0, 110)); }
-      }
     }
   } catch (err) {
     console.warn('[WA-WEB KB] Error in generateWaWebAutoBotReply:', err.message);
@@ -7341,7 +7384,7 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
     }
     // AUTOMATIC SWITCH (rotating order): the FIRST fallback alternates between the engines, and any
     // provider that failed with 401/403/429 is skipped until its health window expires.
-    const failedFamily = /^gemini/i.test(chosenModel) ? 'gemini' : (/^deepseek/i.test(chosenModel) ? 'deepseek' : (/^qwen/i.test(chosenModel) ? 'qwen' : ''));
+    const failedFamily = /^gemini/i.test(chosenModel) ? 'gemini' : (/^deepseek/i.test(chosenModel) ? 'deepseek' : (/^qwen/i.test(chosenModel) ? 'qwen' : (/^gpt/i.test(chosenModel) ? 'openai' : '')));
     // Remember WHICH provider failed so the rotation skips it next time (must be declared first — TDZ)
     if (failedFamily) noteProviderError(failedFamily, err);
     if (tryTextProvider && cheapOrder) {
@@ -7356,12 +7399,12 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
         const openai = new OpenAI({ apiKey: openaiKey, timeout: 45000 });
         const comp = await openai.chat.completions.create({
           messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: txtIn }],
-          model: 'gpt-4o-mini',
-          temperature: WA_REPLY_TEMPERATURE
+          model: LUNA_TEXT_MODEL,
+          max_completion_tokens: replyMaxTokens
         });
         const t = comp.choices[0]?.message?.content || null;
-        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via OpenAI fallback'); return t; }
-      } catch (e3) { console.warn('[WA-WEB AI] OpenAI fallback failed:', (e3.message || '').substring(0, 140)); }
+        if (t) { console.log('[WA-WEB AI] ⛑️ Recovered via GPT-6 Luna fallback'); return t; }
+      } catch (e3) { console.warn('[WA-WEB AI] Luna fallback failed:', (e3.message || '').substring(0, 140)); }
     }
   }
   return null;

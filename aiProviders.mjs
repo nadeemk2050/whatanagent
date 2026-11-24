@@ -173,8 +173,10 @@ export const GEMINI_TEXT_CHAIN = geminiChain();
 export const GEMINI_MEDIA_CHAIN = GEMINI_TEXT_CHAIN;
 export const GEMINI_AUDIO_CHAIN = GEMINI_TEXT_CHAIN;
 
-/** Cheapest-first order for "any working text engine" fallbacks. */
-export const CHEAP_TEXT_ORDER = ['qwen', 'deepseek', 'gemini'];
+/** Cheapest-first order for "any working text engine" fallbacks. GPT-6 Luna leads (cheapest
+ * measured cost per WhatsApp reply: $0.10 in / $0.50 out with $0.01 cache reads), Qwen is the
+ * first backup. Providers without a key are simply skipped by the caller. */
+export const CHEAP_TEXT_ORDER = ['openai', 'qwen', 'deepseek', 'gemini'];
 
 /** The model a new agent/section gets when nobody chose one: cheapest capable text engine. */
 export const DEFAULT_TEXT_MODEL = QWEN_TEXT_MODEL;
