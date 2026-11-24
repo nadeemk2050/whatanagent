@@ -12,28 +12,28 @@ export const DEEPSEEK_DASHSCOPE_MODEL = 'deepseek-v4.1-flash';
 export const DEEPSEEK_DIRECT_MODEL = 'deepseek-flash';
 
 // ============================================================================
-// 💸 Z.ai (Zhipu) — OpenAI-compatible. Paid ids only.
+// 💸 Z.ai (Zhipu) — OpenAI-compatible. GLM 5.3 family only.
 //
-// The free pool (GLM-4.7-Flash / 4.5-Flash / 4.6V-Flash) was removed on purpose:
-// measured live, it answers 1305 "service overloaded" far too often to be a
-// fallback — an engine that fails when you need it is worse than no engine.
-// Paid ids answer 1113 "Insufficient balance" until the Z.ai account is
-// recharged, so nothing here activates by accident.
+// Older ids (4.7 / 4.5 / 4.6 / Flash) and the free pool were dropped: the free pool
+// answers 1305 "service overloaded", and 4.7-class ids are superseded here.
 //
-//   glm-4.7-flashx  in $0.07  cache $0.01  out $0.40  ← cheapest that can turn
-//                                                      thinking OFF (chat-ready)
-//   glm-5.3-flash   in $0.15  cache $0.03  out $0.50  ← newest, but ALWAYS thinks
-//                                                      (low/high/max only), so
-//                                                      it is slower and bills
-//                                                      hidden output tokens
+// Measured on this key (Nov 2026):
+//   • GLM-5.3 cannot switch thinking OFF (error 1210), but `reasoning_effort: "low"`
+//     returned 0 reasoning tokens — that is the setting chat replies should use.
+//   • Paid ids answer 1113 "Insufficient balance" until the Z.ai account is recharged.
+//
+//   glm-5.3-flash   in $0.15  cache $0.03  out $0.50  ← best value, 1M context
+//   glm-5.3-flashx  in $0.37  cache $0.075 out $1.25  ← faster (~200 tok/s), same class
+//   glm-5.3         in $1.40  cache $0.26  out $4.40  ← flagship reasoning, not for chat
 // ============================================================================
 export const ZAI_COMPAT_BASE = 'https://api.z.ai/api/paas/v4';
-export const GLM_CHEAP_TEXT_MODEL = 'glm-4.7-flashx';
-export const GLM_LATEST_FLASH_MODEL = 'glm-5.3-flash';
-export const GLM_PAID_MODELS = [GLM_CHEAP_TEXT_MODEL, GLM_LATEST_FLASH_MODEL];
+export const GLM_TEXT_MODEL = 'glm-5.3-flash';
+export const GLM_FAST_MODEL = 'glm-5.3-flashx';
+export const GLM_FLAGSHIP_MODEL = 'glm-5.3';
+export const GLM_PAID_MODELS = [GLM_TEXT_MODEL, GLM_FAST_MODEL, GLM_FLAGSHIP_MODEL];
 
-/** GLM-5.3 cannot disable thinking; everything cheaper can. */
-export const glmThinkingFor = (model) => (/^glm-5\.3/.test(String(model || '')) ? { type: 'low' } : { type: 'disabled' });
+/** 5.3 cannot turn thinking off; "low" measured 0 reasoning tokens, so chat uses it. */
+export const GLM_REASONING_EFFORT = 'low';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const first = (...vals) => {

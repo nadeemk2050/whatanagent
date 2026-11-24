@@ -13,16 +13,12 @@
 // plus the Qwen baseline this app already uses. A model with no published
 // price prints "n/a" instead of a guessed number.
 const PRICES = {
-  'qwen3.8-flash':         { in: 0.16, out: 0.47 },
-  'gemini-2.5-flash':      { in: 0.30, out: 2.50 },
-  'gemini-3.1-flash-lite': { in: 0.25, out: 1.50 },
-  'gemini-3.5-flash':      null,                       // legacy id, price not published
-  'gemini-3.6-flash':      { in: 0.75, out: 3.75 },
-  'gemini-3.8-flash':      { in: 0.75, out: 3.75 },
-  // 💸 Z.ai paid ids (no free tier: the free pool answers "service overloaded").
-  // A call only succeeds once the Z.ai account has a balance.
-  'glm-4.7-flashx':        { in: 0.07, out: 0.40 },
-  'glm-5.3-flash':         { in: 0.15, out: 0.50 }
+  'qwen3.8-flash':  { in: 0.16, out: 0.47 },   // current production default
+  'gemini-3.8-flash': { in: 0.75, out: 3.75 }, // media engine (3.8 now the live one)
+  // 💸 Z.ai GLM 5.3 family (paid; needs a balance on the Z.ai account).
+  'glm-5.3-flash':  { in: 0.15, out: 0.50 },
+  'glm-5.3-flashx': { in: 0.37, out: 1.25 },
+  'glm-5.3':        { in: 1.40, out: 4.40 }
 };
 
 const BASE = (process.argv[2] || 'https://whatanagent.duckdns.org').replace(/\/+$/, '');
