@@ -34,6 +34,7 @@ const NOTES = [
   'LIVE static site (35 URLs: 29 English + 6 Arabic material pages) on Cloudflare Pages, built by arabianpolyplast-site/build/build-site.mjs.',
   'Search: clean URLs everywhere (Pages 308-redirects .html), self-referencing canonicals, sitemap 35 URLs, robots.txt clean, IndexNow key at the root and every URL accepted on each deploy. Search Console domain property verified 24 Nov 2026 and Bing verified the same day.',
   'Host: Cloudflare Pages + Cloudflare DNS (nameservers pearl/piotr). Deploys run from GitHub Actions on nadeemk2050/arabianpolyplast-site.',
+  'Legal: CR 1577463 · TIN 2123435 · registered activity 477403 Collection of Plastic, Rubber, Paper and Metal Wastes · establishment date 01/10/2024 · licence L3011934 for the As-Saqsuq premises. The CR spells the company "ARABIAN PLOYPLAST TRADING" (POLYPLAST misspelled) — worth correcting in the registry, the website uses the correct spelling.',
   'Analytics: none yet. Commercial registration number and photos are still to come from the owner. Opening hours Sat–Thu 07:00–19:00.',
   'Content: every material page now carries a full guide — polymer origin, the grade number, properties, articles made, how it becomes scrap, how it is recycled and what the recyclate becomes — plus three buyer questions in FAQPage schema.'
 ].join('\n');
@@ -158,7 +159,7 @@ const processEntry = {
     design: 'Clean URLs, en/ar hreflang on home and contact, 1200×630 social card, Organization + Product + FAQ + Breadcrumb schema.',
     content: '15 material guides, each covering origin, grade number, properties, end use, scrap generation and recycling route; FAQPage schema per material.',
     cloudflare: 'Always Use HTTPS, Strict SSL, TLS 1.2 minimum, TLS 1.3, Brotli, Early Hints, 0-RTT, Email Obfuscation off, HSTS from _headers.',
-    notes: 'CR number, business hours and photography are outstanding from the owner.'
+    notes: 'CR 1577463, TIN 2123435, registered activity 477403. Establishment date 01/10/2024 per the certificate, so the site now says "since 2024". Photography still outstanding.'
   },
   steps
 };
@@ -215,7 +216,8 @@ const DONE_TEXTS = [
   'Confirm the business hours',
   'Verify arabianpolyplast.com in Google Search Console',
   'Grant the GSC service account access to the new property',
-  'Verify the Google Business Profile'
+  'Verify the Google Business Profile',
+  'Add the commercial registration number'
 ];
 const keptTodos = existingTodos.map(t => DONE_TEXTS.includes(t.text) && t.status !== 'done'
   ? { ...t, status: 'done', done: true, doneAt: NOW, updatedAt: NOW }
