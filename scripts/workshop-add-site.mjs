@@ -107,10 +107,10 @@ const wsSite = {
 // ---------------------------------------------------------------- process
 const S = (status, note) => ({ status, note, at: NOW });
 const steps = {
-  'gsc-property': S('doing', 'Verification TXT google-site-verification=2thOxY5MKuIrpOY6My_OAzIPFjPDY8K4oLgTF4OejgY is live at the apex — confirmed through Cloudflare 1.1.1.1 and Google public DNS on 24 Nov 2026. Waiting for the Verify click in Search Console, after which the service account is added as a Full user and the sitemap is submitted with scripts/gsc-submit.mjs.'),
+  'gsc-property': S('done', 'Domain property sc-domain:arabianpolyplast.com verified through the Search Console API on 24 Nov 2026. TXT google-site-verification=2thOxY5MKuIrpOY6My_OAzIPFjPDY8K4oLgTF4OejgY is live at the apex and must stay in DNS. Service account seo-agent-service-24may2026@dominonad.iam.gserviceaccount.com added as a Full user.'),
   'index-follow': S('done', 'Live check 24 Nov 2026: no noindex meta on any page, robots.txt allows everything.'),
-  'robots-txt': S('done', 'Served at /robots.txt with Sitemap: https://arabianpolyplast.com/sitemap.xml, no Disallow.'),
-  'sitemap-google': S('todo', 'Blocked by gsc-property. Submit /sitemap.xml (26 URLs) once the property exists.'),
+  'robots-txt': S('done', 'Served at /robots.txt with Sitemap: https://arabianpolyplast.com/sitemap.xml, no Disallow, and explicit Allow rules for GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot, Google-Extended, Bingbot and the other answer-engine crawlers.'),
+  'sitemap-google': S('done', 'Submitted through the Search Console API on 24 Nov 2026, HTTP 204 accepted. Google had not fetched it at the moment of submission (0 URLs reported), which is normal for the first hours; errors 0, warnings 0.'),
   'bing-property': S('todo', 'Verify arabianpolyplast.com in Bing Webmaster Tools (import from Search Console once GSC is live).'),
   'sitemap-bing': S('todo', 'Submit /sitemap.xml to Bing after verification.'),
   'indexnow': S('done', 'Key a7f3c1d9e04b47c8b2e6f5a90d1c3b8e served at the site root (HTTP 200). 26 URLs submitted to api.indexnow.org, HTTP 202, 24 Nov 2026. Runs on every deploy from GitHub Actions.'),
@@ -211,7 +211,9 @@ await setDoc(doc(db, 'appData', 'seoAgent'), {
 const DONE_TEXTS = [
   'Trim the homepage title to 60 characters',
   'Publish the legal pages',
-  'Confirm the business hours'
+  'Confirm the business hours',
+  'Verify arabianpolyplast.com in Google Search Console',
+  'Grant the GSC service account access to the new property'
 ];
 const keptTodos = existingTodos.map(t => DONE_TEXTS.includes(t.text) && t.status !== 'done'
   ? { ...t, status: 'done', done: true, doneAt: NOW, updatedAt: NOW }
