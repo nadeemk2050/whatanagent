@@ -245,8 +245,6 @@ export async function runNightly({ maxChats = 6, force = false } = {}) {
   if (!force && queue.nightlyAt && (Date.now() - queue.nightlyAt) < NIGHTLY_MIN_GAP_MS) {
     return { skipped: 'already ran today' };
   }
-  queue.nightlyAt = Date.now();
-  await writeQueue(queue);
 
   let chats = [];
   try {
@@ -268,6 +266,12 @@ export async function runNightly({ maxChats = 6, force = false } = {}) {
       console.warn('[LLM TANK] distill failed for ' + (chat.name || chat.jid) + ': ' + sstr(e.message, 120));
     }
   }
-  if (processed) console.log('[LLM TANK] 🌙 nightly distilled ' + processed + ' chat(s), queued ' + queued + ' candidate(s)' + (failed ? ', ' + failed + ' failed' : ''));
+  if (processed) {
+    // Only mark the day as done once something was actually studied — a fresh restart with no
+    // chats in memory must not postpone the first real run by a whole day.
+    queue.nightlyAt = Date.now();
+    await writeQueue(queue);
+    console.log('[LLM TANK] 🌙 nightly distilled ' + processed + ' chat(s), queued ' + queued + ' candidate(s)' + (failed ? ', ' + failed + ' failed' : ''));
+  }
   return { processed, queued, failed, chats: chats.length };
 }
