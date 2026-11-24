@@ -133,7 +133,7 @@ export function sanitizeProfile(raw, existing = {}) {
   p.relationship = sstr(raw.relationship != null ? raw.relationship : existing.relationship, 30).toLowerCase();
   p.formalityLevel = FORMALITY_LEVELS.includes(raw.formalityLevel || existing.formalityLevel) ? (raw.formalityLevel || existing.formalityLevel) : '';
   p.addressStyle = ADDRESS_STYLES.includes(raw.addressStyle || existing.addressStyle) ? (raw.addressStyle || existing.addressStyle) : 'auto';
-  p.language = sstr(raw.language != null ? raw.language : existing.language, 40) || 'Roman Urdu';
+  p.language = sstr(raw.language != null ? raw.language : existing.language, 40) || 'Auto (mirror customer)';
   p.length = ['short', 'medium', 'detailed'].includes(raw.length || existing.length) ? (raw.length || existing.length) : 'short';
   p.emojiLevel = ['none', 'low', 'high'].includes(raw.emojiLevel || existing.emojiLevel) ? (raw.emojiLevel || existing.emojiLevel) : 'low';
   p.mode = ['auto', 'draft_only', 'alert_only', 'silent'].includes(raw.mode || existing.mode) ? (raw.mode || existing.mode) : 'auto';
@@ -220,7 +220,7 @@ export function buildBrainPromptSection(profile, opts = {}) {
   s += 'MAIN PERSONALITY (' + main.weight + '%): ' + main.name + ' — ' + (PERSONAS[main.name] || {}).desc + '\n';
   for (const f of flavors) s += 'FLAVOR (' + f.weight + '%): ' + f.name + ' — ' + (PERSONAS[f.name] || {}).desc + '\n';
   s += 'Blend these naturally into every message. Higher % = stronger influence. If two styles clash, the higher % wins — but NEVER break respect or safety rules.\n';
-  s += 'Language: ' + (profile.language || 'Roman Urdu') + ' (never Devanagari script). Reply length: ' + (profile.length || 'short') + '. Emojis: ' + (profile.emojiLevel || 'low') + '.\n';  // Formality style: level (explicit) or slider fine-tuning
+  s += 'Language: ' + (profile.language || 'Auto (mirror customer)') + ' (never Devanagari script). Reply length: ' + (profile.length || 'short') + '. Emojis: ' + (profile.emojiLevel || 'low') + '.\n';  // Formality style: level (explicit) or slider fine-tuning
   if (profile.formalityLevel) {
     s += 'FORMALITY STYLE: ' + (FORMALITY_TEXT[profile.formalityLevel] || FORMALITY_TEXT.normal) + '\n';
   }
@@ -275,22 +275,14 @@ export function buildBrainPromptSection(profile, opts = {}) {
   }
   s += 'SITUATION AWARENESS: read his last message — if he is angry, sad, stressed or it is an emergency: raise Caring, drop jokes to 0, be gentle. Match his energy; mirror his greeting style.\n';
   s += 'ESCALATION RULE: if the message involves real money problems, a fight, an emergency, sickness or death — reply with exactly: ESCALATE\n';
-  // LANGUAGE LOCK — last in the block on purpose: the generic knowledge prompt above tells the
-  // model to mirror the sender's language, and the owner's own choice must win over that.
+  // LANGUAGE PREFERENCE — NOT a lock. The owner's rule (2026-11-24): the reply language always
+  // follows the CUSTOMER'S LATEST MESSAGE (English -> English, Arabic -> Arabic, Urdu script ->
+  // Urdu script, Roman Urdu -> Roman Urdu). The per-message directive appended by the reply path
+  // is authoritative; this stored value is only a fallback when the customer's language is unclear.
   const lang = String(profile.language || '').trim();
-  if (lang && !/^auto$/i.test(lang)) {
-    s += '\n🔒 LANGUAGE LOCK (MANDATORY — overrides every language instruction written above):\n';
-    s += 'The owner has set the reply language for THIS person to: "' + lang + '".\n';
-    if (/urdu/i.test(lang) && !/roman/i.test(lang)) {
-      s += 'Write EVERY word in Urdu script (اردو). Do NOT answer in English and do NOT answer in Roman Urdu, even if he writes in English or Roman Urdu. Product names, numbers and dates may stay as they are.\n';
-    } else if (/roman urdu/i.test(lang)) {
-      s += 'Write EVERY word in Roman Urdu (Urdu in English letters). Do NOT answer in English, Urdu script or Devanagari.\n';
-    } else if (/english/i.test(lang)) {
-      s += 'Write EVERY word in English, even if he writes in Urdu or Roman Urdu.\n';
-    } else {
-      s += 'Reply only in ' + lang + '.\n';
-    }
-    s += 'Ignore any earlier rule that says "mirror the sender\'s language", "reply in the same language he used" or "detect and match the language" — for this contact this setting wins.\n';
+  if (lang && !/^auto/i.test(lang)) {
+    s += '\n🗣️ LANGUAGE PREFERENCE FOR THIS PERSON: "' + lang + '" — use it ONLY when the customer\'s own language cannot be determined (numbers, emojis, a single word).\n';
+    s += 'This is NOT a lock: whenever the customer writes English, reply in English; Arabic -> Arabic; Urdu script -> Urdu script; Roman Urdu -> Roman Urdu. Never let this preference override the customer\'s language.\n';
   }
   s += '[END CONTACT BRAIN]\n';
   return s;

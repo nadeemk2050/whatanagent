@@ -12,6 +12,7 @@ import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mj
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId, LUNA_TEXT_MODEL } from './aiProviders.mjs';
 import { faqPromptBlock } from './faqRetrieval.mjs';
+import { detectLanguage, languageDirective } from './languageDetect.mjs';
 import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
@@ -6518,19 +6519,20 @@ export function buildWaWebKnowledgeSystemPrompt(chatContext = null, agent = null
     return buildAgentSystemPrompt(agent, blocks, agent.useBusinessKb ? agentBusinessKbText() : '', { forJid });
   }
   const kb = waWebKnowledgeBase;
-  // 🌍 LANGUAGE PROTOCOL. The owner's rule (2026-11): the FIRST reply in a chat is always clear
-  // English; from the SECOND contact message onward the assistant reads the transcript and mirrors
-  // the contact's language, script, tone and theme. When no turn count is known (dashboard tools,
-  // sandbox-style callers) the original always-mirror protocol is kept unchanged.
+  // 🌍 LANGUAGE PROTOCOL. The owner's rule (2026-11-24): mirror the CUSTOMER'S language immediately,
+  // from the very first reply — English -> English, Arabic -> Arabic, Urdu script -> Urdu script,
+  // Roman Urdu -> Roman Urdu. The reply path also appends a per-message directive (languageDetect.mjs)
+  // which is authoritative and overrides LLM-card/persona style notes.
   const turns = Number(opts && opts.customerTurns);
   let languageBlock;
   if (Number.isFinite(turns) && turns > 0 && turns <= 1) {
     languageBlock =
-      '--- 🌍 LANGUAGE PROTOCOL (FIRST MESSAGE FROM THIS CONTACT) ---\n' +
-      '1. THIS REPLY IS IN ENGLISH: it is the contact\'s first message in this chat. Reply in clear, simple, professional English — even if they wrote in another language.\n' +
-      '2. READ THEM SILENTLY: note their language, script, dialect, tone, mood and the theme/need behind their message (prices, order, complaint, information) — you will mirror all of that from the next message onward.\n' +
-      '3. KEEP FACTS EXACT: prices, invoice numbers, product names, quantities and dates unchanged.\n' +
-      '4. 🚫 STRICT NO-HINDI RULE: NEVER write Hindi (Devanagari script or Hindi-style wording). Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and other languages. If the contact uses Hindi, mirror it later in clean Roman Urdu.\n\n';
+      '--- 🌍 LANGUAGE PROTOCOL (FIRST MESSAGE — MIRROR IMMEDIATELY) ---\n' +
+      '1. READ THE CUSTOMER\'S LANGUAGE AND REPLY IN IT — from this very first reply: English -> English; Roman Urdu -> Roman Urdu; Urdu script -> Urdu script; Arabic -> Arabic; any other language -> that language.\n' +
+      '2. IF THE SIGNAL IS UNCLEAR (numbers, emojis, a single word): reply in clear English.\n' +
+      '3. MATCH TONE AND THEME: same register as the customer, answer the actual need (price, order, complaint, information).\n' +
+      '4. KEEP FACTS EXACT: prices, invoice numbers, product names, quantities and dates unchanged.\n' +
+      '5. 🚫 STRICT NO-HINDI RULE: NEVER write Hindi (Devanagari script or Hindi-style wording). Allowed: English, Roman Urdu, Urdu (Arabic script), Arabic and other languages. If the contact uses Hindi, reply in clean Roman Urdu.\n\n';
   } else if (Number.isFinite(turns) && turns > 1) {
     languageBlock =
       '--- 🌍 LANGUAGE PROTOCOL (CONVERSATION IN PROGRESS) ---\n' +
@@ -6912,6 +6914,15 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
 
     if (!overridePrompt) {
       systemPrompt = orderParts({ stable: stableParts, semi: semiParts, volatile: volatileParts });
+
+      // 🗣️ LAST WORD ON LANGUAGE: detected from THIS message in code (not left to the model), and
+      // appended after everything else so neither the LLM card, learned style nor persona notes
+      // can pull the reply back into Roman Urdu.
+      try {
+        const detected = detectLanguage(customerMessage);
+        systemPrompt += languageDirective(customerMessage);
+        console.log('[WA-WEB LANG] ' + detected.code + ' (' + detected.confidence + ') -> reply language directive applied');
+      } catch (e) { /* detection is best effort; the prompt rules still apply */ }
 
       // Report the cacheable share once per new contact / new shape, not on every message.
       try {
