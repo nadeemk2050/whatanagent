@@ -1,47 +1,55 @@
 // ============================================================================
 // ARABIAN POLYPLAST — site content (single source of truth)
 // ============================================================================
-// Everything a page needs lives here. Placeholders are marked TODO and are the
-// ONLY things that must be replaced before the site goes live (phone, CR,
-// hours, photos). Nothing is invented: prices are deliberately absent because
-// they are quoted per market day.
+// Contact details supplied by the owner (Nov 2026). Only CR and photos remain
+// TODO. Prices are deliberately absent: every lot is quoted per market day.
 // ============================================================================
 
 export const SITE = {
   name: 'Arabian Polyplast Trading LLC',
   shortName: 'Arabian Polyplast',
   domain: 'https://arabianpolyplast.com',
-  tagline: 'Plastic scrap trading, recycling and recycled polymers from Oman',
+  tagline: 'Plastic & metal scrap buyers in Oman',
   description:
-    'Arabian Polyplast Trading LLC buys, processes and exports industrial plastic scrap and recycled polymers from Barka, Oman — PET flakes, HDPE, PP, LDPE film and PVC for factories and manufacturers.',
-  // TODO: replace with the real numbers before launch
-  phone: '+968 0000 0000',
-  whatsapp: '+96800000',
-  email: 'info@arabianpolyplast.com',
-  cr: 'CR 0000000', // TODO
+    'Arabian Polyplast Trading LLC buys and exports plastic and metal scrap in Oman and the GCC — PET bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, PC bottles, aluminium and iron scrap from Barka, Oman.',
+  phone: '+968 7694 2126',
+  phoneRaw: '+96876942126',
+  whatsapp: '+968 9517 4888',
+  whatsappRaw: '96895174888',
+  email: 'arabianpolyplast@gmail.com',
+  cr: 'CR 0000000', // TODO: commercial registration number
   founded: '2020',
   hours: 'Sun–Thu 08:00–18:00 · Sat 09:00–14:00', // TODO confirm
   address: {
     line1: 'As-Saqsuq',
     city: 'Barka',
     region: 'Al Batinah South Governorate',
-    country: 'Oman',
-    postal: ''
+    country: 'Oman'
   },
   geo: { lat: 23.6848, lng: 57.8861 },
   ports: ['Sohar', 'Muscat (Sultan Qaboos)'],
   mapUrl: 'https://maps.google.com/?q=Arabian+Polyplast+Trading+LLC+Barka+Oman',
+  areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC'],
   languages: ['en', 'ar']
 };
 
 export const NAV = [
   { href: '/', label: 'Home' },
-  { href: '/products/', label: 'Materials' },
+  { href: '/products/', label: 'Scrap we buy' },
   { href: '/services.html', label: 'Services' },
-  { href: '/quality.html', label: 'Quality' },
+  { href: '/scrap-oman.html', label: 'Oman & GCC' },
   { href: '/sell-scrap.html', label: 'Sell Scrap' },
   { href: '/about.html', label: 'About' },
   { href: '/contact.html', label: 'Contact' }
+];
+
+const STD_SPECS = (overrides = []) => [
+  ['Form', 'As inspected (baled, loose, regrind or as agreed)'],
+  ['Packaging', 'Bales or big bags, labelled with grade and weight'],
+  ['MOQ', 'One 40ft container or LCL by arrangement'],
+  ['Loading port', 'Sohar / Muscat, Oman'],
+  ['Area served', 'Oman and GCC'],
+  ...overrides
 ];
 
 export const TRUST = [
@@ -52,120 +60,291 @@ export const TRUST = [
 ];
 
 export const PRODUCTS = [
+  // ---------------------------------------------------------------- PET family
+  {
+    slug: 'pet-bottle-scrap',
+    group: 'plastic',
+    name: 'PET Bottle Scrap',
+    h1: 'PET Bottle Scrap in Oman — Baled & Sorted',
+    card: 'Post-consumer PET bottles, baled and colour-sorted for recycling.',
+    seoTitle: 'PET Bottle Scrap in Oman | Baled PET Bottles — Arabian Polyplast',
+    seoDesc: 'Buy and sell PET bottle scrap in Oman. Baled, colour-sorted post-consumer bottles from Barka, loaded at Sohar or Muscat. GCC export available.',
+    intro:
+      'PET bottle scrap from post-consumer water and soft-drink bottles collected across Oman. We buy baled bottles from collectors, municipalities and factories, sort by colour and contamination, and supply recyclers and flake producers in Oman and the GCC.',
+    specs: STD_SPECS([
+      ['Colours', 'Clear, light blue, green, mixed'],
+      ['Contamination', 'Caps, labels and rings removed where required'],
+      ['Bale weight', 'Approx. 200–400 kg']
+    ]),
+    uses: ['Flake and pellet production', 'Fibre and strapping', 'Export to GCC recyclers']
+  },
   {
     slug: 'pet-flakes',
-    name: 'PET Flakes',
+    group: 'plastic',
+    name: 'PET Bottle Flakes Scrap',
+    h1: 'PET Bottle Flakes Scrap — Hot Washed, Oman',
     card: 'Hot-washed clear, blue and green flakes for fibre and sheet producers.',
+    seoTitle: 'PET Bottle Flakes Scrap in Oman | Hot Washed Flakes — Arabian Polyplast',
+    seoDesc: 'Hot-washed PET bottle flakes in clear, blue and green from Oman. Sorted, washed, dried and packed for GCC and export buyers.',
     intro:
-      'Hot-washed PET flakes produced from post-consumer bottles collected across Oman and the Gulf. Sorted by colour, washed, de-labelled and dried, then packed for export.',
-    specs: [
+      'Hot-washed PET bottle flakes produced from post-consumer bottles collected across Oman and the Gulf. Colour-sorted, de-labelled, washed and dried, then packed for fibre, sheet and strapping producers.',
+    specs: STD_SPECS([
       ['Colours', 'Clear (natural), light blue, green'],
       ['Form', 'Flakes, hot washed, dried'],
-      ['Typical moisture', 'Below 1% after drying'],
-      ['Packing', 'Big bags (approx. 1,000–1,250 kg) or as agreed'],
-      ['MOQ', 'One 40ft container'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
-    uses: ['Polyester fibre and yarn', 'Sheet and strapping', 'Re-pelletising for approved applications']
+      ['Moisture', 'Below 1% after drying'],
+      ['Packing', 'Big bags approx. 1,000–1,250 kg']
+    ]),
+    uses: ['Polyester fibre and yarn', 'Sheet and strapping', 'Re-pelletising']
   },
   {
-    slug: 'hdpe',
-    name: 'HDPE',
-    card: 'Bottle-grade and drum-grade HDPE — regrind, flakes or washed.',
+    slug: 'pet-preform-scrap',
+    group: 'plastic',
+    name: 'PET Preform Scrap',
+    h1: 'PET Preform Scrap — Factory Offcuts & Rejects',
+    card: 'Preform rejects, injection scrap and offcuts from bottle plants.',
+    seoTitle: 'PET Preform Scrap in Oman | Factory Rejects — Arabian Polyplast',
+    seoDesc: 'PET preform scrap and injection rejects from bottle factories in Oman. Clean, colour-sorted material for recycling and export in the GCC.',
     intro:
-      'HDPE from jerry cans, drums, crates and bottles. Washed and ground to your specification, with colour sorting for natural and mixed streams.',
-    specs: [
+      'PET preform scrap from bottle factories: rejects, start-up shots, colour-change material and offcuts. Clean, single-polymer material that needs no washing, collected directly from production lines in Oman.',
+    specs: STD_SPECS([
+      ['Source', 'Preform and injection moulding factories'],
+      ['Colours', 'Clear and coloured, kept separate'],
+      ['Contamination', 'Low — factory scrap, no labels or caps']
+    ]),
+    uses: ['Regrind and re-pelletising', 'Blending with bottle flake', 'Export to GCC processors']
+  },
+  {
+    slug: 'pet-sheet-scrap',
+    group: 'plastic',
+    name: 'PET Sheet Scrap',
+    h1: 'PET Sheet Scrap — Clear Sheet Offcuts',
+    card: 'Clear PET sheet, thermoform offcuts and roll ends.',
+    seoTitle: 'PET Sheet Scrap in Oman | Thermoform Offcuts — Arabian Polyplast',
+    seoDesc: 'Clear PET sheet scrap and thermoform offcuts from Oman. Clean, colour-sorted sheet for recycling and GCC export.',
+    intro:
+      'PET sheet scrap from thermoforming and packaging lines — sheet offcuts, roll ends and rejects. Clean, transparent material supplied to sheet producers and recyclers in Oman and the GCC.',
+    specs: STD_SPECS([
+      ['Source', 'Thermoforming and packaging plants'],
+      ['Form', 'Sheet offcuts, roll ends, rejects'],
+      ['Colours', 'Clear, some coloured by agreement']
+    ]),
+    uses: ['Sheet extrusion', 'Regrind for packaging', 'Export to GCC']
+  },
+
+  // ---------------------------------------------------------------- HDPE family
+  {
+    slug: 'hdpe-scrap',
+    group: 'plastic',
+    name: 'HDPE Scrap',
+    h1: 'HDPE Scrap in Oman — Bottles, Drums & Crates',
+    card: 'Bottle-grade, drum-grade and crate HDPE in bales, regrind or flakes.',
+    seoTitle: 'HDPE Scrap in Oman | Bottles, Drums & Crates — Arabian Polyplast',
+    seoDesc: 'Buy and sell HDPE scrap in Oman: bottles, jerry cans, drums and crates. Washed flakes, regrind or bales, loaded at Sohar or Muscat.',
+    intro:
+      'HDPE scrap from bottles, jerry cans, drums, crates and industrial containers. We buy from factories, collectors and municipalities across Oman, wash and grind to your specification, and supply reprocessors in Oman and the GCC.',
+    specs: STD_SPECS([
       ['Grades', 'Bottle grade, drum grade, crate regrind'],
-      ['Form', 'Washed flakes, regrind, or bales'],
-      ['Colours', 'Natural, mixed, black, coloured'],
-      ['Packing', 'Big bags or bales'],
-      ['MOQ', 'One 40ft container'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
-    uses: ['Pipe and conduit', 'Injection moulding', 'Blow moulding for non-food applications']
+      ['Form', 'Washed flakes, regrind, bales'],
+      ['Colours', 'Natural, mixed, black, coloured']
+    ]),
+    uses: ['Pipe and conduit', 'Injection moulding', 'Blow moulding (non-food)']
   },
   {
-    slug: 'pp',
-    name: 'Polypropylene (PP)',
-    card: 'PP raffia, woven bags, injection scrap and granules.',
+    slug: 'hdpe100-scrap',
+    group: 'plastic',
+    name: 'HDPE 100 Scrap',
+    h1: 'HDPE 100 Scrap — PE100 Pipe Grade',
+    card: 'PE100 pipe offcuts and pressure-pipe scrap, black or natural.',
+    seoTitle: 'HDPE 100 Scrap in Oman | PE100 Pipe Grade — Arabian Polyplast',
+    seoDesc: 'HDPE 100 (PE100) pipe scrap in Oman: offcuts, coils and pressure-pipe rejects. Ground and packed for pipe producers in the GCC.',
     intro:
-      'Polypropylene scrap from woven bags, raffia, caps and injection moulding. Available as baled, ground or washed material, with pelletising on request.',
-    specs: [
+      'HDPE 100 (PE100) scrap from pressure pipes, fittings and coils. Pipe offcuts and production rejects are collected from infrastructure projects and pipe plants in Oman, then ground and packed for pipe and fitting producers across the GCC.',
+    specs: STD_SPECS([
+      ['Grade', 'PE100 pipe grade'],
+      ['Form', 'Pipe offcuts, ground regrind'],
+      ['Colours', 'Black, natural (blue stripe by agreement)']
+    ]),
+    uses: ['PE100 pipe extrusion', 'Fittings and couplings', 'Compounding']
+  },
+  {
+    slug: 'hdpe-pipes-scrap',
+    group: 'plastic',
+    name: 'HDPE Pipes Scrap',
+    h1: 'HDPE Pipes Scrap — Offcuts & Coils',
+    card: 'Irrigation and pressure pipe offcuts, coils and rejects.',
+    seoTitle: 'HDPE Pipes Scrap in Oman | Offcuts & Coils — Arabian Polyplast',
+    seoDesc: 'HDPE pipe scrap in Oman: irrigation and pressure pipe offcuts, coils and rejects. Collected, ground and exported from Sohar or Muscat.',
+    intro:
+      'HDPE pipe scrap from irrigation lines, pressure networks and construction sites — offcuts, damaged coils and rejected sections. We collect across Oman, remove fittings and metal, and prepare the material for reprocessing.',
+    specs: STD_SPECS([
+      ['Source', 'Irrigation, infrastructure and construction'],
+      ['Form', 'Pipe sections, coils, regrind'],
+      ['Preparation', 'Fittings and metal inserts removed']
+    ]),
+    uses: ['Regrind for pipe and conduit', 'Injection moulding', 'Export to GCC']
+  },
+
+  // ---------------------------------------------------------------- PVC family
+  {
+    slug: 'pvc-scrap',
+    group: 'plastic',
+    name: 'PVC Scrap',
+    h1: 'PVC Scrap in Oman — Rigid & Flexible',
+    card: 'Rigid PVC from pipes, fittings, profiles and window frames.',
+    seoTitle: 'PVC Scrap in Oman | Rigid PVC Buyers — Arabian Polyplast',
+    seoDesc: 'PVC scrap in Oman: pipes, fittings, profiles and window frames. Sorted, ground and packed for PVC processors in Oman and the GCC.',
+    intro:
+      'Rigid PVC scrap from pipes, fittings, profiles and window frames. We buy from factories, contractors and demolition projects in Oman, remove metal and rubber, and supply ground material to PVC compounders and extruders.',
+    specs: STD_SPECS([
+      ['Types', 'Pipe, profile, window frame, fittings'],
+      ['Form', 'Regrind, granules, loose'],
+      ['Colours', 'White, grey, mixed']
+    ]),
+    uses: ['Pipe extrusion', 'Profile extrusion', 'PVC compounds']
+  },
+  {
+    slug: 'pvc-pipe-scrap',
+    group: 'plastic',
+    name: 'PVC Pipe Scrap',
+    h1: 'PVC Pipe Scrap — Offcuts & Rejects in Oman',
+    card: 'White and grey PVC pipe offcuts, rejects and demolition pipe.',
+    seoTitle: 'PVC Pipe Scrap in Oman | Offcuts & Rejects — Arabian Polyplast',
+    seoDesc: 'PVC pipe scrap in Oman: offcuts, production rejects and demolition pipe in white and grey. Ground and packed for export.',
+    intro:
+      'PVC pipe scrap from production lines, construction projects and demolition — offcuts, rejects and full sections. Sorted by colour, stripped of metal and rubber, then ground and packed for pipe producers and compounders in Oman and the GCC.',
+    specs: STD_SPECS([
+      ['Source', 'Pipe plants, construction, demolition'],
+      ['Form', 'Pipe sections, ground regrind'],
+      ['Colours', 'White, grey']
+    ]),
+    uses: ['PVC pipe extrusion', 'Fittings', 'Compounds']
+  },
+  {
+    slug: 'upvc-profile-scrap',
+    group: 'plastic',
+    name: 'UPVC Profile Scrap',
+    h1: 'UPVC Profile Scrap — Window & Door Profiles',
+    card: 'White UPVC window and door profile offcuts and rejects.',
+    seoTitle: 'UPVC Profile Scrap in Oman | Window Profiles — Arabian Polyplast',
+    seoDesc: 'UPVC profile scrap in Oman: window and door profile offcuts, rejects and demolition frames. Metal reinforcement removed, ground and packed.',
+    intro:
+      'UPVC profile scrap from window and door fabricators and demolition projects. White profile offcuts and complete frames are collected, steel reinforcement and gaskets removed, then ground and packed for profile extruders and compounders in Oman and the GCC.',
+    specs: STD_SPECS([
+      ['Source', 'Window/door fabricators, demolition'],
+      ['Form', 'Profile offcuts, complete frames, regrind'],
+      ['Preparation', 'Steel reinforcement and gaskets removed']
+    ]),
+    uses: ['UPVC profile extrusion', 'Compounds', 'Export to GCC']
+  },
+
+  // ---------------------------------------------------------------- PP / film
+  {
+    slug: 'pp-scrap',
+    group: 'plastic',
+    name: 'PP Scrap',
+    h1: 'PP Scrap in Oman — Raffia, Woven Bags & Injection',
+    card: 'PP raffia, woven bags, caps and injection moulding scrap.',
+    seoTitle: 'PP Scrap in Oman | Raffia & Woven Bags — Arabian Polyplast',
+    seoDesc: 'Polypropylene scrap in Oman: raffia, woven bags, caps and injection moulding. Baled, ground or washed, loaded at Sohar or Muscat.',
+    intro:
+      'Polypropylene scrap from woven bags, raffia, caps and injection moulding. Baled, ground or washed to your requirement, supplied to reprocessors and manufacturers in Oman and the GCC.',
+    specs: STD_SPECS([
       ['Grades', 'Raffia / woven bag, injection, mixed PP'],
-      ['Form', 'Bales, regrind, washed flakes, granules'],
-      ['Colours', 'Natural, white, coloured, mixed'],
-      ['Packing', 'Big bags or bales'],
-      ['MOQ', 'One 40ft container'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
+      ['Form', 'Bales, regrind, washed flakes'],
+      ['Colours', 'Natural, white, coloured, mixed']
+    ]),
     uses: ['Woven sacks and FIBC', 'Injection moulding', 'Fibre and non-woven']
   },
   {
     slug: 'ldpe-film',
-    name: 'LDPE Film',
-    card: 'Post-industrial stretch and film scrap, baled or washed.',
+    group: 'plastic',
+    name: 'LDPE Film Scrap',
+    h1: 'LDPE Film Scrap in Oman — Stretch & Packaging Film',
+    card: 'Post-industrial stretch, packaging and agricultural film, baled.',
+    seoTitle: 'LDPE Film Scrap in Oman | Stretch Film Bales — Arabian Polyplast',
+    seoDesc: 'LDPE film scrap in Oman: stretch film, packaging film and agricultural film, baled or washed. Export from Sohar or Muscat to the GCC.',
     intro:
-      'LDPE film from packaging, stretch wrap and agricultural film. Post-industrial material with low contamination, baled for export or washed and dried on request.',
-    specs: [
+      'LDPE film scrap from packaging lines, warehouses and farms — stretch wrap, packaging film and agricultural film. Post-industrial material with low contamination, baled for export or washed and dried on request.',
+    specs: STD_SPECS([
       ['Types', 'Stretch film, packaging film, agricultural film'],
       ['Form', 'Bales, washed flakes'],
-      ['Colours', 'Clear, mixed, coloured'],
-      ['Packing', 'Bales or big bags'],
-      ['MOQ', 'One 40ft container'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
+      ['Colours', 'Clear, mixed, coloured']
+    ]),
     uses: ['Film extrusion', 'Carrier bags', 'Compounds and masterbatch']
   },
+
+  // ---------------------------------------------------------------- PC
   {
-    slug: 'pvc',
-    name: 'PVC',
-    card: 'Rigid PVC from pipes, profiles and window frames.',
+    slug: 'pc-bottle-scrap',
+    group: 'plastic',
+    name: 'PC Bottle Scrap',
+    h1: 'PC Bottle Scrap — Polycarbonate Water Bottles',
+    card: 'Polycarbonate water bottles and gallons, clear and clean.',
+    seoTitle: 'PC Bottle Scrap in Oman | Polycarbonate Bottles — Arabian Polyplast',
+    seoDesc: 'PC bottle scrap in Oman: polycarbonate water bottles and gallons. Sorted, cleaned and supplied to PC processors in Oman and the GCC.',
     intro:
-      'Rigid PVC scrap from pipes, window profiles and fittings. Ground and packed for pipe and profile producers, with metal and rubber contamination removed.',
-    specs: [
-      ['Types', 'Pipe, profile, window frame, fittings'],
-      ['Form', 'Regrind, granules'],
-      ['Colours', 'White, grey, mixed'],
-      ['Packing', 'Big bags'],
-      ['MOQ', 'One 40ft container'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
-    uses: ['Pipe extrusion', 'Profile extrusion', 'Compounds']
+      'PC bottle scrap from polycarbonate water bottles, gallons and dispensers. Collected from offices, water companies and collectors in Oman, sorted and cleaned for polycarbonate processors and compounders in the GCC.',
+    specs: STD_SPECS([
+      ['Source', 'Water coolers, gallons, dispensers'],
+      ['Form', 'Whole bottles, ground regrind'],
+      ['Colours', 'Clear, blue tint']
+    ]),
+    uses: ['PC regrind and pellets', 'Injection moulding', 'Export to GCC processors']
+  },
+
+  // ---------------------------------------------------------------- metals
+  {
+    slug: 'aluminium-scrap',
+    group: 'metal',
+    name: 'Aluminium Scrap',
+    h1: 'Aluminium Scrap in Oman — Profiles, Sheets & Castings',
+    card: 'Aluminium profiles, sheets, castings and mixed loads.',
+    seoTitle: 'Aluminium Scrap in Oman | Profiles & Sheets — Arabian Polyplast',
+    seoDesc: 'Aluminium scrap in Oman: extrusion profiles, sheets, castings and mixed loads. Weighed, sorted and prepared for export from Sohar or Muscat.',
+    intro:
+      'Aluminium scrap from fabrication workshops, construction and industry — extrusion profiles, sheets, castings and mixed loads. Weighed and sorted at our Barka yard and prepared for local processors and GCC export.',
+    specs: STD_SPECS([
+      ['Types', 'Profiles, sheets, castings, mixed'],
+      ['Form', 'Loose, bundled'],
+      ['Preparation', 'Iron attachments removed where possible']
+    ]),
+    uses: ['Remelting', 'Extrusion', 'Export to GCC smelters']
   },
   {
-    slug: 'mixed-plastics',
-    name: 'Mixed & Other Polymers',
-    card: 'ABS, PC, PS and mixed industrial streams, sorted to your spec.',
+    slug: 'iron-scrap',
+    group: 'metal',
+    name: 'Iron & Steel Scrap',
+    h1: 'Iron Scrap in Oman — HMS, Structural & Machinery',
+    card: 'HMS, structural steel, pipes and machinery scrap.',
+    seoTitle: 'Iron Scrap in Oman | HMS & Structural Steel — Arabian Polyplast',
+    seoDesc: 'Iron and steel scrap in Oman: HMS, structural steel, pipes and machinery. Weighed and prepared for local mills and GCC export.',
     intro:
-      'Industrial plastic scrap outside the main five streams — ABS, PC, PS, acrylic and mixed loads. We inspect, sort and prepare the load against your specification before shipment.',
-    specs: [
-      ['Types', 'ABS, PC, PS, acrylic, mixed industrial'],
-      ['Form', 'Regrind, baled, or as inspected'],
-      ['Sorting', 'Manual sorting and metal removal'],
-      ['Packing', 'Big bags or bales'],
-      ['MOQ', 'One 40ft container or LCL by arrangement'],
-      ['Loading port', 'Sohar / Muscat']
-    ],
-    uses: ['Electronics housings', 'Automotive parts', 'Compounding']
+      'Iron and steel scrap from demolition, industry and machinery — HMS, structural sections, pipes, plates and obsolete equipment. Weighing and preparation are handled at the yard, with loading at Sohar or Muscat.',
+    specs: STD_SPECS([
+      ['Types', 'HMS, structural, pipes, machinery'],
+      ['Form', 'Loose, cut to size on request'],
+      ['Preparation', 'Cutting and sorting at the yard']
+    ]),
+    uses: ['Steel mills', 'Foundries', 'Export to GCC']
   }
 ];
 
 export const SERVICES = [
   {
-    title: 'Scrap buying',
-    text: 'We buy plastic scrap from factories, recyclers, collectors and municipalities across Oman. One-off lots and recurring monthly volumes are both welcome, with fair weighing and fast payment terms.'
+    title: 'Scrap buying — Oman & GCC',
+    text: 'We buy plastic and metal scrap from factories, recyclers, contractors, collectors and municipalities across Oman, and arrange collection for larger lots.'
   },
   {
     title: 'Processing & upgrading',
-    text: 'Sorting, washing, grinding and drying in Barka. Material is prepared to an agreed specification, sampled before loading, and packed to survive the sea freight.'
+    text: 'Sorting, washing, grinding and drying in Barka. Material is prepared to an agreed specification, sampled before loading and packed for sea freight.'
   },
   {
     title: 'Export & documentation',
-    text: 'Container booking, pre-shipment inspection support, packing lists, certificates and export paperwork handled in-house — FOB Sohar or Muscat, or delivered terms on request.'
+    text: 'Container booking, inspection support, packing lists and export paperwork handled in-house — FOB Sohar or Muscat, or delivered terms on request.'
   },
   {
     title: 'Loading & logistics',
-    text: 'We load at the yard and at the port, photograph every container, and share the loading report so the buyer knows exactly what left Oman.'
+    text: 'We load at the yard and at the port, photograph every container and share the loading report so the buyer knows exactly what left Oman.'
   }
 ];
 
@@ -182,22 +361,26 @@ export const QUALITY = [
   ['Manual sorting', 'Metals, rubber, stones and the wrong polymer are removed by hand.'],
   ['Washing & drying', 'Controlled wash lines and drying so moisture stays within spec.'],
   ['Sampling', 'A sample is taken from each prepared lot and photographed.'],
-  ['Packing', 'Big bags or bales labelled with grade, weight and lot number.'],
+  ['Packing', 'Bales or big bags labelled with grade, weight and lot number.'],
   ['Loading report', 'Photos and weights at loading, shared with the buyer.']
 ];
 
 export const FAQS = [
   {
-    q: 'Do you buy plastic scrap from factories in Oman?',
-    a: 'Yes. We buy single lots and recurring monthly volumes directly from factories, recyclers and collectors across Oman, with fair weighing and clear payment terms.'
+    q: 'Do you buy PET bottle scrap in Oman?',
+    a: 'Yes. We buy baled PET bottles across Oman — clear, blue and green — from collectors, municipalities and factories, and we also supply hot-washed PET flakes for export.'
   },
   {
-    q: 'What materials do you trade?',
-    a: 'PET flakes, HDPE, PP, LDPE film, rigid PVC, and other industrial polymers such as ABS, PC and PS, depending on specification and availability.'
+    q: 'Do you buy HDPE, PVC and UPVC scrap?',
+    a: 'Yes. We buy HDPE bottles, drums and pipes, HDPE 100 pipe scrap, rigid PVC pipes and fittings, and UPVC window and door profiles, including demolition material.'
   },
   {
-    q: 'Do you export outside Oman?',
-    a: 'Yes. We load containers at Sohar and Muscat and handle export documentation in-house. FOB and delivered terms are available on request.'
+    q: 'Do you buy aluminium and iron scrap?',
+    a: 'Yes. Aluminium profiles, sheets and castings, and iron and steel scrap such as HMS, structural sections, pipes and machinery are weighed and prepared at our Barka yard.'
+  },
+  {
+    q: 'Do you supply buyers outside Oman?',
+    a: 'Yes. We export to the GCC and beyond, loading at Sohar and Muscat and handling export documentation in-house.'
   },
   {
     q: 'What is the minimum order?',
@@ -205,36 +388,55 @@ export const FAQS = [
   },
   {
     q: 'Are prices published on the website?',
-    a: 'No. Plastic prices move with the market, so every lot is quoted individually after we confirm the specification, quantity and destination.'
+    a: 'No. Scrap prices move with the market, so every lot is quoted individually after we confirm the specification, quantity and destination.'
   },
   {
     q: 'Can I inspect the material before shipment?',
     a: 'Yes. We share photos and samples, and third-party pre-shipment inspection can be arranged at the yard or at the port.'
   },
   {
-    q: 'How is the material packed?',
-    a: 'Big bags (about 1,000–1,250 kg) or bales, labelled with grade, weight and lot number. Packing can follow the buyer requirement.'
-  },
-  {
-    q: 'Where are you located?',
-    a: 'Our yard is in As-Saqsuq, Barka, in the Al Batinah South Governorate of Oman — about an hour from Muscat and close to Sohar port.'
+    q: 'Where is the yard?',
+    a: 'As-Saqsuq, Barka, in the Al Batinah South Governorate of Oman — about an hour from Muscat and within reach of Sohar port.'
   }
 ];
 
+// Extra SEO page targeting location + broad "all kinds of scrap" searches.
+export const OMAN_PAGE = {
+  title: 'Scrap Buyers in Oman & the GCC — All Kinds of Scrap',
+  seoTitle: 'Scrap Buyers in Oman & GCC | All Kinds of Scrap — Arabian Polyplast',
+  seoDesc:
+    'Scrap buyers in Oman and the GCC: PET bottle scrap, HDPE, PVC, UPVC profiles, aluminium and iron scrap. Buy and sell through Arabian Polyplast, Barka — Sohar and Muscat loading.',
+  h1: 'Scrap buyers in Oman and across the GCC',
+  intro:
+    'Arabian Polyplast Trading LLC buys, processes and exports all kinds of plastic and metal scrap from Oman. Our yard in As-Saqsuq, Barka serves factories, contractors, collectors and municipalities from Muscat to Sohar and Salalah — and ships to buyers across the GCC.',
+  sections: [
+    {
+      h: 'Plastic scrap we buy and sell in Oman',
+      p: 'PET bottle scrap, PET bottle flakes, PET preform and sheet scrap, HDPE bottles, drums and crates, HDPE 100 pipe scrap, HDPE pipes, rigid PVC and PVC pipes, UPVC window and door profiles, PP raffia and woven bags, LDPE stretch and agricultural film, and PC water bottles.'
+    },
+    {
+      h: 'Metal scrap',
+      p: 'Aluminium profiles, sheets and castings, and iron and steel scrap including HMS, structural sections, pipes and machinery — weighed and prepared at the yard before loading.'
+    },
+    {
+      h: 'Why buyers and sellers work with us',
+      p: 'Weighed loads, written specifications, photos and samples before shipment, export documentation handled in-house, and containers loaded at Sohar or Muscat. One partner from the yard to the port.'
+    },
+    {
+      h: 'Coverage',
+      p: 'Oman: Muscat, Barka, Al Batinah, Sohar and Salalah. GCC export: United Arab Emirates, Saudi Arabia, Qatar, Kuwait and Bahrain. Delivered and FOB terms available on request.'
+    }
+  ]
+};
+
 export const AR = {
   dir: 'rtl',
-  nav: [
-    { href: '/ar/', label: 'الرئيسية' },
-    { href: '/ar/#materials', label: 'المواد' },
-    { href: '/ar/#services', label: 'خدماتنا' },
-    { href: '/ar/contact.html', label: 'اتصل بنا' }
-  ],
   home: {
-    title: 'Arabian Polyplast — تجارة وتدوير البلاستيك في عُمان',
-    h1: 'خردة البلاستيك والبوليمرات المعاد تدويرها من عُمان',
+    title: 'Arabian Polyplast — شراء وتصدير خردة البلاستيك والمعادن في عُمان',
+    h1: 'شراء خردة البلاستيك والمعادن في عُمان ودول الخليج',
     intro:
-      'شركة Arabian Polyplast Trading LLC تشتري وتعالج وتصدّر خردة البلاستيك الصناعي والبوليمرات المعاد تدويرها من بركاء، سلطنة عُمان — رقائق PET، HDPE، PP، أفلام LDPE و PVC للمصانع والمصنّعين.',
-    materials: 'المواد',
+      'شركة Arabian Polyplast Trading LLC تشتري وتعالج وتصدّر خردة PET وHDPE وPVC وUPVC والألمنيوم والحديد من بركاء، سلطنة عُمان — مع تحميل الحاويات من صحار أو مسقط.',
+    materials: 'المواد التي نشتريها',
     services: 'خدماتنا',
     cta: 'اطلب عرض سعر',
     sell: 'بِع لنا الخردة'

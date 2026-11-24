@@ -39,19 +39,18 @@ records automatically because the domain is already on Cloudflare).
 
 ## Before launch — replace the placeholders
 
-All marked `TODO` in `build/content.mjs`:
+Real contacts are already set (call +968 7694 2126 · WhatsApp +968 9517 4888 · arabianpolyplast@gmail.com).
+Still marked `TODO` in `build/content.mjs`:
 
 | Field | Current | Replace with |
 |---|---|---|
-| `SITE.phone` | `+968 0000 0000` | real yard/office number |
-| `SITE.whatsapp` | `+96800000` | WhatsApp number (digits, no +) |
 | `SITE.cr` | `CR 0000000` | commercial registration number |
 | `SITE.hours` | Sun–Thu 08:00–18:00 … | confirmed opening hours |
-| `SITE.email` | `info@arabianpolyplast.com` | confirm the mailbox exists |
 
 Also worth adding once available:
 
-- real photos in `src/` and referenced from the pages, plus `assets/og.jpg` (1200×630) for link previews;
+- real photos in `src/` and referenced from the pages (yard, containers, material close-ups);
+- a 1200×630 `og` image for link previews;
 - the Google Maps embed on the contact page (currently a link).
 
 ## Lead form

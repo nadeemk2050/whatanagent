@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SITE, NAV, TRUST, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR } from './content.mjs';
+import { SITE, NAV, TRUST, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -56,6 +56,7 @@ function productLd(p) {
     description: p.intro,
     brand: { '@type': 'Brand', name: SITE.shortName },
     category: 'Recycled plastic raw material',
+    areaServed: ['Oman', 'GCC'],
     url: url('/products/' + p.slug + '.html')
   };
 }
@@ -135,7 +136,7 @@ function footer() {
     </div>
     <div>
       <h4>Materials</h4>
-      <ul class="plain">${PRODUCTS.map(p => `<li><a href="/products/${p.slug}.html">${esc(p.name)}</a></li>`).join('')}</ul>
+      <ul class="plain">${PRODUCTS.slice(0, 6).map(p => `<li><a href="/products/${p.slug}.html">${esc(p.name)}</a></li>`).join('')}<li><a href="/products/">All materials →</a></li></ul>
     </div>
     <div>
       <h4>Company</h4>
@@ -143,6 +144,7 @@ function footer() {
         <li><a href="/about.html">About us</a></li>
         <li><a href="/services.html">Services</a></li>
         <li><a href="/quality.html">Quality</a></li>
+        <li><a href="/scrap-oman.html">Oman &amp; GCC</a></li>
         <li><a href="/sell-scrap.html">Sell scrap</a></li>
         <li><a href="/faq.html">FAQ</a></li>
       </ul>
@@ -150,7 +152,8 @@ function footer() {
     <div>
       <h4>Contact</h4>
       <ul class="plain">
-        <li><a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}">${esc(SITE.phone)}</a></li>
+        <li><a href="tel:${esc(SITE.phoneRaw)}">${esc(SITE.phone)}</a> · call</li>
+        <li><a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a> · WhatsApp</li>
         <li><a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a></li>
         <li>${esc(SITE.hours)}</li>
         <li><a href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></li>
@@ -199,8 +202,8 @@ function homePage() {
   <div class="wrap hero-inner">
     <div class="hero-copy">
       <p class="eyebrow">Barka · Sultanate of Oman · since ${esc(SITE.founded)}</p>
-      <h1>Plastic scrap &amp; recycled polymers from Oman</h1>
-      <p class="lead">${esc(SITE.description)}</p>
+      <h1>Plastic &amp; metal scrap buyers in Oman</h1>
+      <p class="lead">PET bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, PC bottles, aluminium and iron scrap — bought, processed and exported from Barka to the GCC.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="/contact.html">Request a quote</a>
         <a class="btn btn-outline" href="/sell-scrap.html">Sell your scrap</a>
@@ -220,7 +223,7 @@ function homePage() {
 
 <section class="section" id="materials">
   <div class="wrap">
-    <div class="section-head"><p class="eyebrow">Materials</p><h2>What we trade</h2><p>Graded streams prepared to an agreed specification, loaded at Sohar or Muscat.</p></div>
+    <div class="section-head"><p class="eyebrow">Scrap we buy &amp; sell</p><h2>All kinds of plastic and metal scrap</h2><p>Graded streams prepared to an agreed specification, loaded at Sohar or Muscat. PET bottle scrap, HDPE 100, PVC pipes, UPVC profiles, aluminium and iron included.</p></div>
     <div class="grid cards-3">${PRODUCTS.map(productCard).join('')}</div>
   </div>
 </section>
@@ -241,7 +244,7 @@ function homePage() {
 
 ${ctaBand()}`;
   return layout({
-    title: SITE.shortName + ' — plastic scrap & recycled polymers from Oman',
+    title: 'Scrap Buyers in Oman — PET, HDPE, PVC, UPVC, Aluminium & Iron | Arabian Polyplast',
     desc: SITE.description,
     canonical: url('/'),
     altUrl: url('/ar/')
@@ -340,8 +343,8 @@ function contactPage() {
     <div class="card">
       <h3>Yard &amp; office</h3>
       <p>${esc(addr)}</p>
-      <p><strong>Phone:</strong> <a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}">${esc(SITE.phone)}</a><br>
-      <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsapp.replace(/\D/g, ''))}" target="_blank" rel="noopener">Message us</a><br>
+      <p><strong>Call:</strong> <a href="tel:${esc(SITE.phoneRaw)}">${esc(SITE.phone)}</a><br>
+      <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a><br>
       <strong>Email:</strong> <a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a><br>
       <strong>Hours:</strong> ${esc(SITE.hours)}</p>
       <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></p>
@@ -393,16 +396,24 @@ function sellScrapPage() {
 }
 
 function productsIndex() {
+  const plastic = PRODUCTS.filter(p => p.group === 'plastic');
+  const metal = PRODUCTS.filter(p => p.group === 'metal');
   const body = `
-<section class="page-head"><div class="wrap"><p class="eyebrow">Materials</p><h1>Recycled polymers and plastic scrap</h1><p class="lead">Six graded streams, prepared to an agreed specification and loaded at Sohar or Muscat.</p></div></section>
-<section class="section"><div class="wrap grid cards-3">${PRODUCTS.map(productCard).join('')}</div></section>
+<section class="page-head"><div class="wrap"><p class="eyebrow">Scrap we buy</p><h1>Plastic &amp; metal scrap we buy and sell</h1><p class="lead">PET bottle scrap, PET flakes, HDPE and HDPE 100 pipes, PVC and UPVC profiles, PP, LDPE film, PC bottles, aluminium and iron scrap — from our yard in Barka, Oman.</p></div></section>
+<section class="section"><div class="wrap">
+  <div class="section-head"><h2>Plastic scrap</h2></div>
+  <div class="grid cards-3">${plastic.map(productCard).join('')}</div>
+</div></section>
+<section class="section section-alt"><div class="wrap">
+  <div class="section-head"><h2>Metal scrap</h2></div>
+  <div class="grid cards-2">${metal.map(productCard).join('')}</div>
+</div></section>
 ${ctaBand()}`;
   return layout({
-    title: 'Materials — PET, HDPE, PP, LDPE, PVC | Arabian Polyplast',
-    desc: 'Recycled plastic materials from Oman: PET flakes, HDPE, PP, LDPE film, PVC and other industrial polymers.',
-    canonical: url('/products/'),
-    breadcrumb: true
-  }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }])));
+    title: 'Scrap We Buy — PET, HDPE, PVC, UPVC, Aluminium & Iron | Arabian Polyplast',
+    desc: 'All kinds of plastic and metal scrap bought and sold in Oman: PET bottle scrap, HDPE, PVC pipes, UPVC profiles, aluminium and iron. Loaded at Sohar or Muscat.',
+    canonical: url('/products/')
+  }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Scrap we buy', href: '/products/' }])));
 }
 
 function productPage(p) {
@@ -410,7 +421,7 @@ function productPage(p) {
   const body = `
 <section class="page-head"><div class="wrap">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/products/">Materials</a><span>/</span><span>${esc(p.name)}</span></nav>
-  <h1>${esc(p.name)}</h1>
+  <h1>${esc(p.h1 || p.name)}</h1>
   <p class="lead">${esc(p.intro)}</p>
 </div></section>
 <section class="section"><div class="wrap two-col">
@@ -426,12 +437,30 @@ function productPage(p) {
 </div></section>
 <section class="section section-alt"><div class="wrap"><div class="section-head"><h2>Other materials</h2></div><div class="grid cards-3">${others.map(productCard).join('')}</div></div></section>`;
   return layout({
-    title: p.name + ' from Oman — specification & supply | Arabian Polyplast',
-    desc: p.card + ' Supplied by Arabian Polyplast Trading LLC, Barka, Oman.',
+    title: p.seoTitle || (p.name + ' from Oman — specification & supply | Arabian Polyplast'),
+    desc: p.seoDesc || (p.card + ' Supplied by Arabian Polyplast Trading LLC, Barka, Oman.'),
     canonical: url('/products/' + p.slug + '.html')
   }, body + '\n' + ld(productLd(p)) + '\n' + ld(breadcrumbLd([
     { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug + '.html' }
   ])));
+}
+
+function scrapOmanPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Oman &amp; GCC</p><h1>${esc(OMAN_PAGE.h1)}</h1><p class="lead">${esc(OMAN_PAGE.intro)}</p></div></section>
+<section class="section"><div class="wrap grid cards-2">
+${OMAN_PAGE.sections.map(s => `<article class="card"><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p></article>`).join('')}
+</div></section>
+<section class="section section-alt"><div class="wrap">
+  <div class="section-head"><h2>Scrap types we handle</h2></div>
+  <div class="grid cards-3">${PRODUCTS.map(productCard).join('')}</div>
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: OMAN_PAGE.seoTitle,
+    desc: OMAN_PAGE.seoDesc,
+    canonical: url('/scrap-oman.html')
+  }, body + '\n' + ld(orgLd) + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Oman & GCC', href: '/scrap-oman.html' }])));
 }
 
 function notFound() {
@@ -529,6 +558,7 @@ write('quality.html', qualityPage());
 write('faq.html', faqPage());
 write('contact.html', contactPage());
 write('sell-scrap.html', sellScrapPage());
+write('scrap-oman.html', scrapOmanPage());
 write('products/index.html', productsIndex());
 for (const p of PRODUCTS) write('products/' + p.slug + '.html', productPage(p));
 write('ar/index.html', arHome());
@@ -538,7 +568,7 @@ write('404.html', notFound());
 // sitemap
 const pages = [
   ['/', '1.0'], ['/products/', '0.9'], ['/contact.html', '0.8'], ['/sell-scrap.html', '0.8'],
-  ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
+  ['/scrap-oman.html', '0.8'], ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
   ['/ar/', '0.8'], ['/ar/contact.html', '0.6']
 ].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']));
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
