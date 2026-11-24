@@ -30,17 +30,18 @@ export const SITE = {
   ports: ['Sohar', 'Muscat (Sultan Qaboos)'],
   mapUrl: 'https://maps.google.com/?q=Arabian+Polyplast+Trading+LLC+Barka+Oman',
   areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC', 'Worldwide'],
-  languages: ['en', 'ar']
+  languages: ['en', 'ar'],
+  indexNowKey: 'a7f3c1d9e04b47c8b2e6f5a90d1c3b8e'
 };
 
 export const NAV = [
   { href: '/', label: 'Home' },
   { href: '/products/', label: 'Scrap we buy' },
-  { href: '/services.html', label: 'Services' },
-  { href: '/scrap-oman.html', label: 'Local & Global' },
-  { href: '/sell-scrap.html', label: 'Sell Scrap' },
-  { href: '/about.html', label: 'About' },
-  { href: '/contact.html', label: 'Contact' }
+  { href: '/services', label: 'Services' },
+  { href: '/scrap-oman', label: 'Local & Global' },
+  { href: '/sell-scrap', label: 'Sell Scrap' },
+  { href: '/about', label: 'About' },
+  { href: '/contact', label: 'Contact' }
 ];
 
 const STD_SPECS = (overrides = []) => [

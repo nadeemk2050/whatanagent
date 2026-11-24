@@ -22,7 +22,7 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const today = new Date().toISOString().slice(0, 10);
-const url = (p) => SITE.domain + (p === '/' ? '/' : p);
+const url = (p) => SITE.domain + (p === '/' ? '/' : p.replace(/\.html$/, ''));
 
 // ---------------------------------------------------------------- structured data
 const orgLd = {
@@ -120,7 +120,7 @@ function header() {
     </nav>
     <div class="header-actions">
       <a class="btn btn-ghost" href="/ar/" hreflang="ar" lang="ar">العربية</a>
-      <a class="btn btn-primary" href="/contact.html">Get a quote</a>
+      <a class="btn btn-primary" href="/contact">Get a quote</a>
       <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">☰</button>
     </div>
   </div>
@@ -139,17 +139,17 @@ function footer() {
     </div>
     <div>
       <h4>Materials</h4>
-      <ul class="plain">${PRODUCTS.slice(0, 6).map(p => `<li><a href="/products/${p.slug}.html">${esc(p.name)}</a></li>`).join('')}<li><a href="/products/">All materials →</a></li></ul>
+      <ul class="plain">${PRODUCTS.slice(0, 6).map(p => `<li><a href="/products/${p.slug}">${esc(p.name)}</a></li>`).join('')}<li><a href="/products/">All materials →</a></li></ul>
     </div>
     <div>
       <h4>Company</h4>
       <ul class="plain">
-        <li><a href="/about.html">About us</a></li>
-        <li><a href="/services.html">Services</a></li>
-        <li><a href="/quality.html">Quality</a></li>
-        <li><a href="/scrap-oman.html">Local &amp; global</a></li>
-        <li><a href="/sell-scrap.html">Sell scrap</a></li>
-        <li><a href="/faq.html">FAQ</a></li>
+        <li><a href="/about">About us</a></li>
+        <li><a href="/services">Services</a></li>
+        <li><a href="/quality">Quality</a></li>
+        <li><a href="/scrap-oman">Local &amp; global</a></li>
+        <li><a href="/sell-scrap">Sell scrap</a></li>
+        <li><a href="/faq">FAQ</a></li>
       </ul>
     </div>
     <div>
@@ -202,7 +202,7 @@ function floatingActions(dir = 'ltr') {
 }
 
 // ---------------------------------------------------------------- components
-const productCard = (p) => `<a class="card product-card" href="/products/${p.slug}.html">
+const productCard = (p) => `<a class="card product-card" href="/products/${p.slug}">
   <span class="card-tag">${esc(p.name)}</span>
   <p>${esc(p.card)}</p>
   <span class="card-link">Specification →</span>
@@ -216,8 +216,8 @@ function ctaBand() {
       <p>Send the material, quantity and destination — we reply with photos, a sample and a firm offer.</p>
     </div>
     <div class="cta-actions">
-      <a class="btn btn-primary" href="/contact.html">Request a quote</a>
-      <a class="btn btn-outline" href="/sell-scrap.html">Sell us your scrap</a>
+      <a class="btn btn-primary" href="/contact">Request a quote</a>
+      <a class="btn btn-outline" href="/sell-scrap">Sell us your scrap</a>
     </div>
   </div>
 </section>`;
@@ -233,8 +233,8 @@ function homePage() {
       <h1>Plastic &amp; metal scrap buyers in Oman</h1>
       <p class="lead">PET bottle scrap, PC bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, aluminium and iron scrap — bought, processed and exported from Barka to the GCC and worldwide.</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="/contact.html">Request a quote</a>
-        <a class="btn btn-outline" href="/sell-scrap.html">Sell your scrap</a>
+        <a class="btn btn-primary" href="/contact">Request a quote</a>
+        <a class="btn btn-outline" href="/sell-scrap">Sell your scrap</a>
       </div>
       <ul class="chips">${TRUST.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
     </div>
@@ -387,7 +387,7 @@ function contactPage() {
     <div class="card">
       <h3>Selling scrap?</h3>
       <p>Factories and collectors: tell us the material and volume, and we will arrange collection or a yard visit.</p>
-      <p><a class="btn btn-outline" href="/sell-scrap.html">Sell scrap to us</a></p>
+      <p><a class="btn btn-outline" href="/sell-scrap">Sell scrap to us</a></p>
     </div>
   </div>
 </div></section>`;
@@ -467,7 +467,7 @@ function productPage(p) {
   </div>
   <div>
     <div class="card"><h3>Typical applications</h3><ul class="tick">${p.uses.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
-    <div class="card"><h3>Ask for this material</h3><p>Share quantity, destination port and any specification requirements.</p><p><a class="btn btn-primary" href="/contact.html?material=${encodeURIComponent(p.name)}">Request a quote</a></p></div>
+    <div class="card"><h3>Ask for this material</h3><p>Share quantity, destination port and any specification requirements.</p><p><a class="btn btn-primary" href="/contact?material=${encodeURIComponent(p.name)}">Request a quote</a></p></div>
   </div>
 </div></section>
 <section class="section section-alt"><div class="wrap"><div class="section-head"><h2>Other materials</h2></div><div class="grid cards-3">${others.map(productCard).join('')}</div></div></section>`;
@@ -476,7 +476,7 @@ function productPage(p) {
     desc: p.seoDesc || (p.card + ' Supplied by Arabian Polyplast Trading LLC, Barka, Oman.'),
     canonical: url('/products/' + p.slug + '.html')
   }, body + '\n' + ld(productLd(p)) + '\n' + ld(breadcrumbLd([
-    { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug + '.html' }
+    { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug }
   ])));
 }
 
@@ -495,7 +495,7 @@ ${ctaBand()}`;
     title: OMAN_PAGE.seoTitle,
     desc: OMAN_PAGE.seoDesc,
     canonical: url('/scrap-oman.html')
-  }, body + '\n' + ld(orgLd) + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Oman & GCC', href: '/scrap-oman.html' }])));
+  }, body + '\n' + ld(orgLd) + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Oman & GCC', href: '/scrap-oman' }])));
 }
 
 function notFound() {
@@ -503,7 +503,7 @@ function notFound() {
     title: 'Page not found — Arabian Polyplast',
     desc: 'The page you requested was not found.',
     canonical: url('/404.html')
-  }, `<section class="page-head"><div class="wrap"><h1>Page not found</h1><p class="lead">That page does not exist. Start from the materials list or contact us.</p><p><a class="btn btn-primary" href="/">Home</a> <a class="btn btn-outline" href="/contact.html">Contact</a></p></div></section>`);
+  }, `<section class="page-head"><div class="wrap"><h1>Page not found</h1><p class="lead">That page does not exist. Start from the materials list or contact us.</p><p><a class="btn btn-primary" href="/">Home</a> <a class="btn btn-outline" href="/contact">Contact</a></p></div></section>`);
 }
 
 // ---------------------------------------------------------------- Arabic
@@ -516,7 +516,7 @@ function arHome() {
       <h1>${esc(AR.home.h1)}</h1>
       <p class="lead">${esc(AR.home.intro)}</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="/ar/contact.html">${esc(AR.home.cta)}</a>
+        <a class="btn btn-primary" href="/ar/contact">${esc(AR.home.cta)}</a>
         <a class="btn btn-outline" href="/">English</a>
       </div>
     </div>
@@ -577,10 +577,13 @@ function arContact() {
 }
 
 // ---------------------------------------------------------------- write
+const CLEAN_PATHS = [];
+
 function write(rel, html) {
   const file = path.join(DIST, rel);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, html, 'utf8');
+  CLEAN_PATHS.push('/' + rel.replace(/\\/g, '/').replace(/index\.html$/, '').replace(/\.html$/, ''));
 }
 
 fs.rmSync(DIST, { recursive: true, force: true });
@@ -620,15 +623,22 @@ fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `# ${SITE.name}\n\n> ${SITE.description}\n\n` +
   `Location: ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman\n` +
   `Established: ${SITE.founded}\nContact: ${SITE.email} · ${SITE.phone}\n\n` +
-  `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug}.html)`).join('\n')}\n\n` +
-  `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact.html\n- Sell scrap: ${SITE.domain}/sell-scrap.html\n`, 'utf8');
+  `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
+  `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n`, 'utf8');
 
 // Cloudflare Pages headers
 fs.writeFileSync(path.join(DIST, '_headers'),
   `/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: SAMEORIGIN\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: geolocation=(), microphone=(), camera=()\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n`, 'utf8');
 
 fs.writeFileSync(path.join(DIST, '_redirects'),
-  `/home / 301\n/index.html / 301\n/products /products/ 301\n/ar /ar/ 301\n`, 'utf8');
+  `/home / 301\n/index.html / 301\n/products /products/ 301\n/ar /ar/ 301\n` +
+  CLEAN_PATHS
+    .filter(p => p !== '/' && !p.endsWith('/') && p !== '/404')
+    .map(p => `${p}.html ${p} 301`)
+    .join('\n') + '\n', 'utf8');
+
+// IndexNow key file (Bing / Seznam / Yandex instant indexing)
+fs.writeFileSync(path.join(DIST, SITE.indexNowKey + '.txt'), SITE.indexNowKey + '\n', 'utf8');
 
 // copy assets
 for (const f of ['styles.css', 'app.js', 'favicon.svg']) {
