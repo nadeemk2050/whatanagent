@@ -105,7 +105,7 @@
         '100% free, unlimited AI token generation on your own hardware',
         'Complete data privacy — sensitive accounting and customer chats never leave your own machines',
         'Seamless automatic fallback to cloud APIs whenever your local PC is asleep',
-        'Great for heavy background jobs like Contact Brain learning, news summaries, and CV drafting'
+        'Great for heavy background jobs like LLM Tank learning, news summaries, and CV drafting'
       ]
     },
     {

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- APP VERSION: 2026.10.01.2 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 Contact Brains: per-person brain cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Gold Events Calendar (renamed): free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts) — the boss AI now receives this calendar in its prompt, so he can ask about upcoming events, impacts and forecasts from WhatsApp or the dashboard boss chat anytime; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through; ⚡ COMMAND CENTER 2.0 (menu: Tasks & Command Center 2.0): visual task builder (WhatsApp message / team board task / gold alert / AI prompt), cron-style schedules with LIVE next-run preview + 5-field crontab support (Asia/Dubai locked), schedule expiry, reconnect-retry, failure alerts to boss WhatsApp, auto-disable after N consecutive failures, per-task execution logs, conditional follow-ups + gold price watches with custom messages, and the 👑 History of Boss Orders audit trail with search + one-click re-run — also fed to the boss AI as behavioral memory; 🥇 Gold page sections (Events Calendar / This Week at a Glance / Price Alerts / Triggered Alerts) are now COLLAPSIBLE — click any heading to show or hide, state remembered, TradingView calendar lazy-mounts only when opened; each day header in This Week at a Glance is clickable to reveal that day's events (with per-day event counts)) -->
+    <!-- APP VERSION: 2026.10.01.2 (WhatsApp Web page shows a dev/staging banner explaining that local instances don't own the session - production Railway does; vision cost control + AlignTasks boss bridge live; Browsing News Agent with configurable timings + pause/resume; 🧠 LLM Tanks: per-person LLM cards, persona mixing (weights + presets + conflict rules), learned style memory, AI Discussion Area, draft/alert/silent modes, escalation alerts and draft approvals inbox; 🥇 Gold Market: live XAU/USD spot, TradingView candlestick chart (7 timeframes) with emergency canvas fallback, one-time buy/sell price alerts managed from the dashboard + boss WhatsApp commands; live streaming top-bar tape with today's high/low prices + timestamps; 📅 Gold Events Calendar (renamed): free TradingView economic calendar embed + this-week events list from the free Forex Factory feed (rate-limit hardened: hourly refresh, persistent Firestore cache, retry cooldown, instant-restore after restarts) — the boss AI now receives this calendar in its prompt, so he can ask about upcoming events, impacts and forecasts from WhatsApp or the dashboard boss chat anytime; gzip compression on all responses; scrollable compact 9px sidebar menu with sticky close button; dashboard stat cards show real unified figures with 60s auto-refresh and click-through; ⚡ COMMAND CENTER 2.0 (menu: Tasks & Command Center 2.0): visual task builder (WhatsApp message / team board task / gold alert / AI prompt), cron-style schedules with LIVE next-run preview + 5-field crontab support (Asia/Dubai locked), schedule expiry, reconnect-retry, failure alerts to boss WhatsApp, auto-disable after N consecutive failures, per-task execution logs, conditional follow-ups + gold price watches with custom messages, and the 👑 History of Boss Orders audit trail with search + one-click re-run — also fed to the boss AI as behavioral memory; 🥇 Gold page sections (Events Calendar / This Week at a Glance / Price Alerts / Triggered Alerts) are now COLLAPSIBLE — click any heading to show or hide, state remembered, TradingView calendar lazy-mounts only when opened; each day header in This Week at a Glance is clickable to reveal that day's events (with per-day event counts)) -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -840,7 +840,7 @@
                 <span>📖 Rule Book</span>
                 <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#dc2626; color:#fff; font-weight:bold;">APP RULES</span>
             </div>
-            <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 Contact Brains</div>
+            <div class="menu-item" onclick="showSection('brains'); if (typeof loadBrains === 'function') loadBrains();">🧠 LLM Tanks</div>
             <div class="menu-item" onclick="window.location.href='/academy.html'" style="display:flex; justify-content:space-between; align-items:center; background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; cursor:pointer;">
                 <span>🎓 AI Staff Academy</span>
                 <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#7c3aed; color:#fff; font-weight:bold;">NEW</span>
@@ -1693,7 +1693,7 @@
                                 <button onclick="promptEditWaWebContactName()" title="Edit Contact Name" style="background:#202c33; border:1px solid #2a3942; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>✏️ Edit Name</span>
                                 </button>
-                                <button onclick="if (waWebCurrentJid) openBrainPanel(waWebCurrentJid); else toastMsg('Open a chat first');" title="🧠 Contact Brain — personality, memory & AI discussion for this person" style="background:#202c33; border:1px solid #a855f7; color:#d8b4fe; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                <button onclick="if (waWebCurrentJid) openBrainPanel(waWebCurrentJid); else toastMsg('Open a chat first');" title="🧠 LLM Tank — personality, memory & AI discussion for this person" style="background:#202c33; border:1px solid #a855f7; color:#d8b4fe; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                     <span>🧠 Brain</span>
                                 </button>
                                 <button onclick="if (waWebCurrentJid) openChatAiPowersModal(waWebCurrentJid); else toastMsg('Open a chat first');" title="⚡ AI Powers & Modalities — select what AI can process (Voice Notes, Images, Docs, Video, Two-Way Context)" style="background:#1e293b; border:1px solid #38bdf8; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px; box-shadow:0 0 8px rgba(56,189,248,0.2);">
@@ -3182,7 +3182,7 @@
                     <div style="width:100%; height:100vh; height:100dvh; display:flex; flex-direction:column; background:#fff; overflow:hidden;">
                         <div style="padding:13px 18px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--border); background:#fffbeb;">
                             <input id="noteTitle" placeholder="Title..." oninput="scheduleNoteSave()" style="flex:1; min-width:190px; border:none; outline:none; font-size:19px; font-weight:700; background:transparent;">
-                            <select id="noteModel" onchange="saveNoteField('model', this.value)" title="AI brain for this note" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px; font-weight:600;">
+                            <select id="noteModel" onchange="saveNoteField('model', this.value)" title="AI LLM for this note" style="padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px; font-weight:600;">
                                 <option value="gemini">🤖 Gemini</option>
                                 <option value="qwen">⚡ Qwen</option>
                                 <option value="deepseek">🧠 DeepSeek</option>
@@ -3235,31 +3235,31 @@
                 </div>
             </div>
 
-            <!-- 🧠 CONTACT BRAINS SECTION -->
+            <!-- 🧠 LLM TANKS SECTION -->
             <div id="brainsSection" class="app-section">
                 <div class="followup-header">
-                    <h2>🧠 Contact Brains</h2>
+                    <h2>🧠 LLM Tanks</h2>
                     <div style="font-size:13px; color:#546e7a;">Per-person personality, memory & rules for the AI — open any card to edit, discuss with the AI, learn your style, and approve drafts.</div>
                 </div>
                 <div class="followup-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:16px;">
-                    <div class="stat-box"><h3 id="brStatCards">0</h3><span>Brain Cards</span></div>
+                    <div class="stat-box"><h3 id="brStatCards">0</h3><span>LLM Cards</span></div>
                     <div class="stat-box"><h3 id="brStatDrafts" style="color:#b45309;">0</h3><span>📥 Pending Drafts</span></div>
                     <div class="stat-box"><h3 id="brStatLearned" style="color:#1b5e20;">0</h3><span>🎓 Style-Learned</span></div>
                 </div>
                 <div class="card" style="margin-bottom:16px; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
-                    <label style="display:flex; gap:8px; align-items:center; font-weight:normal; cursor:pointer; font-size:13px;"><input type="checkbox" id="brCfgAutoClassify" style="width:auto;"> Auto-create default brain card for brand-new contacts (Professional+Respect)</label>
+                    <label style="display:flex; gap:8px; align-items:center; font-weight:normal; cursor:pointer; font-size:13px;"><input type="checkbox" id="brCfgAutoClassify" style="width:auto;"> Auto-create default LLM card for brand-new contacts (Professional+Respect)</label>
                     <label style="display:flex; gap:8px; align-items:center; font-weight:normal; cursor:pointer; font-size:13px;"><input type="checkbox" id="brCfgLearning" style="width:auto;"> Enable nightly style learning (AI studies your own past messages)</label>
-                    <button onclick="brainSaveConfig()" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">💾 Save Brain Settings</button>
+                    <button onclick="brainSaveConfig()" style="padding:9px 16px; background:#0ea5e9; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:13px;">💾 Save LLM Settings</button>
                 </div>
                 <h3 style="margin:0 0 10px 0;">📥 Draft Approvals Inbox <span style="font-weight:normal; font-size:13px; color:#546e7a;">— replies the AI prepared but did NOT send (draft mode / alerts / escalations)</span></h3>
                 <div id="brGlobalDrafts" style="margin-bottom:22px;"><p class="subtitle">Loading…</p></div>
-                <h3 style="margin:0 0 10px 0;">🗂️ All Brain Cards</h3>
+                <h3 style="margin:0 0 10px 0;">🗂️ All LLM Cards</h3>
                 <div id="brListGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px;">
-                    <div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">Loading brain cards...</div>
+                    <div style="text-align:center; color:#667781; padding:30px; grid-column:1/-1;">Loading LLM cards...</div>
                 </div>
             </div>
 
-            <!-- 🧠 BRAIN PANEL (full-screen overlay: card editor + AI discussion + learned memory + drafts) -->
+            <!-- 🧠 LLM PANEL (full-screen overlay: card editor + AI discussion + learned memory + drafts) -->
             <div id="brainOverlay" style="display:none; position:fixed; inset:0; background:#f8fafc; z-index:3100;">
                 <div style="width:100%; height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden;">
                     <div style="padding:12px 18px; background:#0f172a; color:#fff; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -3274,7 +3274,7 @@
                         <button onclick="closeBrainPanel()" style="background:#475569; border:none; color:#fff; padding:8px 14px; border-radius:8px; font-weight:bold; cursor:pointer;">✖ Close</button>
                     </div>
                     <div style="display:flex; gap:6px; padding:10px 18px; background:#e2e8f0; flex-wrap:wrap;">
-                        <button class="br-tab" id="brTabBtnCard" onclick="brainTab('card')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#0f172a; color:#fff;">📋 Brain Card</button>
+                        <button class="br-tab" id="brTabBtnCard" onclick="brainTab('card')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#0f172a; color:#fff;">📋 LLM Card</button>
                         <button class="br-tab" id="brTabBtnDiscuss" onclick="brainTab('discuss')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">💬 AI Discussion</button>
                         <button class="br-tab" id="brTabBtnLearned" onclick="brainTab('learned')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">🎓 Learned Memory</button>
                         <button class="br-tab" id="brTabBtnDrafts" onclick="brainTab('drafts')" style="padding:8px 14px; border-radius:16px; cursor:pointer; font-size:13px; font-weight:bold; border:1px solid #94a3b8; background:#fff; color:#334155;">📥 Drafts (<span id="brTabDraftCount">0</span>)</button>
@@ -3376,12 +3376,12 @@
                                     <button onclick="brainQuick('Suggest the best persona mix and weights for this contact, and explain why in 3 short lines.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">💡 Suggest best mix</button>
                                     <button onclick="brainQuick('Analyse how the owner talks with this contact and what should be remembered about him.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🔍 Analyse this person</button>
                                     <button onclick="brainQuick('Draft a reply to his last message exactly as the AI would send it.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">✍️ Draft next reply</button>
-                                    <button onclick="brainQuick('What should I change in his brain card? Check mode, permissions and personas.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🛠️ Improve the card</button>
+                                    <button onclick="brainQuick('What should I change in his LLM card? Check mode, permissions and personas.')" style="padding:8px 12px; background:#faf5ff; border:1px solid #d8b4fe; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🛠️ Improve the card</button>
                                     <button onclick="brainPreview()" style="padding:8px 12px; background:#ecfeff; border:1px solid #a5f3fc; border-radius:8px; cursor:pointer; font-size:12px; font-weight:bold;">🎬 Preview 3 sample replies</button>
                                 </div>
                                 <div id="brDiscussLog" style="min-height:260px; max-height:52vh; overflow-y:auto; background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px;"></div>
                                 <div id="brSuggestion" style="display:none; margin-top:10px; padding:12px 14px; background:#ecfdf5; border:1px solid #6ee7b7; border-radius:10px;">
-                                    <b>🤖 The AI suggests changes to this brain card</b>
+                                    <b>🤖 The AI suggests changes to this LLM card</b>
                                     <div id="brSuggestionText" style="font-size:12px; color:#065f46; margin:6px 0; white-space:pre-wrap;"></div>
                                     <div style="display:flex; gap:8px;">
                                         <button onclick="brainApplySuggestion()" style="padding:8px 14px; background:#16a34a; border:none; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer; font-size:12px;">✅ Apply to card (then press Save Card)</button>
@@ -8118,7 +8118,7 @@
             var goldCount = 0, brainCount = 0;
             (stats.byArea && Object.keys(stats.byArea) || []).forEach(function(k) {
                 if (k.toLowerCase().includes('gold')) goldCount += stats.byArea[k].count || 0;
-                if (k.toLowerCase().includes('brain')) brainCount += stats.byArea[k].count || 0;
+                if (k.toLowerCase().includes('brain') || k.toLowerCase().includes('llm tank')) brainCount += stats.byArea[k].count || 0;
             });
             var cGold = document.getElementById('aiCountGold'); if (cGold) cGold.textContent = goldCount;
             var cBrain = document.getElementById('aiCountBrain'); if (cBrain) cBrain.textContent = brainCount;
@@ -8149,7 +8149,7 @@
             else if (aiActivityFilter === 'gemini') list = list.filter(function(x) { return x.provider === 'gemini'; });
             else if (aiActivityFilter === 'qwen') list = list.filter(function(x) { return x.provider === 'qwen'; });
             else if (aiActivityFilter === 'gold') list = list.filter(function(x) { return String(x.area || '').toLowerCase().includes('gold'); });
-            else if (aiActivityFilter === 'brain') list = list.filter(function(x) { return String(x.area || '').toLowerCase().includes('brain'); });
+            else if (aiActivityFilter === 'brain') list = list.filter(function(x) { var a = String(x.area || '').toLowerCase(); return a.includes('brain') || a.includes('llm tank'); });
             else if (aiActivityFilter === 'blocked') list = list.filter(function(x) { return x.status === 'blocked'; });
 
             // Search
@@ -10894,7 +10894,7 @@
             }
         }
 
-    // ==================== BOSS AI — LIVE ORDERS (same brain as the WhatsApp Boss) ====================
+    // ==================== BOSS AI — LIVE ORDERS (same LLM as the WhatsApp Boss) ====================
     let bossAiVoiceReply = localStorage.getItem('bossAiVoiceReply') === '1';
     let bossAiHistory = [];
     try { bossAiHistory = JSON.parse(localStorage.getItem('bossAiChat') || '[]'); } catch (e) { bossAiHistory = []; }
@@ -12144,7 +12144,7 @@
       finally { if (btn) { btn.disabled = false; btn.innerText = '💾 Export'; } }
     }
 
-    // ==================== 🧠 CONTACT BRAINS (persona cards + AI discussion + learning + drafts) ====================
+    // ==================== 🧠 LLM TANKS (persona cards + AI discussion + learning + drafts) ====================
     let brainMeta = null;
     let brainCurrent = null;         // { jid, exists, profile, msgCount }
     let brainPersonaState = [];      // [{name, weight}]
@@ -12200,7 +12200,7 @@
         const grid = document.getElementById('brListGrid');
         if (!grid) return;
         if (!brainListCache.length) {
-            grid.innerHTML = '<p class="subtitle" style="grid-column:1/-1; text-align:center;">No brain cards yet — open any WhatsApp chat and press the 🧠 Brain button. New contacts get a default card automatically.</p>';
+            grid.innerHTML = '<p class="subtitle" style="grid-column:1/-1; text-align:center;">No LLM cards yet — open any WhatsApp chat and press the 🧠 LLM button. New contacts get a default card automatically.</p>';
             return;
         }
         const modeLabels = { auto: '🤖 Auto', draft_only: '📥 Draft', alert_only: '🔔 Alert', silent: '🔇 Silent' };
@@ -12272,11 +12272,11 @@
             });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'failed');
-            toastMsg('💾 Brain settings saved');
+            toastMsg('💾 LLM settings saved');
         } catch (e) { toastMsg('❌ ' + e.message); }
     }
 
-    // ---------- Brain panel (full-screen) ----------
+    // ---------- LLM panel (full-screen) ----------
     async function openBrainPanel(jid, tab) {
         if (!jid) return;
         await brainEnsureMeta();
@@ -12322,7 +12322,7 @@
     function brainRenderPanel() {
         if (!brainCurrent) return;
         const p = brainCurrent.profile || {};
-        document.getElementById('brPanelName').innerText = '🧠 ' + (p.name || 'New brain card') + (p.relationship ? ' · ' + p.relationship : '') + (brainCurrent.exists ? '' : ' (not saved yet)');
+        document.getElementById('brPanelName').innerText = '🧠 ' + (p.name || 'New LLM card') + (p.relationship ? ' · ' + p.relationship : '') + (brainCurrent.exists ? '' : ' (not saved yet)');
         document.getElementById('brPanelMode').value = p.mode || 'auto';
         const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
         setV('brName', p.name || ''); setV('brNick', p.nickname || ''); setV('brCalls', p.callsYou || '');
@@ -12507,7 +12507,7 @@
         const btn = document.getElementById('brSaveBtn');
         if (btn) { btn.disabled = true; btn.innerText = '⏳ Saving…'; }
         try {
-            // Brain writes are admin-guarded (fail-closed): postAdmin() adds the token and
+            // LLM writes are admin-guarded (fail-closed): postAdmin() adds the token and
             // asks for it once if this browser does not have it yet.
             const r = await postAdmin('api/brain/' + encodeURIComponent(brainCurrent.jid), brainCollectProfile());
             const d = await r.json();
@@ -12527,7 +12527,7 @@
 
     async function deleteBrainCard() {
         if (!brainCurrent) return;
-        if (!confirm('Delete this brain card? The AI goes back to default behaviour for this contact.')) return;
+        if (!confirm('Delete this LLM card? The AI goes back to default behaviour for this contact.')) return;
         try {
             const delRes = await fetch('api/brain/' + encodeURIComponent(brainCurrent.jid), {
                 method: 'DELETE', headers: { 'x-admin-token': adminToken() }
@@ -12547,7 +12547,7 @@
             ? '<div style="display:flex; justify-content:flex-end; margin:8px 0;"><div style="background:#ede9fe; color:#4c1d95; padding:10px 14px; border-radius:12px 12px 0 12px; max-width:80%; font-size:13.5px; white-space:pre-wrap;">' + escapeHtml(m.text) + '</div></div>'
             : '<div style="display:flex; justify-content:flex-start; margin:8px 0;"><div style="background:#f1f5f9; color:#0f172a; padding:10px 14px; border-radius:12px 12px 12px 0; max-width:85%; font-size:13.5px; white-space:pre-wrap;">🤖 ' + escapeHtml(m.text) + '</div></div>'
         ).join('')
-            : '<p class="subtitle">Ask anything about this person — the AI knows his brain card, your whole history and what it learned. It can also suggest card changes for you to apply. 🧠</p>';
+            : '<p class="subtitle">Ask anything about this person — the AI knows his LLM card, your whole history and what it learned. It can also suggest card changes for you to apply. 🧠</p>';
         el.scrollTop = el.scrollHeight;
     }
 
@@ -12624,7 +12624,7 @@
             const r = await fetch('api/brain/' + encodeURIComponent(jid) + '/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
             const d = await r.json();
             if (!r.ok) throw new Error(d.error || 'failed');
-            log.push({ role: 'ai', text: '🎬 Three sample replies with his current brain card:\n\n' + (d.options || []).map((o, i) => (i + 1) + '. ' + o).join('\n\n') });
+            log.push({ role: 'ai', text: '🎬 Three sample replies with his current LLM card:\n\n' + (d.options || []).map((o, i) => (i + 1) + '. ' + o).join('\n\n') });
         } catch (e) { log.push({ role: 'ai', text: '❌ ' + e.message }); }
         brainRenderDiscussLog(); brainSaveDiscuss(jid);
     }
@@ -12756,13 +12756,13 @@
       #bossAiFab:hover { transform: scale(1.06); }
       #bossAiMicBtn.recording { background: #b91c1c !important; }
     </style>
-    <button id="bossAiFab" title="Boss AI — Live Orders (same brain as WhatsApp)" onclick="bossAiTogglePanel()">👑</button>
+    <button id="bossAiFab" title="Boss AI — Live Orders (same LLM as WhatsApp)" onclick="bossAiTogglePanel()">👑</button>
     <div id="bossAiPanel" style="display:none; position:fixed; top:74px; right:14px; z-index:1400; width:min(420px, calc(100vw - 20px)); height:min(72vh, 640px); background:#111b21; border:1px solid #2a3942; border-radius:14px; overflow:hidden; box-shadow:0 12px 44px rgba(0,0,0,.6); flex-direction:column;">
       <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:#202c33; border-bottom:1px solid #2a3942;">
         <span style="font-size:18px;">👑</span>
         <div style="flex:1;">
           <div style="color:#e9edef; font-weight:700; font-size:14px;">Boss AI — Live Orders</div>
-          <div style="color:#8696a0; font-size:11px;">Same brain as WhatsApp • Gemini + Qwen</div>
+          <div style="color:#8696a0; font-size:11px;">Same LLM as WhatsApp • Gemini + Qwen</div>
         </div>
         <button id="bossAiVoiceBtn" onclick="bossAiToggleVoice()" title="Voice replies" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:14px;">🔊</button>
         <button onclick="bossAiClear()" title="Clear chat" style="background:#111b21; border:1px solid #2a3942; color:#e9edef; border-radius:8px; padding:6px 8px; cursor:pointer; font-size:14px;">🧹</button>
@@ -12989,7 +12989,7 @@
             <button class="ai-filter-tab" onclick="aiSetFilter('gemini')">Gemini (<span id="aiCountGemini">0</span>)</button>
             <button class="ai-filter-tab" onclick="aiSetFilter('qwen')">Qwen (<span id="aiCountQwen">0</span>)</button>
             <button class="ai-filter-tab" onclick="aiSetFilter('gold')">Gold Events (<span id="aiCountGold">0</span>)</button>
-            <button class="ai-filter-tab" onclick="aiSetFilter('brain')">Contact Brain (<span id="aiCountBrain">0</span>)</button>
+            <button class="ai-filter-tab" onclick="aiSetFilter('brain')">LLM Tank (<span id="aiCountBrain">0</span>)</button>
             <button class="ai-filter-tab" onclick="aiSetFilter('blocked')">🛑 Blocked (<span id="aiCountBlocked">0</span>)</button>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">

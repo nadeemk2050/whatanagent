@@ -492,7 +492,7 @@ async function renderGlobalPersona() {
     box.innerHTML =
       '<div class="sect" style="max-width:1100px;margin:0 auto;">' +
         '<h4>🎭 Global Persona / Voice — applies to every customer-facing AI</h4>' +
-        '<div class="x" style="margin-bottom:8px;">Zaheer, WhatsApp auto-replies, the Meta bot and every business agent use this voice. A contact\'s Brain can still fine-tune the tone, and each office can override this with its own voice. The Rule Book and safety rules always win.</div>' +
+        '<div class="x" style="margin-bottom:8px;">Zaheer, WhatsApp auto-replies, the Meta bot and every business agent use this voice. A contact\'s LLM can still fine-tune the tone, and each office can override this with its own voice. The Rule Book and safety rules always win.</div>' +
         (d.isDefault ? '<div class="x" style="color:#0f766e;margin-bottom:6px;">Currently using the built-in HUMAN CORE.</div>' : '<div class="x" style="color:#7c3aed;margin-bottom:6px;">Currently using your custom global voice.</div>') +
         '<textarea id="globalPersona" class="f" style="min-height:360px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;">' + esc(d.text || '') + '</textarea>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">' +
@@ -1349,7 +1349,7 @@ async function tabTools(d) {
     '<div class="item"><div class="t">' + esc(l.tool) + ' · ' + esc(l.status) + '</div><div class="x">' + new Date(l.createdAt).toLocaleString() + ' · ' + esc(String(l.summary || '').slice(0, 160)) + '</div></div>').join('');
   return '<div class="sect"><h4>Allowed tools</h4>' + (rows || '<div class="x">No tools registered.</div>') +
     '<button class="btn btn-primary" style="margin-top:8px;" onclick="saveAgentTools()">💾 Save allowed tools</button>' +
-    '<div class="x" style="margin-top:8px;">Write tools never execute — they create an item in Contact Brains → Drafts for your approval.</div></div>' +
+    '<div class="x" style="margin-top:8px;">Write tools never execute — they create an item in LLM Tanks → Drafts for your approval.</div></div>' +
     '<div class="sect"><h4>Try a read tool</h4>' +
     '<div class="row2"><div><label class="f">Tool</label><select class="f" id="toolPick"><option value="fetch_url_text">fetch_url_text</option><option value="read_firestore_collection">read_firestore_collection</option><option value="shopify_read_stub">shopify_read_stub</option></select></div>' +
     '<div><label class="f">Input</label><input class="f" id="toolInput" placeholder="URL, or collection name"></div></div>' +
@@ -1490,7 +1490,7 @@ async function toggleStop(id, on) {
 
 /* ---------------- office overlay ---------------- */
 const OFFICE_TABS = [
-  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['prices', '📈 Prices Data'], ['clients', '👥 My Clients'], ['brain', '🧠 Brain link'], ['persona', '🎭 Persona & Voice'],
+  ['profile', '👤 Profile'], ['desk', '🪑 Desk'], ['prices', '📈 Prices Data'], ['clients', '👥 My Clients'], ['brain', '🧠 LLM link'], ['persona', '🎭 Persona & Voice'],
   ['tools', '🧰 Tools'], ['control', '🎛️ Control'], ['performance', '📊 Performance'], ['logs', '🗂️ Logs'],
   ['team', '👨‍👩‍👦 Team'], ['model', '🧠 Model']
 ];
@@ -1618,18 +1618,18 @@ function renderOfficeTab() {
         (cx.briefing && cx.briefing.text ? '<div style="font-size:11px;color:#334155;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:6px;margin-top:6px;white-space:pre-wrap;">' + esc(cx.briefing.text) + '</div>' : '') +
         '<div id="cl_' + esc(cx.id) + '" style="font-size:11px;margin-top:4px;"></div>' +
         '</div>').join('')
-        : '<div class="x">No chats assigned yet. Assign staff from a chat’s brain card (“Handled by”).</div>') +
+        : '<div class="x">No chats assigned yet. Assign staff from a chat’s LLM card (“Handled by”).</div>') +
       '<button class="btn btn-ghost btn-sm" onclick="clientsRebuild()">🔄 Rebuild list from assignment events</button>';
     return;
   }
 
   if (O.tab === 'brain') {
-    b.innerHTML = oSect('Brain link',
+    b.innerHTML = oSect('LLM link',
       '<div style="font-size:12px;line-height:1.7;">' +
       (a.knowledgeSource === 'waWebKnowledgeBase'
         ? '📚 This staff member’s knowledge base is the live <b>Mr. Zaheer Ahmed Knowledge Base</b> used by the WhatsApp bot (single source of truth — nothing is duplicated).'
         : '📚 Knowledge is stored in this staff member’s own training room.') +
-      '<br><br>Per-chat behaviour (tone, persona, mode, handled by) lives in the <b>Contact Brain</b> of each chat.' +
+      '<br><br>Per-chat behaviour (tone, persona, mode, handled by) lives in the <b>LLM Tank</b> of each chat.' +
       '</div>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">' +
       '<button class="btn btn-primary btn-sm" onclick="window.open(\'/admin.html\',\'_blank\')">🧠 Open dashboard brains</button>' +

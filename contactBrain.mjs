@@ -552,7 +552,7 @@ export async function escalateBrain({ jid, name, detail }) {
     const items = snap.exists() ? (snap.data().items || []) : [];
     items.push({
       id: 'brain-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
-      text: '🧠⚠️ BRAIN ESCALATION' + (name ? ' (' + name + ')' : '') + ': AI stopped replying. Message: "' + sstr(detail, 160) + '" — open the dashboard (🧠 Contact Brains) to handle it.',
+      text: '🧠⚠️ LLM TANK ESCALATION' + (name ? ' (' + name + ')' : '') + ': AI stopped replying. Message: "' + sstr(detail, 160) + '" — open the dashboard (🧠 LLM Tanks) to handle it.',
       runAt: Date.now(), status: 'pending', createdAt: Date.now()
     });
     await setDoc(ref, { items: items.slice(-200) }, { merge: true });
@@ -622,7 +622,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
           recordAiCall({
             provider: p,
             model,
-            area: 'Contact Brain',
+            area: 'LLM Tank',
             isAutoFetch: false,
             prompt: user,
             response: '',
@@ -639,7 +639,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
         recordAiCall({
           provider: p,
           model,
-          area: 'Contact Brain',
+          area: 'LLM Tank',
           isAutoFetch: false,
           prompt: user,
           response: t,
@@ -666,7 +666,7 @@ async function callBrainAIRaw(system, user, { maxTokens = 1200, temperature = 0.
             recordAiCall({
               provider: 'gemini',
               model: gm,
-              area: 'Contact Brain',
+              area: 'LLM Tank',
               isAutoFetch: false,
               prompt: user,
               response: t,
