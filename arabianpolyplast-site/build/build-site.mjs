@@ -12,6 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SITE, NAV, TRUST, ROLES, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
 import { DEEP } from './deep/index.mjs';
+import { AR_DEEP } from './deep/ar.mjs';
+import { AR_NAV } from './content.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -83,6 +85,20 @@ function productLd(p) {
   };
 }
 
+function arProductLd(p, a) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: a.name,
+    description: a.intro,
+    brand: { '@type': 'Brand', name: SITE.shortName },
+    category: 'مواد بلاستيكية معاد تدويرها',
+    inLanguage: 'ar',
+    areaServed: ['Oman', 'GCC', 'Worldwide'],
+    url: url('/ar/products/' + p.slug)
+  };
+}
+
 function faqLd() {
   return {
     '@context': 'https://schema.org',
@@ -149,20 +165,24 @@ ${SITE.ga4Id ? `<script async src="https://www.googletagmanager.com/gtag/js?id=$
 </head>`;
 }
 
-function header() {
+function header(dir = 'ltr') {
+  const ar = dir === 'rtl';
+  const links = ar ? AR_NAV : NAV;
   return `<header class="site-header">
   <div class="wrap header-inner">
-    <a class="brand" href="/" aria-label="${esc(SITE.shortName)} home">
+    <a class="brand" href="${ar ? '/ar/' : '/'}" aria-label="${esc(SITE.shortName)} ${ar ? 'الرئيسية' : 'home'}">
       <span class="mark" aria-hidden="true">AP</span>
-      <span class="brand-text"><strong>${esc(SITE.shortName)}</strong><small>${esc(SITE.address.city)}, Oman</small></span>
+      <span class="brand-text"><strong>${esc(SITE.shortName)}</strong><small>${ar ? 'بركاء، عُمان' : esc(SITE.address.city) + ', Oman'}</small></span>
     </a>
-    <nav class="nav" id="siteNav" aria-label="Main">
-      ${NAV.map(n => `<a href="${n.href}">${esc(n.label)}</a>`).join('')}
+    <nav class="nav" id="siteNav" aria-label="${ar ? 'القائمة' : 'Main'}">
+      ${links.map(n => `<a href="${n.href}">${esc(n.label)}</a>`).join('')}
     </nav>
     <div class="header-actions">
-      <a class="btn btn-ghost" href="/ar/" hreflang="ar" lang="ar">العربية</a>
-      <a class="btn btn-primary" href="/contact">Get a quote</a>
-      <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">☰</button>
+      ${ar
+        ? '<a class="btn btn-ghost" href="/" hreflang="en" lang="en">English</a>'
+        : '<a class="btn btn-ghost" href="/ar/" hreflang="ar" lang="ar">العربية</a>'}
+      <a class="btn btn-primary" href="${ar ? '/ar/contact' : '/contact'}">${ar ? 'اطلب عرض سعر' : 'Get a quote'}</a>
+      <button class="nav-toggle" id="navToggle" aria-label="${ar ? 'القائمة' : 'Menu'}" aria-expanded="false">☰</button>
     </div>
   </div>
 </header>`;
@@ -215,7 +235,7 @@ function footer() {
 }
 
 function layout(opts, body) {
-  return head(opts) + '\n<body>\n' + header() + '\n<main>\n' + body + '\n</main>\n' + footer() + '\n' + floatingActions(opts.dir) + '\n</body>\n</html>\n';
+  return head(opts) + '\n<body>\n' + header(opts.dir) + '\n<main>\n' + body + '\n</main>\n' + footer() + '\n' + floatingActions(opts.dir) + '\n</body>\n</html>\n';
 }
 
 function floatingActions(dir = 'ltr') {
@@ -606,10 +626,64 @@ ${deep ? deepSections(p, deep) : ''}
   return layout({
     title: p.seoTitle || (p.name + ' from Oman — specification & supply | Arabian Polyplast'),
     desc: p.seoDesc || (p.card + ' Supplied by Arabian Polyplast Trading LLC, Barka, Oman.'),
-    canonical: url('/products/' + p.slug + '.html')
+    canonical: url('/products/' + p.slug + '.html'),
+    ...(AR_DEEP[p.slug] ? { hreflang: { en: url('/products/' + p.slug), ar: url('/ar/products/' + p.slug) } } : {})
   }, body + '\n' + ld(productLd(p)) + '\n' + ld(breadcrumbLd([
     { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug }
   ])) + (deep && deep.faq ? '\n' + ld(faqFromPairs(deep.faq)) : ''));
+}
+
+function arProductPage(p) {
+  const a = AR_DEEP[p.slug];
+  const shot = photoTag(p.slug, `${a.name} — Arabian Polyplast، بركاء، عُمان`, '(max-width:760px) 100vw, 900px');
+  const related = PRODUCTS.filter(x => x.slug !== p.slug && AR_DEEP[x.slug]).slice(0, 3);
+
+  const secs = a.sections.map(s => {
+    let inner = '';
+    if (s.ps) inner += s.ps.map(t => `<p>${t}</p>`).join('\n');
+    if (s.specs) inner += `<table class="spec"><tbody>${s.specs.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`;
+    if (s.list) inner += `<ul class="tick">${s.list.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    if (s.steps) inner += `<ol class="steps">${s.steps.map(([t, x], i) => `<li><span class="step-n">${i + 1}</span><div><h4>${esc(t)}</h4><p>${esc(x)}</p></div></li>`).join('')}</ol>`;
+    return `<h2>${esc(s.h)}</h2>\n${inner}`;
+  }).join('\n');
+
+  const body = `
+<section class="page-head" dir="rtl"><div class="wrap">
+  <nav class="crumbs" aria-label="مسار التنقل"><a href="/ar/">الرئيسية</a><span>/</span><a href="/ar/#materials">المواد</a><span>/</span><span>${esc(a.name)}</span></nav>
+  <h1>${esc(a.name)} في عُمان</h1>
+  <p class="lead">${esc(a.intro)}</p>
+</div></section>
+${shot ? `<section class="photo-band"><div class="wrap"><figure>${shot}</figure></div></section>` : ''}
+<section class="section"><div class="wrap two-col" dir="rtl">
+  <div>
+    <h2>المواصفات</h2>
+    <table class="spec"><tbody>${a.specs.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+    <p class="note">المواصفات تُتفق لكل شحنة. أرسل الدرجة المطلوبة ونؤكد المتاح.</p>
+  </div>
+  <div>
+    <div class="card"><h3>الاستخدامات</h3><ul class="tick">${a.uses.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
+    <div class="card"><h3>اطلب هذه المادة</h3><p>أرسل الكمية وميناء الوصول وأي اشتراطات فنية.</p><p><a class="btn btn-primary" href="/ar/contact">اطلب عرض سعر</a></p></div>
+  </div>
+</div></section>
+<section class="section" id="guide"><div class="wrap article" dir="rtl">
+<p class="eyebrow">دليل المادة</p>
+${secs}
+<h2>أسئلة يسألها المشترون</h2>
+<div class="faq-list">${a.faq.map(([q, ans]) => `<details class="faq"><summary>${esc(q)}</summary><p>${esc(ans)}</p></details>`).join('')}</div>
+<h2>مواد أخرى</h2>
+<ul class="tick">${related.map(x => `<li><a href="/ar/products/${x.slug}">${esc(AR_DEEP[x.slug].name)}</a> — ${esc(x.card)}</li>`).join('')}<li><a href="/products/${p.slug}">${esc(p.name)} بالتفصيل الكامل بالإنجليزية</a></li></ul>
+</div></section>
+${ctaBand()}`;
+
+  return layout({
+    title: a.title,
+    desc: a.desc,
+    canonical: url('/ar/products/' + p.slug),
+    dir: 'rtl',
+    hreflang: { en: url('/products/' + p.slug), ar: url('/ar/products/' + p.slug) }
+  }, body + '\n' + ld(arProductLd(p, a)) + '\n' + ld(breadcrumbLd([
+    { name: 'الرئيسية', href: '/ar/' }, { name: a.name, href: '/ar/products/' + p.slug }
+  ])) + '\n' + ld(faqFromPairs(a.faq)));
 }
 
 function scrapOmanPage() {
@@ -656,7 +730,9 @@ function arHome() {
 </section>
 <section class="section" id="materials"><div class="wrap">
   <div class="section-head"><h2>${esc(AR.home.materials)}</h2></div>
-  <div class="grid cards-3">${PRODUCTS.map(p => `<div class="card"><h3>${esc(p.name)}</h3><p dir="rtl">${esc(p.card)}</p></div>`).join('')}</div>
+  <div class="grid cards-3">${PRODUCTS.map(p => AR_DEEP[p.slug]
+    ? `<a class="card" href="/ar/products/${p.slug}"><h3>${esc(AR_DEEP[p.slug].name)}</h3><p dir="rtl">${esc(p.card)}</p></a>`
+    : `<a class="card" href="/products/${p.slug}"><h3>${esc(p.name)}</h3><p dir="rtl">${esc(p.card)}</p></a>`).join('')}</div>
 </div></section>
 <section class="section section-alt" id="services"><div class="wrap">
   <div class="section-head"><h2>${esc(AR.home.services)}</h2></div>
@@ -734,6 +810,7 @@ write('terms.html', termsPage());
 write('cookies.html', cookiesPage());
 write('products/index.html', productsIndex());
 for (const p of PRODUCTS) write('products/' + p.slug + '.html', productPage(p));
+for (const p of PRODUCTS) if (AR_DEEP[p.slug]) write('ar/products/' + p.slug + '.html', arProductPage(p));
 write('ar/index.html', arHome());
 write('ar/contact.html', arContact());
 write('404.html', notFound());
@@ -744,7 +821,8 @@ const pages = [
   ['/scrap-oman.html', '0.8'], ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
   ['/privacy.html', '0.3'], ['/terms.html', '0.3'], ['/cookies.html', '0.3'],
   ['/ar/', '0.8'], ['/ar/contact.html', '0.6']
-].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']));
+].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']))
+  .concat(Object.keys(AR_DEEP).map(slug => ['/ar/products/' + slug + '.html', '0.7']));
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
   pages.map(([p, pr]) => `  <url><loc>${url(p)}</loc><lastmod>${today}</lastmod><priority>${pr}</priority></url>`).join('\n') +
   '\n</urlset>\n';
@@ -765,7 +843,9 @@ fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `Location: ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman\n` +
   `Established: ${SITE.founded}\nContact: arabianpolyplast&#64;gmail.com · ${SITE.phone}\n\n` +
   `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
-  `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n`, 'utf8');
+  `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n` +
+  `\n## Arabic\n- Home: ${SITE.domain}/ar/\n` +
+  Object.keys(AR_DEEP).map(slug => `- ${AR_DEEP[slug].name}: ${SITE.domain}/ar/products/${slug}`).join('\n') + '\n', 'utf8');
 
 // Cloudflare Pages headers
 fs.writeFileSync(path.join(DIST, '_headers'),

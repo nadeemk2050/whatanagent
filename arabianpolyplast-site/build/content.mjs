@@ -47,6 +47,15 @@ export const NAV = [
   { href: '/contact', label: 'Contact' }
 ];
 
+// Only pages that actually exist in Arabic — pointing an Arabic menu at an English
+// page is worse than a short menu.
+export const AR_NAV = [
+  { href: '/ar/', label: 'الرئيسية' },
+  { href: '/ar/#materials', label: 'المواد' },
+  { href: '/ar/#services', label: 'الخدمات' },
+  { href: '/ar/contact', label: 'اتصل بنا' }
+];
+
 const STD_SPECS = (overrides = []) => [
   ['Form', 'As inspected (baled, loose, regrind or as agreed)'],
   ['Packaging', 'Bales or big bags, labelled with grade and weight'],
