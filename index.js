@@ -40,7 +40,7 @@ import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { attachPersonaDb, registerPersonaRoutes, getGlobalPersonaText } from './personaStore.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId, ZAI_COMPAT_BASE, GLM_FREE_MODELS } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId, ZAI_COMPAT_BASE, GLM_PAID_MODELS, glmThinkingFor } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { 
   initWaWeb, 
@@ -779,7 +779,7 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     // 🧪 Sandbox-only model override: lets the owner compare engines on the SAME prompt.
     // Whitelisted on purpose - this route is public, so it must never be able to run an
     // expensive model (Gemini 4 Carbon is $10/M output). Output is capped at 400 tokens.
-    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', ...GLM_FREE_MODELS];
+    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', ...GLM_PAID_MODELS];
     const forcedModel = String((req.body || {}).model || '').trim();
     const sandboxModel = SANDBOX_MODELS.includes(forcedModel) ? forcedModel : '';
     const sandboxGlm = /^glm-/.test(sandboxModel);
@@ -787,16 +787,16 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       return res.status(400).json({ error: 'ZAI_API_KEY is not configured on this server' });
     }
     if (sandboxGlm) {
-      // 🆓 Z.ai free models, same real prompt. GLM-4.7 / 4.5 reason by default and would spend
-      // the whole output budget on hidden reasoning (measured: empty content, 20 thinking
-      // tokens), so thinking is disabled for a WhatsApp-style reply - same rule as DeepSeek.
+      // 💸 Z.ai paid model, same real prompt. Thinking is disabled where the model allows it -
+      // GLM-4.7 / 4.5 otherwise spend the whole output budget on hidden reasoning (measured:
+      // empty content, 20 thinking tokens). GLM-5.3 refuses to switch it off, so it gets 'low'.
       const zai = new OpenAI({ baseURL: (process.env.ZAI_BASE_URL || ZAI_COMPAT_BASE), apiKey: process.env.ZAI_API_KEY, timeout: 45000 });
       const comp = await zai.chat.completions.create({
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
         model: sandboxModel,
         temperature: 0.6,
-        max_tokens: 400,
-        extra_body: { thinking: { type: 'disabled' } }
+        max_tokens: 600,
+        extra_body: { thinking: glmThinkingFor(sandboxModel) }
       });
       reply = comp.choices[0]?.message?.content || '';
       kbProvider = 'zai'; kbModelUsed = sandboxModel; kbUsage = comp.usage || null;

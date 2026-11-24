@@ -12,17 +12,28 @@ export const DEEPSEEK_DASHSCOPE_MODEL = 'deepseek-v4.1-flash';
 export const DEEPSEEK_DIRECT_MODEL = 'deepseek-flash';
 
 // ============================================================================
-// 🆓 Z.ai (Zhipu) — OpenAI-compatible. Per Z.ai's pricing page, GLM-4.7-Flash,
-// GLM-4.5-Flash and GLM-4.6V-Flash are free of charge for input, cached input
-// and output. They are wired here ONLY as an opt-in trial engine: nothing in the
-// reply chain uses them until ZAI_API_KEY exists in the environment.
-// Free tier has unpublished rate limits and may use data for product
-// improvement - never promote these to a default without checking the terms.
+// 💸 Z.ai (Zhipu) — OpenAI-compatible. Paid ids only.
+//
+// The free pool (GLM-4.7-Flash / 4.5-Flash / 4.6V-Flash) was removed on purpose:
+// measured live, it answers 1305 "service overloaded" far too often to be a
+// fallback — an engine that fails when you need it is worse than no engine.
+// Paid ids answer 1113 "Insufficient balance" until the Z.ai account is
+// recharged, so nothing here activates by accident.
+//
+//   glm-4.7-flashx  in $0.07  cache $0.01  out $0.40  ← cheapest that can turn
+//                                                      thinking OFF (chat-ready)
+//   glm-5.3-flash   in $0.15  cache $0.03  out $0.50  ← newest, but ALWAYS thinks
+//                                                      (low/high/max only), so
+//                                                      it is slower and bills
+//                                                      hidden output tokens
 // ============================================================================
 export const ZAI_COMPAT_BASE = 'https://api.z.ai/api/paas/v4';
-export const GLM_FREE_TEXT_MODEL = 'glm-4.7-flash';
-export const GLM_FREE_VISION_MODEL = 'glm-4.6v-flash';
-export const GLM_FREE_MODELS = [GLM_FREE_TEXT_MODEL, 'glm-4.5-flash', GLM_FREE_VISION_MODEL];
+export const GLM_CHEAP_TEXT_MODEL = 'glm-4.7-flashx';
+export const GLM_LATEST_FLASH_MODEL = 'glm-5.3-flash';
+export const GLM_PAID_MODELS = [GLM_CHEAP_TEXT_MODEL, GLM_LATEST_FLASH_MODEL];
+
+/** GLM-5.3 cannot disable thinking; everything cheaper can. */
+export const glmThinkingFor = (model) => (/^glm-5\.3/.test(String(model || '')) ? { type: 'low' } : { type: 'disabled' });
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const first = (...vals) => {

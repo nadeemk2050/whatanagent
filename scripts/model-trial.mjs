@@ -19,11 +19,10 @@ const PRICES = {
   'gemini-3.5-flash':      null,                       // legacy id, price not published
   'gemini-3.6-flash':      { in: 0.75, out: 3.75 },
   'gemini-3.8-flash':      { in: 0.75, out: 3.75 },
-  // 🆓 Free on Z.ai's pricing page (input, cached input and output all $0).
-  // Needs ZAI_API_KEY in the server environment or the call returns an error.
-  'glm-4.7-flash':         { in: 0, out: 0 },
-  'glm-4.5-flash':         { in: 0, out: 0 },
-  'glm-4.6v-flash':        { in: 0, out: 0 }
+  // 💸 Z.ai paid ids (no free tier: the free pool answers "service overloaded").
+  // A call only succeeds once the Z.ai account has a balance.
+  'glm-4.7-flashx':        { in: 0.07, out: 0.40 },
+  'glm-5.3-flash':         { in: 0.15, out: 0.50 }
 };
 
 const BASE = (process.argv[2] || 'https://whatanagent.duckdns.org').replace(/\/+$/, '');
