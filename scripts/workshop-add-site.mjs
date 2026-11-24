@@ -110,7 +110,7 @@ const steps = {
   'gsc-property': S('done', 'Domain property sc-domain:arabianpolyplast.com verified through the Search Console API on 24 Nov 2026. TXT google-site-verification=2thOxY5MKuIrpOY6My_OAzIPFjPDY8K4oLgTF4OejgY is live at the apex and must stay in DNS. Service account seo-agent-service-24may2026@dominonad.iam.gserviceaccount.com added as a Full user.'),
   'index-follow': S('done', 'Live check 24 Nov 2026: no noindex meta on any page, robots.txt allows everything.'),
   'robots-txt': S('done', 'Served at /robots.txt with Sitemap: https://arabianpolyplast.com/sitemap.xml, no Disallow, and explicit Allow rules for GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot, Google-Extended, Bingbot and the other answer-engine crawlers.'),
-  'sitemap-google': S('done', 'Submitted through the Search Console API on 24 Nov 2026, HTTP 204 accepted. Google had not fetched it at the moment of submission (0 URLs reported), which is normal for the first hours; errors 0, warnings 0.'),
+  'sitemap-google': S('done', 'Submitted through the Search Console API on 24 Nov 2026 (HTTP 204). Google fetched it within minutes: 29 URLs discovered, 0 errors, 0 warnings, last read 2026-11-24T16:19Z.'),
   'bing-property': S('todo', 'Verify arabianpolyplast.com in Bing Webmaster Tools (import from Search Console once GSC is live).'),
   'sitemap-bing': S('todo', 'Submit /sitemap.xml to Bing after verification.'),
   'indexnow': S('done', 'Key a7f3c1d9e04b47c8b2e6f5a90d1c3b8e served at the site root (HTTP 200). 26 URLs submitted to api.indexnow.org, HTTP 202, 24 Nov 2026. Runs on every deploy from GitHub Actions.'),
