@@ -22,7 +22,13 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const today = new Date().toISOString().slice(0, 10);
+const CSS = fs.readFileSync(path.join(SRC, 'styles.css'), 'utf8');
 const url = (p) => SITE.domain + (p === '/' ? '/' : p.replace(/\.html$/, ''));
+
+// Cloudflare's Scrape Shield injects a render-blocking script whenever it sees a
+// plain address. Encoding the @ keeps every link working while leaving nothing for
+// it to obfuscate. The JSON-LD copy uses the JSON escape for the same reason.
+const mail = esc(SITE.email).replace(/@/g, '&#64;');
 
 // ---------------------------------------------------------------- structured data
 const orgLd = {
@@ -33,7 +39,6 @@ const orgLd = {
   url: SITE.domain,
   description: SITE.description,
   foundingDate: SITE.founded,
-  email: SITE.email,
   telephone: SITE.phone,
   address: {
     '@type': 'PostalAddress',
@@ -109,7 +114,7 @@ ${hreflang ? `<link rel="alternate" hreflang="en" href="${esc(hreflang.en)}">\n<
 <meta name="twitter:image" content="${esc(url('/assets/og-image.png'))}">
 <meta name="theme-color" content="#0f3d3a">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/styles.css">
+<style>${CSS}</style>
 </head>`;
 }
 
@@ -155,6 +160,7 @@ function footer() {
         <li><a href="/scrap-oman">Local &amp; global</a></li>
         <li><a href="/sell-scrap">Sell scrap</a></li>
         <li><a href="/faq">FAQ</a></li>
+        <li><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a></li>
       </ul>
     </div>
     <div>
@@ -162,7 +168,7 @@ function footer() {
       <ul class="plain">
         <li><a href="tel:${esc(SITE.phoneRaw)}">${esc(SITE.phone)}</a> · call</li>
         <li><a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a> · WhatsApp</li>
-        <li><a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a></li>
+        <li><a href="mailto:${mail}">${mail}</a></li>
         <li>${esc(SITE.hours)}</li>
         <li><a href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></li>
         <li><a href="/ar/" hreflang="ar" lang="ar">العربية</a></li>
@@ -197,7 +203,7 @@ function floatingActions(dir = 'ltr') {
   <a class="fab fab-call" href="tel:${esc(SITE.phoneRaw)}" aria-label="${l.call}" title="${l.call}">
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
   </a>
-  <a class="fab fab-mail" href="mailto:${esc(SITE.email)}" aria-label="${l.mail}" title="${l.mail}">
+  <a class="fab fab-mail" href="mailto:${mail}" aria-label="${l.mail}" title="${l.mail}">
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
   </a>
   <button type="button" class="fab fab-top" id="fabTop" aria-label="${l.top}" title="${l.top}">
@@ -284,7 +290,7 @@ function homePage() {
 
 ${ctaBand()}`;
   return layout({
-    title: 'Scrap Buyers in Oman — PET, HDPE, PVC, UPVC, Aluminium & Iron | Arabian Polyplast',
+    title: 'PET, HDPE & PVC Scrap Buyers in Oman | Arabian Polyplast',
     desc: SITE.description,
     canonical: url('/'),
     hreflang: { en: url('/'), ar: url('/ar/') }
@@ -360,6 +366,59 @@ ${ctaBand()}`;
   }, body + '\n' + ld(faqLd()));
 }
 
+function legalPage(slug, title, heading, lead, sections) {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Legal</p><h1>${esc(heading)}</h1><p class="lead">${esc(lead)}</p></div></section>
+<section class="section"><div class="wrap legal">
+${sections.map(([h, ps]) => `<h2>${esc(h)}</h2>${ps.map(p => `<p>${p}</p>`).join('')}`).join('\n')}
+<p class="muted">Last updated 24 November 2026.</p>
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: `${heading} | ${SITE.shortName}`,
+    desc: lead,
+    canonical: url('/' + slug)
+  }, body);
+}
+
+function privacyPage() {
+  const who = `${SITE.name}, ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman`;
+  return legalPage('privacy', 'Privacy', 'Privacy notice',
+    'What we do with the details you send us, and how to have them removed.', [
+    ['Who is responsible', [`${esc(who)}. Email <a href="mailto:${mail}">${mail}</a> or call ${esc(SITE.phone)}.`]],
+    ['What we collect', ['Only what you give us: your name, company, country, phone or WhatsApp number, email address, the material and quantity you are asking about, and anything you write in the message box or send us on WhatsApp or by email.']],
+    ['Why we hold it', ['To answer your enquiry, prepare a quotation, arrange inspection, loading or shipping, and keep a record of the trade. We do not sell it, and we do not add you to a marketing list.']],
+    ['How long we keep it', ['Enquiries that do not become a contract are deleted after 24 months. Records relating to an actual shipment are kept for as long as commercial and tax record-keeping requires.']],
+    ['Who can see it', ['Our own sales and operations staff. Enquiries are transmitted to our servers and to our company mailbox; the site itself is served by Cloudflare as a hosting and security provider. We do not pass your details to anyone else unless a law, a court or a port authority requires it.']],
+    ['Your choices', ['Write to <a href="mailto:${mail}">${mail}</a> and ask for a copy, a correction or deletion of what we hold, or tell us to stop contacting you. We answer within 30 days. If you are not satisfied you may complain to the Ministry of Transport, Communications and Information Technology in Oman.']],
+    ['Children', ['We trade business to business. We do not knowingly collect details from anyone under 18.']]
+  ]);
+}
+
+function termsPage() {
+  return legalPage('terms', 'Terms', 'Terms of use',
+    'The rules for using this website. Quotations and shipments are governed by their own contract.', [
+    ['Information, not an offer', ['Material descriptions, grades and capacities on this site are general information. Nothing here is a binding offer: every lot is quoted individually after inspection, and prices change with the market.']],
+    ['Quotations and contracts', ['A quote is valid for the period stated on it. A sale or purchase exists only once we confirm it in writing with the specification, quantity, price, delivery term (FOB, CFR or CIF) and payment terms.']],
+    ['Trademarks and content', ['The Arabian Polyplast name, this site and its text belong to us. You may quote short extracts with a link; you may not copy the site wholesale.']],
+    ['Accuracy', ['We keep the site current but cannot promise that every page is free of error at every moment. If a detail matters to a decision, confirm it with us in writing.']],
+    ['Links we do not control', ['Where we link to a map, a port authority or another site, we are not responsible for its content.']],
+    ['Governing law', ['These terms are governed by the laws of the Sultanate of Oman, and the courts of Oman have jurisdiction.']],
+    ['Contact', [`Questions about these terms: <a href="mailto:${mail}">${mail}</a> or ${esc(SITE.phone)}.`]]
+  ]);
+}
+
+function cookiesPage() {
+  return legalPage('cookies', 'Cookies', 'Cookies and local storage',
+    'This site is deliberately light: no advertising cookies and no analytics tags.', [
+    ['What we set', ['Nothing of our own. There is no Google Analytics, no advertising pixel and no marketing tag on any page.']],
+    ['What our host sets', ['Cloudflare, which serves this site, may set a security cookie named <code>__cf_bm</code> to tell a real visitor from a bot. It lasts about 30 minutes and holds no personal information. Cloudflare may also keep short-lived security tokens in your browser while a page loads.']],
+    ['Your enquiry', ['When you submit the quote form, the details you typed are sent to our server so we can answer you. That is a deliberate action on your part, not a tracking cookie.']],
+    ['Changing your mind', ['You can clear or block cookies in your browser settings. Blocking the Cloudflare security cookie does not stop you reading the site, though a form submission may occasionally ask you to try again.']],
+    ['Contact', [`If you want to know what we hold about you: <a href="mailto:${mail}">${mail}</a>.`]]
+  ]);
+}
+
 function contactPage() {
   const addr = `${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, ${SITE.address.country}`;
   const body = `
@@ -385,7 +444,7 @@ function contactPage() {
       <p>${esc(addr)}</p>
       <p><strong>Call:</strong> <a href="tel:${esc(SITE.phoneRaw)}">${esc(SITE.phone)}</a><br>
       <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a><br>
-      <strong>Email:</strong> <a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a><br>
+      <strong>Email:</strong> <a href="mailto:${mail}">${mail}</a><br>
       <strong>Hours:</strong> ${esc(SITE.hours)}</p>
       <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></p>
     </div>
@@ -556,7 +615,7 @@ function arContact() {
     <p>${esc(addr)}</p>
     <p><strong>هاتف:</strong> <a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}" dir="ltr">${esc(SITE.phone)}</a><br>
     <strong>واتساب:</strong> <a href="https://wa.me/${esc(SITE.whatsapp.replace(/\D/g, ''))}" target="_blank" rel="noopener">راسلنا</a><br>
-    <strong>بريد:</strong> <a href="mailto:${esc(SITE.email)}" dir="ltr">${esc(SITE.email)}</a></p>
+    <strong>بريد:</strong> <a href="mailto:${mail}" dir="ltr">${mail}</a></p>
     <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">الموقع على الخريطة</a></p>
   </div>
   <div class="card">
@@ -603,6 +662,9 @@ write('faq.html', faqPage());
 write('contact.html', contactPage());
 write('sell-scrap.html', sellScrapPage());
 write('scrap-oman.html', scrapOmanPage());
+write('privacy.html', privacyPage());
+write('terms.html', termsPage());
+write('cookies.html', cookiesPage());
 write('products/index.html', productsIndex());
 for (const p of PRODUCTS) write('products/' + p.slug + '.html', productPage(p));
 write('ar/index.html', arHome());
@@ -613,6 +675,7 @@ write('404.html', notFound());
 const pages = [
   ['/', '1.0'], ['/products/', '0.9'], ['/contact.html', '0.8'], ['/sell-scrap.html', '0.8'],
   ['/scrap-oman.html', '0.8'], ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
+  ['/privacy.html', '0.3'], ['/terms.html', '0.3'], ['/cookies.html', '0.3'],
   ['/ar/', '0.8'], ['/ar/contact.html', '0.6']
 ].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']));
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
@@ -628,7 +691,7 @@ fs.writeFileSync(path.join(DIST, 'robots.txt'),
 fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `# ${SITE.name}\n\n> ${SITE.description}\n\n` +
   `Location: ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman\n` +
-  `Established: ${SITE.founded}\nContact: ${SITE.email} · ${SITE.phone}\n\n` +
+  `Established: ${SITE.founded}\nContact: arabianpolyplast&#64;gmail.com · ${SITE.phone}\n\n` +
   `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
   `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n`, 'utf8');
 

@@ -11,7 +11,7 @@ export const SITE = {
   domain: 'https://arabianpolyplast.com',
   tagline: 'Plastic & metal scrap buyers, suppliers and exporters in Oman',
   description:
-    'Arabian Polyplast Trading LLC buys, processes, imports and exports plastic and metal scrap in Oman and worldwide — PET bottle scrap, PC bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, aluminium and iron scrap from Barka, Oman.',
+    'Arabian Polyplast buys, processes and exports PET, PC, HDPE, PVC, UPVC, PP, LDPE, aluminium and iron scrap from Barka, Oman to the GCC and worldwide.',
   phone: '+968 7694 2126',
   phoneRaw: '+96876942126',
   whatsapp: '+968 9517 4888',
