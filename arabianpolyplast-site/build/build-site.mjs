@@ -24,6 +24,22 @@ const esc = (s) => String(s == null ? '' : s)
 
 const today = new Date().toISOString().slice(0, 10);
 const CSS = fs.readFileSync(path.join(SRC, 'styles.css'), 'utf8');
+
+// Photos are optional. build/photos.mjs writes src/photos/<name>-{450,900,1600}.webp;
+// when a name matches a page slug it is used there, and "hero" fills the homepage.
+const PHOTO_DIR = path.join(SRC, 'photos');
+const PHOTO_MANIFEST = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(PHOTO_DIR, 'manifest.json'), 'utf8')); }
+  catch (e) { return {}; }
+})();
+const photo = (name, width) => fs.existsSync(path.join(PHOTO_DIR, `${name}-${width}.webp`));
+function photoTag(name, alt, sizes, eager) {
+  if (!photo(name, 900)) return '';
+  const widths = [450, 900, 1600].filter(w => photo(name, w));
+  const srcset = widths.map(w => `/assets/photos/${name}-${w}.webp ${w}w`).join(', ');
+  const big = (PHOTO_MANIFEST[name] || { variants: [] }).variants.find(v => v.width === 900) || { width: 900, height: 675 };
+  return `<img src="/assets/photos/${name}-900.webp" srcset="${srcset}" sizes="${sizes}" alt="${esc(alt)}" width="${big.width}" height="${big.height}"${eager ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
+}
 const url = (p) => SITE.domain + (p === '/' ? '/' : p.replace(/\.html$/, ''));
 
 // Cloudflare's Scrape Shield injects a render-blocking script whenever it sees a
@@ -251,6 +267,7 @@ function ctaBand() {
 
 // ---------------------------------------------------------------- pages
 function homePage() {
+  const heroShot = photoTag('hero', 'Arabian Polyplast scrap yard in Barka, Oman — baled plastic and sorted metal ready for loading', '(max-width:980px) 100vw, 520px', true);
   const body = `
 <section class="hero">
   <div class="wrap hero-inner">
@@ -264,13 +281,13 @@ function homePage() {
       </div>
       <ul class="chips">${TRUST.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
     </div>
-    <div class="hero-art" aria-hidden="true">
-      <div class="blob"></div>
+    <div class="hero-art"${heroShot ? '' : ' aria-hidden="true"'}>
+      ${heroShot ? `<figure class="hero-photo">${heroShot}</figure>` : `<div class="blob"></div>
       <div class="hero-card">
         <span class="dot"></span>
         <strong>PET · HDPE · PP · LDPE · PVC</strong>
         <small>Washed · ground · baled · container-ready</small>
-      </div>
+      </div>`}
     </div>
   </div>
 </section>
@@ -565,12 +582,14 @@ ${related ? `<h2>Related grades</h2>\n<ul class="tick">${related}</ul>` : ''}
 function productPage(p) {
   const others = PRODUCTS.filter(x => x.slug !== p.slug).slice(0, 3);
   const deep = DEEP[p.slug] || null;
+  const shot = photoTag(p.slug, `${p.name} — Arabian Polyplast, Barka, Oman`, '(max-width:760px) 100vw, 900px');
   const body = `
 <section class="page-head"><div class="wrap">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/products/">Materials</a><span>/</span><span>${esc(p.name)}</span></nav>
   <h1>${esc(p.h1 || p.name)}</h1>
   <p class="lead">${esc(p.intro)}</p>
 </div></section>
+${shot ? `<section class="photo-band"><div class="wrap"><figure>${shot}</figure></div></section>` : ''}
 <section class="section"><div class="wrap two-col">
   <div>
     <h2>Specification</h2>
@@ -762,9 +781,25 @@ fs.writeFileSync(path.join(DIST, '_redirects'),
 // IndexNow key file (Bing / Seznam / Yandex instant indexing)
 fs.writeFileSync(path.join(DIST, SITE.indexNowKey + '.txt'), SITE.indexNowKey + '\n', 'utf8');
 
+// Bing Webmaster Tools ownership file. The key only exists once Bing issues it, so
+// this is inert until bingAuthKey is filled in.
+if (SITE.bingAuthKey) {
+  fs.writeFileSync(path.join(DIST, 'BingSiteAuth.xml'),
+    `<?xml version="1.0"?>\n<users>\n\t<user>${SITE.bingAuthKey}</user>\n</users>\n`, 'utf8');
+}
+
 // copy assets
 for (const f of ['styles.css', 'app.js', 'favicon.svg', 'og-image.png']) {
   fs.copyFileSync(path.join(SRC, f), path.join(DIST, 'assets', f));
+}
+
+// Optional photography, produced by build/photos.mjs into src/photos.
+if (fs.existsSync(PHOTO_DIR)) {
+  const shots = fs.readdirSync(PHOTO_DIR).filter(f => f.endsWith('.webp'));
+  if (shots.length) {
+    fs.mkdirSync(path.join(DIST, 'assets', 'photos'), { recursive: true });
+    for (const f of shots) fs.copyFileSync(path.join(PHOTO_DIR, f), path.join(DIST, 'assets', 'photos', f));
+  }
 }
 
 console.log('Built ' + pages.length + ' pages + ' + PRODUCTS.length + ' product pages into ' + DIST);

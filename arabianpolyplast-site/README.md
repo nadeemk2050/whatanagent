@@ -40,17 +40,18 @@ records automatically because the domain is already on Cloudflare).
 ## Before launch — replace the placeholders
 
 Real contacts are already set (call +968 7694 2126 · WhatsApp +968 9517 4888 · arabianpolyplast@gmail.com).
-Still marked `TODO` in `build/content.mjs`:
+Still open in `build/content.mjs`:
 
 | Field | Current | Replace with |
 |---|---|---|
-| `SITE.cr` | `CR 0000000` | commercial registration number |
-| `SITE.hours` | Sun–Thu 08:00–18:00 … | confirmed opening hours |
+| `SITE.cr` | `CR 0000000` (not rendered until real) | commercial registration number |
+| `SITE.ga4Id` | empty (tag inert) | the GA4 `G-…` measurement ID |
+| `SITE.bingAuthKey` | empty (file not written) | the key Bing Webmaster Tools issues |
 
 Also worth adding once available:
 
-- real photos in `src/` and referenced from the pages (yard, containers, material close-ups);
-- a 1200×630 `og` image for link previews;
+- **photos** — drop the originals in `photos/` and run `node build/photos.mjs`; see [PHOTOS.md](PHOTOS.md);
+- a 1200×630 `og` image for link previews — done, `src/og-image.png`;
 - the Google Maps embed on the contact page (currently a link).
 
 ## Lead form
