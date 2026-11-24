@@ -30,6 +30,7 @@ import {
 } from './alignAuth.mjs';
 import { registerAlignWaMultiRoutes } from './alignWaMulti.mjs';
 import { listContacts as waListContacts } from './alignWaMulti.mjs';
+import { setContact } from './contactStore.mjs';
 import { registerAlignCrmRoutes } from './alignCrm.mjs';
 import { registerAlignVesselRoutes } from './alignVessel.mjs';
 import { registerAlignContainerRoutes } from './alignContainer.mjs';
@@ -824,20 +825,72 @@ export function registerAlignRoutes(app) {
   app.get(api + '/wa/contacts', requireStaff, async (req, res) => {
     try {
       const wa = await waMod();
+      const byPhone = new Map();
+
+      // 1) The address book already resolves real phone numbers (LIDs included) and knows the
+      //    saved name vs the WhatsApp profile name. That is the only reliable source of NAMES —
+      //    a chat's `name` is often just the number, which is why the picker showed raw digits.
+      const book = typeof wa.listWaWebAddressBook === 'function' ? (wa.listWaWebAddressBook() || []) : [];
+      for (const r of book) {
+        const phone = String(r.phone || '').replace(/\D/g, '');
+        if (phone.length < 8 || phone.length > 15) continue;
+        const saved = String(r.savedName || '').trim();
+        const waName = String(r.waName || '').trim();
+        const verified = String(r.verifiedName || '').trim();
+        byPhone.set(phone, {
+          phone,
+          jid: phone + '@s.whatsapp.net',
+          name: saved || waName || verified || '',
+          hasName: !!(saved || waName || verified),
+          hasChat: !!r.hasChat
+        });
+      }
+
+      // 2) Chats contribute their live JID (direct chats only) and any chat-level name.
       const chats = wa.getWaWebChats() || [];
-      const map = new Map();
       for (const c of chats) {
         if (!c || c.isGroup) continue;
         const id = String(c.id || '');
         if (!id || /@(g\.us|broadcast|newsletter)$/i.test(id) || id === 'status@broadcast') continue;
         const phone = String(c.realPhone || c.phone || '').replace(/[^0-9]/g, '');
-        const key = phone || id;
-        if (map.has(key)) continue;
-        const name = String(c.name || '').trim() || (phone ? '+' + phone : 'WhatsApp contact');
-        map.set(key, { jid: id, name, phone });
+        if (phone.length < 8 || phone.length > 15) continue;
+        const cur = byPhone.get(phone) || { phone, jid: id, name: '', hasName: false, hasChat: false };
+        const nm = String(c.name || '').trim();
+        if (!cur.name && nm && !/^[+\d\s()-]+$/.test(nm)) { cur.name = nm; cur.hasName = true; }
+        cur.jid = id;
+        cur.hasChat = true;
+        byPhone.set(phone, cur);
       }
-      const list = Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+      const list = Array.from(byPhone.values())
+        .map(r => ({ jid: r.jid, phone: r.phone, name: r.name || ('+' + r.phone), hasName: !!r.hasName, hasChat: !!r.hasChat }))
+        .sort((a, b) => {
+          if (a.hasName !== b.hasName) return a.hasName ? -1 : 1;   // named contacts first
+          return String(a.name).localeCompare(String(b.name));
+        });
       res.json({ ok: true, total: list.length, contacts: list.slice(0, 3000), at: Date.now() });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: sstr(e.message, 160) });
+    }
+  });
+
+  // Save a contact NAME + number from the AI follow-up picker.
+  // Honest limitation: a linked device cannot write the phone's address book, so this name is
+  // permanent inside WhatAnAgent (lists, sending, AI context) but does NOT appear on the phone.
+  app.post(api + '/wa/contact', requireStaff, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const phone = String(b.phone || '').replace(/\D/g, '');
+      const name = sstr(b.name, 80).trim();
+      if (phone.length < 8 || phone.length > 15) return bad(res, 'Enter a full phone number with the country code.');
+      if (!name) return bad(res, 'Enter a contact name.');
+      await setContact(phone, { phone, name, source: 'AlignTasks (manual)', updatedAt: Date.now() }, { merge: true });
+      try {
+        const wa = await waMod();
+        if (typeof wa.updateWaWebContactName === 'function') await wa.updateWaWebContactName(phone + '@s.whatsapp.net', name);
+      } catch (e) { /* renaming the live chat is best effort */ }
+      authAudit({ action: 'wa_contact_save', handle: req.staff.handle, note: phone });
+      res.json({ ok: true, contact: { phone, name } });
     } catch (e) {
       res.status(500).json({ ok: false, error: sstr(e.message, 160) });
     }
