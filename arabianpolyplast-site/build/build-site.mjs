@@ -628,7 +628,7 @@ fs.writeFileSync(path.join(DIST, 'llms.txt'),
 
 // Cloudflare Pages headers
 fs.writeFileSync(path.join(DIST, '_headers'),
-  `/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: SAMEORIGIN\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: geolocation=(), microphone=(), camera=()\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n`, 'utf8');
+  `/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: SAMEORIGIN\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: geolocation=(), microphone=(), camera=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n`, 'utf8');
 
 fs.writeFileSync(path.join(DIST, '_redirects'),
   `/home / 301\n/index.html / 301\n/products /products/ 301\n/ar /ar/ 301\n` +
