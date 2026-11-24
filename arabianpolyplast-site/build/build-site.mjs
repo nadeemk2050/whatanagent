@@ -43,7 +43,7 @@ const orgLd = {
     addressCountry: 'OM'
   },
   geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
-  openingHours: 'Su-Th 08:00-18:00',
+  openingHours: ['Su-Th 08:00-18:00', 'Sa 09:00-14:00'],
   areaServed: ['Oman', 'GCC', 'Worldwide'],
   knowsLanguage: ['en', 'ar']
 };
@@ -127,12 +127,15 @@ function header() {
 </header>`;
 }
 
+const CR_DIGITS = String(SITE.cr || '').replace(/\D/g, '');
+const HAS_CR = CR_DIGITS.length > 0 && Number(CR_DIGITS) > 0;
+
 function footer() {
   return `<footer class="site-footer">
   <div class="wrap footer-grid">
     <div>
       <div class="brand brand-footer"><span class="mark">AP</span><span class="brand-text"><strong>${esc(SITE.name)}</strong><small>${esc(SITE.tagline)}</small></span></div>
-      <p class="muted">${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}, ${esc(SITE.address.country)} · ${esc(SITE.cr)}</p>
+      <p class="muted">${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}, ${esc(SITE.address.country)}${HAS_CR ? ' · ' + esc(SITE.cr) : ''}</p>
     </div>
     <div>
       <h4>Materials</h4>
@@ -298,7 +301,7 @@ function aboutPage() {
       <dt>Legal name</dt><dd>${esc(SITE.name)}</dd>
       <dt>Established</dt><dd>${esc(SITE.founded)}</dd>
       <dt>Location</dt><dd>${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}</dd>
-      <dt>Registration</dt><dd>${esc(SITE.cr)}</dd>
+${HAS_CR ? `      <dt>Registration</dt><dd>${esc(SITE.cr)}</dd>\n` : ''}
       <dt>Loading ports</dt><dd>${SITE.ports.map(esc).join(' · ')}</dd>
       <dt>Languages</dt><dd>English · العربية</dd>
     </dl>
