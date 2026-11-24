@@ -68,8 +68,14 @@ const orgLd = {
     addressCountry: 'OM'
   },
   geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
+  hasMap: SITE.mapUrl,
   openingHours: ['Sa-Th 07:00-19:00'],
-  areaServed: ['Oman', 'GCC', 'Worldwide'],
+  areaServed: [
+    'Oman', 'Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'Nizwa', 'Sur', 'Ibri',
+    'United Arab Emirates', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'GCC', 'Worldwide'
+  ],
+  knowsAbout: PRODUCTS.map(p => p.name).concat(['Plastic scrap recycling', 'Scrap metal trading', 'Container loading and export']),
+  serviceType: 'Scrap buying, processing, import and export',
   knowsLanguage: ['en', 'ar']
 };
 
@@ -340,6 +346,14 @@ function homePage() {
   </div>
 </section>
 
+<section class="section" id="coverage">
+  <div class="wrap">
+    <div class="section-head"><p class="eyebrow">Where we work</p><h2>Plastic scrap in Oman, collected nationwide</h2><p>We buy plastic and metal scrap from factories, contractors, municipalities and collectors across the Sultanate, and supply converters and traders in the GCC and worldwide.</p></div>
+    <ul class="chips">${['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'Nizwa', 'Sur', 'Ibri', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain'].map(c => `<li>${esc(c)}</li>`).join('')}</ul>
+    <p class="note">Loading at <a href="/scrap-oman">Sohar and Muscat</a> on FOB, CFR and CIF terms. Not on the list? Tell us where the load is.</p>
+  </div>
+</section>
+
 <section class="section section-alt" id="services">
   <div class="wrap">
     <div class="section-head"><p class="eyebrow">What we do</p><h2>Buying, processing and exporting</h2></div>
@@ -356,7 +370,7 @@ function homePage() {
 
 ${ctaBand()}`;
   return layout({
-    title: 'PET, HDPE & PVC Scrap Buyers in Oman | Arabian Polyplast',
+    title: 'Plastic Scrap in Oman | Buyers of PET, HDPE, PVC & Metal',
     desc: SITE.description,
     canonical: url('/'),
     hreflang: { en: url('/'), ar: url('/ar/') }
@@ -512,6 +526,7 @@ function contactPage() {
       <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a><br>
       <strong>Email:</strong> <a href="mailto:${mail}">${mail}</a><br>
       <strong>Hours:</strong> ${esc(SITE.hours)}</p>
+      <div class="map-embed"><iframe src="https://www.google.com/maps?q=${encodeURIComponent(SITE.name + ', ' + SITE.address.line1 + ', ' + SITE.address.city + ', Oman')}&amp;output=embed" width="100%" height="280" style="border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Arabian Polyplast yard in Barka, Oman on Google Maps"></iframe></div>
       <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></p>
     </div>
     <div class="card">
