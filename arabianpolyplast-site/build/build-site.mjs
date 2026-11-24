@@ -115,6 +115,8 @@ ${hreflang ? `<link rel="alternate" hreflang="en" href="${esc(hreflang.en)}">\n<
 <meta name="theme-color" content="#0f3d3a">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <style>${CSS}</style>
+${SITE.ga4Id ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${esc(SITE.ga4Id)}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${esc(SITE.ga4Id)}');</script>` : ''}
 </head>`;
 }
 
