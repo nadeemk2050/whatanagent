@@ -6718,7 +6718,11 @@
             // the chasing routine, and how a "done" gets confirmed + what happens then.
             let aiTargetsCache = null;
             let aiAgentsCache = null;
-            async function loadAiPickerData() {
+            // Full option rows per panel: kept so the search box can filter instantly without
+            // re-requesting anything from the API.
+            const aiTargetRows = new Map();
+            async function loadAiPickerData(force = false) {
+                if (force) { aiTargetsCache = null; aiAgentsCache = null; }
                 if (aiAgentsCache && aiTargetsCache) return { agents: aiAgentsCache, targets: aiTargetsCache };
                 try { const r = await window.alignApi('/ai/agents'); aiAgentsCache = (r && r.agents) || []; } catch (e) { aiAgentsCache = []; }
                 const targets = { groups: [], contacts: [], members: [] };
@@ -6752,7 +6756,15 @@
                             </div>
                         </div>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <div style="flex:2;min-width:180px;"><label style="${lbl}">Person / group</label><select id="ai-target-${p}" style="${inp}"><option value="">— pick —</option></select></div>
+                            <div style="flex:2;min-width:200px;">
+                                <label style="${lbl}">Person / group</label>
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <input id="ai-search-${p}" type="search" placeholder="Search group or contact…" oninput="aiFilterTargets('${p}')" style="${inp};flex:1;" />
+                                    <button type="button" id="ai-refresh-${p}" onclick="aiRefreshTargets('${p}')" title="Reload the latest groups and contacts (new names included)" style="width:38px;height:34px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;cursor:pointer;font-size:16px;line-height:1;flex:none;">⟳</button>
+                                </div>
+                                <div id="ai-search-count-${p}" style="font-size:10.5px;color:#64748b;margin:3px 0 0;"></div>
+                                <select id="ai-target-${p}" style="${inp};margin-top:4px;"><option value="">— pick —</option></select>
+                            </div>
                             <div style="flex:1;min-width:140px;"><label style="${lbl}">…or a number</label><input id="ai-number-${p}" type="tel" placeholder="+97150…" style="${inp}" /></div>
                         </div>
                         <div><label style="${lbl}">First message (AI writes the rest)</label><textarea id="ai-message-${p}" rows="2" style="${inp}" placeholder="Salam, reminder about: {task} — expected by {due}. Kindly confirm when done."></textarea></div>
@@ -6793,6 +6805,14 @@
                     </div>
                 </div>`;
             }
+            function paintAiTargetOptions(p, rows, keepValue) {
+                const sel = document.getElementById('ai-target-' + p);
+                if (!sel) return;
+                sel.innerHTML = rows.length
+                    ? rows.map(r => '<option value="' + waEsc(r.v) + '">' + waEsc(r.label) + '</option>').join('')
+                    : '<option value="">— no matches —</option>';
+                if (keepValue && rows.some(r => String(r.v) === String(keepValue))) sel.value = keepValue;
+            }
             function aiFillTargets(p, data) {
                 const typeEl = document.getElementById('ai-target-type-' + p);
                 const sel = document.getElementById('ai-target-' + p);
@@ -6813,8 +6833,54 @@
                 else if (t === 'contact') rows = data.targets.contacts.slice(0, 400).map(c => ({ v: c.phone || c.jid, label: (c.name || c.jid) + (c.phone ? ' +' + c.phone : '') }));
                 else if (t === 'member') rows = data.targets.members.map(m => ({ v: m.phone, label: m.name + ' +' + m.phone }));
                 else rows = [];
-                sel.innerHTML = (rows.length ? rows.map(r => '<option value="' + waEsc(r.v) + '">' + waEsc(r.label) + '</option>').join('') : '<option value="">— pick —</option>');
+                aiTargetRows.set(p, rows);
+                const keep = sel.value;
+                paintAiTargetOptions(p, rows, keep);
+                // A saved target must survive a refresh even when it is not in the first page of
+                // contacts: keep the value, and re-apply any active search text.
+                aiFilterTargets(p);
             }
+            // Type-to-filter for the Person / group list. Matches the label text, or the digits of
+            // a phone number when at least 3 digits are typed.
+            function aiFilterTargets(p) {
+                const input = document.getElementById('ai-search-' + p);
+                const sel = document.getElementById('ai-target-' + p);
+                const rows = aiTargetRows.get(p) || [];
+                const raw = String(input ? input.value : '').trim();
+                const q = raw.toLowerCase();
+                const digits = raw.replace(/[^0-9]/g, '');
+                const keep = sel ? sel.value : '';
+                const list = !raw ? rows : rows.filter(r => {
+                    if (String(r.label).toLowerCase().includes(q)) return true;
+                    return digits.length >= 3 && String(r.v).replace(/[^0-9]/g, '').includes(digits);
+                });
+                paintAiTargetOptions(p, list, keep);
+                const count = document.getElementById('ai-search-count-' + p);
+                if (count) count.textContent = !raw ? (rows.length ? rows.length + ' available' : '') : (list.length + ' match' + (list.length === 1 ? '' : 'es'));
+            }
+            // Pull the latest groups/contacts/agents again (new groups, renamed groups, new numbers).
+            async function aiRefreshTargets(p) {
+                const btn = document.getElementById('ai-refresh-' + p);
+                const sel = document.getElementById('ai-target-' + p);
+                const keep = sel ? sel.value : '';
+                if (btn) { btn.disabled = true; btn.textContent = '…'; }
+                try {
+                    const agent = document.getElementById('ai-agent-' + p);
+                    const ann = document.getElementById('ai-announce-' + p);
+                    if (agent) agent.dataset.filled = '';
+                    if (ann) ann.dataset.filled = '';
+                    const data = await loadAiPickerData(true);
+                    aiFillTargets(p, data);
+                    if (sel && keep && Array.from(sel.options).some(o => o.value === keep)) sel.value = keep;
+                    if (typeof toastMsg === 'function') toastMsg('Groups & contacts refreshed');
+                } catch (e) {
+                    if (typeof toastMsg === 'function') toastMsg('Could not refresh: ' + (e.message || e));
+                } finally {
+                    if (btn) { btn.disabled = false; btn.textContent = '⟳'; }
+                }
+            }
+            window.aiFilterTargets = aiFilterTargets;
+            window.aiRefreshTargets = aiRefreshTargets;
             async function initAiFollowUp(p) {
                 const box = document.getElementById('ai-enabled-' + p);
                 if (!box) return;
