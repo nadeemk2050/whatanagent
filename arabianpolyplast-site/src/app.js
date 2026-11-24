@@ -17,6 +17,21 @@
     });
   }
 
+  /* floating quick contact — back to top appears after the hero */
+  var toTop = document.getElementById('fabTop');
+  if (toTop) {
+    var setTop = function () {
+      if (window.scrollY > 420) toTop.classList.add('on');
+      else toTop.classList.remove('on');
+    };
+    window.addEventListener('scroll', setTop, { passive: true });
+    setTop();
+    toTop.addEventListener('click', function () {
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      catch (e) { window.scrollTo(0, 0); }
+    });
+  }
+
   /* lead forms — post to the WhatAnAgent lead API (CORS allow-list on the server) */
   var forms = document.querySelectorAll('form.lead-form');
   Array.prototype.forEach.call(forms, function (form) {
@@ -71,7 +86,7 @@
           if (status) {
             status.className = 'form-status err';
             status.textContent = (err && err.message ? err.message : 'Could not send') +
-              ' — please try again, or email info@arabianpolyplast.com.';
+              ' — please try again, or email arabianpolyplast@gmail.com.';
           }
         })
         .finally(function () { if (btn) btn.disabled = false; });

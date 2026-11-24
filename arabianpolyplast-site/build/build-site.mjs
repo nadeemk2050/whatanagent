@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SITE, NAV, TRUST, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
+import { SITE, NAV, TRUST, ROLES, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -44,7 +44,7 @@ const orgLd = {
   },
   geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
   openingHours: 'Su-Th 08:00-18:00',
-  areaServed: 'Oman',
+  areaServed: ['Oman', 'GCC', 'Worldwide'],
   knowsLanguage: ['en', 'ar']
 };
 
@@ -56,7 +56,7 @@ function productLd(p) {
     description: p.intro,
     brand: { '@type': 'Brand', name: SITE.shortName },
     category: 'Recycled plastic raw material',
-    areaServed: ['Oman', 'GCC'],
+    areaServed: ['Oman', 'GCC', 'Worldwide'],
     url: url('/products/' + p.slug + '.html')
   };
 }
@@ -144,7 +144,7 @@ function footer() {
         <li><a href="/about.html">About us</a></li>
         <li><a href="/services.html">Services</a></li>
         <li><a href="/quality.html">Quality</a></li>
-        <li><a href="/scrap-oman.html">Oman &amp; GCC</a></li>
+        <li><a href="/scrap-oman.html">Local &amp; global</a></li>
         <li><a href="/sell-scrap.html">Sell scrap</a></li>
         <li><a href="/faq.html">FAQ</a></li>
       </ul>
@@ -170,7 +170,32 @@ function footer() {
 }
 
 function layout(opts, body) {
-  return head(opts) + '\n<body>\n' + header() + '\n<main>\n' + body + '\n</main>\n' + footer() + '\n</body>\n</html>\n';
+  return head(opts) + '\n<body>\n' + header() + '\n<main>\n' + body + '\n</main>\n' + footer() + '\n' + floatingActions(opts.dir) + '\n</body>\n</html>\n';
+}
+
+function floatingActions(dir = 'ltr') {
+  const ar = dir === 'rtl';
+  const text = ar
+    ? 'مرحباً Arabian Polyplast، أريد الاستفسار عن خردة البلاستيك والمعادن.'
+    : 'Hello Arabian Polyplast, I would like to enquire about plastic and metal scrap.';
+  const l = ar
+    ? { wa: 'تواصل عبر واتساب', call: 'اتصل بنا', mail: 'أرسل بريداً إلكترونياً', top: 'أعلى الصفحة' }
+    : { wa: 'Chat on WhatsApp', call: 'Call us now', mail: 'Email us', top: 'Back to top' };
+  const wa = 'https://wa.me/' + SITE.whatsappRaw + '?text=' + encodeURIComponent(text);
+  return `<div class="fab-stack" aria-label="${ar ? 'تواصل سريع' : 'Quick contact'}">
+  <a class="fab fab-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="${l.wa}" title="${l.wa}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893A11.821 11.821 0 0 0 20.463 3.488"/></svg>
+  </a>
+  <a class="fab fab-call" href="tel:${esc(SITE.phoneRaw)}" aria-label="${l.call}" title="${l.call}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+  </a>
+  <a class="fab fab-mail" href="mailto:${esc(SITE.email)}" aria-label="${l.mail}" title="${l.mail}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg>
+  </a>
+  <button type="button" class="fab fab-top" id="fabTop" aria-label="${l.top}" title="${l.top}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+  </button>
+</div>`;
 }
 
 // ---------------------------------------------------------------- components
@@ -203,7 +228,7 @@ function homePage() {
     <div class="hero-copy">
       <p class="eyebrow">Barka · Sultanate of Oman · since ${esc(SITE.founded)}</p>
       <h1>Plastic &amp; metal scrap buyers in Oman</h1>
-      <p class="lead">PET bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, PC bottles, aluminium and iron scrap — bought, processed and exported from Barka to the GCC.</p>
+      <p class="lead">PET bottle scrap, PC bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, aluminium and iron scrap — bought, processed and exported from Barka to the GCC and worldwide.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="/contact.html">Request a quote</a>
         <a class="btn btn-outline" href="/sell-scrap.html">Sell your scrap</a>
@@ -225,6 +250,13 @@ function homePage() {
   <div class="wrap">
     <div class="section-head"><p class="eyebrow">Scrap we buy &amp; sell</p><h2>All kinds of plastic and metal scrap</h2><p>Graded streams prepared to an agreed specification, loaded at Sohar or Muscat. PET bottle scrap, HDPE 100, PVC pipes, UPVC profiles, aluminium and iron included.</p></div>
     <div class="grid cards-3">${PRODUCTS.map(productCard).join('')}</div>
+  </div>
+</section>
+
+<section class="section" id="roles">
+  <div class="wrap">
+    <div class="section-head"><p class="eyebrow">Local &amp; international</p><h2>Buyer, supplier, importer, exporter</h2><p>One partner for Omani factories and for buyers anywhere in the world.</p></div>
+    <div class="grid cards-2">${ROLES.map(r => `<article class="card"><h3>${esc(r.title)}</h3><p>${esc(r.text)}</p></article>`).join('')}</div>
   </div>
 </section>
 
@@ -447,7 +479,7 @@ function productPage(p) {
 
 function scrapOmanPage() {
   const body = `
-<section class="page-head"><div class="wrap"><p class="eyebrow">Oman &amp; GCC</p><h1>${esc(OMAN_PAGE.h1)}</h1><p class="lead">${esc(OMAN_PAGE.intro)}</p></div></section>
+<section class="page-head"><div class="wrap"><p class="eyebrow">Local &amp; global</p><h1>${esc(OMAN_PAGE.h1)}</h1><p class="lead">${esc(OMAN_PAGE.intro)}</p></div></section>
 <section class="section"><div class="wrap grid cards-2">
 ${OMAN_PAGE.sections.map(s => `<article class="card"><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p></article>`).join('')}
 </div></section>

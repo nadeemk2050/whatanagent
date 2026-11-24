@@ -9,9 +9,9 @@ export const SITE = {
   name: 'Arabian Polyplast Trading LLC',
   shortName: 'Arabian Polyplast',
   domain: 'https://arabianpolyplast.com',
-  tagline: 'Plastic & metal scrap buyers in Oman',
+  tagline: 'Plastic & metal scrap buyers, suppliers and exporters in Oman',
   description:
-    'Arabian Polyplast Trading LLC buys and exports plastic and metal scrap in Oman and the GCC — PET bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, PC bottles, aluminium and iron scrap from Barka, Oman.',
+    'Arabian Polyplast Trading LLC buys, processes, imports and exports plastic and metal scrap in Oman and worldwide — PET bottle scrap, PC bottle scrap, PET flakes, HDPE, HDPE 100 pipes, PVC, UPVC profiles, PP, LDPE film, aluminium and iron scrap from Barka, Oman.',
   phone: '+968 7694 2126',
   phoneRaw: '+96876942126',
   whatsapp: '+968 9517 4888',
@@ -29,7 +29,7 @@ export const SITE = {
   geo: { lat: 23.6848, lng: 57.8861 },
   ports: ['Sohar', 'Muscat (Sultan Qaboos)'],
   mapUrl: 'https://maps.google.com/?q=Arabian+Polyplast+Trading+LLC+Barka+Oman',
-  areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC'],
+  areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC', 'Worldwide'],
   languages: ['en', 'ar']
 };
 
@@ -37,7 +37,7 @@ export const NAV = [
   { href: '/', label: 'Home' },
   { href: '/products/', label: 'Scrap we buy' },
   { href: '/services.html', label: 'Services' },
-  { href: '/scrap-oman.html', label: 'Oman & GCC' },
+  { href: '/scrap-oman.html', label: 'Local & Global' },
   { href: '/sell-scrap.html', label: 'Sell Scrap' },
   { href: '/about.html', label: 'About' },
   { href: '/contact.html', label: 'Contact' }
@@ -47,16 +47,35 @@ const STD_SPECS = (overrides = []) => [
   ['Form', 'As inspected (baled, loose, regrind or as agreed)'],
   ['Packaging', 'Bales or big bags, labelled with grade and weight'],
   ['MOQ', 'One 40ft container or LCL by arrangement'],
-  ['Loading port', 'Sohar / Muscat, Oman'],
-  ['Area served', 'Oman and GCC'],
+  ['Loading port', 'Sohar / Muscat — FOB, CFR, CIF worldwide'],
+  ['Area served', 'Oman, GCC and worldwide'],
   ...overrides
 ];
 
 export const TRUST = [
   'Established 2020 in Barka, Oman',
-  'Buying, processing and exporting',
-  'Container loading at Sohar & Muscat',
-  'Export documentation handled in-house'
+  'Local buyers & suppliers',
+  'Import & export worldwide',
+  'Loading at Sohar & Muscat — FOB, CFR, CIF'
+];
+
+export const ROLES = [
+  {
+    title: 'Local buyers — Oman',
+    text: 'We buy scrap from factories, contractors, collectors and municipalities across Oman, and arrange collection for larger lots.'
+  },
+  {
+    title: 'Local suppliers — Oman',
+    text: 'We supply washed, ground and baled material to factories in Muscat, Sohar, Salalah and the rest of Oman.'
+  },
+  {
+    title: 'Importers',
+    text: 'We import selected polymers and metals for Omani manufacturers when local supply cannot meet the specification.'
+  },
+  {
+    title: 'Exporters — worldwide',
+    text: 'We export containers from Sohar and Muscat to the GCC and worldwide, on FOB, CFR and CIF terms.'
+  }
 ];
 
 export const PRODUCTS = [
@@ -331,20 +350,20 @@ export const PRODUCTS = [
 
 export const SERVICES = [
   {
-    title: 'Scrap buying — Oman & GCC',
-    text: 'We buy plastic and metal scrap from factories, recyclers, contractors, collectors and municipalities across Oman, and arrange collection for larger lots.'
+    title: 'Scrap buying — Oman & worldwide',
+    text: 'We buy plastic and metal scrap from factories, recyclers, contractors, collectors and municipalities across Oman, and source from international suppliers when a specification cannot be met locally.'
   },
   {
     title: 'Processing & upgrading',
     text: 'Sorting, washing, grinding and drying in Barka. Material is prepared to an agreed specification, sampled before loading and packed for sea freight.'
   },
   {
-    title: 'Export & documentation',
-    text: 'Container booking, inspection support, packing lists and export paperwork handled in-house — FOB Sohar or Muscat, or delivered terms on request.'
+    title: 'Export & import documentation',
+    text: 'Container booking, inspection support, packing lists and shipping documents handled in-house — FOB, CFR or CIF from Sohar or Muscat to any destination worldwide.'
   },
   {
     title: 'Loading & logistics',
-    text: 'We load at the yard and at the port, photograph every container and share the loading report so the buyer knows exactly what left Oman.'
+    text: 'We load at the yard and at the port, photograph every container and share the loading report so the buyer anywhere in the world knows exactly what left Oman.'
   }
 ];
 
@@ -380,7 +399,11 @@ export const FAQS = [
   },
   {
     q: 'Do you supply buyers outside Oman?',
-    a: 'Yes. We export to the GCC and beyond, loading at Sohar and Muscat and handling export documentation in-house.'
+    a: 'Yes. We export from Sohar and Muscat to the GCC and worldwide — FOB, CFR or CIF — and we also import selected polymers and metals for Omani manufacturers.'
+  },
+  {
+    q: 'Do you buy scrap from international suppliers?',
+    a: 'Yes. We buy from local factories and collectors in Oman and from international suppliers when a grade is not available locally, subject to import rules and inspection.'
   },
   {
     q: 'What is the minimum order?',
@@ -402,29 +425,37 @@ export const FAQS = [
 
 // Extra SEO page targeting location + broad "all kinds of scrap" searches.
 export const OMAN_PAGE = {
-  title: 'Scrap Buyers in Oman & the GCC — All Kinds of Scrap',
-  seoTitle: 'Scrap Buyers in Oman & GCC | All Kinds of Scrap — Arabian Polyplast',
+  title: 'Scrap Buyers in Oman, the GCC & Worldwide — All Kinds of Scrap',
+  seoTitle: 'Scrap Buyers in Oman, GCC & Worldwide | All Kinds of Scrap — Arabian Polyplast',
   seoDesc:
-    'Scrap buyers in Oman and the GCC: PET bottle scrap, HDPE, PVC, UPVC profiles, aluminium and iron scrap. Buy and sell through Arabian Polyplast, Barka — Sohar and Muscat loading.',
-  h1: 'Scrap buyers in Oman and across the GCC',
+    'Scrap buyers, suppliers and exporters in Oman and worldwide: PET bottle scrap, PC bottle scrap, HDPE, PVC, UPVC profiles, aluminium and iron scrap. Import and export through Barka — Sohar and Muscat loading, FOB/CFR/CIF.',
+  h1: 'Scrap buyers, suppliers and exporters — Oman, the GCC and worldwide',
   intro:
-    'Arabian Polyplast Trading LLC buys, processes and exports all kinds of plastic and metal scrap from Oman. Our yard in As-Saqsuq, Barka serves factories, contractors, collectors and municipalities from Muscat to Sohar and Salalah — and ships to buyers across the GCC.',
+    'Arabian Polyplast Trading LLC is a local and international scrap company. From our yard in As-Saqsuq, Barka we buy from Omani factories, contractors and collectors, supply processors in Oman, import selected polymers and metals, and export containers from Sohar and Muscat to the GCC and worldwide.',
   sections: [
     {
-      h: 'Plastic scrap we buy and sell in Oman',
-      p: 'PET bottle scrap, PET bottle flakes, PET preform and sheet scrap, HDPE bottles, drums and crates, HDPE 100 pipe scrap, HDPE pipes, rigid PVC and PVC pipes, UPVC window and door profiles, PP raffia and woven bags, LDPE stretch and agricultural film, and PC water bottles.'
+      h: 'Plastic scrap we buy and sell',
+      p: 'PET bottle scrap, PET bottle flakes, PET preform and sheet scrap, HDPE bottles, drums and crates, HDPE 100 pipe scrap, HDPE pipes, rigid PVC and PVC pipes, UPVC window and door profiles, PP raffia and woven bags, LDPE stretch and agricultural film, and PC bottle scrap.'
     },
     {
       h: 'Metal scrap',
       p: 'Aluminium profiles, sheets and castings, and iron and steel scrap including HMS, structural sections, pipes and machinery — weighed and prepared at the yard before loading.'
     },
     {
+      h: 'Import & supply for Omani manufacturers',
+      p: 'When a factory needs a grade that is not available locally, we import it from approved international suppliers and deliver in Oman — with specification, quantity and documentation agreed in writing.'
+    },
+    {
+      h: 'Export worldwide',
+      p: 'We load at Sohar and Muscat and ship on FOB, CFR or CIF terms to the GCC, Asia, Africa and Europe. Export documentation, inspection support and container photos are handled in-house.'
+    },
+    {
       h: 'Why buyers and sellers work with us',
-      p: 'Weighed loads, written specifications, photos and samples before shipment, export documentation handled in-house, and containers loaded at Sohar or Muscat. One partner from the yard to the port.'
+      p: 'Weighed loads, written specifications, photos and samples before shipment, one partner from the yard to the port, and a single point of contact for local and international deals.'
     },
     {
       h: 'Coverage',
-      p: 'Oman: Muscat, Barka, Al Batinah, Sohar and Salalah. GCC export: United Arab Emirates, Saudi Arabia, Qatar, Kuwait and Bahrain. Delivered and FOB terms available on request.'
+      p: 'Local: Muscat, Barka, Al Batinah, Sohar and Salalah. Regional: UAE, Saudi Arabia, Qatar, Kuwait and Bahrain. International: Asia, Africa, Europe and the Americas on request.'
     }
   ]
 };
@@ -435,7 +466,7 @@ export const AR = {
     title: 'Arabian Polyplast — شراء وتصدير خردة البلاستيك والمعادن في عُمان',
     h1: 'شراء خردة البلاستيك والمعادن في عُمان ودول الخليج',
     intro:
-      'شركة Arabian Polyplast Trading LLC تشتري وتعالج وتصدّر خردة PET وHDPE وPVC وUPVC والألمنيوم والحديد من بركاء، سلطنة عُمان — مع تحميل الحاويات من صحار أو مسقط.',
+      'شركة Arabian Polyplast Trading LLC تشتري وتعالج وتستورد وتصدّر خردة PET وPC وHDPE وPVC وUPVC والألمنيوم والحديد من بركاء، سلطنة عُمان — إلى دول الخليج وجميع أنحاء العالم، مع تحميل الحاويات من صحار أو مسقط.',
     materials: 'المواد التي نشتريها',
     services: 'خدماتنا',
     cta: 'اطلب عرض سعر',
