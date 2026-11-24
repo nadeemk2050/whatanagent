@@ -60,6 +60,8 @@ const orgLd = {
   description: SITE.description,
   foundingDate: SITE.founded,
   telephone: SITE.phone,
+  taxID: SITE.tin,
+  identifier: [{ '@type': 'PropertyValue', propertyID: 'Oman CR', value: SITE.cr.replace(/^CR /, '') }],
   address: {
     '@type': 'PostalAddress',
     streetAddress: SITE.address.line1,
@@ -396,6 +398,8 @@ function aboutPage() {
       <dt>Established</dt><dd>${esc(SITE.founded)}</dd>
       <dt>Location</dt><dd>${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}</dd>
 ${HAS_CR ? `      <dt>Registration</dt><dd>${esc(SITE.cr)}</dd>\n` : ''}
+      <dt>Registered activity</dt><dd>${esc(SITE.activity)}</dd>
+      <dt>Tax identification</dt><dd>${esc(SITE.tin)}</dd>
       <dt>Loading ports</dt><dd>${SITE.ports.map(esc).join(' · ')}</dd>
       <dt>Languages</dt><dd>English · العربية</dd>
     </dl>
@@ -404,7 +408,7 @@ ${HAS_CR ? `      <dt>Registration</dt><dd>${esc(SITE.cr)}</dd>\n` : ''}
 ${ctaBand()}`;
   return layout({
     title: 'About Arabian Polyplast — plastic trading in Barka, Oman',
-    desc: 'Arabian Polyplast Trading LLC buys, processes and exports plastic scrap and recycled polymers from As-Saqsuq, Barka, Oman. Established 2020.',
+    desc: 'Arabian Polyplast Trading LLC buys, processes and exports plastic scrap and recycled polymers from As-Saqsuq, Barka, Oman. Established 2024.',
     canonical: url('/about.html')
   }, body + '\n' + ld(orgLd));
 }
@@ -524,7 +528,8 @@ function contactPage() {
   <div>
     <div class="card">
       <h3>Yard &amp; office</h3>
-      <p>${esc(addr)}</p>
+      <p>${esc(addr)}<br>P.O. Box ${esc(SITE.address.poBox)}, P.C. ${esc(SITE.address.postalCode)}</p>
+      <p class="muted">${esc(SITE.cr)} · TIN ${esc(SITE.tin)}<br>Registered activity: ${esc(SITE.activity)}</p>
       <p><strong>Call:</strong> <a href="tel:${esc(SITE.phoneRaw)}">${esc(SITE.phone)}</a><br>
       <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsappRaw)}" target="_blank" rel="noopener">${esc(SITE.whatsapp)}</a><br>
       <strong>Email:</strong> <a href="mailto:${mail}">${mail}</a><br>
@@ -935,7 +940,9 @@ fs.writeFileSync(path.join(DIST, 'robots.txt'),
 fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `# ${SITE.name}\n\n> ${SITE.description}\n\n` +
   `Location: ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman\n` +
-  `Established: ${SITE.founded}\nContact: arabianpolyplast&#64;gmail.com · ${SITE.phone}\n\n` +
+  `Established: ${SITE.founded}\nContact: arabianpolyplast&#64;gmail.com · ${SITE.phone}\n` +
+  `${SITE.cr} · TIN ${SITE.tin} · Registered activity: ${SITE.activity}\n` +
+  `Google Business Profile: ${SITE.placesUrl}\n\n` +
   `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
   `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n` +
   `- Guides: ${SITE.domain}/guides/\n` +

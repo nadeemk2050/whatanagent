@@ -17,14 +17,19 @@ export const SITE = {
   whatsapp: '+968 9517 4888',
   whatsappRaw: '96895174888',
   email: 'arabianpolyplast@gmail.com',
-  cr: 'CR 0000000', // TODO: commercial registration number
-  founded: '2020',
+  cr: 'CR 1577463', // Commercial Registration 1577463, Oman Business Platform
+  tin: '2123435', // Tax Identification Number on the CR certificate
+  licence: 'L3011934', // commercial licence for the As-Saqsuq premises
+  activity: 'Collection of Plastic, Rubber, Paper and Metal Wastes (477403)',
+  founded: '2024', // establishment date 01/10/2024 per the CR certificate
   hours: 'Sat–Thu 07:00–19:00',
   address: {
     line1: 'As-Saqsuq',
     city: 'Barka',
     region: 'Al Batinah South Governorate',
-    country: 'Oman'
+    country: 'Oman',
+    poBox: '511',
+    postalCode: '320'
   },
   geo: { lat: 23.610896, lng: 57.856916 }, // from the verified Google Business Profile place page
   ports: ['Sohar', 'Muscat (Sultan Qaboos)'],
@@ -67,7 +72,7 @@ const STD_SPECS = (overrides = []) => [
 ];
 
 export const TRUST = [
-  'Established 2020 in Barka, Oman',
+  'Established 2024 in Barka, Oman',
   'Local buyers & suppliers',
   'Import & export worldwide',
   'Loading at Sohar & Muscat — FOB, CFR, CIF'
