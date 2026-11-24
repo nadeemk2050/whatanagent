@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SITE, NAV, TRUST, ROLES, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
+import { DEEP } from './deep/index.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -48,7 +49,7 @@ const orgLd = {
     addressCountry: 'OM'
   },
   geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
-  openingHours: ['Su-Th 08:00-18:00', 'Sa 09:00-14:00'],
+  openingHours: ['Sa-Th 07:00-19:00'],
   areaServed: ['Oman', 'GCC', 'Worldwide'],
   knowsLanguage: ['en', 'ar']
 };
@@ -74,6 +75,18 @@ function faqLd() {
       '@type': 'Question',
       name: f.q,
       acceptedAnswer: { '@type': 'Answer', text: f.a }
+    }))
+  };
+}
+
+function faqFromPairs(pairs) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: pairs.map(([q, a]) => ({
+      '@type': 'Question',
+      name: q,
+      acceptedAnswer: { '@type': 'Answer', text: a }
     }))
   };
 }
@@ -518,8 +531,40 @@ ${ctaBand()}`;
   }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Scrap we buy', href: '/products/' }])));
 }
 
+// The long-form material guide: polymer origin, the grade number, properties,
+// articles, end of life, recycling route and what the recyclate becomes.
+function deepSections(p, d) {
+  const secs = d.sections.map(s => {
+    let inner = '';
+    if (s.ps) inner += s.ps.map(t => `<p>${t}</p>`).join('\n');
+    if (s.table) inner += `<table class="spec"><tbody>${s.table.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`;
+    if (s.list) inner += `<ul class="tick">${s.list.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    if (s.steps) inner += `<ol class="steps">${s.steps.map(([t, x], i) => `<li><span class="step-n">${i + 1}</span><div><h4>${esc(t)}</h4><p>${esc(x)}</p></div></li>`).join('')}</ol>`;
+    return `<h2>${esc(s.h)}</h2>\n${inner}`;
+  }).join('\n');
+
+  const faq = d.faq
+    ? `<h2>Questions buyers ask</h2>\n<div class="faq-list">${d.faq.map(([q, a]) => `<details class="faq"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}</div>`
+    : '';
+
+  const related = (d.related || [])
+    .map(slug => PRODUCTS.find(x => x.slug === slug))
+    .filter(Boolean)
+    .map(x => `<li><a href="/products/${x.slug}">${esc(x.name)}</a> — ${esc(x.card)}</li>`)
+    .join('');
+
+  return `<section class="section" id="guide"><div class="wrap article">
+<p class="eyebrow">Material guide</p>
+<p class="lead">${esc(d.polymer)}</p>
+${secs}
+${faq}
+${related ? `<h2>Related grades</h2>\n<ul class="tick">${related}</ul>` : ''}
+</div></section>`;
+}
+
 function productPage(p) {
   const others = PRODUCTS.filter(x => x.slug !== p.slug).slice(0, 3);
+  const deep = DEEP[p.slug] || null;
   const body = `
 <section class="page-head"><div class="wrap">
   <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/products/">Materials</a><span>/</span><span>${esc(p.name)}</span></nav>
@@ -537,6 +582,7 @@ function productPage(p) {
     <div class="card"><h3>Ask for this material</h3><p>Share quantity, destination port and any specification requirements.</p><p><a class="btn btn-primary" href="/contact?material=${encodeURIComponent(p.name)}">Request a quote</a></p></div>
   </div>
 </div></section>
+${deep ? deepSections(p, deep) : ''}
 <section class="section section-alt"><div class="wrap"><div class="section-head"><h2>Other materials</h2></div><div class="grid cards-3">${others.map(productCard).join('')}</div></div></section>`;
   return layout({
     title: p.seoTitle || (p.name + ' from Oman — specification & supply | Arabian Polyplast'),
@@ -544,7 +590,7 @@ function productPage(p) {
     canonical: url('/products/' + p.slug + '.html')
   }, body + '\n' + ld(productLd(p)) + '\n' + ld(breadcrumbLd([
     { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug }
-  ])));
+  ])) + (deep && deep.faq ? '\n' + ld(faqFromPairs(deep.faq)) : ''));
 }
 
 function scrapOmanPage() {
@@ -687,7 +733,12 @@ fs.writeFileSync(path.join(DIST, 'sitemap.xml'), sitemap, 'utf8');
 
 // robots
 fs.writeFileSync(path.join(DIST, 'robots.txt'),
-  `User-agent: *\nAllow: /\n\nSitemap: ${SITE.domain}/sitemap.xml\n`, 'utf8');
+  `User-agent: *\nAllow: /\n\n` +
+  // Nothing on this site is off-limits to an answer engine. Being explicit means a
+  // future blanket rule in a CDN panel cannot silence us by accident.
+  ['GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-SearchBot', 'PerplexityBot', 'Google-Extended', 'Applebot-Extended', 'Bingbot', 'CCBot', 'meta-externalagent']
+    .map(ua => `User-agent: ${ua}\nAllow: /\n`).join('\n') +
+  `\nSitemap: ${SITE.domain}/sitemap.xml\n`, 'utf8');
 
 // llms.txt — a short, honest map for AI crawlers
 fs.writeFileSync(path.join(DIST, 'llms.txt'),

@@ -19,7 +19,7 @@ export const SITE = {
   email: 'arabianpolyplast@gmail.com',
   cr: 'CR 0000000', // TODO: commercial registration number
   founded: '2020',
-  hours: 'Sun–Thu 08:00–18:00 · Sat 09:00–14:00', // TODO confirm
+  hours: 'Sat–Thu 07:00–19:00',
   address: {
     line1: 'As-Saqsuq',
     city: 'Barka',
