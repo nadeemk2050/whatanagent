@@ -1,0 +1,573 @@
+// ============================================================================
+// ARABIAN POLYPLAST — static site builder
+// ============================================================================
+//   node build/build-site.mjs
+//   → dist/ (pure HTML, CSS, sitemap, robots, headers) ready for Cloudflare Pages
+//
+// No framework, no runtime, no database. Every page is finished HTML so Google
+// gets the full content on the first request.
+// ============================================================================
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { SITE, NAV, TRUST, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR } from './content.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..');
+const DIST = path.join(ROOT, 'dist');
+const SRC = path.join(ROOT, 'src');
+
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+const today = new Date().toISOString().slice(0, 10);
+const url = (p) => SITE.domain + (p === '/' ? '/' : p);
+
+// ---------------------------------------------------------------- structured data
+const orgLd = {
+  '@context': 'https://schema.org',
+  '@type': ['Organization', 'LocalBusiness'],
+  name: SITE.name,
+  alternateName: SITE.shortName,
+  url: SITE.domain,
+  description: SITE.description,
+  foundingDate: SITE.founded,
+  email: SITE.email,
+  telephone: SITE.phone,
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: SITE.address.line1,
+    addressLocality: SITE.address.city,
+    addressRegion: SITE.address.region,
+    addressCountry: 'OM'
+  },
+  geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
+  openingHours: 'Su-Th 08:00-18:00',
+  areaServed: 'Oman',
+  knowsLanguage: ['en', 'ar']
+};
+
+function productLd(p) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: p.name,
+    description: p.intro,
+    brand: { '@type': 'Brand', name: SITE.shortName },
+    category: 'Recycled plastic raw material',
+    url: url('/products/' + p.slug + '.html')
+  };
+}
+
+function faqLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQS.map(f => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a }
+    }))
+  };
+}
+
+function breadcrumbLd(items) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((it, i) => ({
+      '@type': 'ListItem', position: i + 1, name: it.name, item: url(it.href)
+    }))
+  };
+}
+
+const ld = (obj) => '<script type="application/ld+json">' + JSON.stringify(obj) + '</script>';
+
+// ---------------------------------------------------------------- layout
+function head({ title, desc, canonical, dir = 'ltr', altUrl = '' }) {
+  return `<!doctype html>
+<html lang="${dir === 'rtl' ? 'ar' : 'en'}" dir="${dir}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<link rel="canonical" href="${esc(canonical)}">
+${altUrl ? `<link rel="alternate" hreflang="en" href="${esc(canonical)}">\n<link rel="alternate" hreflang="ar" href="${esc(altUrl)}">\n<link rel="alternate" hreflang="x-default" href="${esc(canonical)}">` : ''}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${esc(SITE.shortName)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(canonical)}">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#0f3d3a">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>`;
+}
+
+function header() {
+  return `<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/" aria-label="${esc(SITE.shortName)} home">
+      <span class="mark" aria-hidden="true">AP</span>
+      <span class="brand-text"><strong>${esc(SITE.shortName)}</strong><small>${esc(SITE.address.city)}, Oman</small></span>
+    </a>
+    <nav class="nav" id="siteNav" aria-label="Main">
+      ${NAV.map(n => `<a href="${n.href}">${esc(n.label)}</a>`).join('')}
+    </nav>
+    <div class="header-actions">
+      <a class="btn btn-ghost" href="/ar/" hreflang="ar" lang="ar">العربية</a>
+      <a class="btn btn-primary" href="/contact.html">Get a quote</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">☰</button>
+    </div>
+  </div>
+</header>`;
+}
+
+function footer() {
+  return `<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div>
+      <div class="brand brand-footer"><span class="mark">AP</span><span class="brand-text"><strong>${esc(SITE.name)}</strong><small>${esc(SITE.tagline)}</small></span></div>
+      <p class="muted">${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}, ${esc(SITE.address.country)} · ${esc(SITE.cr)}</p>
+    </div>
+    <div>
+      <h4>Materials</h4>
+      <ul class="plain">${PRODUCTS.map(p => `<li><a href="/products/${p.slug}.html">${esc(p.name)}</a></li>`).join('')}</ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul class="plain">
+        <li><a href="/about.html">About us</a></li>
+        <li><a href="/services.html">Services</a></li>
+        <li><a href="/quality.html">Quality</a></li>
+        <li><a href="/sell-scrap.html">Sell scrap</a></li>
+        <li><a href="/faq.html">FAQ</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Contact</h4>
+      <ul class="plain">
+        <li><a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}">${esc(SITE.phone)}</a></li>
+        <li><a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a></li>
+        <li>${esc(SITE.hours)}</li>
+        <li><a href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></li>
+        <li><a href="/ar/" hreflang="ar" lang="ar">العربية</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap footer-bottom">
+    <span>© ${new Date().getFullYear()} ${esc(SITE.name)}. All rights reserved.</span>
+    <span>Sohar · Muscat · Oman</span>
+  </div>
+</footer>
+<script src="/assets/app.js" defer></script>`;
+}
+
+function layout(opts, body) {
+  return head(opts) + '\n<body>\n' + header() + '\n<main>\n' + body + '\n</main>\n' + footer() + '\n</body>\n</html>\n';
+}
+
+// ---------------------------------------------------------------- components
+const productCard = (p) => `<a class="card product-card" href="/products/${p.slug}.html">
+  <span class="card-tag">${esc(p.name)}</span>
+  <p>${esc(p.card)}</p>
+  <span class="card-link">Specification →</span>
+</a>`;
+
+function ctaBand() {
+  return `<section class="cta-band">
+  <div class="wrap cta-inner">
+    <div>
+      <h2>Need a price for a specific lot?</h2>
+      <p>Send the material, quantity and destination — we reply with photos, a sample and a firm offer.</p>
+    </div>
+    <div class="cta-actions">
+      <a class="btn btn-primary" href="/contact.html">Request a quote</a>
+      <a class="btn btn-outline" href="/sell-scrap.html">Sell us your scrap</a>
+    </div>
+  </div>
+</section>`;
+}
+
+// ---------------------------------------------------------------- pages
+function homePage() {
+  const body = `
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div class="hero-copy">
+      <p class="eyebrow">Barka · Sultanate of Oman · since ${esc(SITE.founded)}</p>
+      <h1>Plastic scrap &amp; recycled polymers from Oman</h1>
+      <p class="lead">${esc(SITE.description)}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/contact.html">Request a quote</a>
+        <a class="btn btn-outline" href="/sell-scrap.html">Sell your scrap</a>
+      </div>
+      <ul class="chips">${TRUST.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <div class="blob"></div>
+      <div class="hero-card">
+        <span class="dot"></span>
+        <strong>PET · HDPE · PP · LDPE · PVC</strong>
+        <small>Washed · ground · baled · container-ready</small>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="materials">
+  <div class="wrap">
+    <div class="section-head"><p class="eyebrow">Materials</p><h2>What we trade</h2><p>Graded streams prepared to an agreed specification, loaded at Sohar or Muscat.</p></div>
+    <div class="grid cards-3">${PRODUCTS.map(productCard).join('')}</div>
+  </div>
+</section>
+
+<section class="section section-alt" id="services">
+  <div class="wrap">
+    <div class="section-head"><p class="eyebrow">What we do</p><h2>Buying, processing and exporting</h2></div>
+    <div class="grid cards-2">${SERVICES.map(s => `<article class="card"><h3>${esc(s.title)}</h3><p>${esc(s.text)}</p></article>`).join('')}</div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="section-head"><p class="eyebrow">How it works</p><h2>From enquiry to container</h2></div>
+    <ol class="steps">${PROCESS.map(p => `<li><span class="step-n">${p.n}</span><div><h4>${esc(p.title)}</h4><p>${esc(p.text)}</p></div></li>`).join('')}</ol>
+  </div>
+</section>
+
+${ctaBand()}`;
+  return layout({
+    title: SITE.shortName + ' — plastic scrap & recycled polymers from Oman',
+    desc: SITE.description,
+    canonical: url('/'),
+    altUrl: url('/ar/')
+  }, body + '\n' + ld(orgLd));
+}
+
+function aboutPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">About</p><h1>Trading plastic from Oman since ${esc(SITE.founded)}</h1><p class="lead">Arabian Polyplast Trading LLC is a plastic recycling and raw-materials trading company based in As-Saqsuq, Barka. We buy, process and export industrial polymers, plastic scrap and recycled materials for factories and manufacturers in Oman and abroad.</p></div></section>
+<section class="section"><div class="wrap two-col">
+  <div>
+    <h2>What we do</h2>
+    <p>We work directly with factories, recyclers and collectors to take their plastic scrap, upgrade it in our Barka yard, and ship consistent material to buyers who need a reliable specification rather than a lucky lot.</p>
+    <p>Every shipment is inspected, photographed and documented. If we cannot supply a grade to spec, we say so — a cancelled container costs everyone more than a lost order.</p>
+  </div>
+  <div class="card facts">
+    <h3>Company facts</h3>
+    <dl>
+      <dt>Legal name</dt><dd>${esc(SITE.name)}</dd>
+      <dt>Established</dt><dd>${esc(SITE.founded)}</dd>
+      <dt>Location</dt><dd>${esc(SITE.address.line1)}, ${esc(SITE.address.city)}, ${esc(SITE.address.region)}</dd>
+      <dt>Registration</dt><dd>${esc(SITE.cr)}</dd>
+      <dt>Loading ports</dt><dd>${SITE.ports.map(esc).join(' · ')}</dd>
+      <dt>Languages</dt><dd>English · العربية</dd>
+    </dl>
+  </div>
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: 'About Arabian Polyplast — plastic trading in Barka, Oman',
+    desc: 'Arabian Polyplast Trading LLC buys, processes and exports plastic scrap and recycled polymers from As-Saqsuq, Barka, Oman. Established 2020.',
+    canonical: url('/about.html')
+  }, body + '\n' + ld(orgLd));
+}
+
+function servicesPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Services</p><h1>Buying, processing, exporting</h1><p class="lead">One partner from the scrap yard to the container terminal.</p></div></section>
+<section class="section"><div class="wrap grid cards-2">${SERVICES.map(s => `<article class="card"><h3>${esc(s.title)}</h3><p>${esc(s.text)}</p></article>`).join('')}</div></section>
+<section class="section section-alt"><div class="wrap"><div class="section-head"><h2>How a shipment runs</h2></div><ol class="steps">${PROCESS.map(p => `<li><span class="step-n">${p.n}</span><div><h4>${esc(p.title)}</h4><p>${esc(p.text)}</p></div></li>`).join('')}</ol></div></section>
+${ctaBand()}`;
+  return layout({
+    title: 'Services — scrap buying, processing and export | Arabian Polyplast',
+    desc: 'Plastic scrap buying, processing, export documentation and container loading at Sohar and Muscat.',
+    canonical: url('/services.html')
+  }, body);
+}
+
+function qualityPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Quality</p><h1>How the material is controlled</h1><p class="lead">Six checks between the yard and the buyer.</p></div></section>
+<section class="section"><div class="wrap grid cards-2">${QUALITY.map(([t, d]) => `<article class="card"><h3>${esc(t)}</h3><p>${esc(d)}</p></article>`).join('')}</div>
+<div class="note">Third-party pre-shipment inspection can be arranged at the yard or the port on request.</div></section>
+${ctaBand()}`;
+  return layout({
+    title: 'Quality control — inspection, sampling and loading reports',
+    desc: 'Incoming inspection, manual sorting, washing, sampling, packing and loading reports at Arabian Polyplast, Oman.',
+    canonical: url('/quality.html')
+  }, body);
+}
+
+function faqPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">FAQ</p><h1>Buying and selling questions</h1></div></section>
+<section class="section"><div class="wrap faq-list">
+${FAQS.map(f => `<details class="faq"><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')}
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: 'FAQ — buying and selling plastic scrap in Oman',
+    desc: 'Answers about materials, minimum orders, export terms, inspection and packing.',
+    canonical: url('/faq.html')
+  }, body + '\n' + ld(faqLd()));
+}
+
+function contactPage() {
+  const addr = `${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, ${SITE.address.country}`;
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Contact</p><h1>Talk to us about a lot</h1><p class="lead">Send the material, quantity and destination — we reply with photos, a sample and a firm price.</p></div></section>
+<section class="section"><div class="wrap two-col">
+  <div class="card">
+    <h2>Enquiry form</h2>
+    <form class="lead-form" data-source="arabianpolyplast.com" novalidate>
+      <div class="row"><label>Name *<input name="name" required autocomplete="name"></label><label>Company<input name="company" autocomplete="organization"></label></div>
+      <div class="row"><label>Phone / WhatsApp *<input name="phone" type="tel" autocomplete="tel"></label><label>Email *<input name="email" type="email" autocomplete="email"></label></div>
+      <div class="row"><label>Country<input name="country" autocomplete="country-name"></label><label>Material
+        <select name="material"><option value="">Select…</option>${PRODUCTS.map(p => `<option>${esc(p.name)}</option>`).join('')}<option>Other</option></select></label></div>
+      <div class="row"><label>Quantity<input name="quantity" placeholder="e.g. 2 × 40ft"></label><label>&nbsp;<span class="hp" aria-hidden="true"><input name="_hp" tabindex="-1" autocomplete="off"></span></label></div>
+      <label>Message<textarea name="message" rows="4" placeholder="Grade, colour, packing, destination port…"></textarea></label>
+      <button class="btn btn-primary" type="submit">Send enquiry</button>
+      <p class="form-note">We reply within one working day. Your details are used only for this enquiry.</p>
+      <p class="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+  <div>
+    <div class="card">
+      <h3>Yard &amp; office</h3>
+      <p>${esc(addr)}</p>
+      <p><strong>Phone:</strong> <a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}">${esc(SITE.phone)}</a><br>
+      <strong>WhatsApp:</strong> <a href="https://wa.me/${esc(SITE.whatsapp.replace(/\D/g, ''))}" target="_blank" rel="noopener">Message us</a><br>
+      <strong>Email:</strong> <a href="mailto:${esc(SITE.email)}">${esc(SITE.email)}</a><br>
+      <strong>Hours:</strong> ${esc(SITE.hours)}</p>
+      <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></p>
+    </div>
+    <div class="card">
+      <h3>Selling scrap?</h3>
+      <p>Factories and collectors: tell us the material and volume, and we will arrange collection or a yard visit.</p>
+      <p><a class="btn btn-outline" href="/sell-scrap.html">Sell scrap to us</a></p>
+    </div>
+  </div>
+</div></section>`;
+  return layout({
+    title: 'Contact — Arabian Polyplast, Barka, Oman',
+    desc: 'Contact Arabian Polyplast Trading LLC in As-Saqsuq, Barka, Oman for plastic scrap purchases, sales and export enquiries.',
+    canonical: url('/contact.html')
+  }, body + '\n' + ld(orgLd));
+}
+
+function sellScrapPage() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Sell scrap</p><h1>We buy plastic scrap across Oman</h1><p class="lead">Factories, recyclers, collection companies and municipalities — one-off lots or monthly volumes.</p></div></section>
+<section class="section"><div class="wrap two-col">
+  <div>
+    <h2>What we buy</h2>
+    <ul class="tick">${PRODUCTS.map(p => `<li>${esc(p.name)}</li>`).join('')}<li>Baled film, crates, drums, pipes, profiles</li><li>Mixed industrial loads (inspected first)</li></ul>
+    <h3>How it works</h3>
+    <ol class="steps compact">${PROCESS.slice(0, 4).map(p => `<li><span class="step-n">${p.n}</span><div><h4>${esc(p.title)}</h4><p>${esc(p.text)}</p></div></li>`).join('')}</ol>
+  </div>
+  <div class="card">
+    <h2>Sell to us</h2>
+    <form class="lead-form" data-source="arabianpolyplast.com/sell-scrap" novalidate>
+      <div class="row"><label>Name *<input name="name" required autocomplete="name"></label><label>Company<input name="company" autocomplete="organization"></label></div>
+      <div class="row"><label>Phone / WhatsApp *<input name="phone" type="tel" autocomplete="tel"></label><label>Email<input name="email" type="email" autocomplete="email"></label></div>
+      <div class="row"><label>Material
+        <select name="material"><option value="">Select…</option>${PRODUCTS.map(p => `<option>${esc(p.name)}</option>`).join('')}<option>Mixed / other</option></select></label>
+        <label>Quantity<input name="quantity" placeholder="e.g. 10 tons / month"></label></div>
+      <label>Details<textarea name="message" rows="4" placeholder="Location, form (bales/loose), photos available…"></textarea></label>
+      <span class="hp" aria-hidden="true"><input name="_hp" tabindex="-1" autocomplete="off"></span>
+      <button class="btn btn-primary" type="submit">Offer scrap</button>
+      <p class="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</div></section>`;
+  return layout({
+    title: 'Sell plastic scrap in Oman — Arabian Polyplast buys',
+    desc: 'Sell PET, HDPE, PP, LDPE film, PVC and mixed plastic scrap to Arabian Polyplast in Barka, Oman. Fair weighing, fast terms.',
+    canonical: url('/sell-scrap.html')
+  }, body);
+}
+
+function productsIndex() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Materials</p><h1>Recycled polymers and plastic scrap</h1><p class="lead">Six graded streams, prepared to an agreed specification and loaded at Sohar or Muscat.</p></div></section>
+<section class="section"><div class="wrap grid cards-3">${PRODUCTS.map(productCard).join('')}</div></section>
+${ctaBand()}`;
+  return layout({
+    title: 'Materials — PET, HDPE, PP, LDPE, PVC | Arabian Polyplast',
+    desc: 'Recycled plastic materials from Oman: PET flakes, HDPE, PP, LDPE film, PVC and other industrial polymers.',
+    canonical: url('/products/'),
+    breadcrumb: true
+  }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }])));
+}
+
+function productPage(p) {
+  const others = PRODUCTS.filter(x => x.slug !== p.slug).slice(0, 3);
+  const body = `
+<section class="page-head"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/products/">Materials</a><span>/</span><span>${esc(p.name)}</span></nav>
+  <h1>${esc(p.name)}</h1>
+  <p class="lead">${esc(p.intro)}</p>
+</div></section>
+<section class="section"><div class="wrap two-col">
+  <div>
+    <h2>Specification</h2>
+    <table class="spec"><tbody>${p.specs.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+    <p class="note">Specifications are agreed per lot. Tell us your target grades and we will confirm what is available.</p>
+  </div>
+  <div>
+    <div class="card"><h3>Typical applications</h3><ul class="tick">${p.uses.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
+    <div class="card"><h3>Ask for this material</h3><p>Share quantity, destination port and any specification requirements.</p><p><a class="btn btn-primary" href="/contact.html?material=${encodeURIComponent(p.name)}">Request a quote</a></p></div>
+  </div>
+</div></section>
+<section class="section section-alt"><div class="wrap"><div class="section-head"><h2>Other materials</h2></div><div class="grid cards-3">${others.map(productCard).join('')}</div></div></section>`;
+  return layout({
+    title: p.name + ' from Oman — specification & supply | Arabian Polyplast',
+    desc: p.card + ' Supplied by Arabian Polyplast Trading LLC, Barka, Oman.',
+    canonical: url('/products/' + p.slug + '.html')
+  }, body + '\n' + ld(productLd(p)) + '\n' + ld(breadcrumbLd([
+    { name: 'Home', href: '/' }, { name: 'Materials', href: '/products/' }, { name: p.name, href: '/products/' + p.slug + '.html' }
+  ])));
+}
+
+function notFound() {
+  return layout({
+    title: 'Page not found — Arabian Polyplast',
+    desc: 'The page you requested was not found.',
+    canonical: url('/404.html')
+  }, `<section class="page-head"><div class="wrap"><h1>Page not found</h1><p class="lead">That page does not exist. Start from the materials list or contact us.</p><p><a class="btn btn-primary" href="/">Home</a> <a class="btn btn-outline" href="/contact.html">Contact</a></p></div></section>`);
+}
+
+// ---------------------------------------------------------------- Arabic
+function arHome() {
+  const body = `
+<section class="hero" dir="rtl">
+  <div class="wrap hero-inner">
+    <div class="hero-copy">
+      <p class="eyebrow">بركاء · سلطنة عُمان · منذ ${esc(SITE.founded)}</p>
+      <h1>${esc(AR.home.h1)}</h1>
+      <p class="lead">${esc(AR.home.intro)}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/ar/contact.html">${esc(AR.home.cta)}</a>
+        <a class="btn btn-outline" href="/">English</a>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="section" id="materials"><div class="wrap">
+  <div class="section-head"><h2>${esc(AR.home.materials)}</h2></div>
+  <div class="grid cards-3">${PRODUCTS.map(p => `<div class="card"><h3>${esc(p.name)}</h3><p dir="rtl">${esc(p.card)}</p></div>`).join('')}</div>
+</div></section>
+<section class="section section-alt" id="services"><div class="wrap">
+  <div class="section-head"><h2>${esc(AR.home.services)}</h2></div>
+  <div class="grid cards-2">${SERVICES.map(s => `<article class="card"><h3>${esc(s.title)}</h3><p dir="rtl">${esc(s.text)}</p></article>`).join('')}</div>
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: AR.home.title,
+    desc: AR.home.intro,
+    canonical: url('/ar/'),
+    dir: 'rtl',
+    altUrl: url('/')
+  }, body + '\n' + ld(orgLd));
+}
+
+function arContact() {
+  const addr = `${SITE.address.line1}، ${SITE.address.city}، ${SITE.address.region}، ${SITE.address.country}`;
+  const body = `
+<section class="page-head" dir="rtl"><div class="wrap"><p class="eyebrow">اتصل بنا</p><h1>تواصل معنا بخصوص شحنتك</h1><p class="lead">أرسل نوع المادة والكمية وميناء الوصول — نرد بالصور والعينة والسعر.</p></div></section>
+<section class="section"><div class="wrap two-col">
+  <div class="card" dir="rtl">
+    <h3>العنوان</h3>
+    <p>${esc(addr)}</p>
+    <p><strong>هاتف:</strong> <a href="tel:${esc(SITE.phone.replace(/\s/g, ''))}" dir="ltr">${esc(SITE.phone)}</a><br>
+    <strong>واتساب:</strong> <a href="https://wa.me/${esc(SITE.whatsapp.replace(/\D/g, ''))}" target="_blank" rel="noopener">راسلنا</a><br>
+    <strong>بريد:</strong> <a href="mailto:${esc(SITE.email)}" dir="ltr">${esc(SITE.email)}</a></p>
+    <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">الموقع على الخريطة</a></p>
+  </div>
+  <div class="card">
+    <h2>Enquiry form · نموذج الطلب</h2>
+    <form class="lead-form" data-source="arabianpolyplast.com/ar" novalidate>
+      <div class="row"><label>الاسم *<input name="name" required></label><label>الشركة<input name="company"></label></div>
+      <div class="row"><label>الهاتف / واتساب *<input name="phone" type="tel"></label><label>البريد *<input name="email" type="email"></label></div>
+      <div class="row"><label>الدولة<input name="country"></label><label>المادة
+        <select name="material"><option value="">اختر…</option>${PRODUCTS.map(p => `<option>${esc(p.name)}</option>`).join('')}<option>أخرى</option></select></label></div>
+      <div class="row"><label>الكمية<input name="quantity"></label><label>&nbsp;<span class="hp" aria-hidden="true"><input name="_hp" tabindex="-1" autocomplete="off"></span></label></div>
+      <label>الرسالة<textarea name="message" rows="4"></textarea></label>
+      <button class="btn btn-primary" type="submit">إرسال</button>
+      <p class="form-status" role="status" aria-live="polite"></p>
+    </form>
+  </div>
+</div></section>`;
+  return layout({
+    title: 'اتصل بنا — Arabian Polyplast، بركاء، عُمان',
+    desc: 'تواصل مع Arabian Polyplast Trading LLC في بركاء، سلطنة عُمان لشراء وبيع خردة البلاستيك والتصدير.',
+    canonical: url('/ar/contact.html'),
+    dir: 'rtl',
+    altUrl: url('/contact.html')
+  }, body + '\n' + ld(orgLd));
+}
+
+// ---------------------------------------------------------------- write
+function write(rel, html) {
+  const file = path.join(DIST, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, html, 'utf8');
+}
+
+fs.rmSync(DIST, { recursive: true, force: true });
+fs.mkdirSync(path.join(DIST, 'assets'), { recursive: true });
+
+write('index.html', homePage());
+write('about.html', aboutPage());
+write('services.html', servicesPage());
+write('quality.html', qualityPage());
+write('faq.html', faqPage());
+write('contact.html', contactPage());
+write('sell-scrap.html', sellScrapPage());
+write('products/index.html', productsIndex());
+for (const p of PRODUCTS) write('products/' + p.slug + '.html', productPage(p));
+write('ar/index.html', arHome());
+write('ar/contact.html', arContact());
+write('404.html', notFound());
+
+// sitemap
+const pages = [
+  ['/', '1.0'], ['/products/', '0.9'], ['/contact.html', '0.8'], ['/sell-scrap.html', '0.8'],
+  ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
+  ['/ar/', '0.8'], ['/ar/contact.html', '0.6']
+].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']));
+const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+  pages.map(([p, pr]) => `  <url><loc>${url(p)}</loc><lastmod>${today}</lastmod><priority>${pr}</priority></url>`).join('\n') +
+  '\n</urlset>\n';
+fs.writeFileSync(path.join(DIST, 'sitemap.xml'), sitemap, 'utf8');
+
+// robots
+fs.writeFileSync(path.join(DIST, 'robots.txt'),
+  `User-agent: *\nAllow: /\n\nSitemap: ${SITE.domain}/sitemap.xml\n`, 'utf8');
+
+// llms.txt — a short, honest map for AI crawlers
+fs.writeFileSync(path.join(DIST, 'llms.txt'),
+  `# ${SITE.name}\n\n> ${SITE.description}\n\n` +
+  `Location: ${SITE.address.line1}, ${SITE.address.city}, ${SITE.address.region}, Oman\n` +
+  `Established: ${SITE.founded}\nContact: ${SITE.email} · ${SITE.phone}\n\n` +
+  `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug}.html)`).join('\n')}\n\n` +
+  `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact.html\n- Sell scrap: ${SITE.domain}/sell-scrap.html\n`, 'utf8');
+
+// Cloudflare Pages headers
+fs.writeFileSync(path.join(DIST, '_headers'),
+  `/*\n  X-Content-Type-Options: nosniff\n  X-Frame-Options: SAMEORIGIN\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: geolocation=(), microphone=(), camera=()\n\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n\n/*.html\n  Cache-Control: public, max-age=0, must-revalidate\n`, 'utf8');
+
+fs.writeFileSync(path.join(DIST, '_redirects'),
+  `/home / 301\n/index.html / 301\n/products /products/ 301\n/ar /ar/ 301\n`, 'utf8');
+
+// copy assets
+for (const f of ['styles.css', 'app.js', 'favicon.svg']) {
+  fs.copyFileSync(path.join(SRC, f), path.join(DIST, 'assets', f));
+}
+
+console.log('Built ' + pages.length + ' pages + ' + PRODUCTS.length + ' product pages into ' + DIST);

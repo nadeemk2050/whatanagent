@@ -585,7 +585,8 @@ app.get('/api/wa-web/ai-chain', async (req, res) => {
 // ---------------------------------------------------------------------------
 const LEAD_ORIGINS = [
   'https://alqaryangroup.com', 'https://www.alqaryangroup.com',
-  'https://alshaabalwaseem.com', 'https://www.alshaabalwaseem.com'
+  'https://alshaabalwaseem.com', 'https://www.alshaabalwaseem.com',
+  'https://arabianpolyplast.com', 'https://www.arabianpolyplast.com'
 ];
 const leadHits = new Map();
 function leadCors(req, res) {
