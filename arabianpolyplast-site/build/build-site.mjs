@@ -128,7 +128,7 @@ function head({ title, desc, canonical, dir = 'ltr', hreflang }) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
-<link rel="canonical" href="${esc(canonical)}">
+${SITE.bingMetaKey ? `<meta name="msvalidate.01" content="${esc(SITE.bingMetaKey)}">\n` : ''}<link rel="canonical" href="${esc(canonical)}">
 ${hreflang ? `<link rel="alternate" hreflang="en" href="${esc(hreflang.en)}">\n<link rel="alternate" hreflang="ar" href="${esc(hreflang.ar)}">\n<link rel="alternate" hreflang="x-default" href="${esc(hreflang.en)}">` : ''}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${esc(SITE.shortName)}">
