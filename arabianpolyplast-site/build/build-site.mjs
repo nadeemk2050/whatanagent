@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { SITE, NAV, TRUST, ROLES, PRODUCTS, SERVICES, PROCESS, QUALITY, FAQS, AR, OMAN_PAGE } from './content.mjs';
 import { DEEP } from './deep/index.mjs';
 import { AR_DEEP } from './deep/ar.mjs';
+import { GUIDES } from './deep/guides.mjs';
 import { AR_NAV } from './content.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,18 @@ function faqFromPairs(pairs) {
   };
 }
 
+// Shared block renderer for the guide-style pages.
+function renderBlocks(sections) {
+  return sections.map(s => {
+    let inner = '';
+    if (s.ps) inner += s.ps.map(t => `<p>${t}</p>`).join('\n');
+    if (s.table) inner += `<table class="spec"><tbody>${s.table.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`;
+    if (s.list) inner += `<ul class="tick">${s.list.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    if (s.steps) inner += `<ol class="steps">${s.steps.map(([t, x], i) => `<li><span class="step-n">${i + 1}</span><div><h4>${esc(t)}</h4><p>${esc(x)}</p></div></li>`).join('')}</ol>`;
+    return `<h2>${esc(s.h)}</h2>\n${inner}`;
+  }).join('\n');
+}
+
 function breadcrumbLd(items) {
   return {
     '@context': 'https://schema.org',
@@ -211,6 +224,7 @@ function footer() {
         <li><a href="/scrap-oman">Local &amp; global</a></li>
         <li><a href="/sell-scrap">Sell scrap</a></li>
         <li><a href="/faq">FAQ</a></li>
+        <li><a href="/guides/">Guides</a></li>
         <li><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/cookies">Cookies</a></li>
       </ul>
     </div>
@@ -517,7 +531,7 @@ function contactPage() {
 
 function sellScrapPage() {
   const body = `
-<section class="page-head"><div class="wrap"><p class="eyebrow">Sell scrap</p><h1>We buy plastic scrap across Oman</h1><p class="lead">Factories, recyclers, collection companies and municipalities — one-off lots or monthly volumes.</p></div></section>
+<section class="page-head"><div class="wrap"><p class="eyebrow">Sell scrap</p><h1>We buy plastic scrap across Oman</h1><p class="lead">Factories, recyclers, collection companies and municipalities — one-off lots or monthly volumes.</p><p class="muted">First time selling? Read <a href="/guides/how-to-sell-scrap-in-oman">how to sell scrap in Oman</a> and <a href="/guides/pet-hdpe-scrap-prices">what moves PET and HDPE prices</a>.</p></div></section>
 <section class="section"><div class="wrap two-col">
   <div>
     <h2>What we buy</h2>
@@ -686,6 +700,65 @@ ${ctaBand()}`;
   ])) + '\n' + ld(faqFromPairs(a.faq)));
 }
 
+function articleLd(g) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: g.h1,
+    description: g.desc,
+    datePublished: '2026-11-24',
+    dateModified: '2026-11-24',
+    inLanguage: 'en',
+    mainEntityOfPage: url('/guides/' + g.slug),
+    author: { '@type': 'Organization', name: SITE.name, url: SITE.domain },
+    publisher: { '@type': 'Organization', name: SITE.name, url: SITE.domain }
+  };
+}
+
+function guidePage(g) {
+  const related = g.related.map(slug => PRODUCTS.find(p => p.slug === slug)).filter(Boolean);
+  const body = `
+<section class="page-head"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span>/</span><a href="/guides/">Guides</a><span>/</span><span>${esc(g.h1)}</span></nav>
+  <p class="eyebrow">${esc(g.kicker)}</p>
+  <h1>${esc(g.h1)}</h1>
+  <p class="lead">${esc(g.lead)}</p>
+  <p class="muted">Updated ${esc(g.updated)} · ${esc(SITE.name)}, ${esc(SITE.address.city)}, Oman</p>
+</div></section>
+<section class="section"><div class="wrap article">
+${renderBlocks(g.sections)}
+<h2>Questions</h2>
+<div class="faq-list">${g.faq.map(([q, a]) => `<details class="faq"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}</div>
+<h2>Materials this applies to</h2>
+<ul class="tick">${related.map(p => `<li><a href="/products/${p.slug}">${esc(p.name)}</a> — ${esc(p.card)}</li>`).join('')}</ul>
+<p class="note">Every lot is quoted individually. Send the material, quantity and destination port for a firm number.</p>
+</div></section>
+${ctaBand()}`;
+  return layout({
+    title: g.title,
+    desc: g.desc,
+    canonical: url('/guides/' + g.slug)
+  }, body + '\n' + ld(articleLd(g)) + '\n' + ld(faqFromPairs(g.faq)) + '\n' + ld(breadcrumbLd([
+    { name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }, { name: g.h1, href: '/guides/' + g.slug }
+  ])));
+}
+
+function guidesIndex() {
+  const body = `
+<section class="page-head"><div class="wrap"><p class="eyebrow">Guides</p><h1>Working with scrap in Oman</h1><p class="lead">How scrap is graded, prepared and paid for, and what actually moves the price. Written from the yard, not from a marketing deck.</p></div></section>
+<section class="section"><div class="wrap grid cards-2">
+${GUIDES.map(g => `<a class="card" href="/guides/${g.slug}"><h2>${esc(g.h1)}</h2><p>${esc(g.lead)}</p><p class="muted">Updated ${esc(g.updated)}</p></a>`).join('')}
+</div>
+<div class="note">Looking for a specific grade? The full <a href="/products/">materials list</a> covers all fifteen, each with its specification and material guide.</div>
+</section>
+${ctaBand()}`;
+  return layout({
+    title: 'Guides — selling scrap and understanding prices | Arabian Polyplast',
+    desc: 'Practical guides for Omani scrap sellers: how material is graded and prepared, how a quote is built, and what moves PET and HDPE prices.',
+    canonical: url('/guides/')
+  }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }])));
+}
+
 function scrapOmanPage() {
   const body = `
 <section class="page-head"><div class="wrap"><p class="eyebrow">Local &amp; global</p><h1>${esc(OMAN_PAGE.h1)}</h1><p class="lead">${esc(OMAN_PAGE.intro)}</p></div></section>
@@ -809,6 +882,8 @@ write('privacy.html', privacyPage());
 write('terms.html', termsPage());
 write('cookies.html', cookiesPage());
 write('products/index.html', productsIndex());
+write('guides/index.html', guidesIndex());
+for (const g of GUIDES) write('guides/' + g.slug + '.html', guidePage(g));
 for (const p of PRODUCTS) write('products/' + p.slug + '.html', productPage(p));
 for (const p of PRODUCTS) if (AR_DEEP[p.slug]) write('ar/products/' + p.slug + '.html', arProductPage(p));
 write('ar/index.html', arHome());
@@ -820,9 +895,10 @@ const pages = [
   ['/', '1.0'], ['/products/', '0.9'], ['/contact.html', '0.8'], ['/sell-scrap.html', '0.8'],
   ['/scrap-oman.html', '0.8'], ['/about.html', '0.7'], ['/services.html', '0.7'], ['/quality.html', '0.6'], ['/faq.html', '0.6'],
   ['/privacy.html', '0.3'], ['/terms.html', '0.3'], ['/cookies.html', '0.3'],
-  ['/ar/', '0.8'], ['/ar/contact.html', '0.6']
+  ['/ar/', '0.8'], ['/ar/contact.html', '0.6'], ['/guides/', '0.7']
 ].concat(PRODUCTS.map(p => ['/products/' + p.slug + '.html', '0.8']))
-  .concat(Object.keys(AR_DEEP).map(slug => ['/ar/products/' + slug + '.html', '0.7']));
+  .concat(Object.keys(AR_DEEP).map(slug => ['/ar/products/' + slug + '.html', '0.7']))
+  .concat(GUIDES.map(g => ['/guides/' + g.slug + '.html', '0.7']));
 const sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
   pages.map(([p, pr]) => `  <url><loc>${url(p)}</loc><lastmod>${today}</lastmod><priority>${pr}</priority></url>`).join('\n') +
   '\n</urlset>\n';
@@ -844,6 +920,7 @@ fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `Established: ${SITE.founded}\nContact: arabianpolyplast&#64;gmail.com · ${SITE.phone}\n\n` +
   `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
   `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n` +
+  `- Guides: ${SITE.domain}/guides/\n` +
   `\n## Arabic\n- Home: ${SITE.domain}/ar/\n` +
   Object.keys(AR_DEEP).map(slug => `- ${AR_DEEP[slug].name}: ${SITE.domain}/ar/products/${slug}`).join('\n') + '\n', 'utf8');
 
