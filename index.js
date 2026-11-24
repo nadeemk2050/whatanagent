@@ -783,18 +783,24 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     const forcedModel = String((req.body || {}).model || '').trim();
     const sandboxModel = SANDBOX_MODELS.includes(forcedModel) ? forcedModel : '';
     const sandboxGlm = /^glm-/.test(sandboxModel);
-    if (sandboxGlm && process.env.ZAI_API_KEY) {
-      // 🆓 Z.ai free models, same real prompt. Dormant until ZAI_API_KEY is set in .env.
+    if (sandboxGlm && !process.env.ZAI_API_KEY) {
+      return res.status(400).json({ error: 'ZAI_API_KEY is not configured on this server' });
+    }
+    if (sandboxGlm) {
+      // 🆓 Z.ai free models, same real prompt. GLM-4.7 / 4.5 reason by default and would spend
+      // the whole output budget on hidden reasoning (measured: empty content, 20 thinking
+      // tokens), so thinking is disabled for a WhatsApp-style reply - same rule as DeepSeek.
       const zai = new OpenAI({ baseURL: (process.env.ZAI_BASE_URL || ZAI_COMPAT_BASE), apiKey: process.env.ZAI_API_KEY, timeout: 45000 });
       const comp = await zai.chat.completions.create({
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
         model: sandboxModel,
         temperature: 0.6,
-        max_tokens: 400
+        max_tokens: 400,
+        extra_body: { thinking: { type: 'disabled' } }
       });
       reply = comp.choices[0]?.message?.content || '';
       kbProvider = 'zai'; kbModelUsed = sandboxModel; kbUsage = comp.usage || null;
-    } else if (sandboxModel && !sandboxGlm && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
+    } else if (sandboxModel && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
       // silently make every trial return the Qwen answer. A trial must use the model it names.
       //
