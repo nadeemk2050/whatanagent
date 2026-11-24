@@ -11,7 +11,7 @@
 import {
   doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, query, orderBy, limit
 } from 'firebase/firestore';
-import { QWEN_TEXT_MODEL, QWEN_VISION_MODEL, GEMINI_TEXT_MODEL, GLM_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
+import { QWEN_TEXT_MODEL, QWEN_VISION_MODEL, GEMINI_TEXT_MODEL, GLM_TEXT_MODEL, LUNA_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
 
 let agentsDb = null;
 export function attachAgentsDb(db) { if (db) agentsDb = db; }
@@ -37,6 +37,7 @@ export const AVAILABLE_MODELS = [
   { id: QWEN_VISION_MODEL, label: 'Qwen3.8-Omni-Flash (text + image + audio)' },
   { id: 'deepseek-flash', label: 'DeepSeek V4.1 Flash (strict JSON, strong reasoning)' },
   { id: GLM_TEXT_MODEL, label: 'GLM-5.3-Flash (Z.ai - cheapest, 1M context)' },
+  { id: LUNA_TEXT_MODEL, label: 'GPT-6 Luna (OpenRouter - 1M context, cheapest frontier)' },
   { id: GEMINI_TEXT_MODEL, label: 'Gemini 3.8 Flash (PDF + documents)' }
 ];
 

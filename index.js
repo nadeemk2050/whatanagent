@@ -40,7 +40,7 @@ import { analyzeSession, archiveOldSession } from './sessionCleanup.mjs';
 import { attachAiTrackerDb, isAiAutoFetchStopped, setAiAutoFetchStopped, getAiActivityLog, clearAiActivityLog, recordAiCall } from './aiTracker.mjs';
 import { attachPersonaDb, registerPersonaRoutes, getGlobalPersonaText } from './personaStore.mjs';
 import { cachedTokensFrom } from './promptCache.mjs';
-import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId, ZAI_COMPAT_BASE, GLM_PAID_MODELS, GLM_REASONING_EFFORT } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, hasDeepSeek, GEMINI_TEXT_MODEL, GEMINI_TEXT_CHAIN, normaliseModelId, ZAI_COMPAT_BASE, GLM_PAID_MODELS, GLM_REASONING_EFFORT, OPENROUTER_BASE, OPENAI_BASE, LUNA_TEXT_MODEL } from './aiProviders.mjs';
 import { makeAdminGuard } from './adminGuard.mjs';
 import { 
   initWaWeb, 
@@ -779,12 +779,16 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
     // 🧪 Sandbox-only model override: lets the owner compare engines on the SAME prompt.
     // Whitelisted on purpose - this route is public, so it must never be able to run an
     // expensive model (Gemini 4 Carbon is $10/M output). Output is capped at 400 tokens.
-    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', ...GLM_PAID_MODELS];
+    const SANDBOX_MODELS = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.8-flash', ...GLM_PAID_MODELS, LUNA_TEXT_MODEL];
     const forcedModel = String((req.body || {}).model || '').trim();
     const sandboxModel = SANDBOX_MODELS.includes(forcedModel) ? forcedModel : '';
     const sandboxGlm = /^glm-/.test(sandboxModel);
     if (sandboxGlm && !process.env.ZAI_API_KEY) {
       return res.status(400).json({ error: 'ZAI_API_KEY is not configured on this server' });
+    }
+    const sandboxLuna = sandboxModel === LUNA_TEXT_MODEL;
+    if (sandboxLuna && !process.env.OPENAI_API_KEY) {
+      return res.status(400).json({ error: 'OPENAI_API_KEY is not configured on this server' });
     }
     if (sandboxGlm) {
       // 💸 Z.ai GLM 5.3, same real prompt. 5.3 refuses to switch thinking off (error 1210),
@@ -799,6 +803,18 @@ app.post('/api/wa-web/knowledge-base/test', async (req, res) => {
       });
       reply = comp.choices[0]?.message?.content || '';
       kbProvider = 'zai'; kbModelUsed = sandboxModel; kbUsage = comp.usage || null;
+    } else if (sandboxLuna) {
+      // 💸 GPT-6 Luna direct from OpenAI, same real prompt. Measured quirks: `max_tokens` is
+      // rejected (use `max_completion_tokens`) and `temperature` only accepts the default, so
+      // neither may be sent here. Pro mode is deliberately not reachable from this public route.
+      const or = new OpenAI({ baseURL: (process.env.OPENAI_BASE_URL || OPENAI_BASE), apiKey: process.env.OPENAI_API_KEY, timeout: 60000 });
+      const comp = await or.chat.completions.create({
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: message }],
+        model: sandboxModel,
+        max_completion_tokens: 600
+      });
+      reply = comp.choices[0]?.message?.content || '';
+      kbProvider = 'openai'; kbModelUsed = sandboxModel; kbUsage = comp.usage || null;
     } else if (sandboxModel && (settings.GEMINI_API_KEY || process.env.GEMINI_API_KEY)) {
       // No normaliseModelId() here: that map rewrites retired ids (3.8 -> Qwen), which would
       // silently make every trial return the Qwen answer. A trial must use the model it names.

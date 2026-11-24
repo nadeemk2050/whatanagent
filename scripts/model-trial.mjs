@@ -18,7 +18,9 @@ const PRICES = {
   // 💸 Z.ai GLM 5.3 family (paid; needs a balance on the Z.ai account).
   'glm-5.3-flash':  { in: 0.15, out: 0.50 },
   'glm-5.3-flashx': { in: 0.37, out: 1.25 },
-  'glm-5.3':        { in: 1.40, out: 4.40 }
+  'glm-5.3':        { in: 1.40, out: 4.40 },
+  // 💸 GPT-6 Luna direct from OpenAI (verified live): cache-read is $0.01/M.
+  'gpt-6-luna': { in: 0.10, out: 0.50 }
 };
 
 const BASE = (process.argv[2] || 'https://whatanagent.duckdns.org').replace(/\/+$/, '');

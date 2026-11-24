@@ -35,6 +35,33 @@ export const GLM_PAID_MODELS = [GLM_TEXT_MODEL, GLM_FAST_MODEL, GLM_FLAGSHIP_MOD
 /** 5.3 cannot turn thinking off; "low" measured 0 reasoning tokens, so chat uses it. */
 export const GLM_REASONING_EFFORT = 'low';
 
+// ============================================================================
+// 💸 OpenAI direct (GPT-6 Luna) + optional OpenRouter fallback.
+//
+// Verified live on this key (Nov 2026):
+//   GET  https://api.openai.com/v1/models        -> gpt-6-luna is available
+//   POST https://api.openai.com/v1/chat/completions
+//
+// Direct OpenAI quirks, measured (not guessed):
+//   • `max_tokens` is REJECTED - use `max_completion_tokens`.
+//   • `temperature` other than the default (1) is REJECTED - omit it.
+//   • Luna spends a few reasoning tokens even on trivial prompts; they are billed as output
+//     and count against max_completion_tokens (5 tokens on a one-word reply in the test).
+//   • Cache hits arrive in usage.prompt_tokens_details.cached_tokens (same field we already read).
+//
+// Prices (identical on both routes; OpenRouter just adds a ~5% fee on credit top-ups):
+//   gpt-6-luna   in $0.10  cache-read $0.01  out $0.50  context 1,050,000
+//
+// Direct is the primary route: no middleman, no markup, one less network hop. The OpenRouter
+// id stays available for the same model (and for its half-price async `:batch` variant) but is
+// never chosen implicitly.
+// ============================================================================
+export const OPENAI_BASE = 'https://api.openai.com/v1';
+export const LUNA_TEXT_MODEL = 'gpt-6-luna';
+export const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+export const LUNA_OPENROUTER_MODEL = 'openai/gpt-6-luna';
+export const LUNA_OPENROUTER_BATCH_MODEL = 'openai/gpt-6-luna:batch';
+
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const first = (...vals) => {
   for (const v of vals) { const s = str(v); if (s) return s; }

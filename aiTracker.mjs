@@ -50,6 +50,13 @@ const MODEL_PRICING = {
   'glm-5.3': { inPerM: 1.40, outPerM: 4.40, cacheInPerM: 0.26 },
   'glm': { inPerM: 0.15, outPerM: 0.50, cacheInPerM: 0.03 },
 
+  // GPT-6 Luna — direct OpenAI is the primary route (exact prices, no middleman).
+  // Verified live: in $0.10, cache-read $0.01, out $0.50, 1.05M context. Luna spends a few
+  // reasoning tokens even on trivial prompts; they are billed as output. The OpenRouter rows
+  // stay for the fallback route and its half-price async `:batch` variant.
+  'gpt-6-luna': { inPerM: 0.10, outPerM: 0.50, cacheInPerM: 0.01 },
+  'openai/gpt-6-luna': { inPerM: 0.10, outPerM: 0.50, cacheInPerM: 0.01 },
+
   // Alibaba Qwen (DashScope). Verified 2026-11 against Alibaba Cloud Model Studio pricing:
   // qwen3.8-flash is 1 RMB in / 3 RMB out per 1M ≈ $0.16 / $0.47, and context-cache HITS are
   // billed at 10% of the standard input price (≈$0.016). Cache creation is 125% of input.

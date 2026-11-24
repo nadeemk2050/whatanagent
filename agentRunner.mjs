@@ -9,7 +9,7 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { doc, getDoc } from 'firebase/firestore';
-import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL, normaliseModelId, ZAI_COMPAT_BASE, GLM_REASONING_EFFORT } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL, normaliseModelId, ZAI_COMPAT_BASE, GLM_REASONING_EFFORT, OPENROUTER_BASE, OPENAI_BASE } from './aiProviders.mjs';
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
@@ -49,6 +49,8 @@ const providerOf = (model) => {
   if (m.startsWith('deepseek')) return 'deepseek';
   if (m.startsWith('qwen')) return 'qwen';
   if (m.startsWith('glm')) return 'glm';
+  if (m.startsWith('openai/') || m.startsWith('~openai/')) return 'openrouter';
+  if (m.startsWith('gpt')) return 'openai';
   return 'unknown';
 };
 
@@ -323,6 +325,47 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
       max_tokens: maxTokens,
       messages: [{ role: 'system', content: system }, ...convo],
       extra_body: { reasoning_effort: GLM_REASONING_EFFORT }
+    });
+    return {
+      text: (comp.choices[0]?.message?.content || '').trim(),
+      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0,
+      cachedTokens: comp.usage?.prompt_tokens_details?.cached_tokens || 0, provider
+    };
+  }
+
+  if (provider === 'openai') {
+    // 💸 OpenAI direct (GPT-6 Luna, 1.05M context). Measured quirks: `max_tokens` is rejected
+    // (must be `max_completion_tokens`) and `temperature` only accepts the default, so neither
+    // the caller's temperature nor a max_tokens field may be forwarded here.
+    const key = process.env.OPENAI_API_KEY || settings.OPENAI_API_KEY || '';
+    if (!key) throw new Error('OpenAI key is not configured (OPENAI_API_KEY)');
+    const base = String(process.env.OPENAI_BASE_URL || settings.OPENAI_BASE_URL || OPENAI_BASE).replace(/\/+$/, '');
+    const client = new OpenAI({ baseURL: base, apiKey: key, timeout: 90000 });
+    const comp = await client.chat.completions.create({
+      model,
+      max_completion_tokens: maxTokens,
+      messages: [{ role: 'system', content: system }, ...convo]
+    });
+    return {
+      text: (comp.choices[0]?.message?.content || '').trim(),
+      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0,
+      cachedTokens: comp.usage?.prompt_tokens_details?.cached_tokens || 0, provider
+    };
+  }
+
+  if (provider === 'openrouter') {
+    // Fallback route for the same model through OpenRouter (optionally the half-price async
+    // `:batch` id for nightly jobs). Never chosen implicitly - only when a stored model id says so.
+    // OpenRouter reports cache hits in prompt_tokens_details.cached_tokens, same field as qwen.
+    const key = process.env.OPENROUTER_API_KEY || settings.OPENROUTER_API_KEY || '';
+    if (!key) throw new Error('OpenRouter key is not configured (OPENROUTER_API_KEY)');
+    const base = String(process.env.OPENROUTER_BASE_URL || settings.OPENROUTER_BASE_URL || OPENROUTER_BASE).replace(/\/+$/, '');
+    const client = new OpenAI({ baseURL: base, apiKey: key, timeout: 90000 });
+    const comp = await client.chat.completions.create({
+      model,
+      temperature,
+      max_tokens: maxTokens,
+      messages: [{ role: 'system', content: system }, ...convo]
     });
     return {
       text: (comp.choices[0]?.message?.content || '').trim(),
