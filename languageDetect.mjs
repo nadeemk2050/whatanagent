@@ -79,27 +79,71 @@ export function detectLanguage(text) {
   return { code: 'english', label: 'English', confidence: eng >= 2 ? 'high' : 'medium' };
 }
 
-/** The per-message instruction appended at the very END of the system prompt. */
-export function languageDirective(text) {
-  const d = detectLanguage(text);
+/** The per-message instruction appended at the very END of the system prompt.
+ *  opts.conversationLang — the language the chat is already running in (detectConversationLanguage),
+ *  used when the latest message is too short to judge ("Ok", "👍", "kahan"). */
+export function languageDirective(text, opts = {}) {
+  const direct = detectLanguage(text);
+  const conv = opts.conversationLang || null;
+  // A one-word reply must never flip a Roman-Urdu conversation into English.
+  const useConversation = direct.confidence !== 'high' && conv && conv.code !== 'unknown' && conv.code !== direct.code;
+  const effective = useConversation ? conv : direct;
+  const langLabel = effective.label || 'English';
+
   const head = '\n\n--- 🗣️ REPLY LANGUAGE FOR THIS MESSAGE (HIGHEST PRIORITY) ---\n';
   const override = 'This rule overrides EVERY other language instruction — the LLM card, learned style, persona notes, LLM Tank notes and the knowledge base. Those control tone and content, never language.';
-  if (d.code === 'urdu') {
-    return head + 'The customer\'s latest message is written in URDU SCRIPT (اردو).\n' +
-      'Reply in Urdu script (اردو) with every word, matching their tone. Do not reply in English or Roman Urdu.\n' + override + '\n';
+  const basis = useConversation
+    ? 'The latest message is short or ambiguous, and this conversation is running in ' + langLabel + '.\n'
+    : 'The customer\'s latest message is in ' + langLabel + '.\n';
+  const follow = ' If the customer switches language later, follow their newest message instantly.';
+
+  if (effective.code === 'urdu') {
+    return head + basis + 'Reply in Urdu script (اردو) with every word. Do not reply in English or Roman Urdu.' + follow + '\n' + override + '\n';
   }
-  if (d.code === 'arabic') {
-    return head + 'The customer\'s latest message is written in ARABIC (العربية).\n' +
-      'Reply in natural business Arabic, every word, matching their tone. Do not reply in English or Urdu.\n' + override + '\n';
+  if (effective.code === 'arabic') {
+    return head + basis + 'Reply in natural business Arabic with every word. Do not reply in English or Urdu.' + follow + '\n' + override + '\n';
   }
-  if (d.code === 'roman_urdu' || d.code === 'hindi') {
-    return head + 'The customer\'s latest message is written in ROMAN URDU / ROMAN HINDI (Urdu in English letters).\n' +
-      'Reply in Roman Urdu (Urdu written with English letters, e.g. "ji bilkul, kal bhej dunga"). Never use Devanagari, and do not answer in pure English.\n' + override + '\n';
+  if (effective.code === 'roman_urdu' || effective.code === 'hindi') {
+    return head + basis + 'Reply in Roman Urdu (Urdu written with English letters, e.g. "ji bilkul, kal bhej dunga"). Never Devanagari, and do not answer in pure English.' + follow + '\n' + override + '\n';
   }
-  if (d.code === 'english') {
-    return head + 'The customer\'s latest message is written in ENGLISH.\n' +
-      'Reply in clear, natural English only — every word in English. Do not answer in Roman Urdu or any other language.\n' + override + '\n';
+  if (effective.code === 'english') {
+    return head + basis + 'Reply in clear, natural English only — every word in English.' + follow + '\n' + override + '\n';
   }
   return head + 'The customer\'s language could not be determined (numbers/emoji/short reply).\n' +
     'Reply in clear English, then mirror their language as soon as they write a full sentence.\n' + override + '\n';
+}
+
+const CODE_LABEL = {
+  english: 'English',
+  roman_urdu: 'Roman Urdu',
+  hindi: 'Roman Urdu',
+  urdu: 'Urdu (Arabic script)',
+  arabic: 'Arabic'
+};
+
+/**
+ * The language this conversation is ALREADY running in, taken from the customer's recent
+ * messages in the transcript. Used when the latest message is too short to judge, so a chat
+ * that has been Roman Urdu all along never flips to English on an "Ok".
+ */
+export function detectConversationLanguage(transcript) {
+  const lines = String(transcript || '').split('\n');
+  const customerLines = [];
+  for (const line of lines) {
+    const m = line.match(/👤[^:]*:\s*(.*)$/);
+    if (m && m[1] && m[1].trim()) customerLines.push(m[1].trim());
+  }
+  const recent = customerLines.slice(-8);
+  if (!recent.length) return null;
+  const tally = new Map();
+  for (const t of recent) {
+    const d = detectLanguage(t);
+    if (d.code === 'unknown') continue;
+    tally.set(d.code, (tally.get(d.code) || 0) + (d.confidence === 'high' ? 2 : 1));
+  }
+  if (!tally.size) return null;
+  let best = null;
+  let bestScore = 0;
+  for (const [code, score] of tally) if (score > bestScore) { best = code; bestScore = score; }
+  return { code: best, label: CODE_LABEL[best] || 'English', confidence: bestScore >= 3 ? 'high' : 'medium' };
 }

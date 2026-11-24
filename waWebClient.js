@@ -12,7 +12,7 @@ import { goldBossAction, goldSnapshot, goldEventsSnapshot } from './goldAgent.mj
 import { recordAiCall } from './aiTracker.mjs';
 import { resolveDeepSeek, deepseekOpenAIOptions, GEMINI_TEXT_CHAIN, DEFAULT_TEXT_MODEL, CHEAP_TEXT_ORDER, normaliseModelId, LUNA_TEXT_MODEL } from './aiProviders.mjs';
 import { faqPromptBlock } from './faqRetrieval.mjs';
-import { detectLanguage, languageDirective } from './languageDetect.mjs';
+import { detectLanguage, languageDirective, detectConversationLanguage } from './languageDetect.mjs';
 import { getAgent, logFallback } from './agentsStore.mjs';
 import { buildAgentSystemPrompt, getCompiledBlocks, UNIVERSAL_SAFETY } from './agentRunner.mjs';
 import { DEFAULT_AGENT_ID } from './agentTemplates.mjs';
@@ -1657,9 +1657,14 @@ async function announceTaskCompletion(ref, task) {
     if (pth && alignAnnouncedRecently.has(pth)) return;                   // in-flight / just-sent dedupe
     if (!sock || waWebState.status !== 'connected') return;
     if (pth) { alignAnnouncedRecently.add(pth); setTimeout(() => alignAnnouncedRecently.delete(pth), 30 * 60 * 1000); }
-    const email = String(task.completedBy || '').toLowerCase();
+    const email = String(task.completedBy || task.completedByEmail || '').toLowerCase();
     const staffEntry = email ? alignStaffWaMap.get(email) : null;
-    const name = (staffEntry && staffEntry.name) || (email ? email.split('@')[0] : 'A team member');
+    // The AlignTasks server stamps completedByName for board tasks; prefer it so the group sees
+    // the real person instead of "A team member".
+    const name = String(task.completedByName || '').trim()
+      || (staffEntry && staffEntry.name)
+      || (email ? email.split('@')[0] : 'A team member');
+    const doneUid = String(task.completedByUid || '');
     const doneMs = tsToMs(task.completedAt) || Date.now();
     const t0 = dubaiDayStartMs(Date.now());
     let userCount = 0, teamCount = 0;
@@ -1670,7 +1675,10 @@ async function announceTaskCompletion(ref, task) {
       if (!ms || ms < t0) continue;
       teamCount++;
       if (entry.ref && ref && entry.ref.path === ref.path) continue;   // current task counted below (cache still holds its old data)
-      if (email && String(v.completedBy || '').toLowerCase() === email) userCount++;
+      const samePerson = (doneUid && String(v.completedByUid || '') === doneUid)
+        || (email && String(v.completedBy || v.completedByEmail || '').toLowerCase() === email)
+        || (name && String(v.completedByName || '').trim() === name);
+      if (samePerson) userCount++;
     }
     userCount++; teamCount++;
     const doneStr = new Date(doneMs).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -6931,8 +6939,11 @@ async function generateWaWebAutoBotReplyInner(jid, customerMessage, overrideProm
       // can pull the reply back into Roman Urdu.
       try {
         const detected = detectLanguage(customerMessage);
-        systemPrompt += languageDirective(customerMessage);
-        console.log('[WA-WEB LANG] ' + detected.code + ' (' + detected.confidence + ') -> reply language directive applied');
+        // The chat's running language: a short "Ok" must not flip a Roman-Urdu conversation to English.
+        const convLang = detectConversationLanguage((chatContext && chatContext.transcript) || '');
+        systemPrompt += languageDirective(customerMessage, { conversationLang: convLang });
+        console.log('[WA-WEB LANG] msg=' + detected.code + '/' + detected.confidence +
+          ' conv=' + (convLang ? convLang.code : '-') + ' -> reply language directive applied');
       } catch (e) { /* detection is best effort; the prompt rules still apply */ }
 
       // Report the cacheable share once per new contact / new shape, not on every message.
