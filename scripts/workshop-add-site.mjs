@@ -121,7 +121,7 @@ const steps = {
   'llms-txt': S('done', 'Served at /llms.txt: company facts, all materials with their URLs, key pages.'),
   ga4: S('todo', 'The tag is wired behind SITE.ga4Id and stays inert until the ID exists. Two routes: create the property in analytics.google.com (3 clicks) and send the G- id, or enable the Analytics Admin API in Google Cloud project 625553715649 and add seo-agent-service-24may2026@dominonad.iam.gserviceaccount.com as Editor, after which scripts/ga4-setup.mjs creates the property and stream automatically.'),
   'ga4-gsc': S('todo', 'Link GA4 to Search Console once both exist.'),
-  gbp: S('done', 'Profile exists and is verified — confirmed on Google 24 Nov 2026 (blue badge, "You manage this Business Profile"). Name ARABIAN POLYPLAST, category Plastic products supplier, phone +968 7694 2126, address JV64+9Q As-Saqsuq, 4.7 from 3 reviews, 432 customer interactions. Two things to align: the profile still shows opening at 09:00 while the site says 07:00, and secondary categories are missing.'),
+  gbp: S('done', 'Profile exists and is verified — confirmed on Google 24 Nov 2026 (blue badge, "You manage this Business Profile"). Name ARABIAN POLYPLAST, category Plastic products supplier, phone +968 7694 2126, address JV64+9Q As-Saqsuq, 4.7 from 3 reviews, 432 customer interactions, hours 07:00 aligned with the site. The place page is linked from the Organization schema as sameAs, and the site geo now carries the profile coordinates 23.610896, 57.856916 (the earlier values were 8 km off).'),
   'facebook-page': S('todo', 'No Facebook Page connected for this site.'),
   linkedin: S('todo', 'No LinkedIn company page yet.'),
   directories: S('todo', 'Tier-1 citations for Oman/GCC scrap traders, all with identical NAP.'),
