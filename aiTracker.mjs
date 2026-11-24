@@ -34,17 +34,21 @@ const MODEL_PRICING = {
   'deepseek-coder': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
   'deepseek': { inPerM: 0.30, outPerM: 1.20, cacheInPerM: 0.03 },
 
-  // Google Gemini. Only gemini-2.5-flash is routed now (see aiProviders.mjs): it is the
-  // cheapest Gemini and the only one this app needs (PDFs + audio). The 3.x rows below are
-  // kept ONLY so the old entries in the activity log stay priced correctly — nothing selects
-  // them any more. gemini-3.5-flash was $9.00/M output, 19x Qwen.
+  // Google Gemini. gemini-3.8-flash is the routed media model now (2.5 Flash answers 400
+  // "no longer available to new users"). Older rows stay so old log entries keep their price.
+  'gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75 },
   'gemini-2.5-flash': { inPerM: 0.30, outPerM: 2.50 },
   'gemini-2.5-pro': { inPerM: 1.25, outPerM: 10.00 },
   'gemini-3.5-flash': { inPerM: 1.50, outPerM: 9.00 },   // legacy — not routed
   'gemini-3.6-flash': { inPerM: 0.75, outPerM: 3.75 },   // legacy — not routed
-  'gemini-3.8-flash': { inPerM: 0.75, outPerM: 3.75 },   // legacy — not routed
   'gemini-flash-latest': { inPerM: 0.75, outPerM: 3.75 }, // legacy — not routed
-  'gemini': { inPerM: 0.30, outPerM: 2.50 },
+  'gemini': { inPerM: 0.75, outPerM: 3.75 },
+
+  // Z.ai GLM (paid). Verified against Z.ai's pricing page; cache hits are 10-20% of input.
+  'glm-5.3-flash': { inPerM: 0.15, outPerM: 0.50, cacheInPerM: 0.03 },
+  'glm-5.3-flashx': { inPerM: 0.37, outPerM: 1.25, cacheInPerM: 0.075 },
+  'glm-5.3': { inPerM: 1.40, outPerM: 4.40, cacheInPerM: 0.26 },
+  'glm': { inPerM: 0.15, outPerM: 0.50, cacheInPerM: 0.03 },
 
   // Alibaba Qwen (DashScope). Verified 2026-11 against Alibaba Cloud Model Studio pricing:
   // qwen3.8-flash is 1 RMB in / 3 RMB out per 1M ≈ $0.16 / $0.47, and context-cache HITS are

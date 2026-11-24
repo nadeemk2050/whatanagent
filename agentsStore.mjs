@@ -11,7 +11,7 @@
 import {
   doc, getDoc, setDoc, deleteDoc, collection, getDocs, addDoc, query, orderBy, limit
 } from 'firebase/firestore';
-import { QWEN_TEXT_MODEL, QWEN_VISION_MODEL, GEMINI_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
+import { QWEN_TEXT_MODEL, QWEN_VISION_MODEL, GEMINI_TEXT_MODEL, GLM_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
 
 let agentsDb = null;
 export function attachAgentsDb(db) { if (db) agentsDb = db; }
@@ -29,15 +29,15 @@ export const STATUS_LABELS = {
 export const DEFAULT_WEIGHTS = { knowledge: 25, style: 20, scorecard: 35, corrections: 10, tools: 10 };
 export const DEFAULT_READY_THRESHOLD = 80;
 
-// Cheapest capable model first. Only these three providers are routed (see aiProviders.mjs):
-// Qwen for text, DeepSeek for strict JSON, Gemini 2.5 for what needs media reading. The Gemini
-// 3.x ids were removed — 3.5 costs $9.00/M output and 3.6/3.8 cost $3.75/M, all worse for this
-// app than falling back to Qwen at $0.47/M.
+// Cheapest capable model first. Routed providers (see aiProviders.mjs): Qwen for text,
+// DeepSeek for strict JSON, Z.ai GLM for a cheap second text engine, Gemini for media reading.
+// Gemini is 3.8 Flash - Google no longer serves 2.5 Flash to new projects.
 export const AVAILABLE_MODELS = [
   { id: QWEN_TEXT_MODEL, label: 'Qwen3.8-Flash (fast, multilingual, cheapest)' },
   { id: QWEN_VISION_MODEL, label: 'Qwen3.8-Omni-Flash (text + image + audio)' },
   { id: 'deepseek-flash', label: 'DeepSeek V4.1 Flash (strict JSON, strong reasoning)' },
-  { id: GEMINI_TEXT_MODEL, label: 'Gemini 2.5 Flash (PDF + documents)' }
+  { id: GLM_TEXT_MODEL, label: 'GLM-5.3-Flash (Z.ai - cheapest, 1M context)' },
+  { id: GEMINI_TEXT_MODEL, label: 'Gemini 3.8 Flash (PDF + documents)' }
 ];
 
 const CACHE_TTL_MS = 5 * 60 * 1000;

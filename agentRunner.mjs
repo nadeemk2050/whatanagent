@@ -9,7 +9,7 @@
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { doc, getDoc } from 'firebase/firestore';
-import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL, normaliseModelId } from './aiProviders.mjs';
+import { resolveDeepSeek, deepseekOpenAIOptions, backgroundModelFor, DEFAULT_TEXT_MODEL, GEMINI_TEXT_MODEL, normaliseModelId, ZAI_COMPAT_BASE, GLM_REASONING_EFFORT } from './aiProviders.mjs';
 import { recordAiCall, getAiActivityLog } from './aiTracker.mjs';
 import { listKnowledge, listLessons, listExamples } from './agentsStore.mjs';
 import { withRuleBook, enforceScript, hasDevanagari } from './ruleBook.mjs';
@@ -48,6 +48,7 @@ const providerOf = (model) => {
   if (m.startsWith('gemini')) return 'gemini';
   if (m.startsWith('deepseek')) return 'deepseek';
   if (m.startsWith('qwen')) return 'qwen';
+  if (m.startsWith('glm')) return 'glm';
   return 'unknown';
 };
 
@@ -300,6 +301,28 @@ async function callOnce({ model, system, messages, temperature = 0.4, maxTokens 
       max_tokens: maxTokens,
       messages: [{ role: 'system', content: system }, ...convo],
       extra_body: { enable_thinking: false }
+    });
+    return {
+      text: (comp.choices[0]?.message?.content || '').trim(),
+      model, tokensIn: comp.usage?.prompt_tokens || 0, tokensOut: comp.usage?.completion_tokens || 0,
+      cachedTokens: comp.usage?.prompt_tokens_details?.cached_tokens || 0, provider
+    };
+  }
+
+  if (provider === 'glm') {
+    // 💸 Z.ai GLM 5.3 (OpenAI-compatible). 5.3 refuses to switch thinking off (1210), and
+    // `reasoning_effort: "low"` measured 0 reasoning tokens on our prompt - so it is the one
+    // setting a chat/agent reply should send. Reason with 'high'/'max' only for hard tasks.
+    const key = process.env.ZAI_API_KEY || settings.ZAI_API_KEY || '';
+    if (!key) throw new Error('Z.ai key is not configured (ZAI_API_KEY)');
+    const base = String(process.env.ZAI_BASE_URL || settings.ZAI_BASE_URL || ZAI_COMPAT_BASE).replace(/\/+$/, '');
+    const client = new OpenAI({ baseURL: base, apiKey: key, timeout: 90000 });
+    const comp = await client.chat.completions.create({
+      model,
+      temperature,
+      max_tokens: maxTokens,
+      messages: [{ role: 'system', content: system }, ...convo],
+      extra_body: { reasoning_effort: GLM_REASONING_EFFORT }
     });
     return {
       text: (comp.choices[0]?.message?.content || '').trim(),
