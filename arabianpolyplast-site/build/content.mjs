@@ -32,7 +32,7 @@ export const SITE = {
   areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC', 'Worldwide'],
   languages: ['en', 'ar'],
   ga4Id: '', // set to the G- measurement ID once the GA4 property exists; the tag is emitted only when this is filled
-  bingAuthKey: '', // set to the BingSiteAuth key once Bing Webmaster Tools issues one; served at /BingSiteAuth.xml
+  bingAuthKey: 'A4FF016258D8D01FB3C47B6F95558B97', // Bing Webmaster Tools XML-file key, served at /BingSiteAuth.xml
   bingMetaKey: '', // set to the msvalidate.01 value if you verify with the meta tag instead
   indexNowKey: 'a7f3c1d9e04b47c8b2e6f5a90d1c3b8e'
 };
