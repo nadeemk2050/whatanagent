@@ -69,6 +69,9 @@ const orgLd = {
   },
   geo: { '@type': 'GeoCoordinates', latitude: SITE.geo.lat, longitude: SITE.geo.lng },
   hasMap: SITE.mapUrl,
+  // Ties the domain to the verified Google Business Profile place page, which is
+  // what lets Google treat the site and the Maps listing as one entity.
+  sameAs: [SITE.placesUrl],
   openingHours: ['Sa-Th 07:00-19:00'],
   areaServed: [
     'Oman', 'Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'Nizwa', 'Sur', 'Ibri',

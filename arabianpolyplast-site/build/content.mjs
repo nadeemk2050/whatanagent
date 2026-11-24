@@ -26,9 +26,10 @@ export const SITE = {
     region: 'Al Batinah South Governorate',
     country: 'Oman'
   },
-  geo: { lat: 23.6848, lng: 57.8861 },
+  geo: { lat: 23.610896, lng: 57.856916 }, // from the verified Google Business Profile place page
   ports: ['Sohar', 'Muscat (Sultan Qaboos)'],
-  mapUrl: 'https://maps.google.com/?q=Arabian+Polyplast+Trading+LLC+Barka+Oman',
+  mapUrl: 'https://maps.google.com/?cid=18067665926114846964',
+  placesUrl: 'https://www.google.com/maps/place/ARABIAN+POLYPLAST/@23.610896,57.856916,17z/data=!4m6!3m5!1s0x3e8ddb00711ce66f:0xfabd3e6ee68128f4!8m2!3d23.610896!4d57.856916!16s%2Fg%2F11y84g5tvl',
   areas: ['Muscat', 'Barka', 'Sohar', 'Al Batinah', 'Salalah', 'UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'GCC', 'Worldwide'],
   languages: ['en', 'ar'],
   ga4Id: '', // set to the G- measurement ID once the GA4 property exists; the tag is emitted only when this is filled
