@@ -413,6 +413,75 @@ app.post('/api/boss-chat', async (req, res) => {
   }
 });
 
+// --- 🪐 ANTIGRAVITY VPS ENGINE APIS ---
+app.get('/api/antigravity/status', async (req, res) => {
+  try {
+    const isLinux = process.platform === 'linux';
+    res.json({
+      ok: true,
+      online: true,
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      vpsHost: isLinux ? '43.156.245.176' : 'localhost (Dev)',
+      vpsLocation: 'Tencent Cloud Lighthouse',
+      appDir: process.cwd(),
+      user: 'nadeemalsaham@gmail.com',
+      githubUser: 'nadeemalsaham',
+      uptimeSeconds: Math.round(process.uptime()),
+      repos: [
+        { id: 'aligntasks', name: 'AlignTasks PWA', path: path.join(process.cwd(), 'public', 'aligntasks'), defaultBranch: 'master' },
+        { id: 'whatanagent', name: 'WhatAnAgent System', path: process.cwd(), defaultBranch: 'master' },
+        { id: 'accountspro', name: 'AccountsPro', path: '/opt/accountspro', defaultBranch: 'main' },
+        { id: 'invent', name: 'Invent App', path: '/opt/invent', defaultBranch: 'master' }
+      ]
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/antigravity/tasks', async (req, res) => {
+  try {
+    const snap = await getDocs(query(collection(db, 'appData', 'antigravityTasks', 'tasks'), orderBy('createdAt', 'desc'), limit(25)));
+    const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ ok: true, tasks });
+  } catch (err) {
+    res.json({ ok: true, tasks: [] });
+  }
+});
+
+app.post('/api/antigravity/task/run', async (req, res) => {
+  try {
+    const { repo, instruction, source } = req.body || {};
+    if (!instruction) return res.status(400).json({ ok: false, error: 'Missing instruction.' });
+    const { dispatchAntigravityTask } = await import('./waWebClient.js');
+    const result = await dispatchAntigravityTask({ repo, instruction, source: source || 'web_dashboard' });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/antigravity/settings', async (req, res) => {
+  try {
+    const docSnap = await getDoc(doc(db, 'appData', 'antigravitySettings'));
+    res.json({ ok: true, settings: docSnap.exists() ? docSnap.data() : {} });
+  } catch (err) {
+    res.json({ ok: true, settings: {} });
+  }
+});
+
+app.post('/api/antigravity/settings', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    await setDoc(doc(db, 'appData', 'antigravitySettings'), payload, { merge: true });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('/api/wa-web/download-media', async (req, res) => {
   try {
     const { jid, msgId } = req.query;

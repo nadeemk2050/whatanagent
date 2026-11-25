@@ -1,6 +1,7 @@
 /* ============================================================================
    ☁️ CLOUD FLARE SECTION — Interactive Infrastructure & Experiments Lab
    Domain focus: alshaabalwaseem.com + WhatAnAgent Ecosystem
+   Includes: 8 Lab Services + Interactive Master Benefits & To-Do Tracker
    ============================================================================ */
 (function () {
   const DOMAIN = 'alshaabalwaseem.com';
@@ -35,10 +36,16 @@
       ],
       benefits: [
         'Unlimited storage capacity (only limited by your own hard disk size)',
-        '$0/month subscription cost forever',
+        '$0/month subscription cost forever (replaces Google Drive/Dropbox fees)',
         'Instant Excel, PDF, image, and video preview directly inside the browser',
         'One-click share links with expiry dates for customers or dealers',
         'Automatic sync option with your WhatAnAgent backups and Commission Accounts exports'
+      ],
+      todos: [
+        { id: 'gdrive_1', text: 'Install FileBrowser / Nextcloud binary on Office PC or VPS storage partition' },
+        { id: 'gdrive_2', text: 'Map drive.' + DOMAIN + ' in Cloudflare Tunnel to http://localhost:8085' },
+        { id: 'gdrive_3', text: 'Set up separate folders for Boss, Accounts (Commission/GST), and Logistics' },
+        { id: 'gdrive_4', text: 'Enable Zero Trust email OTP protection before public access' }
       ]
     },
     {
@@ -73,6 +80,12 @@
         'Full custom webmail inbox plus Gmail/Outlook forwarding',
         'AI Staff integration: Mr. Zaheer & Saad can read incoming business emails and brief you on WhatsApp',
         'All your apps live under your own prestigious company domain with automatic HTTPS SSL'
+      ],
+      todos: [
+        { id: 'email_1', text: 'Point nameservers of ' + DOMAIN + ' to Cloudflare' },
+        { id: 'email_2', text: 'Activate Cloudflare Email Routing with SPF, DKIM & DMARC records' },
+        { id: 'email_3', text: 'Create nadeem@' + DOMAIN + ', accounts@, and sales@ addresses' },
+        { id: 'email_4', text: 'Connect incoming emails to WhatAnAgent WhatsApp AI briefing webhook' }
       ]
     },
     {
@@ -106,6 +119,12 @@
         'Complete data privacy — sensitive accounting and customer chats never leave your own machines',
         'Seamless automatic fallback to cloud APIs whenever your local PC is asleep',
         'Great for heavy background jobs like LLM Tank learning, news summaries, and CV drafting'
+      ],
+      todos: [
+        { id: 'ai_1', text: 'Install Ollama on local office/home PC and download Qwen 2.5 / DeepSeek-R1' },
+        { id: 'ai_2', text: 'Map localhost:11434 to ai.' + DOMAIN + ' via Cloudflare Tunnel' },
+        { id: 'ai_3', text: 'Add Cloudflare Service Token header to protect the AI endpoint' },
+        { id: 'ai_4', text: 'Set WhatAnAgent hybrid routing: Free Local AI first, cloud fallback second' }
       ]
     },
     {
@@ -139,6 +158,12 @@
         'No need to carry SSH private keys on every laptop or phone',
         'No more TeamViewer "Commercial Use Detected" popups or costly subscriptions',
         'Manage your VPS or Office PC even from an iPad or mobile browser while traveling'
+      ],
+      todos: [
+        { id: 'rdp_1', text: 'Point ssh.' + DOMAIN + ' to ssh://localhost:22 on Tencent VPS via Cloudflare Tunnel' },
+        { id: 'rdp_2', text: 'Close port 22 on public VPS firewall (allow SSH only via Tunnel)' },
+        { id: 'rdp_3', text: 'Install code-server on VPS for mobile browser coding at code.' + DOMAIN },
+        { id: 'rdp_4', text: 'Protect ssh.' + DOMAIN + ' and code.' + DOMAIN + ' with 6-digit email PIN gate' }
       ]
     },
     {
@@ -173,6 +198,12 @@
         'Protects internal tools even if someone accidentally leaks a password',
         '100% free for up to 50 team members on the Cloudflare Zero Trust Free Plan',
         'Instant 1-click revocation if a staff member leaves the company'
+      ],
+      todos: [
+        { id: 'zt_1', text: 'Create Zero Trust Application for admin.' + DOMAIN + ' and academy.' + DOMAIN },
+        { id: 'zt_2', text: 'Configure Geo-Fence: Whitelist United Arab Emirates and Pakistan only' },
+        { id: 'zt_3', text: 'Add Email Pin authentication for nadeemalsaham@gmail.com and approved team' },
+        { id: 'zt_4', text: 'Keep public WhatsApp webhooks (/api/whatsapp) un-gated for Meta connectivity' }
       ]
     },
     {
@@ -206,6 +237,12 @@
         'Zero DNS propagation delay when switching between servers',
         'Perform server maintenance or upgrades on your VPS without interrupting staff work',
         'Included free in Cloudflare Tunnel without paying for expensive enterprise load balancers'
+      ],
+      todos: [
+        { id: 'fo_1', text: 'Create Named Cloudflare Tunnel ("whatanagent-prod")' },
+        { id: 'fo_2', text: 'Install cloudflared connector on Primary Tencent VPS (43.156.245.176)' },
+        { id: 'fo_3', text: 'Install cloudflared connector with identical token on Office PC (Backup)' },
+        { id: 'fo_4', text: 'Perform test shutdown on Primary to verify 2-second automatic traffic shift' }
       ]
     },
     {
@@ -239,6 +276,12 @@
         'Remote staff can print directly to the office printer or connect to local office software',
         'Manage your office router, attendance machine, and local servers remotely with military-grade encryption',
         'No static IP required from your office internet provider'
+      ],
+      todos: [
+        { id: 'sec_1', text: 'Deploy cloudflared on an office LAN PC connected to office Wi-Fi' },
+        { id: 'sec_2', text: 'Map cctv.' + DOMAIN + ' to local NVR IP (e.g. 192.168.1.200:80) behind OTP' },
+        { id: 'sec_3', text: 'Configure Cloudflare WARP Private Subnet route for 192.168.1.0/24' },
+        { id: 'sec_4', text: 'Test remote network printing to office printer from laptop outside office' }
       ]
     },
     {
@@ -272,11 +315,34 @@
         '15.6 MB AlignTasks APK downloads in seconds from Cloudflare’s local Dubai/Karachi edge',
         'Dashboards open noticeably faster on mobile networks',
         'Free unmetered DDoS protection absorbs traffic spikes automatically'
+      ],
+      todos: [
+        { id: 'speed_1', text: 'Set Cloudflare Cache Rule: Cache /downloads/*.apk and static files for 7 days' },
+        { id: 'speed_2', text: 'Set Cache Bypass Rule: Bypass /api/* and /commission* for instant real-time sync' },
+        { id: 'speed_3', text: 'Turn on Brotli compression, HTTP/3 (QUIC), and Early Hints in Cloudflare' },
+        { id: 'speed_4', text: 'Enable Bot Fight Mode to block malicious crawlers from wasting server bandwidth' }
       ]
     }
   ];
 
-  let activeTab = 'all'; // 'all' or service.id
+  let activeTab = 'all'; // 'all', 'todo', or service.id
+  let todoFilter = 'all'; // 'all', 'pending', 'completed'
+
+  // Persistent To-Do state helper
+  function getTodoState() {
+    try {
+      const saved = localStorage.getItem('cf_lab_todos_v1');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function setTodoState(state) {
+    try {
+      localStorage.setItem('cf_lab_todos_v1', JSON.stringify(state));
+    } catch (e) {}
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -348,6 +414,36 @@
       }
       .cf-tab:hover { border-color: #f97316; color: #c2410c; background: #fff7ed; }
       .cf-tab.active { background: #f97316; color: #fff; border-color: #ea580c; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.28); }
+      .cf-tab.todo-tab { background: #0f172a; color: #f8fafc; border-color: #334155; }
+      .cf-tab.todo-tab.active { background: #059669; color: #fff; border-color: #047857; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35); }
+      
+      .cf-todo-banner {
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 1.5px solid #86efac;
+        border-radius: 14px;
+        padding: 16px 20px;
+        margin-bottom: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+      }
+      .cf-todo-progress-bar-wrap {
+        width: 100%;
+        max-width: 320px;
+        background: #bbf7d0;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .cf-todo-progress-bar {
+        background: #16a34a;
+        height: 100%;
+        transition: width 0.3s ease;
+      }
+
       .cf-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
@@ -413,45 +509,34 @@
       .cf-panel h4 { margin: 0 0 10px 0; font-size: 14px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 6px; }
       .cf-list { margin: 0; padding-left: 18px; color: #334155; font-size: 13px; line-height: 1.65; }
       .cf-list li { margin-bottom: 6px; }
-      .cf-start-cta {
-        margin-top: 22px;
-        padding: 18px 20px;
+      
+      .cf-todo-section-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
         border-radius: 14px;
-        background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
-        border: 2px solid #fb923c;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      }
+      .cf-todo-row {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 14px;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 13px;
+        color: #1e293b;
       }
-      .cf-start-btn {
-        background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-        color: #fff;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 11px;
-        font-size: 14.5px;
-        font-weight: 800;
+      .cf-todo-row:last-child { border-bottom: none; }
+      .cf-todo-row input[type="checkbox"] {
+        width: 17px;
+        height: 17px;
+        accent-color: #16a34a;
+        margin-top: 2px;
         cursor: pointer;
-        box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35);
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        transition: transform 0.12s ease;
       }
-      .cf-start-btn:hover { transform: scale(1.02); }
-      .cf-coming-soon-banner {
-        display: none;
-        margin-top: 16px;
-        padding: 16px 18px;
-        border-radius: 12px;
-        background: #0f172a;
-        color: #f8fafc;
-        border-left: 5px solid #f97316;
-        animation: cfFadeIn 0.25s ease;
-      }
-      @keyframes cfFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      .cf-todo-text { flex: 1; line-height: 1.5; }
+      .cf-todo-text.checked { text-decoration: line-through; color: #94a3b8; }
     `;
     document.head.appendChild(st);
   }
@@ -461,15 +546,148 @@
     const host = document.getElementById('cloudflareSection');
     if (!host) return;
 
+    const todoState = getTodoState();
+    let totalTodos = 0;
+    let completedTodos = 0;
+
+    SERVICES.forEach(s => {
+      (s.todos || []).forEach(t => {
+        totalTodos++;
+        if (todoState[t.id]) completedTodos++;
+      });
+    });
+
+    const progressPct = totalTodos > 0 ? Math.round((completedTodos / totalTodos) * 100) : 0;
+
     const tabsHtml =
       `<button class="cf-tab ${activeTab === 'all' ? 'active' : ''}" onclick="cfSelectTab('all')">📦 All 8 Services (Boxes)</button>` +
+      `<button class="cf-tab todo-tab ${activeTab === 'todo' ? 'active' : ''}" onclick="cfSelectTab('todo')">📋 Master Benefits & To-Do List (${completedTodos}/${totalTodos})</button>` +
       SERVICES.map(s =>
         `<button class="cf-tab ${activeTab === s.id ? 'active' : ''}" onclick="cfSelectTab('${s.id}')">${s.icon} ${esc(s.shortTitle)}</button>`
       ).join('');
 
     let bodyHtml = '';
-    if (activeTab === 'all') {
+
+    if (activeTab === 'todo') {
+      // MASTER BENEFITS & TO-DO CHECKLIST VIEW
       bodyHtml = `
+        <div class="cf-detail-card" style="margin-bottom:20px;">
+          <div class="cf-detail-head">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span style="background:#dcfce7; color:#166534; font-size:11px; font-weight:800; padding:3px 9px; border-radius:999px;">MASTER TO-DO TRACKER</span>
+                <span style="font-size:12px; font-family:monospace; background:#f1f5f9; color:#334155; padding:3px 9px; border-radius:6px; font-weight:700;">🌐 ${esc(DOMAIN)}</span>
+              </div>
+              <h3 style="margin:0; font-size:20px; font-weight:800; color:#0f172a;">📋 Cloudflare 8 Services Setup & Benefits Checklist</h3>
+              <p style="margin:4px 0 0 0; font-size:13px; color:#64748b;">
+                All setup steps and core benefits discussed yesterday for ${esc(DOMAIN)}. Check off items as you configure them on your Tencent VPS, Office PC, and Cloudflare dashboard. State is automatically saved!
+              </p>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <button class="cf-tab" type="button" onclick="cfSelectTab('all')">← Back to 8 Boxes</button>
+              <button class="cf-tab" type="button" onclick="cfSaveTodoState()" style="background:#059669; color:#fff; border-color:#047857;">💾 Save / Sync</button>
+            </div>
+          </div>
+
+          <!-- Progress summary bar -->
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <span style="font-size:14px; font-weight:700; color:#0f172a;">Overall Execution Progress: </span>
+              <strong style="color:#16a34a; font-size:15px;">${completedTodos} of ${totalTodos} Steps Done (${progressPct}%)</strong>
+              <div class="cf-todo-progress-bar-wrap" style="max-width:380px;">
+                <div class="cf-todo-progress-bar" style="width:${progressPct}%;"></div>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="cf-tab ${todoFilter === 'all' ? 'active' : ''}" style="padding:4px 10px; font-size:11.5px;" onclick="cfSetTodoFilter('all')">Show All</button>
+              <button class="cf-tab ${todoFilter === 'pending' ? 'active' : ''}" style="padding:4px 10px; font-size:11.5px;" onclick="cfSetTodoFilter('pending')">Pending Only</button>
+              <button class="cf-tab ${todoFilter === 'completed' ? 'active' : ''}" style="padding:4px 10px; font-size:11.5px;" onclick="cfSetTodoFilter('completed')">Completed Only</button>
+            </div>
+          </div>
+
+          <!-- 8 Services Breakdown -->
+          ${SERVICES.map(s => {
+            const serviceTodos = s.todos || [];
+            const serviceDone = serviceTodos.filter(t => todoState[t.id]).length;
+            const visibleTodos = serviceTodos.filter(t => {
+              if (todoFilter === 'pending') return !todoState[t.id];
+              if (todoFilter === 'completed') return !!todoState[t.id];
+              return true;
+            });
+
+            if (!visibleTodos.length && todoFilter !== 'all') return '';
+
+            return `
+              <div class="cf-todo-section-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">${s.icon}</span>
+                    <div>
+                      <h4 style="margin:0; font-size:15px; font-weight:800; color:#0f172a;">${esc(s.title)}</h4>
+                      <span style="font-size:11px; font-family:monospace; color:#64748b;">${esc(s.subdomain)}</span>
+                    </div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:11px; font-weight:700; background:${s.bgLight}; color:${s.color}; border:1px solid ${s.borderLight}; padding:3px 8px; border-radius:999px;">
+                      ${serviceDone}/${serviceTodos.length} Done
+                    </span>
+                    <button class="cf-btn-open" style="font-size:11px; padding:3px 8px;" onclick="cfSelectTab('${s.id}')">View Blueprint</button>
+                  </div>
+                </div>
+
+                <!-- Core Benefits Quick Box -->
+                <div style="background:${s.bgLight}; border-left:4px solid ${s.color}; border-radius:6px; padding:8px 12px; margin-bottom:12px; font-size:12px; color:#1e293b;">
+                  <strong>✨ Key Business Benefits:</strong> ${esc(s.benefits.slice(0, 2).join(' · '))}
+                </div>
+
+                <!-- Checklist Items -->
+                <div>
+                  ${visibleTodos.map(t => {
+                    const isChecked = !!todoState[t.id];
+                    return `
+                      <div class="cf-todo-row">
+                        <input type="checkbox" id="${t.id}" ${isChecked ? 'checked' : ''} onchange="cfToggleTodo('${t.id}', this.checked)">
+                        <label for="${t.id}" class="cf-todo-text ${isChecked ? 'checked' : ''}">
+                          ${esc(t.text)}
+                        </label>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (activeTab === 'all') {
+      // 8 BOXES VIEW WITH TOP TO-DO BANNER
+      bodyHtml = `
+        <!-- Top To-Do & Benefits Quick Tracker Banner -->
+        <div class="cf-todo-banner">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span style="font-size:16px;">📋</span>
+              <strong style="color:#166534; font-size:14px;">Master Cloudflare Benefits & Setup To-Do Tracker</strong>
+              <span style="background:#16a34a; color:#fff; font-size:10px; font-weight:800; padding:2px 7px; border-radius:999px;">PERSISTENT</span>
+            </div>
+            <div style="font-size:12.5px; color:#15803d; line-height:1.4;">
+              Tracks all setup steps and benefits for <b>${esc(DOMAIN)}</b>: $0 email hosting, private GDrive, 0 open ports, local AI, and 60-85% bandwidth reduction.
+            </div>
+            <div class="cf-todo-progress-bar-wrap">
+              <div class="cf-todo-progress-bar" style="width:${progressPct}%;"></div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="text-align:right;">
+              <div style="font-size:13.5px; font-weight:800; color:#166534;">${completedTodos} of ${totalTodos} Steps</div>
+              <div style="font-size:11px; color:#15803d;">${progressPct}% Completed</div>
+            </div>
+            <button class="cf-btn-primary" onclick="cfSelectTab('todo')" style="background:#16a34a; color:#fff; border:none; padding:8px 14px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer;">
+              Open To-Do List →
+            </button>
+          </div>
+        </div>
+
         <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
           <div style="font-size:13px; color:#475569; font-weight:600;">
             👇 Click any of the <b>8 Cloudflare Lab Boxes</b> below (or use the top tabs) to read the full blueprint and launch the service:
@@ -499,6 +717,7 @@
         </div>
       `;
     } else {
+      // SINGLE SERVICE DETAIL VIEW
       const s = SERVICES.find(x => x.id === activeTab) || SERVICES[0];
       const idx = SERVICES.indexOf(s);
       const prev = idx > 0 ? SERVICES[idx - 1] : null;
@@ -519,6 +738,7 @@
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <button class="cf-tab" type="button" onclick="cfSelectTab('all')">← Back to All 8 Boxes</button>
+              <button class="cf-tab todo-tab" type="button" onclick="cfSelectTab('todo')">📋 View In To-Do List</button>
               ${prev ? `<button class="cf-tab" type="button" onclick="cfSelectTab('${prev.id}')">◀ ${esc(prev.shortTitle)}</button>` : ''}
               ${next ? `<button class="cf-tab" type="button" onclick="cfSelectTab('${next.id}')">${esc(next.shortTitle)} ▶</button>` : ''}
             </div>
@@ -552,6 +772,24 @@
             </div>
           </div>
 
+          <!-- Service specific checklist box -->
+          <div style="margin-top:20px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
+            <h4 style="margin:0 0 10px 0; font-size:14px; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:6px;">
+              <span>📋</span> Setup Checklist for this Service
+            </h4>
+            ${(s.todos || []).map(t => {
+              const isChecked = !!todoState[t.id];
+              return `
+                <div class="cf-todo-row">
+                  <input type="checkbox" id="detail_${t.id}" ${isChecked ? 'checked' : ''} onchange="cfToggleTodo('${t.id}', this.checked)">
+                  <label for="detail_${t.id}" class="cf-todo-text ${isChecked ? 'checked' : ''}">
+                    ${esc(t.text)}
+                  </label>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
           <div class="cf-start-cta">
             <div>
               <div style="font-size:15px; font-weight:800; color:#9a3412;">Ready to activate ${esc(s.shortTitle)} on ${esc(DOMAIN)}?</div>
@@ -581,7 +819,7 @@
       <div class="cf-wrap">
         <div class="cf-hero">
           <div>
-            <h2>☁️ Cloud Flare Section <span style="font-size:12px; background:#f97316; color:#fff; padding:3px 10px; border-radius:999px; font-weight:800;">8 LAB EXPERIENCES</span></h2>
+            <h2>☁️ Cloud Flare Section <span style="font-size:12px; background:#f97316; color:#fff; padding:3px 10px; border-radius:9999px; font-weight:800;">8 LAB EXPERIENCES</span></h2>
             <p>All-in-one workspace for our Cloudflare Tunnel, Zero Trust, Custom Domain Email, Private GDrive, Local AI Models, Remote Desktop/SSH, Failover, and Office Security trials.</p>
           </div>
           <div class="cf-domain-pill">
@@ -599,6 +837,34 @@
   window.cfSelectTab = function (tabId) {
     activeTab = tabId || 'all';
     render();
+  };
+
+  window.cfSetTodoFilter = function (filter) {
+    todoFilter = filter;
+    render();
+  };
+
+  window.cfToggleTodo = function (todoId, checked) {
+    const state = getTodoState();
+    state[todoId] = !!checked;
+    setTodoState(state);
+    render();
+  };
+
+  window.cfSaveTodoState = function () {
+    const state = getTodoState();
+    setTodoState(state);
+    fetch('/api/antigravity/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cloudflareTodos: state, lastUpdated: Date.now() })
+    }).catch(function () {});
+
+    if (typeof showNotification === 'function') {
+      showNotification('✅ Cloudflare To-Do & Benefits Saved!');
+    } else {
+      alert('✅ Cloudflare To-Do Checklist Saved & Synced!');
+    }
   };
 
   window.cfStartService = function (serviceId) {
@@ -629,4 +895,3 @@
     render();
   });
 })();
-

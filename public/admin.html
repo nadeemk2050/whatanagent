@@ -870,6 +870,10 @@
                 <span>☁️ Cloud Flare Section</span>
                 <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#f97316; color:#fff; font-weight:bold;">LABS</span>
             </div>
+            <div class="menu-item" onclick="showSection('antigravity')" style="display:flex; justify-content:space-between; align-items:center; background: rgba(99, 102, 241, 0.10); border-left: 4px solid #6366f1; cursor:pointer;">
+                <span>🪐 Antigravity VPS Engine</span>
+                <span style="font-size:8px; padding:1px 7px; border-radius:12px; background:#6366f1; color:#fff; font-weight:bold;">24/7 AI</span>
+            </div>
             <div class="menu-item" onclick="openNewsPage()">📰 News & Info Collection</div>
             <div class="menu-item" onclick="showSection('news'); if (typeof naLoadStatus === 'function') naLoadStatus();">📡 Browsing News Agent</div>
             <div class="menu-item" onclick="openGoldPage()">🥇 Gold Market</div>
@@ -4175,6 +4179,9 @@
 
             <!-- ☁️ CLOUD FLARE SECTION -->
             <div id="cloudflareSection" class="app-section"></div>
+
+            <!-- 🪐 ANTIGRAVITY VPS ENGINE SECTION -->
+            <div id="antigravitySection" class="app-section"></div>
     </div>
 
     <div class="notification" id="notification">✅ Data Saved!</div>
@@ -4542,6 +4549,8 @@
                     if (typeof apLoad === 'function') apLoad(false);
                 } else if (id === 'cloudflare') {
                     if (typeof loadCloudflareLab === 'function') loadCloudflareLab();
+                } else if (id === 'antigravity') {
+                    if (typeof loadAntigravitySection === 'function') loadAntigravitySection();
                 }
             } catch(loaderErr) {
                 console.warn('[showSection] section loader error:', loaderErr);
@@ -16099,6 +16108,7 @@
 </script>
 
 <script src="/cloudflare-lab.js"></script>
+<script src="/antigravity-engine.js"></script>
 <!-- GDrive API Service Centre: adds one sidebar entry, never touches the others -->
 <script defer src="/gdrive-service/static/menu.js"></script>
 </body>

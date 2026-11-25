@@ -886,6 +886,7 @@ function stripBossActionBlocks(text) {
     .replace(/\[ALIGNTASK:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[CONTACT:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .replace(/\[GOLD:\s*\{[\s\S]*?\}\s*\]/gi, '')
+    .replace(/\[ANTIGRAVITY:\s*\{[\s\S]*?\}\s*\]/gi, '')
     .trim();
 }
 
@@ -1038,6 +1039,12 @@ async function buildBossExecPrompt() {
     '  [ALIGNTASK: {"action":"list"}]  (all pending) | {"action":"list","when":"today"} | {"when":"tomorrow"} | {"when":"overdue"} | {"when":"done"} | {"assignee":"Ahmed"} (can combine when + assignee)\n' +
     '  [ALIGNTASK: {"action":"done","title":"a few words from the task description"}]\n' +
     'Use these whenever the boss says things like "add a task for Ahmed", "what tasks are due today", "what is Ahmed working on", "mark the loader task done". The app executes the action and appends the REAL result at the bottom - YOU MUST NEVER write your own result or confirmation (NEVER write phrases like "Added to AlignTasks:", "task added", "entry is set", "assigned to *...*" yourself). Just emit the action block plus one short sentence like "On it, Boss." A false confirmation is a serious error because the app shows exactly what really happened - including failures.\n' +
+    '--- 🪐 ANTIGRAVITY VPS ENGINE (CODE MODIFICATIONS & SOFTWARE REPOS) ---\n' +
+    'When the boss orders code changes, UI updates, bug fixes, or feature development (e.g. "add filter icon on top of aligntask all pages of task", "fix the CSS on mobile for whatanagent", "update the header component in aligntasks"):\n' +
+    'DO NOT add this as a team task item! Instead, emit an ANTIGRAVITY action block so the Antigravity Code Agent on the VPS executes it directly on GitHub and the codebase:\n' +
+    '  [ANTIGRAVITY: {"repo":"aligntasks","instruction":"add filter icon on top of aligntask all pages of task"}]\n' +
+    '  [ANTIGRAVITY: {"repo":"whatanagent","instruction":"fix the mobile responsive layout in admin"}]\n' +
+    '  Allowed repos: "aligntasks", "whatanagent", "accountspro", "invent", "crm"\n' +
     '--- UNIVERSAL CONTACT BOOK (ALWAYS use these numbers when the boss names a person) ---\n' +
     (contactLines ? (contactLines + '\n') : '(no saved contacts yet)\n') +
     'RULE: when the boss says "send msg to <name>", put THAT NAME as the target - the app resolves it from the FULL Contact Book automatically. The list above may omit older contacts: even when a name is NOT shown above, STILL output the [TASK] block with that exact name and let the app search. ONLY if the app\'s action result says the contact was not found, then ask the boss for the number. NEVER invent a number.\n' +
@@ -1046,6 +1053,37 @@ async function buildBossExecPrompt() {
     (brainCtx ? ('--- BOSS BRAIN (memory of your previous exchanges with the boss) ---\n' + brainCtx + '\n\n') : '') +
     'After any action block, confirm briefly what you did.\n\n' +
     buildWaWebKnowledgeSystemPrompt();
+}
+
+// 🪐 Antigravity VPS Engine Task Dispatcher
+export async function dispatchAntigravityTask(p) {
+  const instruction = String((p && (p.instruction || p.task || p.prompt || p.description)) || '').trim();
+  if (!instruction) return { ok: false, error: 'Missing coding instruction, Boss.' };
+  let repo = String((p && (p.repo || p.project || p.workspace)) || 'aligntasks').trim().toLowerCase();
+  if (repo.includes('align')) repo = 'aligntasks';
+  else if (repo.includes('whatanagent') || repo.includes('bot')) repo = 'whatanagent';
+  else if (repo.includes('trade')) repo = 'trade';
+  else if (repo.includes('crm')) repo = 'crm';
+
+  const taskObj = {
+    id: 'ag-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+    repo: repo,
+    instruction: instruction,
+    status: 'queued',
+    createdAt: Date.now(),
+    source: (p && p.source) || 'whatsapp_boss',
+    user: 'nadeemalsaham@gmail.com'
+  };
+
+  try {
+    if (globalDb) {
+      const col = collection(globalDb, 'appData', 'antigravityTasks', 'tasks');
+      await addDoc(col, taskObj);
+    }
+  } catch (err) {
+    console.warn('[ANTIGRAVITY] Task store warning:', err.message);
+  }
+  return { ok: true, task: taskObj };
 }
 
 // Executes every action block the boss brain emitted (config / business / tasks / AlignTasks /
@@ -1137,6 +1175,14 @@ async function executeBossActionBlocks(replyText) {
     const res = await goldBossAction(g);
     sectionSummary += res.ok ? ((res.summary || '🥇 Done.') + '\n') : ('⚠️ Gold: ' + (res.error || 'failed') + '\n');
     orderLog.push({ source: 'whatsapp', kind: 'gold', text: 'Gold: ' + JSON.stringify(g).substring(0, 200), status: res.ok ? 'ok' : 'error' });
+  }
+  for (const ag of extractBossActionBlocks(replyText, 'ANTIGRAVITY')) {
+    const res = await dispatchAntigravityTask(ag);
+    const repoLabel = ag.repo ? String(ag.repo).toUpperCase() : 'ALIGNTASKS';
+    sectionSummary += res.ok
+      ? ('🪐 *Antigravity Engine Dispatched:* [' + repoLabel + '] "' + String(ag.instruction || ag.task || '').substring(0, 80) + '"\n')
+      : ('⚠️ Antigravity: ' + res.error + '\n');
+    orderLog.push({ source: 'whatsapp', kind: 'antigravity', text: 'Antigravity task [' + repoLabel + ']: ' + String(ag.instruction || ag.task || '').substring(0, 200), status: res.ok ? 'dispatched' : 'error' });
   }
   if (sectionSummary) replyText = stripBossActionBlocks(replyText || '');
   if (orderLog.length) logBossOrder(orderLog).catch(() => {});

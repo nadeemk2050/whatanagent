@@ -41,3 +41,5 @@ alqaryan-site/build/img/
 gdrive-token.json
 candl-gdrive-token.json
 service-account.json
+
+.pp-site-repo/

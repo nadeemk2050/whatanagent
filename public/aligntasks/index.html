@@ -927,6 +927,7 @@
                         <!-- View filter: All / Today / Overdue / Completed (list, not chips) -->
                         <div id="view-nav" style="position:relative;display:inline-flex;align-items:center;background:#eef1f4;border:1px solid #d5cfc2;border-radius:10px;padding:3px;">
                             <button id="view-nav-toggle" type="button" title="Filter tasks" style="display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:8px;background:#fffdf8;border:1px solid #cbd5e1;color:#1e293b;font-weight:600;font-size:12.5px;cursor:pointer;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:#64748b;flex-shrink:0;"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
                                 <span id="view-nav-label">All</span>
                                 <span id="task-filter-count" style="font-size:10px;font-weight:700;color:#6b5f45;background:#efe3c8;border-radius:9999px;padding:1px 6px;">0</span>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -940,6 +941,7 @@
                         </div>
                         <!-- Personal task counters / filters — only in the My Personal Tasks section -->
                         <div id="personal-nav" style="display:none;align-items:center;gap:3px;background:#eef1f4;border:1px solid #d5cfc2;border-radius:10px;padding:3px;">
+                            <span title="Filter personal tasks" style="display:inline-flex;align-items:center;padding:0 5px;color:#64748b;"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg></span>
                             <button class="personal-filter-tab px-2.5 py-1 rounded-lg text-xs font-semibold transition-all bg-[#34373d] text-[#f7ecd6]" data-filter="all" title="All personal tasks">All <span id="personal-stat-total">0</span></button>
                             <button class="personal-filter-tab px-2.5 py-1 rounded-lg text-xs font-semibold transition-all bg-transparent text-gray-700 hover:bg-gray-200" data-filter="todo" title="To do">To Do <span id="personal-stat-todo">0</span></button>
                             <button class="personal-filter-tab px-2.5 py-1 rounded-lg text-xs font-semibold transition-all bg-transparent text-gray-700 hover:bg-gray-200" data-filter="urgent" title="Urgent / high">Urgent <span id="personal-stat-urgent">0</span></button>
