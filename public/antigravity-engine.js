@@ -50,6 +50,7 @@
     if (!container) return;
     if (!isLoaded) {
       renderSection(container);
+      initAgResizers();
       isLoaded = true;
     }
     fetchEngineStatus();
@@ -65,15 +66,213 @@
     }
   };
 
+  window.agToggleFullscreen = function () {
+    var wrap = document.getElementById('agWrap');
+    if (!wrap) return;
+    var isFull = wrap.classList.toggle('ag-fullscreen');
+    var icon = document.getElementById('agFullscreenIcon');
+    var text = document.getElementById('agFullscreenText');
+    if (isFull) {
+      if (icon) icon.textContent = '🗗';
+      if (text) text.textContent = 'Exit Fullscreen';
+    } else {
+      if (icon) icon.textContent = '⛶';
+      if (text) text.textContent = 'Fullscreen';
+    }
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      var wrap = document.getElementById('agWrap');
+      if (wrap && wrap.classList.contains('ag-fullscreen')) {
+        window.agToggleFullscreen();
+      }
+    }
+  });
+
+  window.agToggleSidebarCollapse = function () {
+    var sidebar = document.getElementById('agSidebar');
+    var resizer = document.getElementById('agResizerX');
+    var expandBtn = document.getElementById('agSidebarExpandBtn');
+    if (!sidebar) return;
+    var isCollapsed = sidebar.classList.toggle('ag-collapsed');
+    if (resizer) resizer.style.display = isCollapsed ? 'none' : 'flex';
+    if (expandBtn) expandBtn.style.display = isCollapsed ? 'inline-block' : 'none';
+  };
+
+  function initAgResizers() {
+    var studioFlex = document.getElementById('agStudioFlex');
+    var resizerX = document.getElementById('agResizerX');
+    var sidebar = document.getElementById('agSidebar');
+    var resizerY = document.getElementById('agResizerY');
+    var terminal = document.getElementById('agTerminalOutput');
+    if (!studioFlex || !resizerX || !sidebar || !resizerY || !terminal) return;
+
+    // Restore saved dimensions from localStorage
+    try {
+      var savedW = localStorage.getItem('ag_sidebar_w');
+      if (savedW && parseInt(savedW, 10) >= 160 && parseInt(savedW, 10) <= 650) {
+        studioFlex.style.setProperty('--ag-sidebar-w', savedW + 'px');
+        sidebar.style.width = savedW + 'px';
+      }
+      var savedH = localStorage.getItem('ag_terminal_h');
+      if (savedH && parseInt(savedH, 10) >= 48 && parseInt(savedH, 10) <= 500) {
+        studioFlex.style.setProperty('--ag-terminal-h', savedH + 'px');
+        terminal.style.height = savedH + 'px';
+      }
+    } catch (e) {}
+
+    // Double-click reset to defaults
+    resizerX.addEventListener('dblclick', function () {
+      studioFlex.style.setProperty('--ag-sidebar-w', '280px');
+      sidebar.style.width = '280px';
+      try { localStorage.setItem('ag_sidebar_w', '280'); } catch (e) {}
+    });
+
+    resizerY.addEventListener('dblclick', function () {
+      studioFlex.style.setProperty('--ag-terminal-h', '180px');
+      terminal.style.height = '180px';
+      try { localStorage.setItem('ag_terminal_h', '180'); } catch (e) {}
+    });
+
+    // Horizontal resizer (Sidebar width)
+    var isDraggingX = false;
+    var startX = 0;
+    var startWidth = 0;
+
+    function onPointerDownX(e) {
+      isDraggingX = true;
+      startX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      startWidth = sidebar.getBoundingClientRect().width;
+      resizerX.classList.add('is-dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      if (e.preventDefault) e.preventDefault();
+    }
+
+    function onPointerMoveX(e) {
+      if (!isDraggingX) return;
+      var currentX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+      var deltaX = currentX - startX;
+      var newW = Math.max(160, Math.min(650, Math.round(startWidth + deltaX)));
+      studioFlex.style.setProperty('--ag-sidebar-w', newW + 'px');
+      sidebar.style.width = newW + 'px';
+    }
+
+    function onPointerUpX() {
+      if (!isDraggingX) return;
+      isDraggingX = false;
+      resizerX.classList.remove('is-dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      try {
+        var finalW = Math.round(sidebar.getBoundingClientRect().width);
+        localStorage.setItem('ag_sidebar_w', String(finalW));
+      } catch (e) {}
+    }
+
+    resizerX.addEventListener('mousedown', onPointerDownX);
+    resizerX.addEventListener('touchstart', onPointerDownX, { passive: false });
+
+    // Vertical resizer (Terminal height)
+    var isDraggingY = false;
+    var startY = 0;
+    var startHeight = 0;
+
+    function onPointerDownY(e) {
+      isDraggingY = true;
+      startY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      startHeight = terminal.getBoundingClientRect().height;
+      resizerY.classList.add('is-dragging');
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'row-resize';
+      if (e.preventDefault) e.preventDefault();
+    }
+
+    function onPointerMoveY(e) {
+      if (!isDraggingY) return;
+      var currentY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+      var deltaY = currentY - startY;
+      var newH = Math.max(48, Math.min(500, Math.round(startHeight - deltaY)));
+      studioFlex.style.setProperty('--ag-terminal-h', newH + 'px');
+      terminal.style.height = newH + 'px';
+    }
+
+    function onPointerUpY() {
+      if (!isDraggingY) return;
+      isDraggingY = false;
+      resizerY.classList.remove('is-dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      try {
+        var finalH = Math.round(terminal.getBoundingClientRect().height);
+        localStorage.setItem('ag_terminal_h', String(finalH));
+      } catch (e) {}
+    }
+
+    resizerY.addEventListener('mousedown', onPointerDownY);
+    resizerY.addEventListener('touchstart', onPointerDownY, { passive: false });
+
+    // Global drag handlers
+    document.addEventListener('mousemove', function (e) {
+      if (isDraggingX) onPointerMoveX(e);
+      if (isDraggingY) onPointerMoveY(e);
+    });
+    document.addEventListener('touchmove', function (e) {
+      if (isDraggingX) onPointerMoveX(e);
+      if (isDraggingY) onPointerMoveY(e);
+    }, { passive: false });
+
+    document.addEventListener('mouseup', function () {
+      if (isDraggingX) onPointerUpX();
+      if (isDraggingY) onPointerUpY();
+    });
+    document.addEventListener('touchend', function () {
+      if (isDraggingX) onPointerUpX();
+      if (isDraggingY) onPointerUpY();
+    });
+  }
+
   function renderSection(el) {
     el.innerHTML = `
       <style>
         .ag-wrap {
-          max-width: 1320px;
-          margin: 0 auto;
-          padding: 12px;
+          width: 100%;
+          max-width: 100%;
+          margin: 0;
+          padding: 4px 6px 16px;
+          box-sizing: border-box;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
           color: #f1f5f9;
+          display: flex;
+          flex-direction: column;
+          min-height: calc(100vh - 120px);
+        }
+
+        /* Fullscreen Bleeding View Mode */
+        .ag-wrap.ag-fullscreen {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          max-width: 100vw !important;
+          z-index: 999999 !important;
+          background: #090d16 !important;
+          padding: 8px 12px !important;
+          margin: 0 !important;
+          overflow: hidden !important;
+          border-radius: 0 !important;
+        }
+        .ag-wrap.ag-fullscreen .ag-studio-bar {
+          margin-bottom: 8px;
+          padding: 10px 16px;
+          border-radius: 8px;
+        }
+        .ag-wrap.ag-fullscreen .ag-tabs {
+          margin-bottom: 8px;
         }
 
         /* Top Antigravity Studio Bar */
@@ -87,7 +286,7 @@
           justify-content: space-between;
           flex-wrap: wrap;
           gap: 12px;
-          margin-bottom: 16px;
+          margin-bottom: 12px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         .ag-studio-title {
@@ -138,7 +337,7 @@
         .ag-tabs {
           display: flex;
           gap: 8px;
-          margin-bottom: 16px;
+          margin-bottom: 12px;
           overflow-x: auto;
           padding-bottom: 4px;
         }
@@ -174,27 +373,52 @@
           display: block;
         }
 
-        /* Studio Main Grid */
-        .ag-studio-grid {
-          display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 16px;
+        /* Studio Main Flex Container */
+        .ag-studio-flex {
+          display: flex;
+          flex-direction: row;
+          flex: 1;
+          min-height: 600px;
+          height: calc(100vh - 210px);
+          width: 100%;
+          gap: 0;
+          position: relative;
+          overflow: hidden;
+          border-radius: 12px;
+          background: #090d16;
+          border: 1px solid #1e293b;
         }
-        @media (max-width: 860px) {
-          .ag-studio-grid {
-            grid-template-columns: 1fr;
+        .ag-wrap.ag-fullscreen .ag-studio-flex {
+          height: calc(100vh - 120px) !important;
+          min-height: 0 !important;
+        }
+        @media (max-width: 768px) {
+          .ag-studio-flex {
+            flex-direction: column;
+            height: auto;
+          }
+          .ag-resizer-x {
+            display: none !important;
           }
         }
 
-        /* Left Sidebar: Projects & Quick Actions */
+        /* Left Sidebar: Projects & Folders */
         .ag-sidebar {
+          width: var(--ag-sidebar-w, 280px);
+          min-width: 160px;
+          max-width: 650px;
+          flex-shrink: 0;
           background: #090d16;
-          border: 1px solid #1e293b;
-          border-radius: 12px;
           padding: 14px;
           display: flex;
           flex-direction: column;
           gap: 14px;
+          overflow-y: auto;
+          box-sizing: border-box;
+          border-right: none;
+        }
+        .ag-sidebar.ag-collapsed {
+          display: none !important;
         }
         .ag-side-header {
           font-size: 11px;
@@ -232,15 +456,49 @@
           font-weight: 600;
         }
 
+        /* Horizontal Resizer between Sidebar & Canvas */
+        .ag-resizer-x {
+          width: 8px;
+          cursor: col-resize;
+          background: #0b1120;
+          border-left: 1px solid #1e293b;
+          border-right: 1px solid #1e293b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          user-select: none;
+          transition: background 0.15s, border-color 0.15s;
+          z-index: 10;
+        }
+        .ag-resizer-x:hover,
+        .ag-resizer-x.is-dragging {
+          background: #4f46e5 !important;
+          border-color: #6366f1 !important;
+        }
+        .ag-resizer-handle-x {
+          width: 2px;
+          height: 36px;
+          border-radius: 2px;
+          background: #475569;
+          transition: background 0.15s;
+        }
+        .ag-resizer-x:hover .ag-resizer-handle-x,
+        .ag-resizer-x.is-dragging .ag-resizer-handle-x {
+          background: #ffffff;
+        }
+
         /* Center Canvas: Chat & Execution Workspace */
         .ag-canvas {
+          flex: 1;
+          min-width: 320px;
           background: #090d16;
-          border: 1px solid #1e293b;
-          border-radius: 12px;
           display: flex;
           flex-direction: column;
-          min-height: 580px;
           overflow: hidden;
+          height: 100%;
+          border-radius: 0;
+          border: none;
         }
         .ag-canvas-header {
           background: #0f172a;
@@ -251,12 +509,13 @@
           justify-content: space-between;
           font-size: 12px;
           color: #cbd5e1;
+          flex-shrink: 0;
         }
         .ag-chat-stream {
           flex: 1;
+          min-height: 120px;
           padding: 16px;
           overflow-y: auto;
-          max-height: 400px;
           display: flex;
           flex-direction: column;
           gap: 12px;
@@ -290,24 +549,61 @@
           font-size: 11px;
           margin-bottom: 8px;
         }
-        .ag-terminal-view {
-          background: #030712;
+
+        /* Vertical Resizer between Chat Stream and Terminal */
+        .ag-resizer-y {
+          height: 8px;
+          cursor: row-resize;
+          background: #0b1120;
           border-top: 1px solid #1e293b;
-          padding: 12px 16px;
+          border-bottom: 1px solid #1e293b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          user-select: none;
+          transition: background 0.15s, border-color 0.15s;
+          z-index: 10;
+        }
+        .ag-resizer-y:hover,
+        .ag-resizer-y.is-dragging {
+          background: #4f46e5 !important;
+          border-color: #6366f1 !important;
+        }
+        .ag-resizer-handle-y {
+          width: 36px;
+          height: 2px;
+          border-radius: 2px;
+          background: #475569;
+          transition: background 0.15s;
+        }
+        .ag-resizer-y:hover .ag-resizer-handle-y,
+        .ag-resizer-y.is-dragging .ag-resizer-handle-y {
+          background: #ffffff;
+        }
+
+        .ag-terminal-view {
+          height: var(--ag-terminal-h, 180px);
+          min-height: 48px;
+          max-height: 450px;
+          background: #030712;
+          padding: 10px 16px;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           font-size: 11.5px;
           color: #38bdf8;
-          max-height: 180px;
           overflow-y: auto;
           white-space: pre-wrap;
           line-height: 1.6;
+          flex-shrink: 0;
+          border: none;
         }
 
         /* Prompt Input Box */
         .ag-input-box {
           background: #0f172a;
           border-top: 1px solid #1e293b;
-          padding: 14px 16px;
+          padding: 12px 16px;
+          flex-shrink: 0;
         }
         .ag-textarea {
           width: 100%;
@@ -402,7 +698,7 @@
         .ag-status-error { background: #7f1d1d; color: #fecaca; }
       </style>
 
-      <div class="ag-wrap">
+      <div class="ag-wrap" id="agWrap">
         <!-- Top Studio Bar -->
         <div class="ag-studio-bar">
           <div class="ag-studio-title">
@@ -434,6 +730,9 @@
             <button onclick="window.agRefreshTasks()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">
               🔄 Refresh
             </button>
+            <button id="agFullscreenBtn" onclick="window.agToggleFullscreen()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="Toggle Fullscreen bleeding view (Esc to exit)">
+              <span id="agFullscreenIcon">⛶</span> <span id="agFullscreenText">Fullscreen</span>
+            </button>
           </div>
         </div>
 
@@ -448,13 +747,16 @@
         </div>
 
         <!-- TAB 1: NATIVE ANTIGRAVITY STUDIO -->
-        <div id="agTab_studio" class="ag-tab-pane active">
-          <div class="ag-studio-grid">
-            <!-- Left Sidebar -->
-            <div class="ag-sidebar">
+        <div id="agTab_studio" class="ag-tab-pane active" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+          <div class="ag-studio-flex" id="agStudioFlex">
+            <!-- Left Sidebar: Projects, Folders & Quick Actions -->
+            <div class="ag-sidebar" id="agSidebar">
               <div>
                 <div class="ag-side-header">
-                  <span>Target Repository</span>
+                  <span>📁 Target Repository</span>
+                  <button id="agSidebarCollapseBtn" onclick="window.agToggleSidebarCollapse()" style="background:none; border:none; color:#64748b; font-size:11px; cursor:pointer; padding:0;" title="Hide Folders Sidebar">
+                    ◀ Collapse
+                  </button>
                 </div>
                 <div id="agRepoList">
                   <div class="ag-repo-item selected" onclick="window.agSelectRepo('whatanagent', this)">
@@ -491,17 +793,26 @@
               <!-- Quick Status -->
               <div style="font-size:11px; color:#64748b; line-height:1.6;">
                 <div>• Zero laptop battery drain</div>
+                <div>• Push-pull resizable panels</div>
                 <div>• Auto-commit & push to GitHub</div>
                 <div>• Multi-turn agent memory</div>
               </div>
             </div>
 
+            <!-- Horizontal Resizer (Push/Pull X) -->
+            <div class="ag-resizer-x" id="agResizerX" title="Drag to resize folders sidebar width (Double click to reset)">
+              <div class="ag-resizer-handle-x"></div>
+            </div>
+
             <!-- Center Canvas -->
-            <div class="ag-canvas">
+            <div class="ag-canvas" id="agCanvas">
               <div class="ag-canvas-header">
-                <div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button id="agSidebarExpandBtn" onclick="window.agToggleSidebarCollapse()" style="background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:6px; padding:2px 8px; font-size:11px; cursor:pointer; display:none;" title="Show Folders / Repos Sidebar">
+                    📁 Repos
+                  </button>
                   <span style="font-weight:700; color:#fff;" id="agCanvasRepoTitle">🤖 WhatAnAgent Core</span>
-                  <span style="color:#64748b; margin-left:8px;" id="agCanvasRepoPath">/opt/whatanagent</span>
+                  <span style="color:#64748b; margin-left:4px;" id="agCanvasRepoPath">/opt/whatanagent</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                   <span id="agActiveModelBadge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:2px 8px; font-size:11px; font-weight:600;">⚡ Auto: Flash Low (Cheapest)</span>
@@ -515,6 +826,11 @@
                   <div class="ag-thought-pill" id="agChatWelcomePill">💡 Antigravity VPS Engine Ready · Model: Auto (Cheapest Flash Low)</div>
                   Hey Nadeem! I'm running live on your Tencent VPS. What would you like to build or modify in <strong>WhatAnAgent</strong> or <strong>AlignTasks</strong>?
                 </div>
+              </div>
+
+              <!-- Vertical Resizer (Push/Pull Y between Chat & Terminal) -->
+              <div class="ag-resizer-y" id="agResizerY" title="Drag to resize terminal height (Double click to reset)">
+                <div class="ag-resizer-handle-y"></div>
               </div>
 
               <!-- Live Execution Terminal -->

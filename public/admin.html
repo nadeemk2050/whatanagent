@@ -499,9 +499,10 @@
         .ws-need.done { border-color: #a7f3d0; background: #f0fdf4; }
         .ws-need input[type=checkbox] { margin-top: 2px; width: 16px; height: 16px; flex: none; cursor: pointer; }
 
-        /* ---- full-bleed: the workshop uses the whole viewport, not the 800px column ---- */
-        body.ws-bleed .container { max-width: 100% !important; padding: 0 clamp(12px, 2vw, 30px) 40px; margin: 6px auto; }
+        /* ---- full-bleed: the workshop & antigravity studio use the whole viewport ---- */
+        body.ws-bleed .container { max-width: 100% !important; padding: 0 clamp(8px, 1.5vw, 24px) 30px; margin: 4px auto; }
         body.ws-bleed #workshopSection .ws { max-width: none; }
+        body.ws-bleed #antigravitySection { max-width: none; width: 100%; padding: 0; margin: 0; }
 
         /* ---- SEO process pipeline ---- */
         .ws-proc { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -3892,7 +3893,7 @@
             document.querySelectorAll('.app-section').forEach(el => el.classList.remove('active'));
             const sec = document.getElementById(id + 'Section');
             if (sec) sec.classList.add('active');
-            document.body.classList.toggle('ws-bleed', id === 'workshop' || id === 'appproc');
+            document.body.classList.toggle('ws-bleed', id === 'workshop' || id === 'appproc' || id === 'antigravity');
             
             const container = document.querySelector('.container');
             if (container) {
