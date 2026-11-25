@@ -982,11 +982,29 @@
 
                 <!-- Project Management: shared projects for the whole team -->
                 <section id="projects-page" class="main-section hidden space-y-4">
+                    <div id="projects-filter-bar" class="bg-white p-3 rounded-xl shadow-sm" style="display:none;">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <div class="relative flex-1 min-w-[200px]">
+                                <input id="projects-search-input" type="text" placeholder="Search project name or inside tasks…" class="w-full p-2 pl-8 border border-gray-300 rounded-lg text-sm" />
+                                <svg class="absolute left-2.5 top-2.5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            </div>
+                            <button id="projects-search-close" type="button" class="px-2 py-2 text-gray-400 hover:text-gray-700 text-lg leading-none" title="Close search">&times;</button>
+                        </div>
+                    </div>
                     <div id="projects-container" class="space-y-3"></div>
                 </section>
 
                 <!-- My Personal Projects: private to the signed-in user -->
                 <section id="personal-projects-page" class="main-section hidden space-y-4">
+                    <div id="personal-projects-filter-bar" class="bg-white p-3 rounded-xl shadow-sm" style="display:none;">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <div class="relative flex-1 min-w-[200px]">
+                                <input id="personal-projects-search-input" type="text" placeholder="Search personal project name or inside tasks…" class="w-full p-2 pl-8 border border-gray-300 rounded-lg text-sm" />
+                                <svg class="absolute left-2.5 top-2.5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            </div>
+                            <button id="personal-projects-search-close" type="button" class="px-2 py-2 text-gray-400 hover:text-gray-700 text-lg leading-none" title="Close search">&times;</button>
+                        </div>
+                    </div>
                     <div id="personal-projects-container" class="space-y-3"></div>
                 </section>
                 
@@ -2768,9 +2786,20 @@
                 document.body.classList.toggle('ats-personal', sectionId === 'personal-tasks-page');
                 const viewNav = document.getElementById('view-nav');
                 if (viewNav) viewNav.style.display = sectionId === 'tasks-page' ? 'inline-flex' : 'none';
-                // Search only applies to the two task lists.
+                // Search applies to tasks AND projects (projects-page & personal-projects-page)
                 const searchBtn = document.getElementById('task-search-toggle');
-                if (searchBtn) searchBtn.style.display = (sectionId === 'tasks-page' || sectionId === 'personal-tasks-page') ? 'inline-flex' : 'none';
+                if (searchBtn) {
+                    searchBtn.style.display = (sectionId === 'tasks-page' || sectionId === 'personal-tasks-page' || sectionId === 'projects-page' || sectionId === 'personal-projects-page') ? 'inline-flex' : 'none';
+                    const searchTitles = {
+                        'tasks-page': 'Search tasks',
+                        'personal-tasks-page': 'Search personal tasks',
+                        'projects-page': 'Filter projects & inside tasks',
+                        'personal-projects-page': 'Filter personal projects & inside tasks'
+                    };
+                    const st = searchTitles[sectionId] || 'Search';
+                    searchBtn.title = st;
+                    searchBtn.setAttribute('aria-label', st);
+                }
                 const addBtn = document.getElementById('task-add-toggle');
                 if (addBtn) {
                     const addTitles = {
@@ -2785,6 +2814,8 @@
                 }
                 if (sectionId !== 'personal-tasks-page') showPersonalSearch(false);
                 if (sectionId !== 'tasks-page') showTaskSearch(false);
+                if (sectionId !== 'projects-page') { if (typeof showProjectsSearch === 'function') showProjectsSearch(false); }
+                if (sectionId !== 'personal-projects-page') { if (typeof showPersonalProjectsSearch === 'function') showPersonalProjectsSearch(false); }
 
                 if (sectionId === 'settings-page') {
                     navTasksButton.classList.remove('active');
@@ -6035,6 +6066,8 @@
                 }).join('');
 
                 projectsCache.forEach(p => { watchProjectTasks(p); paintProjectTasks(p.id); });
+                const curPQ = (document.getElementById('projects-search-input') || {}).value;
+                if (curPQ && typeof filterProjectsList === 'function') filterProjectsList(curPQ);
             }
 
             const projectTasksCache = {};
@@ -6219,6 +6252,8 @@
                         </div>`;
                 }).join('');
                 personalProjectsCache.forEach(p => { watchPersonalProjectTasks(p); paintPersonalProjectTasks(p.id); });
+                const curPPQ = (document.getElementById('personal-projects-search-input') || {}).value;
+                if (curPPQ && typeof filterPersonalProjectsList === 'function') filterPersonalProjectsList(curPPQ);
             }
 
             // ===== Project export (PDF / Excel) — revealed by sliding a project name =====
@@ -8285,6 +8320,104 @@
                     if (input) input.focus();
                 }
             }
+            // Project search panel (searches project name & tasks inside).
+            function showProjectsSearch(show) {
+                const bar = document.getElementById('projects-filter-bar');
+                if (bar) bar.style.display = show ? 'block' : 'none';
+                const btn = document.getElementById('task-search-toggle');
+                if (btn) btn.style.opacity = show ? '1' : '.75';
+                if (show) {
+                    const input = document.getElementById('projects-search-input');
+                    if (input) input.focus();
+                }
+            }
+            // Personal project search panel.
+            function showPersonalProjectsSearch(show) {
+                const bar = document.getElementById('personal-projects-filter-bar');
+                if (bar) bar.style.display = show ? 'block' : 'none';
+                const btn = document.getElementById('task-search-toggle');
+                if (btn) btn.style.opacity = show ? '1' : '.75';
+                if (show) {
+                    const input = document.getElementById('personal-projects-search-input');
+                    if (input) input.focus();
+                }
+            }
+
+            function filterProjectsList(query) {
+                const q = String(query || '').trim().toLowerCase();
+                const container = document.getElementById('projects-container');
+                if (!container) return;
+                const cards = container.querySelectorAll('[data-project-id]');
+                cards.forEach(card => {
+                    const id = card.getAttribute('data-project-id');
+                    if (!q) {
+                        card.style.display = '';
+                        return;
+                    }
+                    const proj = projectsCache.find(x => x.id === id);
+                    const nameMatch = proj && (
+                        (proj.name && proj.name.toLowerCase().includes(q)) ||
+                        (proj.description && proj.description.toLowerCase().includes(q)) ||
+                        (proj.members && proj.members.some(m => String(m).toLowerCase().includes(q)))
+                    );
+
+                    const tasks = projectTasksCache[id] || [];
+                    const taskMatch = tasks.some(t => {
+                        const desc = String(t.description || t.task || t.title || t.name || '').toLowerCase();
+                        const assignee = String(t.assignee || t.who || t.assignTo || '').toLowerCase();
+                        const comments = Array.isArray(t.comments) ? t.comments.map(c => String(c.text || c.comment || '')).join(' ').toLowerCase() : '';
+                        return desc.includes(q) || assignee.includes(q) || comments.includes(q);
+                    });
+
+                    if (nameMatch || taskMatch) {
+                        card.style.display = '';
+                        if (taskMatch) {
+                            const content = document.getElementById('project-content-' + id);
+                            if (content) content.style.display = 'block';
+                            expandedProjects.add(id);
+                        }
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+
+            function filterPersonalProjectsList(query) {
+                const q = String(query || '').trim().toLowerCase();
+                const container = document.getElementById('personal-projects-container');
+                if (!container) return;
+                const cards = container.querySelectorAll('[data-pp-id]');
+                cards.forEach(card => {
+                    const id = card.getAttribute('data-pp-id');
+                    if (!q) {
+                        card.style.display = '';
+                        return;
+                    }
+                    const proj = personalProjectsCache.find(x => x.id === id);
+                    const nameMatch = proj && (
+                        (proj.name && proj.name.toLowerCase().includes(q)) ||
+                        (proj.description && proj.description.toLowerCase().includes(q))
+                    );
+
+                    const tasks = ppTasksCache[id] || [];
+                    const taskMatch = tasks.some(t => {
+                        const desc = String(t.description || t.task || t.title || t.name || '').toLowerCase();
+                        const comments = Array.isArray(t.comments) ? t.comments.map(c => String(c.text || c.comment || '')).join(' ').toLowerCase() : '';
+                        return desc.includes(q) || comments.includes(q);
+                    });
+
+                    if (nameMatch || taskMatch) {
+                        card.style.display = '';
+                        if (taskMatch) {
+                            const content = document.getElementById('pp-content-' + id);
+                            if (content) content.style.display = 'block';
+                            expandedPersonalProjects.add(id);
+                        }
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
 
             // The + and search icons follow the section that is open.
             document.getElementById('task-add-toggle').addEventListener('click', () => {
@@ -8300,11 +8433,37 @@
                     showPersonalSearch(!(bar && bar.style.display === 'block'));
                     return;
                 }
+                if (currentSection === 'projects-page') {
+                    const bar = document.getElementById('projects-filter-bar');
+                    showProjectsSearch(!(bar && bar.style.display === 'block'));
+                    return;
+                }
+                if (currentSection === 'personal-projects-page') {
+                    const bar = document.getElementById('personal-projects-filter-bar');
+                    showPersonalProjectsSearch(!(bar && bar.style.display === 'block'));
+                    return;
+                }
                 const bar = document.getElementById('task-filter-bar');
                 showTaskSearch(!(bar && bar.style.display === 'block'));
             });
             document.getElementById('task-search-close').addEventListener('click', () => showTaskSearch(false));
             document.getElementById('personal-search-close').addEventListener('click', () => showPersonalSearch(false));
+            const pClose = document.getElementById('projects-search-close');
+            if (pClose) pClose.addEventListener('click', () => {
+                showProjectsSearch(false);
+                const inp = document.getElementById('projects-search-input');
+                if (inp) { inp.value = ''; filterProjectsList(''); }
+            });
+            const ppClose = document.getElementById('personal-projects-search-close');
+            if (ppClose) ppClose.addEventListener('click', () => {
+                showPersonalProjectsSearch(false);
+                const inp = document.getElementById('personal-projects-search-input');
+                if (inp) { inp.value = ''; filterPersonalProjectsList(''); }
+            });
+            const pInp = document.getElementById('projects-search-input');
+            if (pInp) pInp.addEventListener('input', e => filterProjectsList(e.target.value));
+            const ppInp = document.getElementById('personal-projects-search-input');
+            if (ppInp) ppInp.addEventListener('input', e => filterPersonalProjectsList(e.target.value));
 
             // ---------- projects: modals, cards, personal projects ----------
             function closeProjectModal() {
