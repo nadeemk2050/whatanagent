@@ -96,3 +96,32 @@ jobs:
             sleep 6
           done
           echo "::warning::HTTPS health check did not return 200 (the deploy itself already passed the local health check)"
+
+      # Checkout repo files and deploy public/ to Firebase Hosting (whatanagent-a1e59.web.app)
+      - name: Checkout repository for Firebase Hosting
+        uses: actions/checkout@v4
+
+      - name: Deploy to Firebase Hosting
+        if: success()
+        continue-on-error: true
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          SAJSON: ${{ secrets.ALIGN_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$FIREBASE_TOKEN" ]; then
+            echo "Deploying to Firebase Hosting using FIREBASE_TOKEN..."
+            npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN" --non-interactive
+          elif [ -n "$SAJSON" ]; then
+            echo "Deploying to Firebase Hosting using Service Account..."
+            mkdir -p /tmp/fb
+            case "$SAJSON" in
+              \{*) printf '%s' "$SAJSON" > /tmp/fb/sa.json ;;
+              *) printf '%s' "$SAJSON" | base64 -d > /tmp/fb/sa.json ;;
+            esac
+            GOOGLE_APPLICATION_CREDENTIALS=/tmp/fb/sa.json npx firebase-tools deploy --only hosting --project whatanagent-a1e59 --non-interactive || {
+              echo "::warning::Service account was rejected by Firebase Hosting (may need 'Firebase Hosting Admin' role). Set FIREBASE_TOKEN secret instead."
+            }
+            rm -rf /tmp/fb
+          else
+            echo "::notice::Neither FIREBASE_TOKEN nor ALIGN_SERVICE_ACCOUNT_JSON is set. Skipping Firebase Hosting deploy."
+          fi
