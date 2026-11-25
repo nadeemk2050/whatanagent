@@ -453,11 +453,62 @@ app.get('/api/antigravity/tasks', async (req, res) => {
 
 app.post('/api/antigravity/task/run', async (req, res) => {
   try {
-    const { repo, instruction, source } = req.body || {};
+    const { repo, instruction, source, model } = req.body || {};
     if (!instruction) return res.status(400).json({ ok: false, error: 'Missing instruction.' });
     const { dispatchAntigravityTask } = await import('./waWebClient.js');
-    const result = await dispatchAntigravityTask({ repo, instruction, source: source || 'web_dashboard' });
+    const result = await dispatchAntigravityTask({ repo, instruction, source: source || 'web_dashboard', model });
+    // Trigger immediate check in worker
+    import('./antigravityWorker.mjs').then(w => w.pollQueuedTasks?.()).catch(() => {});
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/antigravity/task/execute-now', async (req, res) => {
+  try {
+    const { taskId, docId } = req.body || {};
+    const { pollQueuedTasks, processTask } = await import('./antigravityWorker.mjs');
+    if (docId) {
+      const snap = await getDoc(doc(db, 'appData', 'antigravityTasks', 'tasks', docId));
+      if (snap.exists()) {
+        processTask({ docId, ...snap.data() }).catch(e => console.error('[AG RUN]', e));
+        return res.json({ ok: true, message: 'Task execution started.' });
+      }
+    }
+    pollQueuedTasks().catch(() => {});
+    res.json({ ok: true, message: 'Queue check triggered.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// --- ON-DEMAND VS CODE TOGGLE (Saves ~1GB RAM) ---
+app.get('/api/antigravity/vscode/status', async (req, res) => {
+  try {
+    const { exec } = await import('child_process');
+    exec('systemctl is-active code-server@ubuntu', (err, stdout) => {
+      const active = (stdout || '').trim() === 'active';
+      res.json({ ok: true, active });
+    });
+  } catch (err) {
+    res.json({ ok: true, active: false });
+  }
+});
+
+app.post('/api/antigravity/vscode/toggle', async (req, res) => {
+  try {
+    const { action } = req.body || {};
+    const { exec } = await import('child_process');
+    const cmd = action === 'start'
+      ? 'sudo systemctl start code-server@ubuntu'
+      : 'sudo systemctl stop code-server@ubuntu';
+    exec(cmd, (err) => {
+      exec('systemctl is-active code-server@ubuntu', (e, stdout) => {
+        const active = (stdout || '').trim() === 'active';
+        res.json({ ok: true, active });
+      });
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -5067,5 +5118,6 @@ const server = app.listen(PORT, () => {
   startFollowUpScheduler();
 });
 initLiveMeetingWebSocket(server, db);
+import('./antigravityWorker.mjs').then(w => w.startAntigravityWorker(db)).catch(e => console.warn('[AG WORKER INIT]', e.message));
 
  

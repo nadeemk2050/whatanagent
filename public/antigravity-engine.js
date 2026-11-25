@@ -1,19 +1,48 @@
 /* ============================================================================
-   🪐 ANTIGRAVITY VPS ENGINE — 24/7 Cloud AI Coding Hub & WhatsApp Boss Bridge
-   Runs on Tencent Cloud VPS (43.156.245.176) independently of laptop power state
-   Account: nadeemalsaham@gmail.com | WhatsApp Boss: +971529244592
+   🪐 ANTIGRAVITY STUDIO — Lightweight Cloud AI Coding Workspace & Agent Hub
+   Native, fast Antigravity UI running on Tencent Cloud VPS (43.156.245.176)
+   Multi-Model Selector with Auto Cheapest Option & Antigravity CLI v1.5.17
    ============================================================================ */
 
 (function () {
   'use strict';
 
   var isLoaded = false;
-  var currentRepo = 'aligntasks';
+  var activeTab = 'studio'; // Default to lightweight native Antigravity Studio!
+  var pollInterval = null;
+  var chatHistory = [];
+  var selectedRepo = 'whatanagent';
+  var selectedModel = 'auto';
+  try {
+    selectedModel = localStorage.getItem('agSelectedModel') || 'auto';
+  } catch (e) {
+    selectedModel = 'auto';
+  }
+
+  var MODEL_CONFIGS = [
+    { id: 'auto', name: '⚡ Auto (Cheapest · Gemini 3.8 Flash Low)', short: 'Auto (Cheapest Flash Low)', cliModel: 'gemini-3.8-flash-low' },
+    { id: 'gemini-3.8-flash-low', name: '🟢 Gemini 3.8 Flash Low (Lowest Credits · Fast)', short: 'Flash Low (Cheapest)', cliModel: 'gemini-3.8-flash-low' },
+    { id: 'gemini-3.8-flash-medium', name: '🟢 Gemini 3.8 Flash Medium', short: 'Flash Medium', cliModel: 'gemini-3.8-flash-medium' },
+    { id: 'gemini-3.8-flash-high', name: '🟢 Gemini 3.8 Flash High', short: 'Flash High', cliModel: 'gemini-3.8-flash-high' },
+    { id: 'gemini-4-hydrogen-low', name: '🧪 Gemini 4 Hydrogen Low (Budget)', short: 'Hydrogen Low', cliModel: 'gemini-4-hydrogen-low' },
+    { id: 'gemini-4-carbon-medium', name: '💎 Gemini 4 Carbon Medium (Balanced)', short: 'Carbon Medium', cliModel: 'gemini-4-carbon-medium' },
+    { id: 'gemini-4-argon-medium', name: '🚀 Gemini 4 Argon Medium (Smart)', short: 'Argon Medium', cliModel: 'gemini-4-argon-medium' },
+    { id: 'gemini-4-neon-high', name: '🧠 Gemini 4 Neon High (Deep Reasoning · Max Credits)', short: 'Neon High', cliModel: 'gemini-4-neon-high' },
+    { id: 'claude-sonnet-5-5-medium', name: '🎭 Claude Sonnet 5.5 (Medium Credits)', short: 'Sonnet 5.5', cliModel: 'claude-sonnet-5-5-medium' },
+    { id: 'claude-opus-5-5-high', name: '🏛️ Claude Opus 5.5 (High Credits)', short: 'Opus 5.5', cliModel: 'claude-opus-5-5-high' },
+    { id: 'gpt-oss-120b-medium', name: '🌐 GPT-OSS 120B (Medium)', short: 'GPT-OSS 120B', cliModel: 'gpt-oss-120b-medium' }
+  ];
+
+  function getModelInfo(id) {
+    var found = MODEL_CONFIGS.find(function (m) { return m.id === id; });
+    return found || { id: id, name: id, short: id, cliModel: id };
+  }
+
   var REPOS = [
-    { id: 'aligntasks', name: '📋 AlignTasks PWA', path: '/opt/whatanagent/public/aligntasks', branch: 'master', desc: 'Team task board PWA & client interface' },
-    { id: 'whatanagent', name: '🤖 WhatAnAgent Core', path: '/opt/whatanagent', branch: 'master', desc: 'Main WhatsApp AI bot, Baileys & Express server' },
-    { id: 'accountspro', name: '📊 AccountsPro', path: '/opt/accountspro', branch: 'main', desc: 'Financial accounts & trading ledgers' },
-    { id: 'invent', name: '📦 Invent App', path: '/opt/invent', branch: 'master', desc: 'Inventory management & lots system' }
+    { id: 'whatanagent', name: '🤖 WhatAnAgent Core', path: '/opt/whatanagent', branch: 'master' },
+    { id: 'aligntasks', name: '📋 AlignTasks PWA', path: '/opt/whatanagent/public/aligntasks', branch: 'master' },
+    { id: 'accountspro', name: '📊 AccountsPro', path: '/opt/accountspro', branch: 'main' },
+    { id: 'invent', name: '📦 Invent App', path: '/opt/invent', branch: 'master' }
   ];
 
   window.loadAntigravitySection = function () {
@@ -25,55 +54,59 @@
     }
     fetchEngineStatus();
     fetchRecentTasks();
+    fetchVscodeStatus();
+
+    // Sync selected model
+    setTimeout(function () {
+      if (window.agChangeModel) window.agChangeModel(selectedModel);
+    }, 60);
+
+    if (!pollInterval) {
+      pollInterval = setInterval(fetchRecentTasks, 6000);
+    }
   };
 
   function renderSection(el) {
     el.innerHTML = `
       <style>
         .ag-wrap {
-          max-width: 1100px;
+          max-width: 1320px;
           margin: 0 auto;
-          padding: 16px;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          color: #1e293b;
+          padding: 12px;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+          color: #f1f5f9;
         }
-        .ag-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
+
+        /* Top Antigravity Studio Bar */
+        .ag-studio-bar {
+          background: #090d16;
+          border: 1px solid #1e293b;
           border-radius: 14px;
-          padding: 20px;
-          margin-bottom: 20px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        }
-        .ag-hero {
-          background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
-          color: #ffffff;
-          border-radius: 16px;
-          padding: 24px;
-          margin-bottom: 22px;
-          box-shadow: 0 10px 25px -5px rgba(49, 46, 129, 0.3);
-        }
-        .ag-hero h1 {
-          margin: 0 0 8px 0;
-          font-size: 22px;
-          font-weight: 700;
+          padding: 14px 20px;
           display: flex;
           align-items: center;
-          gap: 10px;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 16px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .ag-studio-title {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .ag-studio-title h2 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 700;
+          color: #ffffff;
+          display: flex;
+          align-items: center;
+          gap: 8px;
           letter-spacing: -0.3px;
         }
-        .ag-hero p {
-          margin: 0 0 16px 0;
-          font-size: 13.5px;
-          opacity: 0.9;
-          line-height: 1.5;
-        }
-        .ag-badges {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-        .ag-badge {
+        .ag-pill {
           display: inline-flex;
           align-items: center;
           gap: 6px;
@@ -81,97 +114,235 @@
           font-weight: 600;
           padding: 4px 10px;
           border-radius: 20px;
-          background: rgba(255,255,255,0.15);
-          color: #fff;
-          backdrop-filter: blur(4px);
+          background: #1e293b;
+          color: #cbd5e1;
         }
-        .ag-badge.live {
-          background: rgba(16, 185, 129, 0.25);
-          color: #6ee7b7;
-          border: 1px solid rgba(110, 231, 183, 0.4);
+        .ag-pill.live {
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+          border: 1px solid rgba(52, 211, 153, 0.3);
         }
-        .ag-badge-dot {
+        .ag-pill.model {
+          background: rgba(99, 102, 241, 0.2);
+          color: #a5b4fc;
+          border: 1px solid rgba(165, 180, 252, 0.3);
+        }
+        .ag-dot {
           width: 7px;
           height: 7px;
           border-radius: 50%;
           background: #10b981;
           box-shadow: 0 0 8px #10b981;
-          display: inline-block;
         }
-        .ag-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 18px;
-        }
-        .ag-section-title {
-          font-size: 15px;
-          font-weight: 700;
-          color: #0f172a;
-          margin-bottom: 12px;
+
+        /* Navigation Tabs */
+        .ag-tabs {
           display: flex;
+          gap: 8px;
+          margin-bottom: 16px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+        .ag-tab-btn {
+          background: #0f172a;
+          border: 1px solid #1e293b;
+          border-radius: 9px;
+          padding: 8px 16px;
+          font-size: 12.5px;
+          font-weight: 600;
+          color: #94a3b8;
+          cursor: pointer;
+          display: inline-flex;
           align-items: center;
           gap: 8px;
+          transition: all 0.15s;
+          white-space: nowrap;
         }
-        .ag-step-box {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          padding: 12px;
-          margin-bottom: 10px;
-          font-size: 12.5px;
-          line-height: 1.5;
+        .ag-tab-btn:hover {
+          background: #1e293b;
+          color: #f8fafc;
         }
-        .ag-code-box {
+        .ag-tab-btn.active {
+          background: #6366f1;
+          color: #ffffff;
+          border-color: #4f46e5;
+          box-shadow: 0 2px 10px rgba(99, 102, 241, 0.35);
+        }
+        .ag-tab-pane {
+          display: none;
+        }
+        .ag-tab-pane.active {
+          display: block;
+        }
+
+        /* Studio Main Grid */
+        .ag-studio-grid {
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 16px;
+        }
+        @media (max-width: 860px) {
+          .ag-studio-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* Left Sidebar: Projects & Quick Actions */
+        .ag-sidebar {
+          background: #090d16;
+          border: 1px solid #1e293b;
+          border-radius: 12px;
+          padding: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .ag-side-header {
+          font-size: 11px;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .ag-repo-item {
           background: #0f172a;
-          color: #38bdf8;
+          border: 1px solid #1e293b;
+          border-radius: 8px;
+          padding: 8px 12px;
+          font-size: 12px;
+          color: #cbd5e1;
+          cursor: pointer;
+          transition: all 0.15s;
+          margin-bottom: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .ag-repo-item:hover {
+          background: #1e293b;
+          color: #fff;
+        }
+        .ag-repo-item.selected {
+          border-color: #6366f1;
+          background: rgba(99, 102, 241, 0.15);
+          color: #c7d2fe;
+          font-weight: 600;
+        }
+
+        /* Center Canvas: Chat & Execution Workspace */
+        .ag-canvas {
+          background: #090d16;
+          border: 1px solid #1e293b;
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          min-height: 580px;
+          overflow: hidden;
+        }
+        .ag-canvas-header {
+          background: #0f172a;
+          border-bottom: 1px solid #1e293b;
+          padding: 10px 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #cbd5e1;
+        }
+        .ag-chat-stream {
+          flex: 1;
+          padding: 16px;
+          overflow-y: auto;
+          max-height: 400px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .ag-msg {
+          padding: 12px 14px;
+          border-radius: 10px;
+          font-size: 13px;
+          line-height: 1.5;
+          max-width: 90%;
+        }
+        .ag-msg.user {
+          background: #1e293b;
+          color: #f8fafc;
+          align-self: flex-end;
+          border: 1px solid #334155;
+        }
+        .ag-msg.agent {
+          background: #0f172a;
+          color: #e2e8f0;
+          align-self: flex-start;
+          border: 1px solid #1e293b;
+          border-left: 3px solid #6366f1;
+        }
+        .ag-thought-pill {
+          background: rgba(99, 102, 241, 0.1);
+          color: #818cf8;
+          border: 1px dashed rgba(99, 102, 241, 0.4);
+          border-radius: 6px;
+          padding: 6px 10px;
+          font-size: 11px;
+          margin-bottom: 8px;
+        }
+        .ag-terminal-view {
+          background: #030712;
+          border-top: 1px solid #1e293b;
+          padding: 12px 16px;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           font-size: 11.5px;
-          padding: 10px 14px;
-          border-radius: 8px;
-          overflow-x: auto;
-          margin: 8px 0;
-          position: relative;
+          color: #38bdf8;
+          max-height: 180px;
+          overflow-y: auto;
+          white-space: pre-wrap;
+          line-height: 1.6;
         }
-        .ag-btn-copy {
-          position: absolute;
-          top: 6px;
-          right: 6px;
-          background: #334155;
-          color: #f1f5f9;
-          border: none;
-          border-radius: 5px;
-          padding: 3px 8px;
-          font-size: 10px;
-          cursor: pointer;
-          transition: background 0.15s;
+
+        /* Prompt Input Box */
+        .ag-input-box {
+          background: #0f172a;
+          border-top: 1px solid #1e293b;
+          padding: 14px 16px;
         }
-        .ag-btn-copy:hover {
-          background: #475569;
-        }
-        .ag-prompt-input {
+        .ag-textarea {
           width: 100%;
           box-sizing: border-box;
-          padding: 12px;
-          border: 1px solid #cbd5e1;
+          background: #090d16;
+          border: 1px solid #1e293b;
           border-radius: 10px;
+          padding: 12px;
+          color: #f8fafc;
           font-size: 13px;
           font-family: inherit;
           resize: vertical;
-          min-height: 80px;
+          min-height: 70px;
           margin-bottom: 10px;
         }
-        .ag-prompt-input:focus {
+        .ag-textarea:focus {
           outline: none;
           border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+          box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
         }
-        .ag-btn-primary {
+        .ag-input-actions {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .ag-btn-run {
           background: #4f46e5;
           color: #fff;
           border: none;
           border-radius: 8px;
-          padding: 9px 16px;
-          font-size: 13px;
+          padding: 9px 18px;
+          font-size: 12.5px;
           font-weight: 600;
           cursor: pointer;
           display: inline-flex;
@@ -179,208 +350,377 @@
           gap: 6px;
           transition: background 0.15s, transform 0.05s;
         }
-        .ag-btn-primary:hover {
-          background: #4338ca;
-        }
-        .ag-btn-primary:active {
-          transform: scale(0.98);
-        }
-        .ag-quick-chips {
+        .ag-btn-run:hover { background: #4338ca; }
+        .ag-btn-run:active { transform: scale(0.98); }
+        .ag-chips {
           display: flex;
           flex-wrap: wrap;
           gap: 6px;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .ag-chip {
-          background: #f1f5f9;
-          color: #334155;
-          border: 1px solid #e2e8f0;
-          border-radius: 20px;
+          background: #1e293b;
+          color: #94a3b8;
+          border: 1px solid #334155;
+          border-radius: 16px;
           padding: 4px 10px;
           font-size: 11px;
           cursor: pointer;
           transition: all 0.15s;
         }
         .ag-chip:hover {
-          background: #e0e7ff;
-          border-color: #c7d2fe;
-          color: #3730a3;
+          background: rgba(99, 102, 241, 0.2);
+          border-color: #6366f1;
+          color: #c7d2fe;
         }
-        .ag-log-terminal {
+
+        /* Task Cards */
+        .ag-task-card {
           background: #090d16;
-          color: #e2e8f0;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-size: 11px;
-          line-height: 1.6;
-          padding: 12px;
+          border: 1px solid #1e293b;
           border-radius: 10px;
-          max-height: 220px;
-          overflow-y: auto;
-          margin-top: 10px;
-          white-space: pre-wrap;
-        }
-        .ag-log-item {
+          padding: 12px 14px;
+          margin-bottom: 8px;
           display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .ag-task-top {
+          display: flex;
+          align-items: center;
           justify-content: space-between;
-          padding: 8px 10px;
-          border-bottom: 1px solid #f1f5f9;
-          font-size: 12px;
         }
         .ag-status-pill {
-          padding: 2px 7px;
+          padding: 3px 8px;
           border-radius: 10px;
           font-size: 10px;
           font-weight: 700;
           text-transform: uppercase;
         }
-        .ag-status-queued { background: #fef3c7; color: #92400e; }
-        .ag-status-running { background: #e0e7ff; color: #3730a3; }
-        .ag-status-done { background: #dcfce7; color: #166534; }
-        .ag-status-error { background: #fee2e2; color: #991b1b; }
+        .ag-status-queued { background: #78350f; color: #fef3c7; }
+        .ag-status-running { background: #312e81; color: #c7d2fe; }
+        .ag-status-completed { background: #064e3b; color: #a7f3d0; }
+        .ag-status-error { background: #7f1d1d; color: #fecaca; }
+
+        /* VS Code Optional Section */
+        .ag-vscode-box {
+          background: #090d16;
+          border: 1px solid #1e293b;
+          border-radius: 12px;
+          padding: 16px;
+        }
       </style>
 
       <div class="ag-wrap">
-        <!-- Hero Header -->
-        <div class="ag-hero">
-          <h1>🪐 Antigravity VPS Engine & Agent Hub</h1>
-          <p>
-            Zero-Laptop Dependency: Antigravity runs 24/7 on your Tencent Cloud VPS (<code>43.156.245.176</code>). 
-            Even when your laptop is completely powered off or in sleep mode, you can control the coding agent directly 
-            via <strong>WhatsApp Boss voice/text</strong> or from your <strong>Samsung Note 20 Ultra mobile browser</strong>.
-          </p>
-          <div class="ag-badges">
-            <span class="ag-badge live"><span class="ag-badge-dot"></span> VPS Engine: 24/7 ONLINE</span>
-            <span class="ag-badge">👤 Account: nadeemalsaham@gmail.com</span>
-            <span class="ag-badge">🐙 GitHub: nadeemalsaham (Master Branch)</span>
-            <span class="ag-badge">📱 WhatsApp Boss: +971529244592</span>
-          </div>
-        </div>
-
-        <div class="ag-grid">
-          <!-- WhatsApp Boss Coding Bridge -->
-          <div class="ag-card">
-            <div class="ag-section-title">
-              <span>📱 WhatsApp Boss Coding Bridge</span>
-              <span style="font-size:10px; font-weight:bold; background:#dcfce7; color:#166534; padding:2px 8px; border-radius:12px;">ACTIVE</span>
-            </div>
-            <p style="font-size:12.5px; color:#475569; margin:0 0 12px 0; line-height:1.5;">
-              Send voice notes or text messages from your verified WhatsApp (<code>+971529244592</code>). WhatAnAgent detects coding orders, dispatches the Antigravity engine on the VPS, commits changes to GitHub, and messages you back!
-            </p>
-
-            <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; margin-bottom:12px;">
-              <strong style="color:#166534; font-size:12px; display:block; margin-bottom:4px;">🎯 Your Requested WhatsApp Command:</strong>
-              <div style="font-size:12px; color:#15803d; font-style:italic; background:#ffffff; padding:8px 10px; border-radius:6px; border:1px dashed #86efac;">
-                "add filter icon on top of aligntask all pages of task"
-              </div>
-            </div>
-
-            <div class="ag-quick-chips">
-              <span class="ag-chip" onclick="window.agFillPrompt('add filter icon on top of aligntask all pages of task', 'aligntasks')">✨ Add Filter Icon on AlignTasks</span>
-              <span class="ag-chip" onclick="window.agFillPrompt('fix mobile responsive layout on task lists in aligntasks', 'aligntasks')">📱 Fix Mobile Layout</span>
-              <span class="ag-chip" onclick="window.agFillPrompt('pull latest master and verify git status', 'whatanagent')">🔄 Git Status & Pull</span>
-              <span class="ag-chip" onclick="window.agFillPrompt('check error logs on VPS and report status', 'whatanagent')">🩺 Inspect VPS Logs</span>
-            </div>
-
-            <div style="display:flex; gap:8px;">
-              <button class="ag-btn-primary" onclick="window.agSimulateBossCommand()" style="background:#059669; font-size:12px;">
-                <span>▶️ Run / Simulate Boss Command</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Mobile Browser Prompt Console -->
-          <div class="ag-card">
-            <div class="ag-section-title">
-              <span>🚀 Mobile Agent Prompt Console</span>
-            </div>
-            <div style="margin-bottom:10px;">
-              <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Target Repository on VPS:</label>
-              <select id="agRepoSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #cbd5e1; font-size:12.5px; background:#fff;">
-                <option value="aligntasks">📋 AlignTasks PWA (/opt/whatanagent/public/aligntasks)</option>
-                <option value="whatanagent">🤖 WhatAnAgent System (/opt/whatanagent)</option>
-                <option value="accountspro">📊 AccountsPro (/opt/accountspro)</option>
-                <option value="invent">📦 Invent App (/opt/invent)</option>
+        <!-- Top Studio Bar -->
+        <div class="ag-studio-bar">
+          <div class="ag-studio-title">
+            <h2>🪐 Antigravity Studio</h2>
+            <span class="ag-pill live"><span class="ag-dot"></span> VPS: 43.156.245.176 (Online)</span>
+            
+            <!-- AI Model Selector Pill with Auto Cheapest Default -->
+            <div style="display:inline-flex; align-items:center; gap:6px; background:#0b1120; border:1px solid #3b82f6; border-radius:10px; padding:3px 8px;">
+              <span style="font-size:11.5px; color:#93c5fd; font-weight:700;">⚡ Model:</span>
+              <select id="agModelSelect" class="ag-model-selector" onchange="window.agChangeModel(this.value)" style="background:#1e293b; color:#ffffff; border:1px solid #475569; border-radius:6px; padding:3px 8px; font-size:11.5px; font-weight:600; cursor:pointer;">
+                <option value="auto" selected>⚡ Auto (Cheapest · Gemini 3.8 Flash Low)</option>
+                <option value="gemini-3.8-flash-low">🟢 Gemini 3.8 Flash Low (Lowest Credits · Fast)</option>
+                <option value="gemini-3.8-flash-medium">🟢 Gemini 3.8 Flash Medium</option>
+                <option value="gemini-3.8-flash-high">🟢 Gemini 3.8 Flash High</option>
+                <option value="gemini-4-hydrogen-low">🧪 Gemini 4 Hydrogen Low (Budget)</option>
+                <option value="gemini-4-carbon-medium">💎 Gemini 4 Carbon Medium (Balanced)</option>
+                <option value="gemini-4-argon-medium">🚀 Gemini 4 Argon Medium (Smart)</option>
+                <option value="gemini-4-neon-high">🧠 Gemini 4 Neon High (Deep Reasoning · Max Credits)</option>
+                <option value="claude-sonnet-5-5-medium">🎭 Claude Sonnet 5.5 (Medium Credits)</option>
+                <option value="claude-opus-5-5-high">🏛️ Claude Opus 5.5 (High Credits)</option>
+                <option value="gpt-oss-120b-medium">🌐 GPT-OSS 120B (Medium)</option>
               </select>
             </div>
 
-            <textarea id="agPromptInput" class="ag-prompt-input" placeholder="Type or paste any coding instruction for Antigravity on your VPS (e.g. 'add filter icon on top of aligntask all pages of task')..."></textarea>
+            <span class="ag-pill">🐙 GitHub: nadeemalsaham</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11px; color:#64748b;">CLI v1.5.17</span>
+            <button onclick="window.agRefreshTasks()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <button class="ag-btn-primary" onclick="window.agDispatchPrompt()">
-                <span>⚡ Dispatch to Antigravity on VPS</span>
+        <!-- Navigation Tabs -->
+        <div class="ag-tabs">
+          <button class="ag-tab-btn active" onclick="window.agSwitchTab('studio', this)">
+            🪐 Antigravity Studio (Lightweight Native)
+          </button>
+          <button class="ag-tab-btn" onclick="window.agSwitchTab('tasks', this)">
+            📜 Tasks Queue & Logs <span id="agQueueBadge" style="background:#f59e0b; color:#fff; border-radius:10px; padding:1px 6px; font-size:10px; display:none;">0</span>
+          </button>
+          <button class="ag-tab-btn" onclick="window.agSwitchTab('vscode', this)">
+            💻 VS Code Browser IDE (Optional Heavy)
+          </button>
+        </div>
+
+        <!-- TAB 1: NATIVE ANTIGRAVITY STUDIO -->
+        <div id="agTab_studio" class="ag-tab-pane active">
+          <div class="ag-studio-grid">
+            <!-- Left Sidebar -->
+            <div class="ag-sidebar">
+              <div>
+                <div class="ag-side-header">
+                  <span>Target Repository</span>
+                </div>
+                <div id="agRepoList">
+                  <div class="ag-repo-item selected" onclick="window.agSelectRepo('whatanagent', this)">
+                    <span>🤖 WhatAnAgent Core</span>
+                    <span style="font-size:10px; color:#6366f1;">/opt/...</span>
+                  </div>
+                  <div class="ag-repo-item" onclick="window.agSelectRepo('aligntasks', this)">
+                    <span>📋 AlignTasks PWA</span>
+                    <span style="font-size:10px; color:#64748b;">/public/...</span>
+                  </div>
+                  <div class="ag-repo-item" onclick="window.agSelectRepo('accountspro', this)">
+                    <span>📊 AccountsPro</span>
+                    <span style="font-size:10px; color:#64748b;">/opt/...</span>
+                  </div>
+                  <div class="ag-repo-item" onclick="window.agSelectRepo('invent', this)">
+                    <span>📦 Invent App</span>
+                    <span style="font-size:10px; color:#64748b;">/opt/...</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- WhatsApp Boss Bridge Status -->
+              <div style="background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:10px;">
+                <div class="ag-side-header" style="margin-bottom:4px;">
+                  <span>📱 WhatsApp Boss Bridge</span>
+                  <span style="color:#10b981; font-size:10px;">CONNECTED</span>
+                </div>
+                <div style="font-size:11px; color:#94a3b8; line-height:1.4;">
+                  Boss WhatsApp: <code>+971529244592</code><br>
+                  Voice & text orders auto-dispatched to VPS Antigravity.
+                </div>
+              </div>
+
+              <!-- Quick Status -->
+              <div style="font-size:11px; color:#64748b; line-height:1.6;">
+                <div>• Zero laptop battery drain</div>
+                <div>• Auto-commit & push to GitHub</div>
+                <div>• Multi-turn agent memory</div>
+              </div>
+            </div>
+
+            <!-- Center Canvas -->
+            <div class="ag-canvas">
+              <div class="ag-canvas-header">
+                <div>
+                  <span style="font-weight:700; color:#fff;" id="agCanvasRepoTitle">🤖 WhatAnAgent Core</span>
+                  <span style="color:#64748b; margin-left:8px;" id="agCanvasRepoPath">/opt/whatanagent</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span id="agActiveModelBadge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:2px 8px; font-size:11px; font-weight:600;">⚡ Auto: Flash Low (Cheapest)</span>
+                  <span style="color:#10b981; font-size:11px;">● Ready for Prompts</span>
+                </div>
+              </div>
+
+              <!-- Chat Stream -->
+              <div id="agChatStream" class="ag-chat-stream">
+                <div class="ag-msg agent">
+                  <div class="ag-thought-pill" id="agChatWelcomePill">💡 Antigravity VPS Engine Ready · Model: Auto (Cheapest Flash Low)</div>
+                  Hey Nadeem! I'm running live on your Tencent VPS. What would you like to build or modify in <strong>WhatAnAgent</strong> or <strong>AlignTasks</strong>?
+                </div>
+              </div>
+
+              <!-- Live Execution Terminal -->
+              <div id="agTerminalOutput" class="ag-terminal-view">⚡ Antigravity Runner Standby. Dispatched tasks stream real-time logs here.</div>
+
+              <!-- Prompt Input Box -->
+              <div class="ag-input-box">
+                <div class="ag-chips">
+                  <span class="ag-chip" onclick="window.agSetPrompt('Fix the WhatsApp Web assistant so it continues a conversation across multiple turns with memory')">🤖 Multi-Turn WhatsApp Memory</span>
+                  <span class="ag-chip" onclick="window.agSetPrompt('add filter icon on top of aligntask all pages of task')">✨ Add Filter Icon on AlignTasks</span>
+                  <span class="ag-chip" onclick="window.agSetPrompt('git pull origin master and inspect git status')">🔄 Git Pull & Status</span>
+                  <span class="ag-chip" onclick="window.agSetPrompt('inspect latest error logs on VPS')">🩺 Inspect VPS Logs</span>
+                </div>
+
+                <textarea id="agPromptInput" class="ag-textarea" placeholder="Type instructions for Antigravity on your VPS (e.g. 'Add filter icon on task lists')..."></textarea>
+
+                <div class="ag-input-actions">
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <button class="ag-btn-run" onclick="window.agDispatchPrompt()">
+                      <span>⚡ Dispatch to Antigravity</span>
+                    </button>
+                    <button style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:8px; padding:8px 12px; font-size:12px; cursor:pointer;" onclick="window.agVoiceInput()" title="Voice dictation">
+                      🎙️ Voice
+                    </button>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#94a3b8;">
+                    <span>Active Model:</span>
+                    <strong id="agActiveModelLabel" style="color:#38bdf8;">Auto (Cheapest Flash Low)</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: TASKS QUEUE & AUDIT -->
+        <div id="agTab_tasks" class="ag-tab-pane">
+          <div style="background:#090d16; border:1px solid #1e293b; border-radius:12px; padding:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+              <div>
+                <h3 style="margin:0; font-size:16px; color:#fff;">📜 Recent Dispatched Tasks & Queue Worker</h3>
+                <div style="font-size:11.5px; color:#64748b; margin-top:2px;">Background worker executes tasks autonomously with auto-commit to GitHub</div>
+              </div>
+              <button onclick="window.agRefreshTasks()" style="background:#1e293b; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:5px 12px; font-size:11.5px; cursor:pointer;">
+                🔄 Refresh Queue
               </button>
-              <button style="background:none; border:1px solid #cbd5e1; border-radius:8px; padding:8px 12px; font-size:12px; cursor:pointer;" onclick="window.agVoiceInput()" title="Voice input from phone">
-                🎙️ Voice
+            </div>
+            <div id="agTasksList" style="min-height:100px;">
+              <div style="text-align:center; padding:20px; color:#64748b; font-size:12px;">Loading tasks history...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: OPTIONAL VS CODE -->
+        <div id="agTab_vscode" class="ag-tab-pane">
+          <div class="ag-vscode-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+              <div>
+                <span style="font-weight:700; color:#fff; font-size:14px;">💻 VS Code Web IDE (On-Demand Mode)</span>
+                <span id="agVscodeStatusPill" style="margin-left:8px; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; background:#7f1d1d; color:#fecaca;">OFFLINE (0 MB RAM)</span>
+                <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">
+                  Kept stopped by default to save <strong>~1 GB of RAM</strong>. Start only when you need full manual editing.
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button id="agVscodeToggleBtn" class="ag-btn-run" onclick="window.agToggleVscode()" style="background:#059669; font-size:12px;">
+                  ▶️ Start VS Code
+                </button>
+                <button id="agVscodeOpenTabBtn" class="ag-btn-run" onclick="window.open('/code/', '_blank')" style="background:#0284c7; font-size:12px; display:none;">
+                  🚀 Open Fullscreen
+                </button>
+              </div>
+            </div>
+
+            <div id="agVscodeFrameContainer" style="display:none; border-radius:10px; overflow:hidden; border:1px solid #1e293b;">
+              <iframe id="agVscodeFrame" style="width:100%; height:640px; border:none; background:#1e1e1e;" src="" allow="clipboard-read; clipboard-write"></iframe>
+            </div>
+
+            <div id="agVscodePlaceholder" style="background:#030712; border:1px dashed #334155; border-radius:10px; padding:36px 20px; text-align:center; color:#94a3b8;">
+              <div style="font-size:32px; margin-bottom:8px;">💤</div>
+              <div style="font-size:13px; font-weight:600; color:#e2e8f0; margin-bottom:4px;">VS Code is currently sleeping to keep your VPS ultra-fast</div>
+              <div style="font-size:12px; color:#64748b; margin-bottom:16px;">Antigravity Studio handles all coding tasks autonomously via AI. Click below only if you want full manual VS Code editing.</div>
+              <button class="ag-btn-run" onclick="window.agToggleVscode()" style="background:#059669; font-size:12px;">
+                ▶️ Wake Up VS Code Now
               </button>
             </div>
-
-            <div id="agTerminalOutput" class="ag-log-terminal">Engine standby. Ready to execute code tasks on Tencent Cloud VPS.</div>
           </div>
         </div>
 
-        <!-- VPS Setup & Architecture -->
-        <div class="ag-card">
-          <div class="ag-section-title">
-            <span>🛠️ Tencent VPS One-Time Setup & CLI Guide</span>
-          </div>
-          <p style="font-size:12.5px; color:#475569; margin:0 0 14px 0;">
-            To ensure your VPS can independently fetch GitHub repositories and run Antigravity CLI (<code>agy</code>) with <code>nadeemalsaham@gmail.com</code>, run these quick commands in your VPS SSH terminal:
-          </p>
-
-          <div class="ag-step-box">
-            <strong>1. Configure Git & GitHub Identity on Tencent VPS:</strong>
-            <div class="ag-code-box">
-              <button class="ag-btn-copy" onclick="window.agCopy(this, 'git config --global user.name \"Nadeem\"\ngit config --global user.email \"nadeemalsaham@gmail.com\"\ngh auth status || gh auth login')">Copy</button>
-              git config --global user.name "Nadeem"<br>
-              git config --global user.email "nadeemalsaham@gmail.com"<br>
-              gh auth status || gh auth login
-            </div>
-            <span style="color:#64748b; font-size:11.5px;">Ensures all automated commits to AlignTasks and WhatAnAgent are stamped with your verified GitHub profile.</span>
-          </div>
-
-          <div class="ag-step-box">
-            <strong>2. Install Antigravity CLI (agy) on Tencent VPS:</strong>
-            <div class="ag-code-box">
-              <button class="ag-btn-copy" onclick="window.agCopy(this, 'curl -fsSL https://antigravity.google/install.sh | bash\nagy --version')">Copy</button>
-              curl -fsSL https://antigravity.google/install.sh | bash<br>
-              agy --version
-            </div>
-            <span style="color:#64748b; font-size:11.5px;">Installs the official lightweight headless Antigravity CLI runner on Linux.</span>
-          </div>
-
-          <div class="ag-step-box">
-            <strong>3. Optional Mobile Web IDE (VS Code in Browser via Cloudflare Tunnel):</strong>
-            <div class="ag-code-box">
-              <button class="ag-btn-copy" onclick="window.agCopy(this, 'curl -fsSL https://code-server.dev/install.sh | sh\nsudo systemctl enable --now code-server@ubuntu')">Copy</button>
-              curl -fsSL https://code-server.dev/install.sh | sh<br>
-              sudo systemctl enable --now code-server@ubuntu
-            </div>
-            <span style="color:#64748b; font-size:11.5px;">Allows you to open full VS Code in your phone Chrome browser at code.aitoolsgent.com anytime laptop is off.</span>
-          </div>
-        </div>
-
-        <!-- Recent Tasks & Audit Trail -->
-        <div class="ag-card">
-          <div class="ag-section-title" style="justify-content:space-between;">
-            <span>📜 Recent Dispatched Tasks & Audit Trail</span>
-            <button onclick="window.agRefreshTasks()" style="background:none; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px; font-size:11px; cursor:pointer;">🔄 Refresh</button>
-          </div>
-          <div id="agTasksList" style="min-height:80px;">
-            <div style="text-align:center; padding:20px; color:#94a3b8; font-size:12px;">Loading tasks history...</div>
-          </div>
-        </div>
       </div>
     `;
   }
 
-  window.agFillPrompt = function (text, repo) {
-    var p = document.getElementById('agPromptInput');
-    if (p) p.value = text;
-    var r = document.getElementById('agRepoSelect');
-    if (r && repo) r.value = repo;
+  var selectedRepo = 'whatanagent';
+
+  window.agSwitchTab = function (tabName, btn) {
+    activeTab = tabName;
+    document.querySelectorAll('.ag-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.ag-tab-pane').forEach(function (p) { p.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    var target = document.getElementById('agTab_' + tabName);
+    if (target) target.classList.add('active');
   };
 
-  window.agCopy = function (btn, text) {
+  window.agSelectRepo = function (repoId, el) {
+    selectedRepo = repoId;
+    document.querySelectorAll('.ag-repo-item').forEach(function (r) { r.classList.remove('selected'); });
+    if (el) el.classList.add('selected');
+
+    var repo = REPOS.find(function (r) { return r.id === repoId; }) || REPOS[0];
+    var titleEl = document.getElementById('agCanvasRepoTitle');
+    var pathEl = document.getElementById('agCanvasRepoPath');
+    if (titleEl) titleEl.textContent = repo.name;
+    if (pathEl) pathEl.textContent = repo.path;
+  };
+
+  window.agSetPrompt = function (text) {
+    var p = document.getElementById('agPromptInput');
+    if (p) p.value = text;
+  };
+
+  var vscodeIsActive = false;
+
+  window.agToggleVscode = function () {
+    var btn = document.getElementById('agVscodeToggleBtn');
+    var tabBtn = document.getElementById('agVscodeOpenTabBtn');
+    var frameContainer = document.getElementById('agVscodeFrameContainer');
+    var placeholder = document.getElementById('agVscodePlaceholder');
+    var pill = document.getElementById('agVscodeStatusPill');
+    var frame = document.getElementById('agVscodeFrame');
+
+    var action = vscodeIsActive ? 'stop' : 'start';
+    if (btn) btn.textContent = '⏳ ' + (action === 'start' ? 'Starting...' : 'Stopping...');
+
+    fetch('/api/antigravity/vscode/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: action })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        vscodeIsActive = !!(d && d.active);
+        updateVscodeUI(vscodeIsActive);
+      })
+      .catch(function () {
+        if (btn) btn.textContent = '⚠️ Error';
+      });
+  };
+
+  function updateVscodeUI(active) {
+    var btn = document.getElementById('agVscodeToggleBtn');
+    var tabBtn = document.getElementById('agVscodeOpenTabBtn');
+    var frameContainer = document.getElementById('agVscodeFrameContainer');
+    var placeholder = document.getElementById('agVscodePlaceholder');
+    var pill = document.getElementById('agVscodeStatusPill');
+    var frame = document.getElementById('agVscodeFrame');
+
+    if (active) {
+      if (pill) {
+        pill.textContent = 'ACTIVE (~1 GB RAM)';
+        pill.style.background = '#064e3b';
+        pill.style.color = '#a7f3d0';
+      }
+      if (btn) {
+        btn.textContent = '⏹️ Stop VS Code (Save 1GB RAM)';
+        btn.style.background = '#dc2626';
+      }
+      if (tabBtn) tabBtn.style.display = 'inline-flex';
+      if (placeholder) placeholder.style.display = 'none';
+      if (frameContainer) frameContainer.style.display = 'block';
+      if (frame && !frame.src) frame.src = '/code/';
+    } else {
+      if (pill) {
+        pill.textContent = 'OFFLINE (0 MB RAM)';
+        pill.style.background = '#7f1d1d';
+        pill.style.color = '#fecaca';
+      }
+      if (btn) {
+        btn.textContent = '▶️ Start VS Code (On Demand)';
+        btn.style.background = '#059669';
+      }
+      if (tabBtn) tabBtn.style.display = 'none';
+      if (placeholder) placeholder.style.display = 'block';
+      if (frameContainer) frameContainer.style.display = 'none';
+      if (frame) frame.src = '';
+    }
+  }
+
+  window.agReloadVscode = function () {
+    var f = document.getElementById('agVscodeFrame');
+    if (f && vscodeIsActive) f.src = '/code/';
+  };
+
+  window.agCopyText = function (text, btn) {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(function () {
         var old = btn.textContent;
@@ -393,7 +733,7 @@
   window.agVoiceInput = function () {
     var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech Recognition is not supported in this browser. Please type your instruction.');
+      alert('Speech Recognition is not supported on this browser. Please type your instruction.');
       return;
     }
     var rec = new SpeechRecognition();
@@ -412,41 +752,89 @@
     };
   };
 
+  window.agChangeModel = function (val) {
+    selectedModel = val || 'auto';
+    try { localStorage.setItem('agSelectedModel', selectedModel); } catch (e) {}
+
+    var selects = document.querySelectorAll('.ag-model-selector');
+    selects.forEach(function (s) { s.value = selectedModel; });
+
+    var info = getModelInfo(selectedModel);
+    var activeLabel = document.getElementById('agActiveModelLabel');
+    if (activeLabel) activeLabel.textContent = info.short;
+
+    var activeBadge = document.getElementById('agActiveModelBadge');
+    if (activeBadge) activeBadge.textContent = '⚡ ' + info.short;
+
+    var welcomePill = document.getElementById('agChatWelcomePill');
+    if (welcomePill) welcomePill.textContent = '💡 Antigravity VPS Engine Ready · Model: ' + info.name;
+  };
+
   window.agDispatchPrompt = function () {
     var p = document.getElementById('agPromptInput');
-    var r = document.getElementById('agRepoSelect');
     var term = document.getElementById('agTerminalOutput');
+    var stream = document.getElementById('agChatStream');
     var text = (p && p.value || '').trim();
-    var repo = (r && r.value || 'aligntasks');
 
     if (!text) {
-      alert('Please enter a coding instruction first.');
+      alert('Please enter an instruction first.');
       return;
     }
 
+    var info = getModelInfo(selectedModel);
+
+    // Add user message to chat stream
+    if (stream) {
+      var userMsg = document.createElement('div');
+      userMsg.className = 'ag-msg user';
+      userMsg.textContent = text;
+      stream.appendChild(userMsg);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    if (p) p.value = '';
+
     if (term) {
-      term.textContent = '🚀 Dispatching task to Antigravity on Tencent VPS...\n' +
-        'Target Repo: ' + repo.toUpperCase() + '\n' +
+      term.textContent = '🚀 Dispatching task to Antigravity on Tencent Cloud VPS...\n' +
+        'Target Repo: ' + selectedRepo.toUpperCase() + '\n' +
+        'Selected Model: ' + info.name + '\n' +
         'Instruction: "' + text + '"\n\n' +
-        'Connecting to VPS /opt/whatanagent backend...';
+        'Queue worker executing task autonomously on VPS...';
     }
 
     fetch('/api/antigravity/task/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repo: repo, instruction: text, source: 'mobile_web_dashboard' })
+      body: JSON.stringify({
+        repo: selectedRepo,
+        instruction: text,
+        source: 'antigravity_studio',
+        model: selectedModel
+      })
     })
       .then(function (res) { return res.json(); })
       .then(function (data) {
         if (data.ok) {
           if (term) {
-            term.textContent = '✅ SUCCESS! Task Dispatched to Antigravity VPS Engine.\n' +
+            term.textContent = '✅ Task Dispatched Successfully!\n' +
               'Task ID: ' + (data.task && data.task.id || 'N/A') + '\n' +
-              'Status: ' + (data.task && data.task.status || 'queued') + '\n' +
-              'Target Repo: ' + (data.task && data.task.repo || repo) + '\n' +
-              'User: ' + (data.task && data.task.user || 'nadeemalsaham@gmail.com') + '\n\n' +
-              '🪐 The Antigravity agent on Tencent VPS is processing the codebase modifications.\n' +
-              'All changes will be pushed to GitHub repository.';
+              'Model: ' + info.name + '\n' +
+              'Status: ' + (data.task && data.task.status || 'queued') + '\n\n' +
+              'Antigravity agent is executing task on the VPS with selected model.';
+          }
+          if (stream) {
+            var agentMsg = document.createElement('div');
+            agentMsg.className = 'ag-msg agent';
+            agentMsg.innerHTML = `
+              <div class="ag-thought-pill">⚡ Executing on VPS · ID: ${data.task && data.task.id || 'N/A'} · Model: ${info.short}</div>
+              <div class="ag-msg-body" style="color:#94a3b8; font-style:italic;">Processing with ${info.short}...</div>
+            `;
+            stream.appendChild(agentMsg);
+            stream.scrollTop = stream.scrollHeight;
+
+            if (data.task && data.task.id) {
+              pollTaskOutput(data.task.id, agentMsg);
+            }
           }
           fetchRecentTasks();
         } else {
@@ -458,33 +846,35 @@
       });
   };
 
-  window.agSimulateBossCommand = function () {
-    var cmd = 'add filter icon on top of aligntask all pages of task';
-    var term = document.getElementById('agTerminalOutput');
-    if (term) {
-      term.textContent = '📱 Simulating Boss WhatsApp Command:\n' +
-        'Boss (+971529244592): "' + cmd + '"\n\n' +
-        'Routing through WhatAnAgent Boss AI Brain...';
-    }
-
-    fetch('/api/boss-chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: cmd })
-    })
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        if (term) {
-          term.textContent = '📱 BOSS WHATSAPP REPLY RECEIVED:\n\n' +
-            (data.reply || 'Order received.') + '\n\n' +
-            '✅ Verified: Antigravity engine received coding action from Boss WhatsApp!';
-        }
-        fetchRecentTasks();
-      })
-      .catch(function (err) {
-        if (term) term.textContent = '⚠️ Boss command simulation error: ' + err.message;
-      });
-  };
+  function pollTaskOutput(taskId, containerEl) {
+    if (!taskId || !containerEl) return;
+    var attempts = 0;
+    var timer = setInterval(function () {
+      attempts++;
+      if (attempts > 75) { clearInterval(timer); return; }
+      fetch('/api/antigravity/tasks')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var t = (d && d.tasks || []).find(function (item) { return item.id === taskId; });
+          if (t && (t.status === 'completed' || t.status === 'done' || t.status === 'error')) {
+            clearInterval(timer);
+            var pillText = t.status === 'error' ? '⚠️ Execution Error' : '✅ Completed on VPS';
+            var modelBadge = t.modelUsed || t.model || 'Flash Low';
+            var bodyText = t.output || (t.error ? 'Error: ' + t.error : 'Task finished.');
+            containerEl.innerHTML = `
+              <div class="ag-thought-pill">${pillText} · ${(t.repo || '').toUpperCase()} · ${modelBadge}</div>
+              <div class="ag-msg-body" style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(bodyText)}</div>
+            `;
+            var stream = document.getElementById('agChatStream');
+            if (stream) stream.scrollTop = stream.scrollHeight;
+            var term = document.getElementById('agTerminalOutput');
+            if (term && t.output) term.textContent = t.output;
+            fetchRecentTasks();
+          }
+        })
+        .catch(function () {});
+    }, 2000);
+  }
 
   window.agRefreshTasks = function () {
     fetchRecentTasks();
@@ -493,59 +883,120 @@
   function fetchEngineStatus() {
     fetch('/api/antigravity/status')
       .then(function (r) { return r.json(); })
+      .then(function () {})
+      .catch(function () {});
+  }
+
+  function fetchVscodeStatus() {
+    fetch('/api/antigravity/vscode/status')
+      .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d.ok) return;
-        // Status updated
+        vscodeIsActive = !!(d && d.active);
+        updateVscodeUI(vscodeIsActive);
       })
       .catch(function () {});
   }
 
+  var historyLoaded = false;
+  function loadChatHistoryFromTasks(tasks) {
+    if (historyLoaded || !tasks || !tasks.length) return;
+    var stream = document.getElementById('agChatStream');
+    if (!stream) return;
+
+    var relevant = tasks.slice(0, 5).reverse();
+    relevant.forEach(function (t) {
+      if (!t.instruction) return;
+      var userMsg = document.createElement('div');
+      userMsg.className = 'ag-msg user';
+      userMsg.textContent = t.instruction;
+      stream.appendChild(userMsg);
+
+      if (t.output || t.status === 'completed' || t.status === 'error') {
+        var agentMsg = document.createElement('div');
+        agentMsg.className = 'ag-msg agent';
+        var pill = t.status === 'error' ? '⚠️ Execution Error' : '✅ Antigravity Reply';
+        var modelBadge = t.modelUsed || t.model || 'Flash Low';
+        var body = t.output || (t.error ? 'Error: ' + t.error : 'Task completed.');
+        agentMsg.innerHTML = `
+          <div class="ag-thought-pill">${pill} · ${(t.repo || '').toUpperCase()} · ${modelBadge}</div>
+          <div class="ag-msg-body" style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(body)}</div>
+        `;
+        stream.appendChild(agentMsg);
+      }
+    });
+    historyLoaded = true;
+    stream.scrollTop = stream.scrollHeight;
+  }
+
   function fetchRecentTasks() {
     var list = document.getElementById('agTasksList');
-    if (!list) return;
+    var badge = document.getElementById('agQueueBadge');
 
     fetch('/api/antigravity/tasks')
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var tasks = (d && d.tasks) || [];
+        loadChatHistoryFromTasks(tasks);
+
+        var queuedCount = tasks.filter(function (t) { return t.status === 'queued'; }).length;
+        if (badge) {
+          if (queuedCount > 0) {
+            badge.textContent = queuedCount;
+            badge.style.display = 'inline-block';
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+
         if (!tasks.length) {
           list.innerHTML = `
-            <div class="ag-log-item" style="color:#64748b; justify-content:center; padding:16px;">
-              No recent Antigravity tasks in queue yet. Send a prompt above or from WhatsApp Boss to start!
+            <div style="color:#64748b; text-align:center; padding:16px;">
+              No recent Antigravity tasks. Send an instruction in the Studio above to start!
             </div>
           `;
           return;
         }
 
         var html = '';
-        tasks.slice(0, 10).forEach(function (t) {
+        tasks.slice(0, 8).forEach(function (t) {
           var dateStr = t.createdAt ? new Date(t.createdAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Recent';
           var statusClass = 'ag-status-queued';
-          if (t.status === 'done' || t.status === 'completed') statusClass = 'ag-status-done';
+          if (t.status === 'done' || t.status === 'completed') statusClass = 'ag-status-completed';
           else if (t.status === 'running') statusClass = 'ag-status-running';
           else if (t.status === 'error') statusClass = 'ag-status-error';
 
+          var outputBox = '';
+          if (t.output) {
+            outputBox = `
+              <details style="margin-top:6px; font-size:11px; color:#94a3b8;">
+                <summary style="cursor:pointer; font-weight:600; color:#818cf8;">🔍 View Agent Execution Output</summary>
+                <pre style="background:#030712; border:1px solid #1e293b; color:#38bdf8; padding:8px 10px; border-radius:6px; overflow-x:auto; margin-top:4px; max-height:160px; font-size:11px;">${escapeHtml(t.output)}</pre>
+              </details>
+            `;
+          }
+
+          var modelDisplay = t.modelUsed || t.model || 'auto (flash low)';
+
           html += `
-            <div class="ag-log-item">
-              <div style="flex:1; padding-right:12px;">
-                <div style="font-weight:600; color:#0f172a; margin-bottom:2px;">
-                  [${(t.repo || 'ALIGNTASKS').toUpperCase()}] ${escapeHtml(t.instruction || '')}
-                </div>
-                <div style="font-size:11px; color:#64748b;">
-                  Source: <strong>${t.source || 'whatsapp'}</strong> • User: ${t.user || 'nadeemalsaham@gmail.com'} • ${dateStr}
-                </div>
-              </div>
-              <div>
+            <div class="ag-task-card">
+              <div class="ag-task-top">
+                <span style="font-weight:700; color:#fff; font-size:12.5px;">[${(t.repo || 'WHATANAGENT').toUpperCase()}]</span>
                 <span class="ag-status-pill ${statusClass}">${t.status || 'queued'}</span>
               </div>
+              <div style="font-size:12.5px; color:#cbd5e1; line-height:1.4;">
+                ${escapeHtml(t.instruction || '')}
+              </div>
+              <div style="font-size:11px; color:#64748b; display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                <span>Source: ${t.source || 'whatsapp'} · Model: <strong style="color:#38bdf8;">${modelDisplay}</strong></span>
+                <span>${dateStr}</span>
+              </div>
+              ${outputBox}
             </div>
           `;
         });
         list.innerHTML = html;
       })
-      .catch(function () {
-        list.innerHTML = '<div style="color:#ef4444; padding:12px; font-size:12px;">Could not load tasks list.</div>';
-      });
+      .catch(function () {});
   }
 
   function escapeHtml(str) {

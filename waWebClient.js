@@ -1083,6 +1083,7 @@ export async function dispatchAntigravityTask(p) {
     id: 'ag-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
     repo: repo,
     instruction: instruction,
+    model: (p && p.model) || 'auto',
     status: 'queued',
     createdAt: Date.now(),
     source: (p && p.source) || 'whatsapp_boss',
