@@ -1,10 +1,8 @@
-﻿{
+{
     "watch":  [
                   "index.js",
                   "contactBrain.mjs",
                   "waWebClient.js",
-                  "liveMeetingApi.mjs",
-                  "liveMeetingWs.mjs",
                   "notebookApi.mjs",
                   "aiTracker.mjs",
                   "goldAgent.mjs",

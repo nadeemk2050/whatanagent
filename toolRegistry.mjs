@@ -23,7 +23,7 @@ let toolDb = null;
 export function attachToolDb(db) { if (db) toolDb = db; }
 
 const MAX_TEXT = 8000;
-const ALLOWED_COLLECTIONS = ['contactBrains', 'notes', 'liveMeetingRooms'];
+const ALLOWED_COLLECTIONS = ['contactBrains', 'notes'];
 
 // --- URL safety: block localhost / private ranges / non-http schemes ------------------
 function assertPublicUrl(rawUrl) {

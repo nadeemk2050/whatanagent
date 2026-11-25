@@ -54,7 +54,6 @@
     }
     fetchEngineStatus();
     fetchRecentTasks();
-    fetchVscodeStatus();
 
     // Sync selected model
     setTimeout(function () {
@@ -401,14 +400,6 @@
         .ag-status-running { background: #312e81; color: #c7d2fe; }
         .ag-status-completed { background: #064e3b; color: #a7f3d0; }
         .ag-status-error { background: #7f1d1d; color: #fecaca; }
-
-        /* VS Code Optional Section */
-        .ag-vscode-box {
-          background: #090d16;
-          border: 1px solid #1e293b;
-          border-radius: 12px;
-          padding: 16px;
-        }
       </style>
 
       <div class="ag-wrap">
@@ -453,9 +444,6 @@
           </button>
           <button class="ag-tab-btn" onclick="window.agSwitchTab('tasks', this)">
             📜 Tasks Queue & Logs <span id="agQueueBadge" style="background:#f59e0b; color:#fff; border-radius:10px; padding:1px 6px; font-size:10px; display:none;">0</span>
-          </button>
-          <button class="ag-tab-btn" onclick="window.agSwitchTab('vscode', this)">
-            💻 VS Code Browser IDE (Optional Heavy)
           </button>
         </div>
 
@@ -580,42 +568,6 @@
           </div>
         </div>
 
-        <!-- TAB 3: OPTIONAL VS CODE -->
-        <div id="agTab_vscode" class="ag-tab-pane">
-          <div class="ag-vscode-box">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-              <div>
-                <span style="font-weight:700; color:#fff; font-size:14px;">💻 VS Code Web IDE (On-Demand Mode)</span>
-                <span id="agVscodeStatusPill" style="margin-left:8px; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; background:#7f1d1d; color:#fecaca;">OFFLINE (0 MB RAM)</span>
-                <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">
-                  Kept stopped by default to save <strong>~1 GB of RAM</strong>. Start only when you need full manual editing.
-                </div>
-              </div>
-              <div style="display:flex; gap:8px; align-items:center;">
-                <button id="agVscodeToggleBtn" class="ag-btn-run" onclick="window.agToggleVscode()" style="background:#059669; font-size:12px;">
-                  ▶️ Start VS Code
-                </button>
-                <button id="agVscodeOpenTabBtn" class="ag-btn-run" onclick="window.open('/code/', '_blank')" style="background:#0284c7; font-size:12px; display:none;">
-                  🚀 Open Fullscreen
-                </button>
-              </div>
-            </div>
-
-            <div id="agVscodeFrameContainer" style="display:none; border-radius:10px; overflow:hidden; border:1px solid #1e293b;">
-              <iframe id="agVscodeFrame" style="width:100%; height:640px; border:none; background:#1e1e1e;" src="" allow="clipboard-read; clipboard-write"></iframe>
-            </div>
-
-            <div id="agVscodePlaceholder" style="background:#030712; border:1px dashed #334155; border-radius:10px; padding:36px 20px; text-align:center; color:#94a3b8;">
-              <div style="font-size:32px; margin-bottom:8px;">💤</div>
-              <div style="font-size:13px; font-weight:600; color:#e2e8f0; margin-bottom:4px;">VS Code is currently sleeping to keep your VPS ultra-fast</div>
-              <div style="font-size:12px; color:#64748b; margin-bottom:16px;">Antigravity Studio handles all coding tasks autonomously via AI. Click below only if you want full manual VS Code editing.</div>
-              <button class="ag-btn-run" onclick="window.agToggleVscode()" style="background:#059669; font-size:12px;">
-                ▶️ Wake Up VS Code Now
-              </button>
-            </div>
-          </div>
-        </div>
-
       </div>
     `;
   }
@@ -646,78 +598,6 @@
   window.agSetPrompt = function (text) {
     var p = document.getElementById('agPromptInput');
     if (p) p.value = text;
-  };
-
-  var vscodeIsActive = false;
-
-  window.agToggleVscode = function () {
-    var btn = document.getElementById('agVscodeToggleBtn');
-    var tabBtn = document.getElementById('agVscodeOpenTabBtn');
-    var frameContainer = document.getElementById('agVscodeFrameContainer');
-    var placeholder = document.getElementById('agVscodePlaceholder');
-    var pill = document.getElementById('agVscodeStatusPill');
-    var frame = document.getElementById('agVscodeFrame');
-
-    var action = vscodeIsActive ? 'stop' : 'start';
-    if (btn) btn.textContent = '⏳ ' + (action === 'start' ? 'Starting...' : 'Stopping...');
-
-    fetch('/api/antigravity/vscode/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: action })
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        vscodeIsActive = !!(d && d.active);
-        updateVscodeUI(vscodeIsActive);
-      })
-      .catch(function () {
-        if (btn) btn.textContent = '⚠️ Error';
-      });
-  };
-
-  function updateVscodeUI(active) {
-    var btn = document.getElementById('agVscodeToggleBtn');
-    var tabBtn = document.getElementById('agVscodeOpenTabBtn');
-    var frameContainer = document.getElementById('agVscodeFrameContainer');
-    var placeholder = document.getElementById('agVscodePlaceholder');
-    var pill = document.getElementById('agVscodeStatusPill');
-    var frame = document.getElementById('agVscodeFrame');
-
-    if (active) {
-      if (pill) {
-        pill.textContent = 'ACTIVE (~1 GB RAM)';
-        pill.style.background = '#064e3b';
-        pill.style.color = '#a7f3d0';
-      }
-      if (btn) {
-        btn.textContent = '⏹️ Stop VS Code (Save 1GB RAM)';
-        btn.style.background = '#dc2626';
-      }
-      if (tabBtn) tabBtn.style.display = 'inline-flex';
-      if (placeholder) placeholder.style.display = 'none';
-      if (frameContainer) frameContainer.style.display = 'block';
-      if (frame && !frame.src) frame.src = '/code/';
-    } else {
-      if (pill) {
-        pill.textContent = 'OFFLINE (0 MB RAM)';
-        pill.style.background = '#7f1d1d';
-        pill.style.color = '#fecaca';
-      }
-      if (btn) {
-        btn.textContent = '▶️ Start VS Code (On Demand)';
-        btn.style.background = '#059669';
-      }
-      if (tabBtn) tabBtn.style.display = 'none';
-      if (placeholder) placeholder.style.display = 'block';
-      if (frameContainer) frameContainer.style.display = 'none';
-      if (frame) frame.src = '';
-    }
-  }
-
-  window.agReloadVscode = function () {
-    var f = document.getElementById('agVscodeFrame');
-    if (f && vscodeIsActive) f.src = '/code/';
   };
 
   window.agCopyText = function (text, btn) {
@@ -884,16 +764,6 @@
     fetch('/api/antigravity/status')
       .then(function (r) { return r.json(); })
       .then(function () {})
-      .catch(function () {});
-  }
-
-  function fetchVscodeStatus() {
-    fetch('/api/antigravity/vscode/status')
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        vscodeIsActive = !!(d && d.active);
-        updateVscodeUI(vscodeIsActive);
-      })
       .catch(function () {});
   }
 

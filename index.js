@@ -11,8 +11,6 @@ import { fileURLToPath } from 'url';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, addDoc, query, orderBy, getDocs, limit, where, writeBatch, deleteField } from "firebase/firestore";
 import { registerNotebookRoutes } from './notebookApi.mjs';
-import { registerLiveMeetingRoutes } from './liveMeetingApi.mjs';
-import { initLiveMeetingWebSocket } from './liveMeetingWs.mjs';
 import { registerNewsRoutes } from './newsAgent.mjs';
 import { registerGoldRoutes } from './goldAgent.mjs';
 import { registerBrainRoutes, attachBrainDb } from './contactBrain.mjs';
@@ -176,8 +174,6 @@ app.use(express.json({ limit: '30mb' }));
 
 // Note Book (AI notebook: voice -> paragraphs, refine, AlignTasks extraction, WhatsApp push/import, reminders)
 registerNotebookRoutes(app, db);
-// Ã°Å¸â€Â´ Live Interactive Discussion / Meeting Board (Drawings, Calculations, Checklists, Polls, AI Co-Pilot)
-registerLiveMeetingRoutes(app, db);
 // Browsing News Agent (5 business-news sites -> top 5 each -> merged non-repeated news every 5 hours)
 const newsAgent = registerNewsRoutes(app, db);
 // Ã¯Â¿Â½ Gold Market Agent (live XAU/USD spot + one-time price alerts -> WhatsApp boss notifications)
@@ -478,37 +474,6 @@ app.post('/api/antigravity/task/execute-now', async (req, res) => {
     }
     pollQueuedTasks().catch(() => {});
     res.json({ ok: true, message: 'Queue check triggered.' });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// --- ON-DEMAND VS CODE TOGGLE (Saves ~1GB RAM) ---
-app.get('/api/antigravity/vscode/status', async (req, res) => {
-  try {
-    const { exec } = await import('child_process');
-    exec('systemctl is-active code-server@ubuntu', (err, stdout) => {
-      const active = (stdout || '').trim() === 'active';
-      res.json({ ok: true, active });
-    });
-  } catch (err) {
-    res.json({ ok: true, active: false });
-  }
-});
-
-app.post('/api/antigravity/vscode/toggle', async (req, res) => {
-  try {
-    const { action } = req.body || {};
-    const { exec } = await import('child_process');
-    const cmd = action === 'start'
-      ? 'sudo systemctl start code-server@ubuntu'
-      : 'sudo systemctl stop code-server@ubuntu';
-    exec(cmd, (err) => {
-      exec('systemctl is-active code-server@ubuntu', (e, stdout) => {
-        const active = (stdout || '').trim() === 'active';
-        res.json({ ok: true, active });
-      });
-    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -5117,7 +5082,7 @@ const server = app.listen(PORT, () => {
   console.log(`WhatsApp AI Agent running on port ${PORT}${STAGING_MODE ? ' [STAGING MODE - schedulers off]' : ''}${DRY_RUN ? ' [DRY RUN - outbound sends blocked]' : ''}`);
   startFollowUpScheduler();
 });
-initLiveMeetingWebSocket(server, db);
+
 import('./antigravityWorker.mjs').then(w => w.startAntigravityWorker(db)).catch(e => console.warn('[AG WORKER INIT]', e.message));
 
  
