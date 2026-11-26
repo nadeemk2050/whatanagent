@@ -34,6 +34,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteField, FieldPath } from 'firebase
 import { makeAdminGuard } from './adminGuard.mjs';
 import crypto from 'node:crypto';
 import { attachAgentsDb, listAgents, getAgent, createAgent } from './agentsStore.mjs';
+import { runSerpAudit } from './serpAudit.mjs';
 
 const WORKSHOP = 'websitesWorkshop';
 const SEO = 'seoAgent';
@@ -1419,6 +1420,30 @@ export function registerWorkshopRoutes(app, db) {
   // --------------------------------------------------------- promote site
   // Tracked-only sites (like alqaryangroup.com) become full register entries so
   // health checks and engineer assignment work on them too.
+  // ---------------------------------------------------------- SERP & competitors
+  // Same engine as scripts/serp-audit.mjs: the top results for this site's target
+  // keywords, an on-page + speed + schema + WHOIS audit of every page that ranks, and
+  // the factors that separate the top 5 from this site. DuckDuckGo order is used as a
+  // proxy unless GOOGLE_CSE_KEY + GOOGLE_CSE_ID are configured on the server.
+  app.post(api + '/serp', async (req, res) => {
+    try {
+      const b = req.body || {};
+      const key = sstr(b.key, 200).toLowerCase().replace(/[^a-z0-9.-]/g, '');
+      if (!key) return bad(res, 'Which website?');
+      const meta = await readMeta(db);
+      const seoSites = await readSeoSites(db);
+      const siteUrl = sstr((seoSites[key] || {}).url, 300) || ('https://' + key);
+      const saved = Array.isArray((meta.keywords || {})[key]) ? meta.keywords[key] : [];
+      const asked = Array.isArray(b.keywords) ? b.keywords.map(k => sstr(k, 80).trim()).filter(Boolean) : [];
+      const keywords = (asked.length ? asked : (saved.length ? saved : ['plastic scrap in oman', 'hdpe scrap in oman', 'scrap buyer in oman'])).slice(0, 5);
+      const out = await runSerpAudit({ site: siteUrl, keywords, maxAudit: 8, budgetMs: 90000 });
+      res.json(Object.assign({ ok: true, keywordsUsed: keywords }, out));
+    } catch (e) {
+      console.error('[WORKSHOP] serp audit failed:', e.message);
+      bad(res, e.message);
+    }
+  });
+
   app.post(api + '/process/promote', async (req, res) => {
     try {
       const b = req.body || {};

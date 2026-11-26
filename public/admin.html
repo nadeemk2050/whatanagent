@@ -14241,6 +14241,7 @@
                     '</div>' +
                     '<div class="ws-row" style="gap:14px;align-items:center;">' +
                         '<button class="ws-btn dark" id="wsAuditBtn" onclick="wshopAudit(\'' + esc(key) + '\')">\ud83e\udd16 Engineer: verify live</button>' +
+                        '<button class="ws-btn" id="wsSerpBtn" onclick="wshopSerpAudit(\'' + esc(key) + '\')">\ud83c\udfaf SERP audit</button>' +
                         '<div style="text-align:right;min-width:120px;">' +
                             '<div style="font-size:22px;font-weight:800;color:#0f172a;">' + pct + '%</div>' +
                             '<div class="ws-hint">' + proc.summary.done + ' of ' + proc.summary.total + ' done</div>' +
@@ -14840,6 +14841,69 @@
         }
     }
 
+    function serpAuditHtml(r) {
+        var h = '<p class="ws-hint" style="margin:0 0 10px 0;">' + esc(r.site) + ' \u00b7 ' + esc(r.source) + ' \u00b7 ' +
+            esc(r.generatedAt) + ' \u00b7 phrases: ' + ((r.keywords || []).length) +
+            ' \u00b7 our rank for the first phrase: <b>' + (r.ourRank ? '#' + r.ourRank : 'outside the returned results') + '</b></p>';
+        (r.keywords || []).forEach(function (block) {
+            h += '<div class="ws-h3" style="margin:16px 0 6px 0;font-size:13.5px;">\u201c' + esc(block.keyword) + '\u201d</div>';
+            h += '<div class="ws-tblwrap" style="max-height:320px;overflow:auto;"><table class="ws-tbl"><thead><tr>' +
+                '<th>#</th><th>Domain</th><th>Type</th><th>Age</th><th>Title</th><th>kw&nbsp;title</th><th>kw&nbsp;H1</th><th>Words</th><th>Schema</th><th>ms</th>' +
+                '</tr></thead><tbody>';
+            (block.results || []).forEach(function (x) {
+                h += '<tr' + (x.isOurs ? ' style="background:#ecfdf5;font-weight:700;"' : '') + '>' +
+                    '<td>' + x.rank + '</td>' +
+                    '<td><a href="' + esc(x.href) + '" target="_blank" rel="noopener">' + esc(x.host) + '</a></td>' +
+                    '<td>' + esc(x.type) + '</td>' +
+                    '<td>' + (x.ageYears === null || x.ageYears === undefined ? '\u2014' : x.ageYears.toFixed(1) + 'y') +
+                        (x.created ? '<span class="ws-hint" style="display:block;">' + esc(x.created) + '</span>' : '') + '</td>' +
+                    '<td style="max-width:280px;">' + (x.reachable ? esc(String(x.title || '').slice(0, 70)) : '<i>HTTP ' + x.status + '</i>') + '</td>' +
+                    '<td>' + (x.kwTitle ? '\u2705' : '\u00b7') + '</td>' +
+                    '<td>' + (x.kwH1 ? '\u2705' : '\u00b7') + '</td>' +
+                    '<td>' + (x.words || 0) + '</td>' +
+                    '<td>' + (x.schema && x.schema.length ? esc(x.schema.slice(0, 3).join(', ')) : '\u2014') + '</td>' +
+                    '<td>' + (x.ms || 0) + '</td>' +
+                    '</tr>';
+            });
+            h += '</tbody></table></div>';
+        });
+        h += '<div class="ws-h3" style="margin:18px 0 6px 0;font-size:13.5px;">Why the top 5 win</div>';
+        h += '<div class="ws-tblwrap"><table class="ws-tbl"><thead><tr><th>Factor</th><th>Top 5</th><th>' + esc(r.site) + '</th></tr></thead><tbody>';
+        (r.factors || []).forEach(function (f) {
+            h += '<tr><td>' + esc(f.label) + '</td><td>' + esc(f.top5) + '</td><td>' + esc(f.ours) + '</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        h += '<div class="ws-h3" style="margin:18px 0 6px 0;font-size:13.5px;">Gaps to close, most impact first</div>' +
+            '<ul style="margin:0 0 0 18px;padding:0;">';
+        (r.gaps || []).forEach(function (g) {
+            h += '<li style="margin:4px 0;font-size:13px;">' + esc(g) + '</li>';
+        });
+        h += '</ul>';
+        if (r.markdown) {
+            h += '<details style="margin-top:14px;"><summary class="ws-hint" style="cursor:pointer;">Markdown \u2014 copy this into the site repo</summary>' +
+                '<textarea readonly style="width:100%;height:220px;margin-top:8px;font:12px/1.5 ui-monospace,Menlo,monospace;border:1px solid #e2e8f0;border-radius:8px;padding:10px;">' +
+                esc(r.markdown) + '</textarea></details>';
+        }
+        return h;
+    }
+
+    async function serpAudit(key) {
+        var btn = $('wsSerpBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '\u23f3 Auditing SERPs\u2026 up to 90s'; }
+        try {
+            var r = await api('/serp', { method: 'POST', body: { key: key } });
+            openModal({
+                title: '\ud83c\udfaf SERP & competitor audit',
+                hint: 'Top results, the factors behind them, and the gaps to close. DuckDuckGo order is a proxy for who competes, not your Google position.',
+                body: serpAuditHtml(r)
+            });
+        } catch (e) {
+            toastMsg('\u26a0\ufe0f ' + e.message);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '\ud83c\udfaf SERP audit'; }
+        }
+    }
+
     async function procPromote(key) {
         try {
             await api('/process/promote', { method: 'POST', body: { key: key } });
@@ -14878,6 +14942,7 @@
     window.wshopMenuClose = menuClose;
     window.wshopDocReload = docReload;
     window.wshopAudit = auditLive;
+    window.wshopSerpAudit = serpAudit;
     window.wshopTodoForm = todoForm;
     window.wshopTodoAsk = todoAsk;
     window.wshopTodoStatus = todoStatus;
