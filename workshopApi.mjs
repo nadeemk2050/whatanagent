@@ -1186,6 +1186,64 @@ export function registerWorkshopRoutes(app, db) {
     } catch (e) { bad(res, e.message); }
   });
 
+  // Google Lighthouse CI / PageSpeed Insights API (Official Google 100/100 scoring)
+  async function runLighthouse(targetUrl, strategy = 'mobile', apiKey = '') {
+    try {
+      const keyParam = apiKey || process.env.GOOGLE_PAGESPEED_API_KEY ? `&key=${apiKey || process.env.GOOGLE_PAGESPEED_API_KEY}` : '';
+      const u = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=' +
+        encodeURIComponent(targetUrl) +
+        '&category=performance&category=seo&category=accessibility&category=best-practices&strategy=' + strategy + keyParam;
+      const r = await fetch(u, { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(35000) });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        return {
+          ok: false,
+          rateLimited: data.error?.code === 429,
+          error: data.error?.message || ('Google PageSpeed API HTTP ' + r.status),
+          hint: 'To run unlimited Google Lighthouse scans, provide a free Google PageSpeed API Key in settings.'
+        };
+      }
+      const lr = data.lighthouseResult || {};
+      const cats = lr.categories || {};
+      const audits = lr.audits || {};
+
+      return {
+        ok: true,
+        url: targetUrl,
+        strategy,
+        fetchTime: lr.fetchTime,
+        scores: {
+          performance: cats.performance ? Math.round(cats.performance.score * 100) : null,
+          seo: cats.seo ? Math.round(cats.seo.score * 100) : null,
+          accessibility: cats.accessibility ? Math.round(cats.accessibility.score * 100) : null,
+          bestPractices: cats['best-practices'] ? Math.round(cats['best-practices'].score * 100) : null
+        },
+        metrics: {
+          fcp: audits['first-contentful-paint'] ? audits['first-contentful-paint'].displayValue : null,
+          lcp: audits['largest-contentful-paint'] ? audits['largest-contentful-paint'].displayValue : null,
+          cls: audits['cumulative-layout-shift'] ? audits['cumulative-layout-shift'].displayValue : null,
+          tbt: audits['total-blocking-time'] ? audits['total-blocking-time'].displayValue : null,
+          speedIndex: audits['speed-index'] ? audits['speed-index'].displayValue : null
+        }
+      };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  app.post(api + '/google/lighthouse', async (req, res) => {
+    try {
+      const key = sstr((req.body || {}).key, 200).toLowerCase();
+      const seoSites = await readSeoSites(db);
+      const site = seoSites[key];
+      const targetUrl = (req.body || {}).url || (site ? site.url : key);
+      if (!targetUrl) return bad(res, 'Target URL required.');
+      const strategy = (req.body || {}).strategy === 'desktop' ? 'desktop' : 'mobile';
+      const out = await runLighthouse(targetUrl, strategy);
+      res.json(out);
+    } catch (e) { bad(res, e.message); }
+  });
+
   // A target keyword can only be answered from what Google actually reported: if the site has
   // never been shown for it, that is "not ranking yet", not position 0 or a guess.
   function matchTargets(keywords, queries) {

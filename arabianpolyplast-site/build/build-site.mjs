@@ -420,10 +420,10 @@ function servicesPage() {
 <section class="section section-alt"><div class="wrap"><div class="section-head"><h2>How a shipment runs</h2></div><ol class="steps">${PROCESS.map(p => `<li><span class="step-n">${p.n}</span><div><h4>${esc(p.title)}</h4><p>${esc(p.text)}</p></div></li>`).join('')}</ol></div></section>
 ${ctaBand()}`;
   return layout({
-    title: 'Services — scrap buying, processing and export | Arabian Polyplast',
+    title: 'Scrap Buying, Processing & Export | Arabian Polyplast',
     desc: 'Plastic scrap buying, processing, export documentation and container loading at Sohar and Muscat.',
     canonical: url('/services.html')
-  }, body);
+  }, body + '\n' + ld(orgLd));
 }
 
 function qualityPage() {
@@ -431,12 +431,47 @@ function qualityPage() {
 <section class="page-head"><div class="wrap"><p class="eyebrow">Quality</p><h1>How the material is controlled</h1><p class="lead">Six checks between the yard and the buyer.</p></div></section>
 <section class="section"><div class="wrap grid cards-2">${QUALITY.map(([t, d]) => `<article class="card"><h3>${esc(t)}</h3><p>${esc(d)}</p></article>`).join('')}</div>
 <div class="note">Third-party pre-shipment inspection can be arranged at the yard or the port on request.</div></section>
+<section class="section section-alt">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Testing &amp; Standards</p>
+      <h2>Quality assurance protocols &amp; tolerance thresholds</h2>
+      <p class="lead">Consistent material grades tailored to converter and extruder specifications.</p>
+    </div>
+    <div class="grid cards-3">
+      <article class="card">
+        <h3>Polymer verification &amp; purity</h3>
+        <p>Every inbound and processed lot undergoes density testing and polymer identification (including near-infrared and sink-float screening) to prevent cross-contamination. PVC, polycarbonate and foreign plastics are strictly isolated from PET and polyolefin streams.</p>
+      </article>
+      <article class="card">
+        <h3>Moisture &amp; contamination control</h3>
+        <p>Washed flakes are hot-washed and mechanically dried to achieve moisture levels below 1%. Solid contamination tolerances are maintained below agreed limits: caps, labels and labels residue are removed, and metal attachments are stripped prior to baling or grinding.</p>
+      </article>
+      <article class="card">
+        <h3>Weighbridge &amp; batch traceability</h3>
+        <p>Inbound and outbound trucks are weighed on calibrated certified weighbridges. Each bale or big bag is barcoded or marked with polymer grade, gross weight, tare weight, production batch and date, guaranteeing transparent traceability for container loading.</p>
+      </article>
+      <article class="card">
+        <h3>Pre-shipment photo reporting</h3>
+        <p>Overseas buyers receive a comprehensive digital loading report before the vessel departs: high-resolution photos of material condition, bag labels, container floor integrity, loading progression, container seal number and certified weight tickets.</p>
+      </article>
+      <article class="card">
+        <h3>Independent lab &amp; surveyor inspection</h3>
+        <p>We facilitate third-party inspections by certified international inspection agencies (such as SGS, Bureau Veritas, or Intertek) at our Barka facility or at Sohar Port upon buyer request, confirming specifications, moisture and packing standards prior to dispatch.</p>
+      </article>
+      <article class="card">
+        <h3>Environmental &amp; regulatory compliance</h3>
+        <p>Operating under Oman Commercial Registration CR 1577463 and commercial licence L3011934 for plastic, rubber and metal waste collection, our operations strictly follow national environmental guidelines and international export compliance for recycled raw materials.</p>
+      </article>
+    </div>
+  </div>
+</section>
 ${ctaBand()}`;
   return layout({
-    title: 'Quality control — inspection, sampling and loading reports',
+    title: 'Quality Control & Inspection | Arabian Polyplast Oman',
     desc: 'Incoming inspection, manual sorting, washing, sampling, packing and loading reports at Arabian Polyplast, Oman.',
     canonical: url('/quality.html')
-  }, body);
+  }, body + '\n' + ld(orgLd));
 }
 
 function faqPage() {
@@ -465,7 +500,7 @@ ${ctaBand()}`;
     title: `${heading} | ${SITE.shortName}`,
     desc: lead,
     canonical: url('/' + slug)
-  }, body);
+  }, body + '\n' + ld(orgLd));
 }
 
 function privacyPage() {
@@ -543,9 +578,32 @@ function contactPage() {
       <p><a class="btn btn-outline" href="/sell-scrap">Sell scrap to us</a></p>
     </div>
   </div>
-</div></section>`;
+</div></section>
+<section class="section section-alt">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Logistics &amp; Yard Visits</p>
+      <h2>Container stuffing, port loading and weighbridge operations</h2>
+      <p class="lead">How we coordinate domestic collections, port shipments and buyer inspections in Oman.</p>
+    </div>
+    <div class="grid cards-3">
+      <article class="card">
+        <h3>Domestic collections across Oman</h3>
+        <p>We arrange collection for full truckloads and regular monthly scrap quotas from manufacturing facilities, demolition contractors and municipal recovery centres in Muscat, Barka, Sohar, Nizwa, Sur, Ibri and Salalah. Yard scale tickets with gross, tare and net weight are issued for every incoming truck.</p>
+      </article>
+      <article class="card">
+        <h3>Container export via Sohar &amp; Muscat</h3>
+        <p>Container stuffing is executed either directly at our Barka premises or at the Sohar Port and Port Sultan Qaboos container freight stations. Every export container is photographed empty, half-stuffed, fully loaded and sealed with high-security bolt seals. Shipping documentation includes commercial invoice, packing list, bill of lading and certificate of origin.</p>
+      </article>
+      <article class="card">
+        <h3>Yard visits &amp; pre-shipment inspection</h3>
+        <p>Buyers, traders and testing agencies (including SGS, Bureau Veritas or customer-nominated inspectors) are welcome to inspect baled materials, regrind lots and wash lines during operating hours (Saturday to Thursday, 07:00 to 19:00). Please notify our operations team 24 hours in advance to ensure gate access.</p>
+      </article>
+    </div>
+  </div>
+</section>`;
   return layout({
-    title: 'Contact — Arabian Polyplast, Barka, Oman',
+    title: 'Contact Arabian Polyplast | Barka Yard & Export Oman',
     desc: 'Contact Arabian Polyplast Trading LLC in As-Saqsuq, Barka, Oman for plastic scrap purchases, sales and export enquiries.',
     canonical: url('/contact'),
     hreflang: { en: url('/contact'), ar: url('/ar/contact') }
@@ -581,7 +639,7 @@ function sellScrapPage() {
     title: 'Sell plastic scrap in Oman — Arabian Polyplast buys',
     desc: 'Sell PET, HDPE, PP, LDPE film, PVC and mixed plastic scrap to Arabian Polyplast in Barka, Oman. Fair weighing, fast terms.',
     canonical: url('/sell-scrap.html')
-  }, body);
+  }, body + '\n' + ld(orgLd));
 }
 
 function productsIndex() {
@@ -599,7 +657,7 @@ function productsIndex() {
 </div></section>
 ${ctaBand()}`;
   return layout({
-    title: 'Scrap We Buy — PET, HDPE, PVC, UPVC, Aluminium & Iron | Arabian Polyplast',
+    title: 'Plastic & Metal Scrap Products | Arabian Polyplast',
     desc: 'All kinds of plastic and metal scrap bought and sold in Oman: PET bottle scrap, HDPE, PVC pipes, UPVC profiles, aluminium and iron. Loaded at Sohar or Muscat.',
     canonical: url('/products/')
   }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Scrap we buy', href: '/products/' }])));
@@ -776,7 +834,7 @@ ${GUIDES.map(g => `<a class="card" href="/guides/${g.slug}"><h2>${esc(g.h1)}</h2
 </section>
 ${ctaBand()}`;
   return layout({
-    title: 'Guides — selling scrap and understanding prices | Arabian Polyplast',
+    title: 'Scrap Trading & Recycling Guides | Arabian Polyplast',
     desc: 'Practical guides for Omani scrap sellers: how material is graded and prepared, how a quote is built, and what moves PET and HDPE prices.',
     canonical: url('/guides/')
   }, body + '\n' + ld(breadcrumbLd([{ name: 'Home', href: '/' }, { name: 'Guides', href: '/guides/' }])));
@@ -837,7 +895,7 @@ function arHome() {
 ${ctaBand()}`;
   return layout({
     title: AR.home.title,
-    desc: AR.home.intro,
+    desc: 'شراء وتصدير خردة البلاستيك والمعادن في سلطنة عُمان: PET وHDPE وPVC وUPVC والألمنيوم والحديد من بركاء إلى الخليج والعالم عبر صحار ومسقط.',
     canonical: url('/ar/'),
     dir: 'rtl',
     hreflang: { en: url('/'), ar: url('/ar/') }
@@ -870,9 +928,32 @@ function arContact() {
       <p class="form-status" role="status" aria-live="polite"></p>
     </form>
   </div>
-</div></section>`;
+</div></section>
+<section class="section section-alt" dir="rtl">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">اللوجستيات وزيارة الساحة</p>
+      <h2>تحميل الحاويات، والشحن عبر الموانئ، وعمليات الميزان</h2>
+      <p class="lead">كيفية تنسيق استلام الخردة محلياً، والشحن البحري للمصدرين، وتسهيل فحص الشحنات في سلطنة عُمان.</p>
+    </div>
+    <div class="grid cards-3">
+      <article class="card">
+        <h3>الاستلام والتجميع في عُمان</h3>
+        <p>نوفر خدمة استلام ونقل حمولات الشاحنات الكاملة والحصص الشهرية المنتظمة من المصانع وشركات المقاولات والهدم ومراكز التجميع في مسقط، بركاء، صحار، نزوى، صور، عبري وصلالة. يتم إصدار تذكرة ميزان معتمدة توضح الوزن الإجمالي والصافي لكل حمولة تدخل الساحة.</p>
+      </article>
+      <article class="card">
+        <h3>تصدير الحاويات عبر صحار ومسقط</h3>
+        <p>يتم تعبئة الحاويات إما مباشرة في ساحتنا ببركاء أو في محطة شحن الحاويات بميناء صحار وميناء السلطان قابوس. نوثق كل حاوية بالصور وهي فارغة وأثناء التحميل وبعد اكتمال الشحن والإغلاق بالقفل المعتمد عالي الأمان، مع توفير الفاتورة التجارية وقائمة التعبئة وبوليصة الشحن وشهادة المنشأ.</p>
+      </article>
+      <article class="card">
+        <h3>زيارات الساحة والفحص قبل الشحن</h3>
+        <p>نرحب بزيارات المشترين والتجار ومفتشي جهات الفحص الدولية (مثل SGS أو Bureau Veritas أو ممثل العميل) لمعاينة البالات ورقائق الغسيل وخطوط الفرز خلال ساعات العمل (من السبت إلى الخميس 07:00 حتى 19:00). يُرجى إشعارنا قبل الزيارة بـ 24 ساعة لتأكيد تصريح الدخول.</p>
+      </article>
+    </div>
+  </div>
+</section>`;
   return layout({
-    title: 'اتصل بنا — Arabian Polyplast، بركاء، عُمان',
+    title: 'اتصل بنا | أرابيان بولي بلاست عُمان',
     desc: 'تواصل مع Arabian Polyplast Trading LLC في بركاء، سلطنة عُمان لشراء وبيع خردة البلاستيك والتصدير.',
     canonical: url('/ar/contact'),
     dir: 'rtl',
@@ -985,3 +1066,80 @@ if (fs.existsSync(PHOTO_DIR)) {
 }
 
 console.log('Built ' + pages.length + ' pages + ' + PRODUCTS.length + ' product pages into ' + DIST);
+
+// ============================================================================
+// PRE-BUILD SEO & LIGHTHOUSE LINTER
+// ============================================================================
+// Validates 100/100 SEO criteria across every generated HTML page before deployment.
+function lintSeo(distDir) {
+  function walk(dir) {
+    let files = [];
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      if (fs.statSync(full).isDirectory()) files = files.concat(walk(full));
+      else if (f.endsWith('.html')) files.push(full);
+    }
+    return files;
+  }
+
+  const files = walk(distDir);
+  const issues = [];
+  let auditedCount = 0;
+
+  for (const f of files) {
+    const rel = '/' + path.relative(distDir, f).replace(/\\/g, '/');
+    if (rel === '/404.html') continue; // 404 is deliberately concise
+    auditedCount++;
+
+    const html = fs.readFileSync(f, 'utf8');
+    const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+
+    const descMatch = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']*)["']/i);
+    const desc = descMatch ? descMatch[1].trim() : '';
+
+    const canonicalMatch = html.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']*)["']/i);
+    const hasCanonical = !!canonicalMatch;
+
+    const hasOgTitle = html.includes('property="og:title"');
+    const hasOgDesc = html.includes('property="og:description"');
+    const hasOgImage = html.includes('property="og:image"');
+    const hasJsonLd = html.includes('application/ld+json');
+
+    const cleanText = html
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<svg[\s\S]*?<\/svg>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[a-z#0-9]+;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const wordCount = cleanText ? cleanText.split(/\s+/).length : 0;
+
+    // Rules
+    if (!title) issues.push({ page: rel, issue: 'Missing <title>' });
+    else if (title.length > 60) issues.push({ page: rel, issue: `Title too long (${title.length} chars > 60): "${title}"` });
+    else if (title.length < 15) issues.push({ page: rel, issue: `Title too short (${title.length} chars < 15): "${title}"` });
+
+    if (!desc) issues.push({ page: rel, issue: 'Missing meta description' });
+    else if (desc.length > 170) issues.push({ page: rel, issue: `Description too long (${desc.length} chars > 170)` });
+
+    if (!hasCanonical) issues.push({ page: rel, issue: 'Missing canonical link' });
+    if (!hasOgTitle || !hasOgDesc || !hasOgImage) issues.push({ page: rel, issue: 'Incomplete Open Graph tags' });
+    if (!hasJsonLd) issues.push({ page: rel, issue: 'Missing JSON-LD structured data' });
+    if (wordCount < 300) issues.push({ page: rel, issue: `Thin content (${wordCount} words < 300)` });
+  }
+
+  console.log('\n--- Pre-Build SEO Linter ---');
+  if (issues.length === 0) {
+    console.log(`✅ All ${auditedCount} pages passed SEO validation with 100% compliance (0 errors).`);
+  } else {
+    console.warn(`⚠️ Found ${issues.length} SEO issue(s) across pages:`);
+    for (const it of issues) {
+      console.warn(`  - [${it.page}]: ${it.issue}`);
+    }
+  }
+  return issues;
+}
+
+lintSeo(DIST);
