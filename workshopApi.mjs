@@ -1421,10 +1421,35 @@ export function registerWorkshopRoutes(app, db) {
   // Tracked-only sites (like alqaryangroup.com) become full register entries so
   // health checks and engineer assignment work on them too.
   // ---------------------------------------------------------- SERP & competitors
+  // Google's own numbers, so the SERP tables can never be mistaken for a Google position.
+  function googleMarkdown(g) {
+    if (!g) return '';
+    let md = '\n\n## Google (Search Console, last 28 days)\n\n';
+    if (!g.connected && g.error) return md + 'Not connected: ' + g.error + '\n';
+    const t = g.totals || { clicks: 0, impressions: 0, position: 0 };
+    md += 'Clicks ' + (t.clicks || 0) + ' · impressions ' + (t.impressions || 0) +
+      ' · average position ' + (t.position ? Number(t.position).toFixed(1) : '—') + '\n\n';
+    if ((g.queries || []).length) {
+      md += '| Query | Clicks | Impressions | Position |\n|---|---|---|---|\n';
+      for (const q of g.queries.slice(0, 15)) {
+        md += '| ' + String(q.query).replace(/\|/g, '\\|') + ' | ' + q.clicks + ' | ' + q.impressions + ' | ' + Number(q.position || 0).toFixed(1) + ' |\n';
+      }
+    } else {
+      md += 'Google returned no query rows: the site still has almost no impressions, so there is nothing to list yet.\nThe tables above come from DuckDuckGo and are a proxy, not Google.\n';
+    }
+    if ((g.pages || []).length) {
+      md += '\n| Page | Impressions | Position |\n|---|---|---|\n';
+      for (const p of g.pages.slice(0, 10)) {
+        md += '| ' + String(p.page).replace(/\|/g, '\\|') + ' | ' + p.impressions + ' | ' + (p.position ? Number(p.position).toFixed(1) : '—') + ' |\n';
+      }
+    }
+    return md;
+  }
+
   // Same engine as scripts/serp-audit.mjs: the top results for this site's target
   // keywords, an on-page + speed + schema + WHOIS audit of every page that ranks, and
-  // the factors that separate the top 5 from this site. DuckDuckGo order is used as a
-  // proxy unless GOOGLE_CSE_KEY + GOOGLE_CSE_ID are configured on the server.
+  // the factors that separate the top 5 from this site. The Google block comes from
+  // Search Console, so a DuckDuckGo order is never read as a Google position.
   app.post(api + '/serp', async (req, res) => {
     try {
       const b = req.body || {};
@@ -1432,12 +1457,17 @@ export function registerWorkshopRoutes(app, db) {
       if (!key) return bad(res, 'Which website?');
       const meta = await readMeta(db);
       const seoSites = await readSeoSites(db);
-      const siteUrl = sstr((seoSites[key] || {}).url, 300) || ('https://' + key);
+      const siteRec = seoSites[key] || {};
+      const siteUrl = sstr(siteRec.url, 300) || ('https://' + key);
       const saved = Array.isArray((meta.keywords || {})[key]) ? meta.keywords[key] : [];
       const asked = Array.isArray(b.keywords) ? b.keywords.map(k => sstr(k, 80).trim()).filter(Boolean) : [];
       const keywords = (asked.length ? asked : (saved.length ? saved : ['plastic scrap in oman', 'hdpe scrap in oman', 'scrap buyer in oman'])).slice(0, 5);
       const out = await runSerpAudit({ site: siteUrl, keywords, maxAudit: 8, budgetMs: 90000 });
-      res.json(Object.assign({ ok: true, keywordsUsed: keywords }, out));
+      let google = null;
+      try { google = await googleIndex(key, siteRec); } catch (e) { google = { ok: false, connected: false, error: e.message }; }
+      res.json(Object.assign({ ok: true, keywordsUsed: keywords, google }, out, {
+        markdown: out.markdown + googleMarkdown(google)
+      }));
     } catch (e) {
       console.error('[WORKSHOP] serp audit failed:', e.message);
       bad(res, e.message);

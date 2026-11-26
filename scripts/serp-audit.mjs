@@ -38,7 +38,7 @@ const result = await runSerpAudit({
 
 writeFileSync(out, result.markdown, 'utf8');
 console.log('\n[report] ' + out + ' (' + result.markdown.length + ' chars, ' + ((Date.now() - started) / 1000).toFixed(1) + 's)');
-console.log('[ours] rank for "' + result.keywords[0].keyword + '": ' + (result.ourRank || 'not in top ' + result.keywords[0].results.length));
+console.log('[ours] DuckDuckGo rank for "' + result.keywords[0].keyword + '": ' + (result.ourRank || 'not in top ' + result.keywords[0].results.length));
 for (const block of result.keywords) {
   console.log('\n' + block.keyword + '  (top ' + block.results.length + ', ' + block.results.filter(r => r.type === 'directory').length + ' directory)');
   for (const r of block.results.slice(0, 10)) {

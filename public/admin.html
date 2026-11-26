@@ -14842,9 +14842,31 @@
     }
 
     function serpAuditHtml(r) {
-        var h = '<p class="ws-hint" style="margin:0 0 10px 0;">' + esc(r.site) + ' \u00b7 ' + esc(r.source) + ' \u00b7 ' +
+        var h = '';
+        var g = r.google;
+        if (g) {
+            var t = g.totals || {};
+            h += '<div class="ws-h3" style="margin:0 0 6px 0;font-size:13.5px;">\ud83d\udd0d Google — Search Console, last 28 days</div>';
+            h += '<div class="ws-tblwrap"><table class="ws-tbl"><thead><tr><th>Property</th><th>Clicks</th><th>Impressions</th><th>Avg position</th></tr></thead><tbody>' +
+                '<tr><td>' + esc(g.property || '') + '</td><td>' + (t.clicks || 0) + '</td><td>' + (t.impressions || 0) + '</td><td>' +
+                (t.position ? Number(t.position).toFixed(1) : '\u2014') + '</td></tr>' +
+                '</tbody></table></div>';
+            if ((g.queries || []).length) {
+                h += '<div class="ws-tblwrap" style="margin-top:8px;"><table class="ws-tbl"><thead><tr><th>Query</th><th>Clicks</th><th>Impr.</th><th>Position</th></tr></thead><tbody>';
+                g.queries.slice(0, 15).forEach(function (q) {
+                    h += '<tr><td>' + esc(q.query) + '</td><td>' + q.clicks + '</td><td>' + q.impressions + '</td><td>' + Number(q.position || 0).toFixed(1) + '</td></tr>';
+                });
+                h += '</tbody></table></div>';
+            } else {
+                h += '<p class="ws-hint" style="margin:6px 0 4px;">Google returned no query rows yet — the site has almost no impressions, so there is nothing to list. ' +
+                    'Everything below comes from DuckDuckGo and is a proxy for who competes, <b>not</b> your Google position.</p>';
+            }
+            if (g.error) h += '<p class="ws-hint">' + esc(g.error) + '</p>';
+            h += '<hr style="border:0;border-top:1px solid #e2e8f0;margin:16px 0;">';
+        }
+        h += '<p class="ws-hint" style="margin:0 0 10px 0;">' + esc(r.site) + ' \u00b7 ' + esc(r.source) + ' \u00b7 ' +
             esc(r.generatedAt) + ' \u00b7 phrases: ' + ((r.keywords || []).length) +
-            ' \u00b7 our rank for the first phrase: <b>' + (r.ourRank ? '#' + r.ourRank : 'outside the returned results') + '</b></p>';
+            ' \u00b7 rank in this source for the first phrase: <b>' + (r.ourRank ? '#' + r.ourRank : 'outside the returned results') + '</b></p>';
         (r.keywords || []).forEach(function (block) {
             h += '<div class="ws-h3" style="margin:16px 0 6px 0;font-size:13.5px;">\u201c' + esc(block.keyword) + '\u201d</div>';
             h += '<div class="ws-tblwrap" style="max-height:320px;overflow:auto;"><table class="ws-tbl"><thead><tr>' +
@@ -14894,7 +14916,7 @@
             var r = await api('/serp', { method: 'POST', body: { key: key } });
             openModal({
                 title: '\ud83c\udfaf SERP & competitor audit',
-                hint: 'Top results, the factors behind them, and the gaps to close. DuckDuckGo order is a proxy for who competes, not your Google position.',
+                hint: 'Google numbers come from Search Console. The tables below come from DuckDuckGo and describe who competes on each phrase, not your Google position.',
                 body: serpAuditHtml(r)
             });
         } catch (e) {
