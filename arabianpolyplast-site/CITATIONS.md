@@ -137,3 +137,54 @@ also prints a one-tap `https://g.page/r/…` review link in the Business Profile
 `build/content.mjs` and rebuild — every page then carries it directly.
 
 Reply to every review within 48 hours, in the language it was written in.
+
+---
+
+## Submission sheet — copy these values into every form
+
+**Why this pack matters more than anything on the site right now.** Google's AI Overview
+for *plastic scrap in Oman* quotes **enfplastic.com**'s directory page, not any single
+trader's site. Directory entries are what that box is built from, and they are also the
+first real backlinks this domain can earn. The site itself is already indexed — the
+missing piece is other sites mentioning it.
+
+### The values (never retype, never restyle)
+
+| Field | Value |
+|---|---|
+| Legal name | Arabian Polyplast Trading LLC |
+| Trading name | Arabian Polyplast |
+| Address | As-Saqsuq, Barka 320, Al Batinah South Governorate, Oman |
+| P.O. Box | 511, Postal code 320 |
+| Phone | +968 7694 2126 |
+| WhatsApp / mobile | +968 9517 4888 |
+| Email | arabianpolyplast@gmail.com |
+| Website | https://arabianpolyplast.com |
+| Established | 2024 (certificate 01/10/2024) |
+| CR | 1577463 |
+| TIN | 2123435 (only where tax/VAT is asked) |
+| Activity | Collection of Plastic, Rubber, Paper and Metal Wastes (477403) |
+| Hours | Sat–Thu 07:00–19:00, Friday closed |
+| Employees | Not stated on the CR. Leave blank; use the smallest bracket only if the form forces one, and tell the workshop which band you want public. |
+
+### Order to do them in
+
+1. **enfplastic.com** — the directory Google is already quoting. Submit the company to
+   their plant directory: name, Barka, Oman, materials accepted (PET, HDPE, LDPE, PVC,
+   UPVC, PP, PC, aluminium, iron), website, phone. Send the short description from §2.
+2. **Oman Chamber of Commerce & Industry (OCCI)** — the strongest Oman domain we can
+   realistically earn. Membership listing needs the CR certificate; add
+   https://arabianpolyplast.com to the member profile.
+3. **TradeKey** — free profile; mark yourself **Buyer and Seller**, category
+   *Plastic Scrap*, then add the 15 materials as separate products.
+4. **go4WorldBusiness** — company profile as *Buyer / Importer, Trader*; one product per
+   material, each pointing at its material page URL.
+5. **Recycleinme** and **ScrapMonster** — the short description, Barka, WhatsApp as the
+   contact number.
+6. **Yellow Pages Oman / local directories** — categories *Scrap metal* and *Recycling*.
+7. **LinkedIn company page, then Facebook Page** — after they exist, send the URLs: they
+   become the Organization `sameAs` targets, which is how Google reconciles the entity
+   behind the site, the Business Profile and the listings.
+
+After each one: tell the workshop the live profile URL and it is added to the record, so
+nobody submits the same directory twice.
