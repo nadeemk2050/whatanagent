@@ -571,6 +571,7 @@ function contactPage() {
       <strong>Hours:</strong> ${esc(SITE.hours)}</p>
       <div class="map-embed"><iframe src="https://www.google.com/maps?q=${encodeURIComponent(SITE.name + ', ' + SITE.address.line1 + ', ' + SITE.address.city + ', Oman')}&amp;output=embed" width="100%" height="280" style="border:0" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Arabian Polyplast yard in Barka, Oman on Google Maps"></iframe></div>
       <p><a class="btn btn-outline" href="${esc(SITE.mapUrl)}" target="_blank" rel="noopener">Open in Google Maps</a></p>
+      <p class="muted">Bought or sold with us? <a href="${esc(SITE.reviewUrl || SITE.placesUrl)}" target="_blank" rel="noopener">Leave a Google review</a> — it is what other traders in Oman read first.</p>
     </div>
     <div class="card">
       <h3>Selling scrap?</h3>
@@ -1027,6 +1028,7 @@ fs.writeFileSync(path.join(DIST, 'llms.txt'),
   `## Materials\n${PRODUCTS.map(p => `- ${p.name}: ${p.card} (${SITE.domain}/products/${p.slug})`).join('\n')}\n\n` +
   `## Pages\n- Home: ${SITE.domain}/\n- Contact: ${SITE.domain}/contact\n- Sell scrap: ${SITE.domain}/sell-scrap\n` +
   `- Guides: ${SITE.domain}/guides/\n` +
+  GUIDES.map(g => `- ${g.h1}: ${SITE.domain}/guides/${g.slug}`).join('\n') + '\n' +
   `\n## Arabic\n- Home: ${SITE.domain}/ar/\n` +
   Object.keys(AR_DEEP).map(slug => `- ${AR_DEEP[slug].name}: ${SITE.domain}/ar/products/${slug}`).join('\n') + '\n', 'utf8');
 

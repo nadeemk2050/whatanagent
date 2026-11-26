@@ -4,7 +4,7 @@ Copy-paste blocks for directory listings. Every listing must use the **same NAP*
 character for character. Inconsistent name/address/phone is the fastest way to
 kill local ranking.
 
-Last updated: 24 November 2026.
+Last updated: 26 November 2026.
 
 ---
 
@@ -122,13 +122,18 @@ aluminium, iron, and the export service.
 
 > Thank you for the business. If the transaction went smoothly, a short Google review
 > helps other buyers find us — it takes less than a minute:
-> https://g.page/r/… (replace with your profile's review link)
+> https://maps.google.com/?cid=18067665926114846964
 > Mentioning the material you sold or bought is helpful, e.g. "sold HDPE drums in Sohar".
 
 **Arabic**
 
 > شكرًا لتعاملكم معنا. إذا كانت العملية سلسة، فإن تقييمًا قصيرًا على Google يساعد غيركم
-> في الوصول إلينا: (رابط التقييم)
+> في الوصول إلينا: https://maps.google.com/?cid=18067665926114846964
 > يُفضّل ذكر المادة التي بعتها أو اشتريتها، مثل «بعت خردة HDPE في صحار».
+
+Both links open the verified place page, where "Write a review" is one tap away. Google
+also prints a one-tap `https://g.page/r/…` review link in the Business Profile dashboard
+(Home → Share review form): when you have it, paste it into `SITE.reviewUrl` in
+`build/content.mjs` and rebuild — every page then carries it directly.
 
 Reply to every review within 48 hours, in the language it was written in.
