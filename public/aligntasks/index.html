@@ -2658,8 +2658,13 @@
             }
 
             function applyTaskFilters() {
-                const general = boardForAllRaw.filter(t => taskMatches(t, true));
-                const individual = boardTasksRaw.filter(t => taskMatches(t, false));
+                // Actions taken offline are shown immediately by merging the not-yet-synced
+                // queue on top of the Firestore snapshot (which is served from cache offline).
+                const ov = typeof window.alignOfflineOverlayList === 'function' ? window.alignOfflineOverlayList : null;
+                const generalSrc = ov ? ov('tasks_for_all', boardForAllRaw) : boardForAllRaw;
+                const individualSrc = ov ? ov('tasks', boardTasksRaw) : boardTasksRaw;
+                const general = generalSrc.filter(t => taskMatches(t, true));
+                const individual = individualSrc.filter(t => taskMatches(t, false));
                 currentFiltered = { general: general, individual: individual };
                 renderTasksForAll(general);
                 if (isOwner()) renderAdminIndividualTasks(individual, staffListCache);
@@ -2675,6 +2680,9 @@
                     b.classList.toggle('active', b.getAttribute('data-view') === taskView);
                 });
             }
+            // Exposed so the offline queue (and the gate) can repaint the board after a queued
+            // change, and after the queue has been flushed to the server.
+            try { window.applyTaskFilters = applyTaskFilters; } catch (e) { /* ignore */ }
 
             function renderAssigneeFilter() {
                 const sel = document.getElementById('task-filter-assignee');
@@ -5725,10 +5733,16 @@
                 const searchVal = (document.getElementById('personal-search-input')?.value || '').trim().toLowerCase();
                 const categoryFilter = document.getElementById('personal-category-filter')?.value || 'all';
 
-                const totalCount = personalTasksCache.length;
-                const todoCount = personalTasksCache.filter(t => t.status !== 'Done').length;
-                const urgentCount = personalTasksCache.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'Done').length;
-                const doneCount = personalTasksCache.filter(t => t.status === 'Done').length;
+                // Personal tasks added or edited offline are still sitting in the replay queue;
+                // merge them on top of the Firestore snapshot (which is served from cache offline).
+                const ptList = (typeof window.alignOfflineOverlayList === 'function')
+                    ? window.alignOfflineOverlayList('personal', personalTasksCache)
+                    : personalTasksCache;
+
+                const totalCount = ptList.length;
+                const todoCount = ptList.filter(t => t.status !== 'Done').length;
+                const urgentCount = ptList.filter(t => (t.priority === 'urgent' || t.priority === 'high') && t.status !== 'Done').length;
+                const doneCount = ptList.filter(t => t.status === 'Done').length;
 
                 // Update Stats
                 const totalEl = document.getElementById('personal-stat-total');
@@ -5751,7 +5765,7 @@
                 if (tabDone) tabDone.textContent = doneCount;
 
                 // Finished tasks leave the active lists and only show under the Done tab.
-                let filtered = personalTasksCache;
+                let filtered = ptList;
 
                 // Tab Filter
                 if (currentPersonalFilter === 'all') {
@@ -5785,7 +5799,7 @@
                         <div class="bg-white p-8 rounded-2xl text-center border border-gray-200">
                             
                             <p class="text-gray-600 font-semibold text-base">No personal tasks found</p>
-                            <p class="text-gray-400 text-xs mt-1">${personalTasksCache.length === 0 ? 'Add your first private task above. Only you can view your personal tasks.' : 'Try changing your search keywords or filter tab.'}</p>
+                            <p class="text-gray-400 text-xs mt-1">${ptList.length === 0 ? 'Add your first private task above. Only you can view your personal tasks.' : 'Try changing your search keywords or filter tab.'}</p>
                         </div>
                     `;
                     return;
@@ -5856,6 +5870,9 @@
                     `;
                 }).join('');
             }
+            // Exposed so the offline queue (and the gate) can repaint this list after a queued
+            // personal-task change, and after the queue has been flushed to the server.
+            try { window.renderPersonalTasks = renderPersonalTasks; } catch (e) { /* ignore */ }
 
             // Personal Task Form Submission (Add)
             const addPersonalTaskForm = document.getElementById('add-personal-task-form');
@@ -5891,7 +5908,11 @@
 
             // Edit Personal Task Modal
             function openEditPersonalTaskModal(taskId) {
-                const task = personalTasksCache.find(t => t.id === taskId);
+                let task = personalTasksCache.find(t => t.id === taskId);
+                // A personal task created while offline only exists in the replay queue for now.
+                if (!task && typeof window.alignOfflineOverlayList === 'function') {
+                    task = window.alignOfflineOverlayList('personal', personalTasksCache).find(t => t.id === taskId);
+                }
                 if (!task) return;
                 document.getElementById('edit-personal-task-id').value = taskId;
                 document.getElementById('edit-personal-task-desc').value = task.description || '';
@@ -9716,7 +9737,7 @@
         function firebaseUser() {
             try { return (window.firebase && firebase.auth) ? firebase.auth().currentUser : null; } catch (e) { return null; }
         }
-        async function api(path, opts = {}) {
+        async function apiRaw(path, opts = {}) {
             const headers = Object.assign(
                 { 'Content-Type': 'application/json' },
                 opts.headers || {}
@@ -9741,12 +9762,17 @@
                     });
                 } catch (e) {
                     // The server restarts for every deploy — say so instead of "Failed to fetch".
-                    throw new Error('Cannot reach the server right now (it may be restarting). Try again in a few seconds.');
+                    // err.offline lets the wrapper below queue team-task writes instead of losing them.
+                    const err = new Error('Cannot reach the server right now (it may be restarting). Try again in a few seconds.');
+                    err.offline = true;
+                    throw err;
                 }
             })();
             const data = await res.json().catch(() => ({}));
             if (res.status === 503 || res.status === 502) {
-                throw new Error('The server is restarting. Try again in a few seconds.');
+                const err = new Error('The server is restarting. Try again in a few seconds.');
+                err.status = res.status;
+                throw err;
             }
             if (res.status === 401 && !opts.noRedirect) {
                 // In read-only (admin browse) mode keep the person where they are instead of
@@ -9760,9 +9786,305 @@
                 setSession('');
                 showGate('login');
             }
-            if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+            if (!res.ok) { const err = new Error(data.error || ('HTTP ' + res.status)); err.status = res.status; throw err; }
             return data;
         }
+
+        // ---------------------------------------------------------- offline queue
+        // Team-task writes (create / update / delete / comment) go through the REST API because
+        // the server stamps who did it. When the device is offline those calls used to fail and
+        // the action was lost. Here they are saved in localStorage and replayed in order as soon
+        // as the app is back online. Personal tasks/projects are written straight to Firestore,
+        // whose own persistence already queues them while offline.
+        const OQ_KEY = 'align_offline_queue';
+        const OQ_LOCK = 'align_offline_flushing';
+
+        function oqSeq() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+        // Only one tab may drain the queue at a time, otherwise two tabs replay the same create
+        // and the task is added twice. The lock is timestamped so a crashed tab cannot wedge it.
+        function oqLock() {
+            try {
+                const t = Number(localStorage.getItem(OQ_LOCK) || 0);
+                if (t && Date.now() - t < 20000) return false;
+                localStorage.setItem(OQ_LOCK, String(Date.now()));
+                return true;
+            } catch (e) { return true; }
+        }
+        function oqUnlock() { try { localStorage.removeItem(OQ_LOCK); } catch (e) {} }
+        function oqRemove(op) {
+            const q = oqLoad();
+            oqSave(op && op.seq ? q.filter(o => o.seq !== op.seq) : q.filter(o => o !== op));
+        }
+        // Rows created while offline carry a temp id. Once the server answers a create with the
+        // real document id, point every later op that still refers to the temp id at it.
+        function oqRemapTempId(tempId, realId) {
+            if (!tempId || !realId || tempId === realId) return;
+            const pidOf = (p) => decodeURIComponent(String(p || '').replace(/^\/personal\//, '')).split('?')[0];
+            const q = oqLoad();
+            let changed = false;
+            q.forEach(o => {
+                if (String(o.path || '').indexOf('/personal/') === 0 && pidOf(o.path) === tempId) {
+                    o.path = '/personal/' + encodeURIComponent(realId);
+                    changed = true;
+                }
+                if (o.body && o.body.id === tempId) { o.body.id = realId; changed = true; }
+            });
+            if (changed) oqSave(q);
+        }
+
+        function oqLoad() {
+            try { const a = JSON.parse(localStorage.getItem(OQ_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+        }
+        function oqSave(list) {
+            try { list && list.length ? localStorage.setItem(OQ_KEY, JSON.stringify(list)) : localStorage.removeItem(OQ_KEY); } catch (e) {}
+            paintOfflineChip();
+        }
+        function oqSize() { return oqLoad().length; }
+        // Only this device user's ops can be replayed now; another person's offline edits wait for
+        // them to sign in, so they must not keep this person's "syncing" chip up forever.
+        function oqMineSize() { return oqLoad().filter(oqMine).length; }
+        function oqKindOf(body) {
+            if (!body) return '';
+            if (body.kind === 'assigned') return 'tasks';
+            if (body.kind === 'shared') return 'tasks_for_all';
+            return '';
+        }
+        function oqKindOfOp(op) {
+            const p = String((op && op.path) || '');
+            if (/^\/personal(\/|$)/.test(p)) return 'personal';
+            return oqKindOf(op && op.body);
+        }
+        // Writes that can safely be replayed later. Team tasks are POST-only (the server stamps
+        // them); personal tasks use POST / PATCH / DELETE.
+        function oqIsQueueable(path, method) {
+            if (/^\/task\/(create|update|delete|comment)$/.test(path)) return method === 'POST';
+            if (/^\/personal(\/[^/?]+)?$/.test(path)) return method === 'POST' || method === 'PATCH' || method === 'DELETE';
+            return false;
+        }
+        function oqMine(op) { return !op.who || !getSessionName() || op.who === getSessionName(); }
+
+        function oqPush(path, opts) {
+            const body = Object.assign({}, (opts && opts.body) || {});
+            const teamId = (opts && opts.teamId) || body.teamId || '';
+            const method = String((opts && opts.method) || 'POST').toUpperCase();
+            const who = getSessionName() || '';
+            let q = oqLoad();
+
+            // ---- personal tasks (private, but still server-stamped) ----
+            if (/^\/personal(\/|$)/.test(path)) {
+                const pid = path === '/personal' ? '' : decodeURIComponent(path.replace(/^\/personal\//, '')).split('?')[0];
+                if (path === '/personal') {
+                    q.push({ seq: oqSeq(), tempId: 'offline_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), path, method, body, teamId, who, at: Date.now() });
+                } else if (pid.indexOf('offline_') === 0) {
+                    const c = q.find(o => o.path === '/personal' && o.tempId === pid);
+                    if (c) {
+                        if (method === 'DELETE') q = q.filter(o => o !== c);
+                        else ['status', 'description', 'category', 'priority', 'dueDate', 'notes', 'repeat'].forEach(k => { if (body[k] !== undefined) c.body[k] = body[k]; });
+                    }
+                } else {
+                    const same = o => o.path !== '/personal' && String(o.path || '').indexOf('/personal/') === 0 && decodeURIComponent(String(o.path).replace(/^\/personal\//, '')).split('?')[0] === pid;
+                    q = q.filter(o => !(same(o) && (method === 'DELETE' || o.method === 'PATCH')));
+                    q.push({ seq: oqSeq(), path, method, body, teamId, who, at: Date.now() });
+                }
+                oqSave(q);
+                repaintBoard();
+                setTimeout(() => { try { flushOfflineQueue(); } catch (e) {} }, 1200);
+                return;
+            }
+
+            // ---- team tasks (assigned / shared) ----
+            const kind = oqKindOf(body);
+            const id = String(body.id || '');
+
+            if (path === '/task/create') {
+                q.push({ seq: oqSeq(), tempId: 'offline_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), path, method, body, teamId, who, at: Date.now() });
+            } else if (id.indexOf('offline_') === 0) {
+                // Acting on a task that only exists in the queue: fold it into its create op.
+                const c = q.find(o => o.path === '/task/create' && o.tempId === id);
+                if (c) {
+                    if (path === '/task/delete') q = q.filter(o => o !== c);
+                    // A comment cannot be folded into the create; keep it and let the flush
+                    // repoint it at the real id once the server has created the task.
+                    else if (path === '/task/comment') q.push({ seq: oqSeq(), path, method, body, teamId, who, at: Date.now() });
+                    else ['status', 'description', 'dueDate', 'priority'].forEach(k => { if (body[k] !== undefined) c.body[k] = body[k]; });
+                }
+            } else if (path === '/task/update' || path === '/task/delete') {
+                const same = o => o.path !== '/task/create' && String((o.body || {}).id || '') === id && oqKindOf(o.body) === kind;
+                const hasDelete = q.some(o => same(o) && o.path === '/task/delete');
+                if (!hasDelete) {
+                    // A newer update supersedes an older one; a delete supersedes updates.
+                    q = q.filter(o => !(same(o) && (path === '/task/delete' || o.path === '/task/update')));
+                    q.push({ seq: oqSeq(), path, method, body, teamId, who, at: Date.now() });
+                }
+            } else {
+                q.push({ seq: oqSeq(), path, method, body, teamId, who, at: Date.now() });
+            }
+            oqSave(q);
+            repaintBoard();
+            setTimeout(() => { try { flushOfflineQueue(); } catch (e) {} }, 1200);
+        }
+
+        // The Firestore listeners will not fire for a queued write, so repaint both lists.
+        function repaintBoard() {
+            try { if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters(); } catch (e) {}
+            try { if (typeof window.renderPersonalTasks === 'function') window.renderPersonalTasks(); } catch (e) {}
+        }
+
+        // Merge not-yet-synced actions on top of the Firestore snapshot so the board shows them
+        // immediately, even though the server (and the real document) has not seen them yet.
+        function oqOverlay(kind, list) {
+            const ops = oqLoad().filter(oqMine);
+            if (!ops.length || !Array.isArray(list)) return list;
+            let out = list.slice();
+            for (const op of ops) {
+                const b = op.body || {};
+                if (oqKindOfOp(op) !== kind) continue;
+                if (kind === 'personal') {
+                    if (op.path === '/personal') {
+                        out.unshift({
+                            id: op.tempId,
+                            description: b.description || '',
+                            category: b.category || 'General',
+                            priority: b.priority || 'normal',
+                            dueDate: b.dueDate || '',
+                            notes: b.notes || '',
+                            repeat: b.repeat || 'none',
+                            status: b.status || 'Pending',
+                            createdAt: new Date(op.at || Date.now()),
+                            createdByName: getSessionName() || '',
+                            __offline: true
+                        });
+                    } else {
+                        const pid = decodeURIComponent(String(op.path).replace(/^\/personal\//, '')).split('?')[0];
+                        if (op.method === 'DELETE') out = out.filter(t => t.id !== pid);
+                        else out = out.map(t => t.id !== pid ? t : Object.assign({}, t, {
+                            status: b.status || t.status,
+                            description: b.description || t.description,
+                            category: b.category || t.category,
+                            priority: b.priority || t.priority,
+                            dueDate: b.dueDate !== undefined ? b.dueDate : t.dueDate,
+                            notes: b.notes !== undefined ? b.notes : t.notes,
+                            repeat: b.repeat !== undefined ? b.repeat : t.repeat,
+                            __offline: true
+                        }));
+                    }
+                    continue;
+                }
+                if (op.path === '/task/create') {
+                    out.unshift({
+                        id: op.tempId,
+                        description: b.description || '',
+                        assigneeEmail: b.assigneeHandle || '',
+                        assigneeName: b.assigneeHandle || '',
+                        dueDate: b.dueDate || '',
+                        priority: b.priority || '',
+                        status: b.status || 'Pending',
+                        teamId: b.teamId || op.teamId || '',
+                        createdAt: new Date(op.at || Date.now()),
+                        createdBy: (firebaseUser() && firebaseUser().email) || '',
+                        createdByName: getSessionName() || '',
+                        added_by: getSessionName() || '',
+                        __offline: true
+                    });
+                } else if (op.path === '/task/update' && b.id) {
+                    out = out.map(t => t.id !== b.id ? t : Object.assign({}, t, {
+                        status: b.status || t.status,
+                        description: b.description || t.description,
+                        dueDate: b.dueDate !== undefined ? b.dueDate : t.dueDate,
+                        priority: b.priority !== undefined ? b.priority : t.priority,
+                        assigneeEmail: b.assigneeHandle || t.assigneeEmail,
+                        __offline: true
+                    }));
+                } else if (op.path === '/task/delete' && b.id) {
+                    out = out.filter(t => t.id !== b.id);
+                }
+            }
+            return out;
+        }
+
+        let oqFlushing = false;
+        async function flushOfflineQueue() {
+            if (oqFlushing) return { flushed: 0, pending: oqSize() };
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) return { flushed: 0, pending: oqSize() };
+            if (!oqMineSize()) { paintOfflineChip(); return { flushed: 0, pending: 0 }; }
+            if (!oqLock()) return { flushed: 0, pending: oqSize() };   // another tab is already syncing
+            oqFlushing = true;
+            let flushed = 0;
+            try {
+                for (;;) {
+                    // Always read the latest queue so a second tab cannot replay the same op.
+                    const op = oqLoad().find(oqMine);
+                    if (!op) break;
+                    try {
+                        const d = await apiRaw(op.path, { method: op.method || 'POST', body: op.body, teamId: op.teamId, noRedirect: true });
+                        const realId = (d && d.task && d.task.id) || '';
+                        if (op.tempId && realId) oqRemapTempId(op.tempId, realId);
+                    } catch (err) {
+                        if (err && err.status === 404) { oqRemove(op); continue; }   // task already gone
+                        break;   // offline again / 401 / 5xx: keep the rest in order and retry later
+                    }
+                    oqRemove(op);
+                    flushed++;
+                }
+            } finally { oqFlushing = false; oqUnlock(); }
+            paintOfflineChip();
+            repaintBoard();
+            if (flushed && !oqMineSize()) showOfflineNotice('☁️ All offline changes are now synced.');
+            return { flushed, pending: oqSize() };
+        }
+
+        // REST wrapper used by the whole app. Team-task writes fall back to the queue when offline.
+        async function api(path, opts = {}) {
+            const method = String((opts && opts.method) || 'GET').toUpperCase();
+            const queueable = oqIsQueueable(String(path).split('?')[0], method);
+            if (queueable && typeof navigator !== 'undefined' && navigator.onLine === false) {
+                oqPush(path, opts);
+                showOfflineNotice('📴 Saved offline — it will sync when you are back online.');
+                return { ok: true, queued: true };
+            }
+            try {
+                return await apiRaw(path, opts);
+            } catch (err) {
+                if (queueable && err && err.offline) {
+                    oqPush(path, opts);
+                    showOfflineNotice('📴 Saved offline — it will sync when you are back online.');
+                    return { ok: true, queued: true };
+                }
+                throw err;
+            }
+        }
+
+        // ---------------------------------------------------------- offline chip
+        function offlineChipEl() {
+            let el = document.getElementById('alignOfflineChip');
+            if (el) return el;
+            el = document.createElement('div');
+            el.id = 'alignOfflineChip';
+            el.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:60;background:#0f172a;color:#f7ecd6;padding:7px 12px;border-radius:9999px;font:700 11.5px system-ui,-apple-system,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.35);display:none;align-items:center;gap:8px;max-width:92vw;white-space:nowrap;';
+            document.body.appendChild(el);
+            return el;
+        }
+        function paintOfflineChip() {
+            const el = offlineChipEl();
+            const n = oqMineSize();
+            const off = (typeof navigator !== 'undefined') && navigator.onLine === false;
+            if (!off && !n) { el.style.display = 'none'; return; }
+            el.style.display = 'flex';
+            el.textContent = off
+                ? ('📴 Offline — showing saved data' + (n ? ' · ' + n + ' change' + (n === 1 ? '' : 's') + ' queued' : ''))
+                : ('☁️ Syncing ' + n + ' offline change' + (n === 1 ? '' : 's') + '…');
+        }
+        let offlineNoticeTimer = null;
+        function showOfflineNotice(text) {
+            const el = offlineChipEl();
+            el.style.display = 'flex';
+            el.textContent = text;
+            clearTimeout(offlineNoticeTimer);
+            offlineNoticeTimer = setTimeout(paintOfflineChip, 3400);
+        }
+        window.alignOfflineOverlayList = oqOverlay;
+        window.alignOfflineQueueSize = oqSize;
+        window.alignFlushOffline = flushOfflineQueue;
 
         // ---------------------------------------------------------- gate UI
         let gateMode = 'login';
@@ -9893,6 +10215,7 @@
             loadProfile();
             if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
             setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
+            setTimeout(() => { try { if (typeof window.alignFlushOffline === 'function') window.alignFlushOffline(); } catch (e) {} }, 2200);
         }
 
         // Block Escape and any attempt to dismiss the identity gate.
@@ -10009,6 +10332,7 @@
                     loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
                     setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
+                    setTimeout(() => { try { if (typeof window.alignFlushOffline === 'function') window.alignFlushOffline(); } catch (e) {} }, 2200);
                 } else {
                     // Confirm: the identity stays, straight in — and this device is remembered.
                     setAutoContinue(true);
@@ -10361,6 +10685,15 @@
             try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
             location.replace(location.pathname + '?out=' + Date.now());
         });
+
+        // ---------------------------------------------------------- offline wiring
+        // Show the offline / pending chip at all times, and drain the queue the moment the
+        // connection returns (plus a slow retry in case an 'online' event is missed).
+        window.addEventListener('online', () => { paintOfflineChip(); flushOfflineQueue().catch(() => {}); });
+        window.addEventListener('offline', paintOfflineChip);
+        paintOfflineChip();
+        setTimeout(() => { if (oqSize() && navigator.onLine !== false) flushOfflineQueue().catch(() => {}); }, 6000);
+        setInterval(() => { if (oqSize() && navigator.onLine !== false) flushOfflineQueue().catch(() => {}); }, 60000);
 
         // ---------------------------------------------------------- heartbeat
         // Every 5 minutes re-validate the staff session. If it expired (12h) or was
