@@ -9769,6 +9769,14 @@
         let confirmStaff = null;
         let gateBootDone = false;
 
+        // "Remember this device". Set the moment a team member signs in (or presses
+        // "Continue as <name>"), so the next app open goes straight in as the saved user
+        // instead of stopping on the gate every time. Logout and "Not you?" clear it, so
+        // handing the device to someone else still works.
+        const AUTO_KEY = 'align_auto_identity';
+        function autoContinueWanted() { try { return localStorage.getItem(AUTO_KEY) === '1'; } catch (e) { return false; } }
+        function setAutoContinue(on) { try { on ? localStorage.setItem(AUTO_KEY, '1') : localStorage.removeItem(AUTO_KEY); } catch (e) {} }
+
         // Freeze the page behind the gate so the flow really is controlled:
         // no scrolling, no tabbing to hidden controls, no accidental clicks.
         function freeze() {
@@ -9875,6 +9883,16 @@
             $('alignGate').style.display = 'none';
             unfreeze();
             if (keepReadOnly !== false) exitReadOnly();
+        }
+
+        // Enter as the remembered identity without asking again. Shared by the confirm button
+        // and by the boot check when "remember this device" is on.
+        function enterConfirmedIdentity() {
+            gateBootDone = true;
+            hideGate();
+            loadProfile();
+            if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
+            setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
         }
 
         // Block Escape and any attempt to dismiss the identity gate.
@@ -9985,18 +10003,16 @@
                     if (!name || !pw) throw new Error('Enter your name and password.');
                     await completeLogin(name, pw);
                     gateBootDone = true;      // the boot check must not re-show the gate after this
+                    setAutoContinue(true);    // signed in on this device: go straight in next time
                     $('gatePassword').value = '';
                     hideGate();
                     loadProfile();
                     if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
                     setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
                 } else {
-                    // Confirm: the identity stays, straight in.
-                    gateBootDone = true;
-                    hideGate();
-                    loadProfile();
-                    if (typeof window.applyTaskFilters === 'function') window.applyTaskFilters();
-                    setTimeout(() => { try { if (typeof window.alignAutoPush === 'function') window.alignAutoPush(); } catch (e) {} }, 1500);
+                    // Confirm: the identity stays, straight in — and this device is remembered.
+                    setAutoContinue(true);
+                    enterConfirmedIdentity();
                 }
             } catch (err) {
                 er.textContent = err.message;
@@ -10012,6 +10028,7 @@
         // no "browse without signing in" path any more.
         async function fullLogout() {
             try { setSession(''); setSessionName(''); } catch (e) {}
+            try { setAutoContinue(false); } catch (e) {}
             try { localStorage.removeItem('alignTaskView'); } catch (e) {}
             try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
             try {
@@ -10034,6 +10051,7 @@
             // Hand the device to another team member.
             setSession('');
             setSessionName('');
+            setAutoContinue(false);   // stop auto-signing-in the previous person
             confirmStaff = null;
             try { if (window.firebase && firebase.auth) await firebase.auth().signOut(); } catch (e) {}
             $('gateName').value = '';
@@ -10054,6 +10072,7 @@
             if (!d || !d.session) return false;
             setSession(d.session);
             setSessionName((d.staff && (d.staff.name || d.staff.handle)) || fallbackName || '');
+            setAutoContinue(true);    // fresh team login on this device: remember it
             gateBootDone = true;
             try { hideGate(); } catch (e) { /* ignore */ }
             try { loadProfile(); } catch (e) { /* ignore */ }
@@ -10072,19 +10091,27 @@
         };
 
         // ---------------------------------------------------------- auto gate
-        // The staff gate is shown on EVERY app open, not just when the 12h token is
-        // missing: a valid session asks "Continue as <name>", otherwise name+password.
-        // There is no third (team password) step any more.
+        // A device that has been remembered (see AUTO_KEY) goes straight in as the last team
+        // member on every open. Otherwise a valid session asks "Continue as <name>", and only a
+        // missing session needs name+password. There is no third (team password) step any more.
         let ticks = 0;
         let earlyGate = false;
+        let autoIdentityTried = false;
         const timer = setInterval(async () => {
             ticks++;
             if (gateBootDone) { clearInterval(timer); return; }   // already signed in through the gate
             if (ticks > 200) { clearInterval(timer); return; }
             if (!firebaseUser()) {
-                // Never raise the team gate before the app's own e-mail sign-in: it would sit
-                // on top of that form and block it. It appears right after the e-mail login.
-                return;
+                // With "remember this device" on, mint the Firebase identity from the saved team
+                // session instead of waiting on the e-mail sign-in screen. Otherwise never raise
+                // the team gate before the app's own e-mail sign-in: it would sit on top of that
+                // form and block it (that is how people got stuck).
+                if (!(getSession() && autoContinueWanted())) return;
+                if (!autoIdentityTried) {
+                    autoIdentityTried = true;
+                    await ensureFirebaseIdentity();   // failure leaves them on the e-mail sign-in
+                }
+                if (!firebaseUser()) return;
             }
             clearInterval(timer);
             confirmStaff = null;
@@ -10102,12 +10129,12 @@
                         if (fbUid && sessionUid && sessionUid !== fbUid && !sameTeam) {
                             // Another person signed in on this device with a different e-mail
                             // account: never continue with the old team session.
-                            setSession(''); setSessionName(''); confirmStaff = null;
+                            setSession(''); setSessionName(''); setAutoContinue(false); confirmStaff = null;
                         } else {
                             confirmStaff = staff;
                         }
                     }
-                    else if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); }
+                    else if (r.status === 401 || r.status === 404) { setSession(''); setSessionName(''); setAutoContinue(false); }
                 } catch (e) {
                     // Network hiccup must never throw the person out — fall back to the stored name.
                     if (getSessionName()) confirmStaff = { name: getSessionName() };
@@ -10115,7 +10142,12 @@
             }
             if (confirmStaff) {
                 if (getSession()) loadProfile();
-                showGate('confirm');
+                if (getSession() && autoContinueWanted()) {
+                    // Saved device: straight in, no "Confirm it is you" stop.
+                    enterConfirmedIdentity();
+                } else {
+                    showGate('confirm');
+                }
             } else {
                 showGate('login');
             }
