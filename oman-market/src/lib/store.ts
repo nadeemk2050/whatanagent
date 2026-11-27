@@ -22,6 +22,22 @@ export type KV = {
 	}>;
 };
 
+// Minimal R2 surface. Bound as MEDIA once R2 is enabled on the account; until then
+// photos live in KV and every read falls back to it, so nothing breaks either way.
+export type R2Like = {
+	put(
+		key: string,
+		value: ArrayBuffer,
+		opts?: { httpMetadata?: { contentType?: string; cacheControl?: string } }
+	): Promise<unknown>;
+	get(key: string): Promise<{
+		arrayBuffer(): Promise<ArrayBuffer>;
+		httpMetadata?: { contentType?: string };
+	} | null>;
+};
+
+export type Env = { MARKET?: KV; MEDIA?: R2Like };
+
 export type PhotoRef = { id: string; w?: number; h?: number };
 
 export type PostedListing = {
@@ -130,10 +146,26 @@ export async function getPosted(
 	}
 }
 
-export async function getMedia(env: { MARKET?: KV } | undefined, id: string) {
+export async function getMedia(env: Env | undefined, id: string) {
+	if (!/^[a-z0-9-]{6,80}$/i.test(id)) return null;
+
+	// R2 first (once the bucket is bound), KV as the fallback for anything already stored.
+	if (env?.MEDIA) {
+		try {
+			const obj = await env.MEDIA.get('img/' + id);
+			if (obj) {
+				return {
+					bytes: await obj.arrayBuffer(),
+					type: obj.httpMetadata?.contentType || 'image/jpeg'
+				};
+			}
+		} catch {
+			/* fall through to KV */
+		}
+	}
+
 	const kv = env?.MARKET;
 	if (!kv) return null;
-	if (!/^[a-z0-9-]{6,80}$/i.test(id)) return null;
 	const buf = await kv.get('img:' + id, 'arrayBuffer');
 	if (!buf) return null;
 	const listed = await kv.list({ prefix: 'img:' + id, limit: 1 });
@@ -146,7 +178,8 @@ export type PostInput = {
 	title: string;
 	material: string;
 	type: string;
-	quantity: string;
+	/** Metric tonnes, as typed in the form. */
+	quantityMt: string | number;
 	packing: string;
 	city: string;
 	description: string;
@@ -160,13 +193,15 @@ export function validatePost(b: PostInput): string {
 	if (b.hp) return 'Rejected.';
 	const title = String(b.title || '').trim();
 	const desc = String(b.description || '').trim();
-	if (title.length < 12) return 'Give the lot a longer title (at least 12 characters).';
+	if (title.length < 6) return 'Give the lot a title (at least 6 characters).';
 	if (title.length > 90) return 'Title is too long (max 90 characters).';
 	if (!b.material) return 'Choose the material.';
-	if (String(b.quantity || '').trim().length < 3) return 'Say how much is available (e.g. "2 truckloads").';
+	const mt = Number(String(b.quantityMt ?? '').replace(',', '.'));
+	if (!Number.isFinite(mt) || mt <= 0) return 'Enter the quantity in metric tonnes, e.g. 24.';
+	if (mt > 500000) return 'That quantity looks too large — check the number.';
 	if (String(b.city || '').trim().length < 2) return 'Where is the material?';
-	if (desc.length < 250) return 'Describe the lot in at least 250 characters — grade, colour, contamination, packing, terms.';
-	if (desc.length > 4000) return 'Description is too long (max 4000 characters).';
+	if (desc.length < 5) return 'Add a short description so buyers know what they are looking at.';
+	if (desc.length > 20000) return 'Description is too long (max 20,000 characters).';
 	if (String(b.contactName || '').trim().length < 2) return 'Add your name so buyers know who they are dealing with.';
 	const wa = String(b.whatsapp || '').replace(/[^\d]/g, '');
 	if (wa.length < 8 || wa.length > 15) return 'Enter a WhatsApp number with the country code.';
@@ -196,7 +231,7 @@ export async function tooManyPosts(kv: KV | undefined, ip: string): Promise<bool
 
 // ---------------------------------------------------------------- create
 export async function createListing(
-	env: { MARKET?: KV } | undefined,
+	env: Env | undefined,
 	b: PostInput,
 	ip: string
 ): Promise<{ ok: true; slug: string } | { ok: false; error: string }> {
@@ -221,9 +256,19 @@ export async function createListing(
 		const decoded = decodeDataUrl(incoming[i].dataUrl);
 		if (!decoded) continue;
 		const imgId = id + '-' + i;
-		await kv.put('img:' + imgId, decoded.bytes.buffer, { metadata: { type: decoded.type } });
+		if (env?.MEDIA) {
+			// R2 once it is bound: 10 GB free, no egress fees.
+			await env.MEDIA.put('img/' + imgId, decoded.bytes.buffer, {
+				httpMetadata: { contentType: decoded.type, cacheControl: 'public, max-age=31536000, immutable' }
+			});
+		} else {
+			await kv.put('img:' + imgId, decoded.bytes.buffer, { metadata: { type: decoded.type } });
+		}
 		photos.push({ id: imgId, w: incoming[i].w, h: incoming[i].h });
 	}
+
+	const mt = Number(String(b.quantityMt ?? '').replace(',', '.'));
+	const mtLabel = (Math.round(mt * 100) / 100).toString() + ' MT';
 
 	const listing: PostedListing = {
 		id,
@@ -232,7 +277,7 @@ export async function createListing(
 		type: b.type === 'wanted' ? 'wanted' : 'offer',
 		title: String(b.title).trim(),
 		summary: String(b.description).trim().slice(0, 180),
-		quantity: String(b.quantity).trim(),
+		quantity: mtLabel,
 		packing: String(b.packing || '').trim() || 'As agreed',
 		city: String(b.city).trim(),
 		region: 'Oman',

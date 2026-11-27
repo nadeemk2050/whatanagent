@@ -89,6 +89,8 @@ check('home uses the sliding rail', /class="rail"/.test(home.body));
 const post = await page('/post');
 check('post page 200', post.status === 200, String(post.status));
 check('post page asks for 5 photos', /up to 5/i.test(post.body), 'missing photo limit');
+check('post page asks quantity in MT', /metric tonnes/i.test(post.body));
+check('post page has no 250-character minimum', !/at least 250/i.test(post.body));
 check('post page has the file input', /type="file"/.test(post.body));
 check('post page is noindex', /name="robots" content="noindex/.test(post.body));
 

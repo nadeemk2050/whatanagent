@@ -6,7 +6,7 @@
 	let type = $state('offer');
 	let title = $state('');
 	let material = $state('');
-	let quantity = $state('');
+	let quantityMt = $state('');
 	let packing = $state('');
 	let city = $state('');
 	let description = $state('');
@@ -66,7 +66,7 @@
 					type,
 					title,
 					material,
-					quantity,
+					quantityMt,
 					packing,
 					city,
 					description,
@@ -136,8 +136,19 @@
 						{/each}
 					</select>
 				</label>
-				<label class="field">How much
-					<input bind:value={quantity} placeholder="e.g. 2 truckloads · 1 × 40ft · 24 t" required />
+				<label class="field">Quantity in metric tonnes (MT)
+					<div class="mt-wrap">
+						<input
+							bind:value={quantityMt}
+							type="number"
+							inputmode="decimal"
+							min="0.5"
+							step="0.5"
+							placeholder="e.g. 24"
+							required
+						/>
+						<span class="mt-unit">MT</span>
+					</div>
 				</label>
 			</div>
 
@@ -154,11 +165,10 @@
 				<textarea
 					bind:value={description}
 					rows="7"
-					maxlength="4000"
+					maxlength="20000"
 					placeholder="Grade and colour, contamination, how it is stored, terms, who to ask for…"
-					required
 				></textarea>
-				<span class="muted small">{chars} characters · at least 250 so buyers can decide</span>
+				<span class="muted small">{chars} characters — write as much or as little as you need</span>
 			</label>
 
 			<div class="row2">

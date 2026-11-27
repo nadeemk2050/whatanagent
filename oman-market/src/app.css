@@ -559,6 +559,26 @@ p {
 	opacity: 0;
 }
 
+.mt-wrap {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+.mt-wrap input {
+	padding-right: 46px !important;
+}
+
+.mt-unit {
+	position: absolute;
+	right: 12px;
+	font-size: 0.78rem;
+	font-weight: 800;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	pointer-events: none;
+}
+
 .nav .nav-post {
 	background: var(--teal);
 	color: #fff;
