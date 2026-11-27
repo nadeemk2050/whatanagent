@@ -233,6 +233,7 @@ function footer() {
         <li><a href="/services">Services</a></li>
         <li><a href="/quality">Quality</a></li>
         <li><a href="/scrap-oman">Local &amp; global</a></li>
+        <li><a href="https://market.arabianpolyplast.com/">Scrap market</a></li>
         <li><a href="/sell-scrap">Sell scrap</a></li>
         <li><a href="/faq">FAQ</a></li>
         <li><a href="/guides/">Guides</a></li>

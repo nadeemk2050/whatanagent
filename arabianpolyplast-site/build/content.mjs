@@ -51,6 +51,7 @@ export const NAV = [
   { href: '/', label: 'Home' },
   { href: '/products/', label: 'Scrap we buy' },
   { href: '/services', label: 'Services' },
+  { href: 'https://market.arabianpolyplast.com/', label: 'Scrap market' },
   { href: '/scrap-oman', label: 'Local & Global' },
   { href: '/sell-scrap', label: 'Sell Scrap' },
   { href: '/about', label: 'About' },
@@ -63,6 +64,7 @@ export const AR_NAV = [
   { href: '/ar/', label: 'الرئيسية' },
   { href: '/ar/#materials', label: 'المواد' },
   { href: '/ar/#services', label: 'الخدمات' },
+  { href: 'https://market.arabianpolyplast.com/', label: 'سوق الخردة' },
   { href: '/ar/contact', label: 'اتصل بنا' }
 ];
 
