@@ -14,8 +14,9 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "npm run build && node test/verify.mjs",
-    "build:cloudflare": "MARKET_TARGET=cloudflare vite build"
+    		"test": "npm run build && node test/verify.mjs",
+    		"build:cloudflare": "MARKET_TARGET=cloudflare vite build",
+    		"r2:setup": "node scripts/enable-r2.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^8.0.1",

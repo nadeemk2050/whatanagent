@@ -35,11 +35,15 @@ async function page(path) {
 
 const home = await page('/');
 check('home 200', home.status === 200, String(home.status));
-check('home h1', /<h1[^>]*>[^<]*scrap that is actually available/i.test(home.body));
+check('home h1', /<h1[^>]*>[^<]*plastic (?:&amp;|&) metal scrap in oman/i.test(home.body));
 check('home canonical', /rel="canonical" href="https:\/\/market\.arabianpolyplast\.com\/"/.test(home.body));
 check('home JSON-LD ItemList', home.body.includes('"ItemList"') && home.body.includes('"CollectionPage"'));
 check('home has no price number', !/\d{2,}\s*OMR/.test(home.body));
 check('home listing link', home.body.includes('/listing/baled-clear-pet-bottles-barka'));
+check('header has the search field', /class="header-search"/.test(home.body) && /action="\/search"/.test(home.body));
+check('header has the hamburger menu', /class="menu-btn"/.test(home.body) && /aria-controls="site-menu"/.test(home.body));
+check('rail is above the footer', home.body.indexOf('class="rail"') > -1 && home.body.indexOf('class="rail"') < home.body.indexOf('<footer'));
+check('hero copy sits last at 4px', /class="tiny-about"/.test(home.body) && home.body.indexOf('tiny-about') > home.body.indexOf('How this market works'));
 
 const mat = await page('/materials/pet-bottle-scrap');
 check('material 200', mat.status === 200, String(mat.status));

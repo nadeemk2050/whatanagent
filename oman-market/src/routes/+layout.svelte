@@ -4,24 +4,62 @@
 	import { SITE } from '#lib/market';
 
 	let { children }: { children: Snippet } = $props();
+
+	let menuOpen = $state(false);
+	let menuEl = $state<HTMLElement | null>(null);
+	const close = () => (menuOpen = false);
+
+	function onKey(e: KeyboardEvent) {
+		if (e.key === 'Escape') menuOpen = false;
+	}
+
+	function onDocClick(e: MouseEvent) {
+		if (menuOpen && menuEl && !menuEl.contains(e.target as Node)) menuOpen = false;
+	}
 </script>
+
+<svelte:window onkeydown={onKey} onclick={onDocClick} />
 
 <header class="site-header">
 	<div class="wrap header-inner">
 		<a class="brand" href="/">
 			<span class="mark">OSM</span>
-			<span>
-				{SITE.name}
-				<small>Plastic &amp; metal scrap · Oman</small>
-			</span>
+			<span class="brand-name">{SITE.name}</span>
 		</a>
-		<nav class="nav" aria-label="Main">
-			<a href="/">Latest</a>
-			<a href="/materials">Materials</a>
-			<a href="/search">Search</a>
-			<a class="nav-post" href="/post">Post a listing</a>
-			<a href={SITE.main} rel="noopener">Arabian Polyplast ↗</a>
-		</nav>
+
+		<form class="header-search" action="/search" method="get" role="search">
+			<input
+				type="search"
+				name="q"
+				placeholder="Search material, town or grade…"
+				aria-label="Search listings"
+				autocomplete="off"
+			/>
+			<button type="submit" aria-label="Search">Search</button>
+		</form>
+
+		<a class="btn btn-primary header-post" href="/post">Post a listing</a>
+
+		<div class="menu" bind:this={menuEl}>
+			<button
+				class="menu-btn"
+				type="button"
+				aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+				aria-expanded={menuOpen}
+				aria-controls="site-menu"
+				onclick={() => (menuOpen = !menuOpen)}
+			>
+				<span></span><span></span><span></span>
+			</button>
+
+			{#if menuOpen}
+				<nav id="site-menu" class="menu-panel" aria-label="Main">
+					<a href="/" onclick={close}>Latest</a>
+					<a href="/materials" onclick={close}>Materials</a>
+					<a href="/search" onclick={close}>Search</a>
+				</nav>
+			{/if}
+		</div>
 	</div>
 </header>
 
@@ -39,7 +77,7 @@
 		<div>
 			<strong>Contact</strong><br />
 			<a href="tel:{SITE.phoneRaw}">{SITE.phone}</a><br />
-			<a href="https://wa.me/{SITE.whatsapp}" rel="noopener">WhatsApp {SITE.phone}</a><br />
+			<a href="https://wa.me/{SITE.whatsapp}" rel="noopener">WhatsApp</a><br />
 			<a href="mailto:{SITE.email}">{SITE.email}</a>
 		</div>
 		<div>

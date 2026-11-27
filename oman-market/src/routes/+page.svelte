@@ -40,43 +40,30 @@
 
 <JsonLd json={ldScript([organizationLd(), itemsLd])} />
 
-<section class="hero">
+<!-- Listings first: the rail is the first thing on the page, on every screen size. -->
+<section class="section section-first" id="listings">
 	<div class="wrap">
-		<p class="eyebrow">Oman Scrap Market</p>
-		<h1>Scrap that is actually available in Oman — with the facts attached</h1>
-		<p class="lead">
-			Every listing here names the material, the quantity, the packing and the town. No prices are glued to
-			stale numbers: you send the grade and destination, we answer with photos of the real lot and a price the
-			same working day.
-		</p>
-		<form class="search-row" action="/search" method="get" role="search">
-			<input
-				type="search"
-				name="q"
-				placeholder="Search material, town or grade — e.g. PET Barka, HDPE 100, aluminium"
-				aria-label="Search listings"
-			/>
-			<button class="btn btn-primary" type="submit">Search</button>
-			<a class="btn btn-wa" href="https://wa.me/{SITE.whatsapp}?text={encodeURIComponent('Hello, I saw the Oman Scrap Market listings.')}" rel="noopener">WhatsApp us</a>
-		</form>
-	</div>
-</section>
-
-<section class="section">
-	<div class="wrap">
-		<div class="section-head">
-			<h2>Latest listings</h2>
-		<p class="muted" style="margin:0">
-			{data.total} live listing{data.total === 1 ? '' : 's'} · published by {SITE.legal} and by sellers across Oman
-		</p>
-		<p style="margin:12px 0 0"><a class="btn btn-primary" href="/post">Post a listing — free</a></p>
+		<div class="rail-head">
+			<div class="rail-head-text">
+				<h1 class="page-title">Plastic &amp; metal scrap in Oman</h1>
+			</div>
+			<div class="rail-actions">
+				<a class="btn btn-primary" href="/post">Post a listing — free</a>
+				<a
+					class="btn btn-wa"
+					href="https://wa.me/{SITE.whatsapp}?text={encodeURIComponent('Hello, I saw the Oman Scrap Market listings.')}"
+					rel="noopener">WhatsApp us</a
+				>
+			</div>
 		</div>
+
 		{#if data.listings.length}
 			<div class="rail" role="list">
 				{#each data.listings as listing (listing.id)}
 					<div role="listitem"><ListingCard {listing} /></div>
 				{/each}
 			</div>
+				<p class="rail-hint muted small">Swipe sideways for more →</p>
 		{:else}
 			<div class="empty">No live listings right now. Send what you have on WhatsApp and it goes up here.</div>
 		{/if}
@@ -115,9 +102,9 @@
 			converters in Oman, the GCC and worldwide.
 		</p>
 		<p>
-			Listings carry what a buyer actually needs to make a decision: the polymer or metal grade, the tonnage or
-			truckloads available, how it is packed, and where it sits. Where a price would go stale in a week, we say
-			"quote per load" instead of publishing a number that misleads.
+			Listings carry what a buyer actually needs to make a decision: the polymer or metal grade, the tonnage
+			available in metric tonnes, how it is packed, and where it sits. Where a price would go stale in a week,
+			we say "quote per load" instead of publishing a number that misleads.
 		</p>
 		<p>
 			Enquiries go straight to WhatsApp on <a href="tel:{SITE.phoneRaw}">{SITE.phone}</a>, and every load is
@@ -125,3 +112,12 @@
 		</p>
 	</div>
 </section>
+
+<!-- The original hero copy, moved to the very bottom at the requested 4 px size. -->
+<div class="wrap">
+	<p class="tiny-about">
+		Scrap that is actually available in Oman — with the facts attached. Every listing here names the material,
+		the quantity, the packing and the town. No prices are glued to stale numbers: you send the grade and
+		destination, we answer with photos of the real lot and a price the same working day.
+	</p>
+</div>
