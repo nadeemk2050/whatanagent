@@ -4,5 +4,6 @@
 	"compatibility_date": "2026-11-23",
 	"compatibility_flags": ["nodejs_als"],
 	"observability": { "enabled": true },
+	"kv_namespaces": [{ "binding": "MARKET", "id": "bdd1cef571c5494c8fcd9851a48c456f" }],
 	"routes": [{ "pattern": "market.arabianpolyplast.com", "custom_domain": true }]
 }

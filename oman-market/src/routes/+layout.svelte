@@ -19,6 +19,7 @@
 			<a href="/">Latest</a>
 			<a href="/materials">Materials</a>
 			<a href="/search">Search</a>
+			<a class="nav-post" href="/post">Post a listing</a>
 			<a href={SITE.main} rel="noopener">Arabian Polyplast ↗</a>
 		</nav>
 	</div>

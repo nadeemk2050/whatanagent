@@ -383,3 +383,214 @@ p {
 	text-align: center;
 	color: var(--muted);
 }
+
+/* ---------------------------------------------------------------- 5-up sliding rail */
+/* Five postings on one line, then sideways sliding with snap points. The number
+   of columns drops with the viewport but never becomes a vertical stack. */
+.rail {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: calc((100% - 4 * 16px) / 5);
+	gap: 16px;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scroll-snap-type: x mandatory;
+	scroll-padding: 0 4px;
+	padding: 2px 2px 14px;
+	-webkit-overflow-scrolling: touch;
+}
+
+.rail::-webkit-scrollbar {
+	height: 8px;
+}
+
+.rail::-webkit-scrollbar-thumb {
+	background: #d8d0bf;
+	border-radius: 999px;
+}
+
+.rail-card {
+	scroll-snap-align: start;
+	height: 100%;
+	overflow: hidden;
+}
+
+.rail-card h3 {
+	font-size: 0.98rem;
+	line-height: 1.3;
+}
+
+@media (max-width: 1180px) {
+	.rail {
+		grid-auto-columns: calc((100% - 3 * 16px) / 4);
+	}
+}
+
+@media (max-width: 940px) {
+	.rail {
+		grid-auto-columns: calc((100% - 2 * 16px) / 3);
+	}
+}
+
+@media (max-width: 700px) {
+	.rail {
+		grid-auto-columns: calc((100% - 16px) / 2);
+	}
+}
+
+@media (max-width: 470px) {
+	.rail {
+		grid-auto-columns: 86%;
+	}
+}
+
+.card-photo {
+	width: 100%;
+	height: 150px;
+	object-fit: cover;
+	border-radius: 10px;
+	margin-bottom: 10px;
+	background: var(--sand);
+}
+
+.clamp-2 {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- post form */
+.post-form .field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	font-size: 0.88rem;
+	font-weight: 650;
+	color: var(--ink-2);
+	margin-bottom: 14px;
+}
+
+.post-form input[type='text'],
+.post-form input:not([type]),
+.post-form input[type='tel'],
+.post-form select,
+.post-form textarea {
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	font: inherit;
+	font-weight: 500;
+	color: var(--ink);
+	background: #fff;
+}
+
+.post-form textarea {
+	resize: vertical;
+}
+
+.post-form .row2 {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 14px;
+}
+
+@media (max-width: 620px) {
+	.post-form .row2 {
+		grid-template-columns: 1fr;
+	}
+}
+
+.post-form input[type='file'] {
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.photo-grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 8px;
+	margin-top: 10px;
+}
+
+@media (max-width: 620px) {
+	.photo-grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+.photo-thumb {
+	position: relative;
+	border-radius: 10px;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	aspect-ratio: 4 / 3;
+	background: var(--sand);
+}
+
+.photo-thumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.photo-thumb button {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	width: 24px;
+	height: 24px;
+	border-radius: 999px;
+	border: 0;
+	background: rgba(0, 0, 0, 0.62);
+	color: #fff;
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.hp {
+	position: absolute !important;
+	left: -9999px !important;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+}
+
+.nav .nav-post {
+	background: var(--teal);
+	color: #fff;
+	font-weight: 700;
+}
+
+.nav .nav-post:hover {
+	background: var(--teal-2);
+	color: #fff;
+}
+
+.gallery {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	margin: 0 0 18px;
+}
+
+.gallery img {
+	width: 100%;
+	height: 190px;
+	object-fit: cover;
+	border-radius: 12px;
+	border: 1px solid var(--line);
+	background: var(--sand);
+}
+
+@media (max-width: 620px) {
+	.gallery {
+		grid-template-columns: 1fr 1fr;
+	}
+	.gallery img {
+		height: 140px;
+	}
+}

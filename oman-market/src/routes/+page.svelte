@@ -66,14 +66,15 @@
 	<div class="wrap">
 		<div class="section-head">
 			<h2>Latest listings</h2>
-			<p class="muted" style="margin:0">
-				{data.total} live listing{data.total === 1 ? '' : 's'} · published by {SITE.legal}
-			</p>
+		<p class="muted" style="margin:0">
+			{data.total} live listing{data.total === 1 ? '' : 's'} · published by {SITE.legal} and by sellers across Oman
+		</p>
+		<p style="margin:12px 0 0"><a class="btn btn-primary" href="/post">Post a listing — free</a></p>
 		</div>
 		{#if data.listings.length}
-			<div class="grid cards-3">
+			<div class="rail" role="list">
 				{#each data.listings as listing (listing.id)}
-					<ListingCard {listing} />
+					<div role="listitem"><ListingCard {listing} /></div>
 				{/each}
 			</div>
 		{:else}

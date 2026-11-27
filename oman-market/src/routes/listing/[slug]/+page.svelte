@@ -18,6 +18,11 @@
 	const title = $derived(`${l.title} | Oman Scrap Market`);
 	const desc = $derived(l.summary.slice(0, 165));
 	const paragraphs = $derived(l.description.split(/\n+/).filter(Boolean));
+	const shots = $derived(
+		(Array.isArray(l.photos) ? l.photos : [])
+			.map((p: any) => (typeof p === 'string' ? p : p && p.id))
+			.filter(Boolean) as string[]
+	);
 	const crumbs = $derived({
 		'@context': 'https://schema.org',
 		'@type': 'BreadcrumbList',
@@ -73,6 +78,13 @@
 	<div class="wrap grid cards-3" style="align-items:start">
 		<div class="card" style="grid-column: span 2">
 			<h2>About this listing</h2>
+			{#if shots.length}
+				<div class="gallery">
+					{#each shots as s}
+						<img src="/media/{s}" alt="{l.title} — photo" width="420" height="190" loading="lazy" />
+					{/each}
+				</div>
+			{/if}
 			<div class="prose">
 				{#each paragraphs as p}
 					<p>{p}</p>

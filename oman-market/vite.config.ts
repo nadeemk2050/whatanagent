@@ -15,5 +15,12 @@ export default defineConfig({
 			},
 			adapter: onCloudflare ? adapterCloudflare() : adapterNode()
 		})
-	]
+	],
+	build: {
+		rollupOptions: {
+			// Bindings are imported from the Workers runtime by name; the Node build must
+			// leave the specifier alone so the guarded dynamic import can fail quietly.
+			external: ['cloudflare:workers']
+		}
+	}
 });

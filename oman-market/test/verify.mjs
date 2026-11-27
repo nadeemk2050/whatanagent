@@ -77,12 +77,32 @@ check('robots sitemap line', /Sitemap: https:\/\/market\.arabianpolyplast\.com\/
 
 const llms = await page('/llms.txt');
 check('llms 200', llms.status === 200);
-check('llms lists materials', /PET Bottle Scrap: https/.test(llms.body));
+check('llms lists live listings', /baled-clear-pet-bottles-barka/.test(llms.body));
 
 const nf = await page('/listing/does-not-exist');
 check('missing listing 404', nf.status === 404, String(nf.status));
 const emptyMat = await page('/materials/aluminium-scrap');
 check('material without listings 404', emptyMat.status === 404, String(emptyMat.status));
+
+// -- posting feature
+check('home uses the sliding rail', /class="rail"/.test(home.body));
+const post = await page('/post');
+check('post page 200', post.status === 200, String(post.status));
+check('post page asks for 5 photos', /up to 5/i.test(post.body), 'missing photo limit');
+check('post page has the file input', /type="file"/.test(post.body));
+check('post page is noindex', /name="robots" content="noindex/.test(post.body));
+
+const bad = await fetch(BASE + '/api/listings', {
+	method: 'POST',
+	headers: { 'content-type': 'application/json' },
+	body: JSON.stringify({ title: 'x' })
+});
+const badBody = await bad.text();
+check('api rejects an empty listing', bad.status === 400, String(bad.status));
+check('api explains why', /error/.test(badBody));
+
+const media = await fetch(BASE + '/media/doesnotexist');
+check('unknown media 404', media.status === 404, String(media.status));
 
 child.kill();
 console.log(fails ? '\n' + fails + ' check(s) failed' : '\nall checks passed');
