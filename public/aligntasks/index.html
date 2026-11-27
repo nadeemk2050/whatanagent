@@ -1382,10 +1382,19 @@
             <div class="p-4 border-b flex justify-between items-center">
                 <h3 id="scheduled-reminders-title" class="text-xl font-bold text-gray-800">Scheduled Reminders</h3>
                 <div class="flex items-center gap-3">
+                    <button id="sched-search-btn" title="Search reminders — wording, person, number, status or send history" aria-label="Search reminders" class="text-sm font-semibold px-2.5 py-1 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-[#6b5f45]">🔍</button>
                     <button id="sched-ai-btn" class="text-sm font-semibold px-2.5 py-1 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-[#6b5f45]">🤖 AI Linked Tasks</button>
                     <button id="scheduled-calendar-btn" class="text-sm font-semibold px-2.5 py-1 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] text-[#6b5f45]">📅 Calendar</button>
                     <button id="scheduled-refresh" class="text-sm text-blue-600 font-semibold">↻ Refresh</button>
                     <button id="scheduled-reminders-close" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+                </div>
+            </div>
+            <div id="sched-search-row" class="hidden px-4 py-2 border-b bg-white">
+                <div class="flex items-center gap-2">
+                    <span class="text-gray-400 text-sm">🔍</span>
+                    <input id="sched-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search reminders — wording, person, number, status, send history…" class="flex-1 min-w-0 rounded-lg border border-[#d5cfc2] bg-[#fffdf8] px-3 py-1.5 text-sm text-[#34373d] focus:outline-none focus:border-[#b9ad97]">
+                    <span id="sched-search-count" class="text-xs text-gray-500 whitespace-nowrap"></span>
+                    <button id="sched-search-clear" type="button" title="Clear search" class="text-gray-400 hover:text-gray-700 text-xl leading-none px-1">&times;</button>
                 </div>
             </div>
             <div id="sched-ai-pane" class="hidden flex-1 min-h-0 flex-col">
@@ -4048,9 +4057,13 @@
                     if (calBtn) calBtn.classList.remove('hidden');
                     if (aiBtn) aiBtn.textContent = aiBtnLabel();
                 }
+                syncSchedSearchRow();
             }
 
             let scheduledScope = null;
+            // Search state lives with the scope so nothing can touch it before it exists.
+            let schedSearchOpen = false;
+            let schedSearchQuery = '';
             async function openScheduledReminders(scope) {
                 scheduledScope = (scope && scope.type) ? scope : null;
                 const h = document.getElementById('scheduled-reminders-title');
@@ -4066,6 +4079,15 @@
             function closeScheduledReminders() {
                 document.getElementById('scheduled-reminders-modal').classList.add('hidden');
                 if (scheduledRefreshTimer) { clearInterval(scheduledRefreshTimer); scheduledRefreshTimer = null; }
+                // A fresh open starts unfiltered, so nobody returns to a stale search.
+                schedSearchOpen = false;
+                schedSearchQuery = '';
+                const si = document.getElementById('sched-search-input');
+                if (si) si.value = '';
+                const row = document.getElementById('sched-search-row');
+                if (row) row.classList.add('hidden');
+                const cnt = document.getElementById('sched-search-count');
+                if (cnt) cnt.textContent = '';
             }
             // Cancelling or closing the editor returns to the reminders page it was opened from.
             window.atsReturnToReminders = function () {
@@ -4092,8 +4114,7 @@
                     schedItemsCache = items;
                     const calPane = document.getElementById('sched-cal-pane');
                     if (calPane && !calPane.classList.contains('hidden')) renderCal();
-                    if (!items.length) { list.innerHTML = scheduledScope ? '<p class="text-sm text-gray-500 p-2">No ongoing or past scheduled reminders here yet. Open a task → Reminder → tick "Schedule for later".</p>' : '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → Remind → tick "Schedule for later".</p>'; return; }
-                    list.innerHTML = items.map(s => waScheduleCardHTML(s)).join('');
+                    renderSchedList();
                 } catch (e) {
                     list.innerHTML = '<p class="text-sm text-red-500 p-2">Could not load scheduled reminders: ' + waEsc(e.message || e) + '</p>';
                 }
@@ -4111,6 +4132,102 @@
                 if (scope.type === 'personal_project') return (ppTasksCache[scope.projectId] || []).some(t => t.id === s.taskId);
                 return false;
             }
+            // ===== Search / filter over the scheduled reminders =====
+            // The 🔍 button opens one field that matches everything shown on a card: the
+            // wording, the AI's reworded copies, who it goes to, its status and its send
+            // history. Every word typed must appear somewhere (AND), so "pet salim" narrows.
+
+            function schedNorm(v) {
+                return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9@+.\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+            }
+            function schedWhen(v) {
+                const n = Number(v || 0);
+                if (!n || n >= 9999999999990) return '';
+                const d = new Date(n);
+                return d.toISOString().slice(0, 16).replace('T', ' ') + ' ' + d.toLocaleString();
+            }
+            function schedSearchBlob(s) {
+                const targets = Array.isArray(s.targets) ? s.targets : [];
+                const hist = Array.isArray(s.history) ? s.history : [];
+                const statusWords = ({
+                    pending: 'pending created scheduled waiting',
+                    active: 'repeating active running ongoing',
+                    completed: 'sent finished completed done'
+                })[String(s.status || 'pending')] || String(s.status || '');
+                return schedNorm([
+                    s.taskTitle, s.message, s.scopeName, s.scopeType,
+                    s.createdBy, s.createdByName, s.viaName, s.teamId,
+                    statusWords,
+                    s.aiRewrite ? 'ai reworded wording' : '',
+                    s.repeatMode,
+                    (s.repeatMode === 'dates' && Array.isArray(s.repeatDates)) ? s.repeatDates.map(schedWhen).join(' ') : '',
+                    (Number(s.sentCount) || 0) + ' sent',
+                    s.repeatCount ? ((Number(s.sentCount) || 0) + '/' + s.repeatCount) : '',
+                    targets.map(t => [t.name, t.label, t.title, t.phone, t.number, t.jid, t.id, t.type].filter(Boolean).join(' ')).join(' '),
+                    hist.map(h => [h.msg, h.sent, h.failed, h.ai ? 'reworded' : '', schedWhen(h.at)].filter(Boolean).join(' ')).join(' '),
+                    schedWhen(s.nextAt), schedWhen(s.lastSentAt)
+                ].filter(Boolean).join(' '));
+            }
+            function schedMatches(s, query) {
+                const q = schedNorm(query);
+                if (!q) return true;
+                const blob = schedSearchBlob(s);
+                return q.split(' ').every(w => blob.indexOf(w) !== -1);
+            }
+            function renderSchedList() {
+                const list = document.getElementById('scheduled-reminders-list');
+                if (!list) return;
+                const all = Array.isArray(schedItemsCache) ? schedItemsCache : [];
+                const filtered = schedSearchQuery ? all.filter(s => schedMatches(s, schedSearchQuery)) : all;
+                if (!all.length) {
+                    list.innerHTML = scheduledScope
+                        ? '<p class="text-sm text-gray-500 p-2">No ongoing or past scheduled reminders here yet. Open a task → Reminder → tick "Schedule for later".</p>'
+                        : '<p class="text-sm text-gray-500 p-2">No scheduled reminders yet. Open any task → Remind → tick "Schedule for later".</p>';
+                } else if (!filtered.length) {
+                    list.innerHTML = '<p class="text-sm text-gray-500 p-2">No reminder matches “' + waEsc(schedSearchQuery) + '”.<br>Try part of the wording, a person’s name, a number, or a word like <b>sent</b>, <b>repeating</b>, <b>pending</b> or <b>reworded</b>.</p>';
+                } else {
+                    list.innerHTML = filtered.map(s => waScheduleCardHTML(s)).join('');
+                }
+                const countEl = document.getElementById('sched-search-count');
+                if (countEl) countEl.textContent = schedSearchQuery ? (filtered.length + ' of ' + all.length) : '';
+                syncSchedSearchRow();
+            }
+            function syncSchedSearchRow() {
+                const row = document.getElementById('sched-search-row');
+                const btn = document.getElementById('sched-search-btn');
+                if (btn) {
+                    btn.style.background = schedSearchOpen ? '#34373d' : '';
+                    btn.style.color = schedSearchOpen ? '#f7ecd6' : '';
+                    btn.style.borderColor = schedSearchOpen ? '#34373d' : '';
+                }
+                if (!row) return;
+                const list = document.getElementById('scheduled-reminders-list');
+                const cal = document.getElementById('sched-cal-pane');
+                const ai = document.getElementById('sched-ai-pane');
+                const listVisible = !!(list && !list.classList.contains('hidden'));
+                const paneOpen = !!((cal && !cal.classList.contains('hidden')) || (ai && !ai.classList.contains('hidden')));
+                row.classList.toggle('hidden', !(schedSearchOpen && listVisible && !paneOpen));
+            }
+            function toggleSchedSearch(force) {
+                schedSearchOpen = (force === undefined) ? !schedSearchOpen : !!force;
+                if (schedSearchOpen) {
+                    const cal = document.getElementById('sched-cal-pane');
+                    const ai = document.getElementById('sched-ai-pane');
+                    if (cal && !cal.classList.contains('hidden')) showSchedCalendar(false);
+                    if (ai && !ai.classList.contains('hidden')) showAiPane(false);
+                }
+                const input = document.getElementById('sched-search-input');
+                if (!schedSearchOpen) {
+                    schedSearchQuery = '';
+                    if (input) input.value = '';
+                    renderSchedList();
+                } else if (input) {
+                    setTimeout(() => { try { input.focus(); input.select(); } catch (e) {} }, 40);
+                }
+                syncSchedSearchRow();
+            }
+            window.atsSchedSearch = toggleSchedSearch;
+
             // ===== Calendar view for scheduled reminders (day / week / month / year) =====
             let schedCalMode = 'month';
             let schedCalAnchor = new Date();
@@ -4241,6 +4358,7 @@
                     const todayCell = document.querySelector('#cal-grid .cal-cell.today, #cal-grid .cal-wcol.today');
                     if (todayCell && (schedCalMode === 'day' || schedCalMode === 'week')) todayCell.scrollIntoView({ block: 'nearest' });
                 }
+                syncSchedSearchRow();
             }
 
             function calShift(dir) {
@@ -7316,6 +7434,25 @@
             document.getElementById('wa-remind-send').addEventListener('click', submitWaRemind);
             document.getElementById('scheduled-reminders-close').addEventListener('click', closeScheduledReminders);
             document.getElementById('scheduled-refresh').addEventListener('click', loadScheduledReminders);
+            const schedSearchBtn = document.getElementById('sched-search-btn');
+            if (schedSearchBtn) schedSearchBtn.addEventListener('click', () => toggleSchedSearch());
+            const schedSearchInputEl = document.getElementById('sched-search-input');
+            if (schedSearchInputEl) {
+                schedSearchInputEl.addEventListener('input', e => { schedSearchQuery = e.target.value || ''; renderSchedList(); });
+                schedSearchInputEl.addEventListener('keydown', e => {
+                    if (e.key !== 'Escape') return;
+                    e.stopPropagation();
+                    if (e.target.value) { e.target.value = ''; schedSearchQuery = ''; renderSchedList(); }
+                    else toggleSchedSearch(false);
+                });
+            }
+            const schedSearchClearEl = document.getElementById('sched-search-clear');
+            if (schedSearchClearEl) schedSearchClearEl.addEventListener('click', () => {
+                const i = document.getElementById('sched-search-input');
+                if (i) { i.value = ''; i.focus(); }
+                schedSearchQuery = '';
+                renderSchedList();
+            });
             document.getElementById('group-updates-close').addEventListener('click', () => document.getElementById('group-updates-modal').classList.add('hidden'));
             document.getElementById('gu-save').addEventListener('click', saveGroupUpdates);
             loadPendingInvite();   // 2.0: show the invite banner before/while the user signs in
